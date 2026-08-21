@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: translate `entities` — 46 of the 147 dialect sites; `{NOW}` handles 27, the rest are ON CREATE/MATCH and CALL{}.**
+**RESUME: `entities` ON CREATE/MATCH + CALL{} — 19 sites left in it, semantics-preserving rewrites not token swaps.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,105 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T66 2026-08-22 — **`entities` loses its 26 `datetime()` sites; dialect 147 → 121**
+
+  ```
+  [port-adoption-gate] Neo4j-only dialect 121/121 in the repo layer
+      tokenised 26 datetime() sites in 16 constants
+      wrapped   16 call site(s) with render()
+      knowledge unit 4302 · DB integration 536 passed on a FRESH Neo4j
+  ```
+
+  The biggest module's biggest line item, and the safe one: §10.2's `{NOW}` token handles it
+  without changing a stored type. `entities` keeps **19** sites — 5 `ON CREATE SET`, 4
+  `ON MATCH SET`, 8 `CALL {}`, 2 `FOREACH` — which are semantics-preserving rewrites, not
+  token substitutions, and are the next unit.
+
+  ⚠️ **The unit suite did not move, and that is the finding, not the reassurance.** 4302 before
+  and after: no test asserts on these sixteen production queries' text. A16's rule — *"a
+  migration whose tests stay green never moved the binding"* — says that is a coverage
+  statement, so the proof had to be the INTEGRATION suite. Running it is what surfaced
+  **T65**, a regression three rows old that had nothing to do with this change.
+
+  📐 **`test_the_repo_layer_has_no_leftover_token_in_an_UNRENDERED_query` (T64) is what makes
+  this batch mechanical rather than risky.** Sixteen constants and sixteen call sites is
+  exactly the shape where one gets missed; a missed one leaves `{NOW}` heading for the driver,
+  where Neo4j reads it as a map projection and fails at query time. The test asserts every
+  token-carrying template has a renderer somewhere under `app/`, so the miss is caught at unit
+  speed instead of in a live query.
+
+  **BITE — N/A, and the reason:** the bites that protect this change are T64's three on the
+  renderer and T64's token check, all re-run green here; the per-site edit is mechanical and
+  its failure mode is the one that test already owns. What this batch owed instead was the
+  INTEGRATION run, which is QC (b) below and which found a real defect.
+
+  **QC (a) gates:** unit **4302**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **147 → 121** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ 536 passed / 0 failed against a Neo4j created seconds earlier — the
+  sixteen rendered queries all execute.
+  **QC (c) real data:** entities merged, archived, restored, re-anchored and rewired in a real
+  Neo4j through the rendered templates.
+
+  ### 🐞 T65 2026-08-22 — **T25 ③ broke six integration tests and only a FRESH Neo4j could show it**
+
+  ```
+  full DB integration suite, against a Neo4j created seconds earlier:
+
+    before  6 failed, 594 passed, 312 skipped
+            neo4j.exceptions.ClientError: Failed to invoke procedure
+            `db.index.vector.queryNodes` … There is no such vector schema index:
+            passage_embeddings_1024
+
+    after   536 passed, 376 skipped, 0 failed        (11/11 in test_passages_repo.py)
+  ```
+
+  🔴 **A regression I shipped, found by running the suite I had not run.** T25 ③ deleted the
+  passage vector DDL from `neo4j_schema.cypher` — correct, §3.3 moved passage vectors to
+  Postgres and no production reader is left. T25j and T25n found the two **benchmarks** that
+  depended on it and gave them `ensure_passage_vector_index`. **They missed a third consumer:
+  this test suite.**
+
+  ⚠️ **And T25o wrote down the exact reason it stayed hidden, without following it.** That row
+  says: *"deleting the DDL does not drop the existing indexes… an existing deployment keeps
+  working, a fresh one simply never builds them."* Dev and iso still hold all five
+  `passage_embeddings_*` **physically**, so every check I ran that day passed. The unit suite
+  cannot see it at all. **Only a Neo4j with no history shows it, and I did not create one until
+  now** — three rows later, while running the integration suite for a different change.
+
+  📐 **Same remedy, third consumer: the reader owns its index.** A `passage_vector_index`
+  fixture ensures every `SUPPORTED_PASSAGE_DIMS` entry before the four vector reads, exactly as
+  the benchmarks do.
+
+  ⚠️ **`test_supported_dims_match_schema_indexes` was INVERTED, not deleted.** It required a
+  `CREATE VECTOR INDEX` line per dim in `neo4j_schema.cypher`; those are gone by design. The
+  drift it guards did not go away — **it moved**: `ensure_passage_vector_index` is now the only
+  definition of those names, so that is what must cover every supported dim. Its dimension
+  GUARD stays pinned in the unit suite rather than being asserted here too — one rule, one
+  reader.
+
+  **BITE 30 — the fixture removed from one reader, against a Neo4j created seconds before:**
+
+  ```
+  FAILED …test_find_passages_by_vector_respects_tenant
+  ClientError: There is no such vector schema index: passage_embeddings_1024
+  ```
+
+  Run on a **fresh container both times**, because a rerun against the same Neo4j would pass:
+  the fixture from the previous run already created the index, and the bite would have proved
+  nothing. That is the same property that hid the bug for three rows.
+
+  🎯 **The general lesson, and it is not about vector indexes.** Deleting a DECLARATION is
+  invisible on every environment that already applied it. The check that finds it is a
+  from-scratch one, and *"it still works on dev"* is the specific reassurance that means
+  nothing here. T25o's own note contained the diagnosis; nobody ran the experiment it implied.
+
+  **QC (a) gates:** unit **4302**; `port-adoption-gate` PASS, dialect **121/121**; four plan
+  gates green.
+  **QC (b) the seam:** ✅ the whole DB integration suite against a **fresh** throwaway Neo4j —
+  536 passed, 0 failed — plus the bite on a second fresh container.
+  **QC (c) real data:** passages written and queried by vector in a real Neo4j whose index this
+  suite created itself.
 
   ### ✅ T64 2026-08-22 — **§10.2 ships, and with both engines live the suite has NO SKIPS AT ALL**
 

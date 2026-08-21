@@ -28,7 +28,6 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, computed_field
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_read_any_owner, run_write
 from app.db.repositories import VersionMismatchError
 from app.db.neo4j_repos.canonical import (
@@ -277,13 +276,13 @@ ON CREATE SET
   e.user_edited = false,
   e.version = 1,
   e.auto_created = $auto_created,
-  e.created_at = {NOW},
+  e.created_at = datetime(),
   // T4.1 flywheel — the extraction job that first minted this node (net-new
   // attribution). Set ONLY on create, so it permanently credits the creating
   // job; a later match by another job never changes it. NULL for non-job writes
   // and pre-T4.1 nodes.
   e.created_job_id = $job_id,
-  e.updated_at = {NOW}
+  e.updated_at = datetime()
 ON MATCH SET
   e.aliases = CASE
     WHEN coalesce(e.user_edited, false) = true THEN e.aliases
@@ -310,7 +309,7 @@ ON MATCH SET
     ELSE coalesce(e.auto_created, false)
   END,
   e.version = coalesce(e.version, 1) + 1,
-  e.updated_at = {NOW}
+  e.updated_at = datetime()
 WITH e
 WHERE e.user_id = $user_id
 RETURN e
@@ -363,7 +362,7 @@ async def merge_entity(
 
     result = await run_write(
         session,
-        render(_MERGE_ENTITY_CYPHER, "neo4j"),
+        _MERGE_ENTITY_CYPHER,
         user_id=user_id,
         id=canonical_id,
         project_id=project_id,
@@ -509,8 +508,8 @@ ON CREATE SET
   e.archived_at = NULL,
   e.evidence_count = 0,
   e.mention_count = 0,
-  e.created_at = {NOW},
-  e.updated_at = {NOW}
+  e.created_at = datetime(),
+  e.updated_at = datetime()
 ON MATCH SET
   e.name = $name,
   e.canonical_name = $canonical_name,
@@ -519,7 +518,7 @@ ON MATCH SET
   e.glossary_entity_id = $glossary_entity_id,
   e.anchor_score = 1.0,
   e.archived_at = NULL,
-  e.updated_at = {NOW}
+  e.updated_at = datetime()
 WITH e, coalesce(e.__was_created, false) AS was_created
 REMOVE e.__was_created
 WITH e, was_created
@@ -646,7 +645,7 @@ async def upsert_glossary_anchor_counted(
 
     result = await run_write(
         session,
-        render(_UPSERT_ANCHOR_CYPHER, "neo4j"),
+        _UPSERT_ANCHOR_CYPHER,
         user_id=user_id,
         id=canonical_id,
         project_id=project_id,
@@ -1232,12 +1231,12 @@ _ARCHIVE_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
 WITH e, e.glossary_entity_id AS prior_gid
-SET e.archived_at = {NOW},
+SET e.archived_at = datetime(),
     e.anchor_score = 0.0,
     e.prior_glossary_entity_id = prior_gid,
     e.glossary_entity_id = NULL,
     e.archive_reason = coalesce(e.archive_reason, $reason),
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN e
 """
 # `coalesce` reads as defensive and is not (plan T28). Since T28 two independent sources can
@@ -1278,7 +1277,7 @@ SET e.archived_at = NULL,
     e.archive_reason = NULL,
     e.glossary_entity_id = $glossary_entity_id,
     e.prior_glossary_entity_id = NULL,
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN e
 """
 
@@ -1300,7 +1299,7 @@ MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
 SET e.archived_at = NULL,
     e.archive_reason = NULL,
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN e
 """
 
@@ -1317,9 +1316,9 @@ RETURN e
 _USER_ARCHIVE_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-SET e.archived_at = {NOW},
+SET e.archived_at = datetime(),
     e.archive_reason = coalesce(e.archive_reason, $reason),
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN e
 """
 # Same first-archiver-owns-the-un-archive rule as `_ARCHIVE_CYPHER`, and it has to be the same
@@ -1357,7 +1356,7 @@ async def archive_entity(
     """
     result = await run_write(
         session,
-        render(_ARCHIVE_CYPHER, "neo4j"),
+        _ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
@@ -1390,7 +1389,7 @@ async def user_archive_entity(
     """
     result = await run_write(
         session,
-        render(_USER_ARCHIVE_CYPHER, "neo4j"),
+        _USER_ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
@@ -1418,7 +1417,7 @@ async def restore_entity(
     """
     result = await run_write(
         session,
-        render(_RESTORE_CYPHER, "neo4j"),
+        _RESTORE_CYPHER,
         user_id=user_id,
         id=canonical_id,
     )
@@ -1457,7 +1456,7 @@ async def restore_entity_by_glossary_id(
     """
     result = await run_write(
         session,
-        render(_RESTORE_BY_GLOSSARY_ID_CYPHER, "neo4j"),
+        _RESTORE_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
         project_id=project_id,
         glossary_entity_id=glossary_entity_id,
@@ -1854,7 +1853,7 @@ SET e.glossary_entity_id = $glossary_entity_id,
     e.anchor_score = 1.0,
     e.archived_at = NULL,
     e.archive_reason = NULL,
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN e
 """
 
@@ -1916,7 +1915,7 @@ async def link_to_glossary(
 
     result = await run_write(
         session,
-        render(_PROMOTE_TO_ANCHOR_CYPHER, "neo4j"),
+        _PROMOTE_TO_ANCHOR_CYPHER,
         user_id=user_id,
         id=canonical_id,
         glossary_entity_id=glossary_entity_id,
@@ -2022,7 +2021,7 @@ SET target.glossary_entity_id = NULL,
       WHEN max_mentions IS NULL OR max_mentions = 0 THEN 0.0
       ELSE toFloat(target.mention_count) / toFloat(max_mentions)
     END,
-    target.updated_at = {NOW}
+    target.updated_at = datetime()
 RETURN target AS e
 """
 
@@ -2059,7 +2058,7 @@ async def unlink_from_glossary(
         raise ValueError("canonical_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_UNLINK_GLOSSARY_CYPHER, "neo4j"),
+        _UNLINK_GLOSSARY_CYPHER,
         user_id=user_id,
         id=canonical_id,
     )
@@ -2104,7 +2103,7 @@ WHERE e.glossary_entity_id IS NOT NULL
   AND ($user_id IS NULL OR e.user_id = $user_id)
 SET e.glossary_entity_id = NULL,
     e.anchor_score = 0.0,
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 RETURN count(e) AS cleared
 """
 
@@ -2128,7 +2127,7 @@ async def reset_glossary_anchors(
     """
     result = await run_write(
         session,
-        render(_RESET_GLOSSARY_ANCHORS_CYPHER, "neo4j"),
+        _RESET_GLOSSARY_ANCHORS_CYPHER,
         user_id=user_id,
     )
     record = await result.single()
@@ -2164,7 +2163,7 @@ SET e.anchor_score = CASE
   WHEN max_mentions IS NULL OR max_mentions = 0 THEN 0.0
   ELSE toFloat(e.mention_count) / toFloat(max_mentions)
 END,
-e.updated_at = {NOW}
+e.updated_at = datetime()
 RETURN count(e) AS updated, max_mentions
 """
 
@@ -2196,7 +2195,7 @@ async def recompute_anchor_score(
     """
     result = await run_write(
         session,
-        render(_RECOMPUTE_ANCHOR_SCORE_CYPHER, "neo4j"),
+        _RECOMPUTE_ANCHOR_SCORE_CYPHER,
         user_id=user_id,
         project_id=project_id,
     )
@@ -2729,7 +2728,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     END,
     e.user_edited = true,
     e.version = current_version + 1,
-    e.updated_at = {NOW}
+    e.updated_at = datetime()
 )
 RETURN e, current_version = $expected_version AS applied, before
 """
@@ -2783,7 +2782,7 @@ async def update_entity_fields(
     )
     result = await run_write(
         session,
-        render(_UPDATE_ENTITY_FIELDS_CYPHER, "neo4j"),
+        _UPDATE_ENTITY_FIELDS_CYPHER,
         user_id=user_id,
         id=entity_id,
         name=name,
@@ -2815,7 +2814,7 @@ WHERE e.user_id = $user_id
 SET
   e.user_edited = false,
   e.version = coalesce(e.version, 1) + 1,
-  e.updated_at = {NOW}
+  e.updated_at = datetime()
 RETURN e
 """
 
@@ -2830,7 +2829,7 @@ async def unlock_entity_user_edited(
     updated Entity or None when no row matches (router 404s)."""
     result = await run_write(
         session,
-        render(_UNLOCK_ENTITY_CYPHER, "neo4j"),
+        _UNLOCK_ENTITY_CYPHER,
         user_id=user_id,
         id=entity_id,
     )
@@ -2941,8 +2940,8 @@ ON CREATE SET
   r.valid_from = edge.valid_from,
   r.valid_until = edge.valid_until,
   r.pending_validation = edge.pending_validation,
-  r.created_at = {NOW},
-  r.updated_at = {NOW}
+  r.created_at = datetime(),
+  r.updated_at = datetime()
 ON MATCH SET
   r.confidence = CASE
     WHEN edge.confidence > r.confidence THEN edge.confidence
@@ -2983,7 +2982,7 @@ ON MATCH SET
     WHEN r.source_chapter = edge.source_chapter THEN r.source_chapter
     ELSE r.source_chapter + ',' + edge.source_chapter
   END,
-  r.updated_at = {NOW}
+  r.updated_at = datetime()
 RETURN count(r) AS rewired
 """
 
@@ -3031,7 +3030,7 @@ SET
   END,
   t.user_edited = true,
   t.version = coalesce(t.version, 1) + 1,
-  t.updated_at = {NOW}
+  t.updated_at = datetime()
 RETURN t
 """
 
@@ -3062,7 +3061,7 @@ MATCH (t:Entity {id: $target_id})
 WHERE t.user_id = $user_id
 SET t.aliases = $aliases,
     t.source_types = $source_types,
-    t.updated_at = {NOW}
+    t.updated_at = datetime()
 RETURN t
 """
 
@@ -3238,7 +3237,7 @@ async def merge_entities(
         if rewire_edges:
             await run_write(
                 tx,
-                render(_MERGE_REWIRE_RELATES_TO_CYPHER, "neo4j"),
+                _MERGE_REWIRE_RELATES_TO_CYPHER,
                 user_id=user_id,
                 edges=rewire_edges,
             )
@@ -3265,7 +3264,7 @@ async def merge_entities(
         #    happens here; dedupe happens below after refetch.
         update_result = await run_write(
             tx,
-            render(_MERGE_UPDATE_TARGET_CYPHER, "neo4j"),
+            _MERGE_UPDATE_TARGET_CYPHER,
             user_id=user_id,
             source_id=source_id,
             target_id=target_id,
@@ -3301,7 +3300,7 @@ async def merge_entities(
     ):
         await run_write(
             session,
-            render(_MERGE_DEDUPE_TARGET_CYPHER, "neo4j"),
+            _MERGE_DEDUPE_TARGET_CYPHER,
             user_id=user_id,
             target_id=target_id,
             aliases=deduped_aliases,
@@ -3496,8 +3495,8 @@ ON CREATE SET
   e.evidence_count = 0,
   e.mention_count = 0,
   e.archived_at = NULL,
-  e.created_at = {NOW},
-  e.updated_at = {NOW}
+  e.created_at = datetime(),
+  e.updated_at = datetime()
 ON MATCH SET
   e.name = $name,
   e.canonical_name = $canonical_name,
@@ -3505,7 +3504,7 @@ ON MATCH SET
   e.aliases = $aliases,
   e.short_description = $short_description,
   e.confidence = 1.0,
-  e.updated_at = {NOW}
+  e.updated_at = datetime()
 RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
 """
 
@@ -3568,7 +3567,7 @@ async def sync_glossary_entity_node(
         None if project_id == GLOBAL_PROJECT_SENTINEL else project_id,
         name, kind)
     result = await session.run(
-        render(_GLOSSARY_ANCHOR_SYNC_CYPHER, "neo4j"),
+        _GLOSSARY_ANCHOR_SYNC_CYPHER,
         user_id=user_id, project_id=project_id,
         glossary_entity_id=glossary_entity_id, canonical_id=canonical_id,
         name=name, canonical_name=canonical_name, kind=kind,
