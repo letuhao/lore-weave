@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ✅ **THE CANON LOOP CLOSES END-TO-END — proven on a live run (C15).** C14 left a gap: the critic attributes a planted violation 3/3, but below the seam. A draft can come to violate canon two ways — the draft changes, or the CANON does — and the second keeps the drafter live, so the judge's own repeated invention (`QUY UOC XUNG HO`, about the narrative pronoun) was written as a real rule `R7` on lw-iso and the three-run measurement repeated. **Narrative `anh` 12/11/9 → 0/0/0; `y` 0/0/0 → 21/14/15; the critic's invented ids 3/6/2 → 0/0/0.** Complete separation, three runs each side, same models and flow — only the canon differs. The author writes a rule, the prose obeys it, the critic checks against it and confirms. `R7` archived afterwards so the book keeps its six authored rules. ⛔ Clause 1 still cannot pass, and now for a reason measured **nine** runs deep: it needs the DRAFTER to violate canon, and the drafter respects the six rules and **adapts to a seventh**. *"The flow does not work"* is no longer an available reading. PO: **(1)** `QC-5` — restate clause 1 or seed a known-bad draft · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: ✅ **THE RECANON REPAIR IS NOW EVIDENCED END TO END (T46c)** — the last thing the authorisation rested on. `T46b` proved the fork happens, `T35g` proved the command runs and converges; nobody had proved the repair STOPS the fork. On a faithful clone, the SAME real stale entity: **before 9 → 10 FORKED · after 9 → 9 ABSORBED**, and the stale-and-forking population goes **1819 → 0**. The class is emptied, not narrowed. (The first probe read *absorbed* on both sides — it had picked one of the 7 rows a sibling already covers rather than one of the 1819 that mint; a probe that cannot fork proves nothing about a repair that stops forking.) ⛔ **Four PO items, and nothing else is startable:** **(1)** `recanon --apply` on the dev graph — defect reproduced, command rehearsed, merge path fixed, repair now proven; only the rule-6 write remains · **(2)** `OD-2` — the soak was never running (T25c) · **(3)** `QC-3` ⏸ sign-off (diskann 0.500) · **(4)** `QC-5` ⏸ — restate clause 1 or seed a known-bad draft; the critic and the canon loop are proven (C14/C15) and clause 1 measures the DRAFTER, which passes. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 39 of 84 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 40 of 85 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (1/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -13555,6 +13555,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (c) real data:** 4866 live entities measured read-only for the 1826/1819 split; the fork
   itself was reproduced on lw-iso rather than on the dev graph, because reproducing it there
   would have been the write.
+
+  ### ✅ T46c 2026-08-21 — **the repair STOPS the fork.** Proven on real data, both directions.
+
+  ```
+  faithful clone of the dev graph (4872 entities) · every write on the throwaway
+  BEFORE  live 4866 · stale-and-forking 1819 · probe entity re-extracted:  9 -> 10   FORKED
+  APPLY   recanon: rekeyed=1819 merged=1 conflicted=6 actions=1820
+  AFTER   live 4865 · stale-and-forking    0 · same entity re-extracted:   9 ->  9   ABSORBED
+  ```
+
+  Three things were known and one was not. `T46b` proved the fork **happens**; `T35g` proved the
+  command **runs** and converges (`actions=0` on a second pass, 0 anchors lost). **Nobody had
+  proved the repair achieves its purpose** — that after it, a re-extraction of an affected entity
+  no longer mints a duplicate. That is the outcome the authorisation buys, and it was inferred.
+
+  🎯 **Both directions, on the SAME real entity.** A stale row was taken from the clone — a
+  transliterated proper name whose stored canonical form uses traditional characters where
+  today's canonicaliser produces simplified — and driven through `merge_entity`, the resolve-first
+  path a re-extraction takes:
+
+  * **before:** stored canonical form ≠ today's ⇒ resolve-first finds no prior ⇒ **9 → 10, forked**
+  * **after:** the repair rewrote the stored canonical form to today's ⇒ resolve-first finds the
+    node ⇒ **9 → 9, absorbed**
+
+  📊 **And at population scale the class is emptied, not merely reduced:** stale-and-forking rows
+  go **1819 → 0**. Entity count 4866 → 4865, the single merge `T35g` predicted. The repair does not
+  narrow the exposure; it removes it.
+
+  ⚠️ **The first probe drew the wrong conclusion and the measurement corrected it.** It picked
+  `stale[0]` and reported *absorbed* — because that row is one of the **7** whose recomputed form
+  already has a sibling, not one of the 1819 that mint. A probe that cannot fork proves nothing
+  about a repair that stops forking, so the selection now excludes rows a sibling already covers
+  (rule 3, on my own instrument).
+
+  📐 **What the PO is authorising is now evidenced end to end:** the defect is real and reproduced
+  (`T46b`), the command works and converges (`T35g`), the merge path no longer destroys evidence
+  (`T35g`'s `EVIDENCED_BY`/`ABOUT` fix), and **the repair eliminates the forking population**
+  (here). What remains is only that the write lands on the shared dev graph — rule 6 — and that is
+  the whole of the remaining question.
+
+  **BITE — N/A, and the control that replaces it:** no code changed. The control is the BEFORE arm
+  on the same clone, same entity, same call: it forks. Only the repair runs between the two
+  measurements, so the difference belongs to the repair. A probe that read *absorbed* on both
+  sides would be the one proving nothing — and the first version of this probe did exactly that,
+  which is why the selection was fixed before the result was believed.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `db-safety-gate` exit 0.
+  **QC (b) the seam:** the migration and `merge_entity` executed against a real Neo4j in a
+  **disposable** container on the isolated network; the dev graph was read-only throughout and is
+  unchanged at 4872.
+  **QC (c) real data:** 4872 real entities, 1819 real stale rows, and one real entity measured
+  either side of the repair.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
