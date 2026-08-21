@@ -1,0 +1,1064 @@
+{
+  "batch": "batch20-v2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_search",
+      "scenario": "composition-motif-search",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model calls the tool with an invented argument such as `name` rather than the declared `q` (that is the exact defect fixed on 2026-08-21 — a regression here is a NEW instance), OR the reply reports motifs the library does not contain. NOTE `q` RANKS rather than filters, so a long result list is CORRECT behaviour; what matters is that the exact match is named.",
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Reversal"
+        ],
+        "why": "The seeded motif is the only one by that name; naming it back is the minimum evidence the library was searched rather than described."
+      },
+      "falsifier_sha": "7251e118e6a554d1",
+      "ship_audit": {
+        "empty_case": "OWED — a query matching nothing must say so rather than return the library.",
+        "tenancy": "OWED — scope=mine must return only the caller's motifs; the 84 system rows are a separate scope."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0237c-cab3-7d7b-bbdd-fa3a93b96276",
+          "session_id": "01a0237c-e226-7517-bc07-a6b9884cabc2",
+          "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.210362+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.405614+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.399598+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.210362+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.405614+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:42:56.399598+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0237d-3c6d-7647-bf2e-bb803996b276",
+          "session_id": "01a0237d-53cc-7d93-af3b-421e132234be",
+          "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.314103+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.493808+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.486776+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.314103+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.493808+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:25.486776+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0237d-ad20-79db-9a96-b72a377d20ab",
+          "session_id": "01a0237d-c490-7392-af7b-aa517d0c0043",
+          "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.17773+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.360499+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.353981+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.17773+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.360499+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:43:54.353981+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0237e-1b67-7e2b-947a-97edc3201332",
+          "session_id": "01a0237e-327b-746a-8cb2-92b659cc431c",
+          "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.394003+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.571792+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.565546+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.394003+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.571792+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:22.565546+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0237e-8ce8-7944-8754-86fc552bcb4a",
+          "session_id": "01a0237e-a4d1-77a7-8900-da87e354f4ca",
+          "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.467488+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.678833+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.670758+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.467488+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.678833+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:44:51.670758+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_motif_link_list",
+      "scenario": "composition-motif-link-list",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes links the seeded motif does not have, OR it names the wrong direction — the edge is Ascent PRECEDES Descent, and reporting the reverse is a wrong fact read back to the author. CONTROL: the model must resolve a NAME to a motif_id; if it asks the author for the id instead, that is OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID again and a PRECONDITION finding, not a tool defect.",
+      "answer_expect": {
+        "all_of": [
+          "Emberfall Descent"
+        ],
+        "why": "The seeded edge points at exactly one neighbour; naming it is the minimum evidence the graph was read. The tool's description promises each neighbour's code + name, so the name is available without a second call."
+      },
+      "falsifier_sha": "c352121dd5e9a7a2",
+      "ship_audit": {
+        "empty_case": "OWED — a motif with no links must be reported as unlinked, not as missing.",
+        "absent_case": "OWED — a motif_id that does not exist must be refused.",
+        "tenancy": "OWED — ACCOUNT-scoped; another owner's motif must not be traversable."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0237f-0033-7cb0-b4b1-14581163357a",
+          "session_id": "01a0237f-1990-7cdf-8678-de3a7d933ca6",
+          "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:20.965473+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:21.142766+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:21.136538+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:20.965473+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:21.142766+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:21.136538+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0237f-76d1-74c9-bacd-dbe06100d693",
+          "session_id": "01a0237f-90eb-7e66-b148-a942ea66cbb5",
+          "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.335545+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.526801+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.518539+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.335545+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.526801+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:45:51.518539+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0237f-eb16-7ec3-91bf-ffa7e177b647",
+          "session_id": "01a02380-04f3-7e27-818b-9ddd6dd51444",
+          "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.109649+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.287422+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.280796+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.109649+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.287422+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:21.280796+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02380-636d-74f3-bd7d-841fdd6e4176",
+          "session_id": "01a02380-7a9f-713d-806f-82ee66c94c29",
+          "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_list",
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:51.921191+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:52.108329+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:52.100642+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:51.921191+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:52.108329+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:46:52.100642+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The motif **Emberfall Ascent** is followed by **Emberfall Descent**."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02381-10ed-7f15-91ad-d81284683700",
+          "session_id": "01a02381-2a44-79cc-91a8-d7bb6bc98473",
+          "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_list",
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.333002+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.52667+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.518392+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.333002+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.52667+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:47:36.518392+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The motif **Emberfall Ascent** is followed by **Emberfall Descent**."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 2,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_motif_bind_edit",
+      "scenario": "composition-motif-bind-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding the author never asked to remove — OR the model invents a node_id or motif_id. 🔴 WATCH FOR THE KNOWN BLOCKER: if the turn ends with no prose and no card after a successful search, that is D-SILENT-TURN-NO-CARD-NO-PROSE again, which is a MODEL-output defect and NOT evidence about this tool. A run that ends that way must be re-run, not read.",
+      "answer_expect": null,
+      "falsifier_sha": "dc8618d114aa0975",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — binding the same motif to the same node twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped: two scopes on one call, and both must be checked."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02381-9449-7b67-97e9-2d42e77b374e",
+          "session_id": "01a02381-acea-712b-a4c3-43a2a0398c10",
+          "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:09.94509+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.129468+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.410418+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.122429+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:09.94509+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.129468+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.410418+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:10.122429+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02381-dd75-7805-babe-7ac55b766a8f",
+          "session_id": "01a02381-f8f7-7721-a54b-4f813cd87703",
+          "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.70312+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.922793+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:29.224073+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.913663+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.70312+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.922793+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:29.224073+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:48:28.913663+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02382-57e6-701c-96b1-d3e4ff6c69ba",
+          "session_id": "01a02382-7209-7d68-a87d-e2b41219040a",
+          "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.026574+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.22397+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.511459+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.215216+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.026574+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.22397+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.511459+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:00.215216+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02382-d094-77ae-9ae1-d420187a8952",
+          "session_id": "01a02382-e9cf-7f84-83d1-bb8285daac1c",
+          "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:30.947192+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.140838+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.447924+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.132808+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:30.947192+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.140838+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.447924+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:49:31.132808+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02386-1eaa-7d2e-8bcc-5c914ceb2eeb",
+          "session_id": "01a02386-393f-771c-b690-c0edb8947f64",
+          "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.522622+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.732837+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:08.078192+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.720395+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.522622+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.732837+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:08.078192+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 08:53:07.720395+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 360,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

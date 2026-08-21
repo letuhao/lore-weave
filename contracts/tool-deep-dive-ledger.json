@@ -2298,6 +2298,30 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch19-v5.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on NAME->id resolution — the same shape as composition_arc_template_edit in batch 15, and this time the supplier had just been FIXED. Called 5/5 with 0 errors, so this is clean evidence. The model passed the two motif NAMES, the tool refused, and it then told the author: 'I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names'. Declining beats guessing and the store is untouched — but it never called composition_motif_search AT ALL, even though that tool is on the same wire and its `q` argument now says outright 'THIS is how you search by NAME'. So declaring the supplier's argument fixed the call SHAPE (measured: q used correctly elsewhere in this same batch) and did NOT make the model reach for the supplier. Another instance of OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID, and a Tier-A tool whose card never mints in 5 clean runs is not shippable evidence."
+  },
+  "composition_motif_mine": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch20.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch20.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_motif_suggest_for_chapter": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch20.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch20.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_motif_link_list": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch20-link-list-clean.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch20-link-list-clean.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -3032,9 +3056,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 113,
+  "tools_concluded": 116,
   "tools_in_cycle": 1,
-  "tools_proven": 83,
+  "tools_proven": 86,
   "tools_blocked": 30,
   "defects_proven": 23,
   "defects_open": 0,
@@ -3050,7 +3074,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 118,
+  "tools_concluded_including_deprecated": 121,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [

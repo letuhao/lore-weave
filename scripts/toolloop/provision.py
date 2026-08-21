@@ -306,9 +306,20 @@ class Throwaway:
             def _ref(m):
                 return str(self._step_value(int(m.group(1)), m.group(2)))
             obj = self._STEP_REF.sub(_ref, obj)
+            # 🔴 `{run_id}` — a per-run nonce, and it is what makes an ACCOUNT-SCOPED seed
+            # repeatable. Measured 2026-08-21, batch 20: composition_motif_link_list seeded a
+            # motif with the fixed code 'emberfall-ascent-b20', which is unique PER OWNER — so
+            # rep 0 created it and reps 1-4 all failed with "seed step 0 returned no 'id'".
+            # 4 of 5 runs lost, and the scenario read as 0/5 called.
+            #
+            # A book-scoped seed never hits this because the throwaway book is new every run.
+            # Anything living in the caller's own library (motifs, arc templates) does, and this
+            # loop has already paid for it twice: batch 19's motifs survived across arms and
+            # collided by NAME as well as by code.
             return (obj.replace("{book_id}", self.book_id or "")
                        .replace("{chapter_id}", self.chapter_id or "")
-                       .replace("{project_id}", self.project_id or ""))
+                       .replace("{project_id}", self.project_id or "")
+                       .replace("{run_id}", self.run_id))
         if isinstance(obj, dict):
             return {k: self._substitute(v) for k, v in obj.items()}
         if isinstance(obj, list):

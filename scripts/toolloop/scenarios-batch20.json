@@ -1,0 +1,230 @@
+{
+ "_note": "Batch 20 — the rest of the MOTIF family. composition_motif_bind_edit is re-queued from batch 19, where it got 0 clean runs in 23 attempts: every one died on the degenerate `<tool_call|>` output (D-SILENT-TURN), so it is not blocked by anything about the tool. FIXTURE RULES CARRIED FROM BATCH 19, learned the hard way: every account-scoped assertion is SCOPED TO A SEEDED CODE, never to a headcount of the caller's library (that library is live and moves during a batch, because all scenarios seed into the same account and runs are sequential); and no two scenarios may give their motifs the same display NAME — a collision made composition_motif_search return two rows and the turn died on the ambiguity. Each scenario below uses a distinct b20 code AND a distinct name.",
+ "scenarios": [
+  {
+   "id": "composition-motif-search",
+   "tool_under_test": "composition_motif_search",
+   "expect_tool": "composition_motif_search",
+   "intent": "read",
+   "tier": "R",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Find the trope called Emberfall Reversal in my motif library.",
+   "prompt_source": "meta.synonyms['trope'] + ['motif'], verbatim, plus the motif's own name — this scenario exists to test NAME search specifically.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-reversal-b20-{run_id}",
+      "name": "Emberfall Reversal",
+      "kind": "trope"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif WHERE code='emberfall-reversal-b20-{run_id}'",
+     "expect": "1",
+     "why": "EXACTLY ONE motif with this name, and the name is unique across the whole library — so an exact-name hit is unambiguous. This is the scenario that proves the `q` declaration shipped on 2026-08-21: before it, the model invented {\"name\": [...]} and got 'Extra fields not permitted' on 10 of 10 runs across two scenarios, and the retry loop ended in a stream error."
+    }
+   ],
+   "answer_expect": {
+    "all_of": [
+     "Emberfall Reversal"
+    ],
+    "why": "The seeded motif is the only one by that name; naming it back is the minimum evidence the library was searched rather than described."
+   },
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model calls the tool with an invented argument such as `name` rather than the declared `q` (that is the exact defect fixed on 2026-08-21 — a regression here is a NEW instance), OR the reply reports motifs the library does not contain. NOTE `q` RANKS rather than filters, so a long result list is CORRECT behaviour; what matters is that the exact match is named.",
+   "ship_audit": {
+    "empty_case": "OWED — a query matching nothing must say so rather than return the library.",
+    "tenancy": "OWED — scope=mine must return only the caller's motifs; the 84 system rows are a separate scope."
+   },
+   "defects": [],
+   "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
+  },
+  {
+   "id": "composition-motif-link-list",
+   "tool_under_test": "composition_motif_link_list",
+   "expect_tool": "composition_motif_link_list",
+   "intent": "read",
+   "tier": "R",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "What follows the motif called Emberfall Ascent — show me its related motifs.",
+   "prompt_source": "meta.synonyms['what follows this motif'] + ['related motifs'], verbatim.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-ascent-b20-{run_id}",
+      "name": "Emberfall Ascent",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-descent-b20-{run_id}",
+      "name": "Emberfall Descent",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_motif_link_edit",
+     "args": {
+      "op": "create",
+      "from_motif_id": "{step:0:id}",
+      "to_motif_id": "{step:1:id}",
+      "kind": "precedes"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_link WHERE from_motif_id=(SELECT id FROM motif WHERE code='emberfall-ascent-b20-{run_id}')",
+     "expect": "1",
+     "why": "ONE outgoing edge, seeded directly so the read has something real to return. The model must resolve the motif's NAME to its id first — composition_motif_search is the supplier, and its `q` argument now says so outright. SCOPED to the seeded code, not to the account's ~63 links, because that total moves during a batch."
+    }
+   ],
+   "answer_expect": {
+    "all_of": [
+     "Emberfall Descent"
+    ],
+    "why": "The seeded edge points at exactly one neighbour; naming it is the minimum evidence the graph was read. The tool's description promises each neighbour's code + name, so the name is available without a second call."
+   },
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes links the seeded motif does not have, OR it names the wrong direction — the edge is Ascent PRECEDES Descent, and reporting the reverse is a wrong fact read back to the author. CONTROL: the model must resolve a NAME to a motif_id; if it asks the author for the id instead, that is OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID again and a PRECONDITION finding, not a tool defect.",
+   "ship_audit": {
+    "empty_case": "OWED — a motif with no links must be reported as unlinked, not as missing.",
+    "absent_case": "OWED — a motif_id that does not exist must be refused.",
+    "tenancy": "OWED — ACCOUNT-scoped; another owner's motif must not be traversable."
+   },
+   "defects": [],
+   "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
+  },
+  {
+   "id": "composition-motif-suggest-for-chapter",
+   "tool_under_test": "composition_motif_suggest_for_chapter",
+   "expect_tool": "composition_motif_suggest_for_chapter",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Which motif fits this chapter — and why this motif?",
+   "prompt_source": "meta.synonyms['which motif'] + ['why this motif'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Emberfall"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+     "expect": "1",
+     "why": "ONE node to suggest against. CONTROL STATED UP FRONT: the tool requires project_id + node_id and its description says it ranks by 'tension/genre/precondition/semantic match' grounded in the Work — a fresh book has almost no prose to ground on, so a thin or empty suggestion list is the HONEST outcome and a confident ranking would be the finding."
+    }
+   ],
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents a 'why this motif' rationale citing tension or preconditions the fixture cannot supply (one seeded chapter, no plan) — that is the D-FALSE-PRESENCE shape batch 11 measured on composition_conformance_status — OR the model invents a node_id rather than resolving 'this chapter'.",
+   "ship_audit": {
+    "empty_case": "OWED — no fitting motif must be reported as none, not as a weak guess.",
+    "absent_case": "OWED — a node_id that does not exist must be refused.",
+    "tenancy": "OWED — book-scoped, and project_id is a second scope."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-motif-mine",
+   "tool_under_test": "composition_motif_mine",
+   "expect_tool": "composition_motif_mine",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Mine motifs from this book — extract the recurring patterns.",
+   "prompt_source": "meta.synonyms['mine motifs'] + ['extract patterns'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif WHERE code LIKE 'mined-%'",
+     "expect": "0",
+     "why": "NO mined motifs yet, scoped to a code prefix rather than to a headcount of the caller's library — that library is live and moves during a batch. This tool SPENDS: its own description says mining 'spends LLM tokens, so it is cost-gated'. The card is never approved, so this must still be 0 afterwards."
+    }
+   ],
+   "falsifier": "REFUTED IF: motifs are mined with NO confirm card (Tier W and it spends), OR the model chooses scope='corpus' when the user said 'this book' — that would bill the author for mining their ENTIRE library instead of one book, which is the worst outcome reachable here — OR the reply claims patterns were extracted while the card is still pending. CONTROL: the fixture has one seeded chapter, so there is almost nothing to mine, and an honest 'not much to work with' is a fine answer.",
+   "ship_audit": {
+    "gate": "The card IS the audit — this is a cost-gated corpus operation.",
+    "empty_case": "OWED — a book with no prose must not mint a card for zero work (the D-EXTRACTION-CONFIRMS-A-NO-OP shape fixed in composition_decompile_arcs).",
+    "tenancy": "OWED — book-scoped, and scope='corpus' widens it to the whole account."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-motif-bind-edit",
+   "tool_under_test": "composition_motif_bind_edit",
+   "expect_tool": "composition_motif_bind_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Attach the pattern called Emberfall Binding to this book's opening arc.",
+   "prompt_source": "meta.synonyms['attach pattern to chapter'] + ['bind motif'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-binding-b20-{run_id}",
+      "name": "Emberfall Binding",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Emberfall"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-binding-b20-{run_id}')",
+     "expect": "0",
+     "why": "ZERO bindings for THIS motif, scoped to the seeded code. RE-QUEUED FROM BATCH 19, where it got 0 clean runs in 23 attempts across four arms — every one died on the degenerate `<tool_call|>` output AFTER a successful motif_search, so nothing about the tool was ever measured. The prompt and the motif NAME are both changed here so this is not a re-run of the same wording."
+    }
+   ],
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding the author never asked to remove — OR the model invents a node_id or motif_id. 🔴 WATCH FOR THE KNOWN BLOCKER: if the turn ends with no prose and no card after a successful search, that is D-SILENT-TURN-NO-CARD-NO-PROSE again, which is a MODEL-output defect and NOT evidence about this tool. A run that ends that way must be re-run, not read.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+    "idempotency": "OWED — binding the same motif to the same node twice must not create two applications.",
+    "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped: two scopes on one call, and both must be checked."
+   },
+   "defects": [],
+   "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
+  }
+ ]
+}
