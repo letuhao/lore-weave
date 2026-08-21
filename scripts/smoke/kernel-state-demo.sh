@@ -54,7 +54,11 @@ CHAN_DB=loreweave_kernel_state_smoke_channel
 # know what to expect.
 REALITY=11111111-2222-4333-8444-000000000001
 ACTOR=22222222-2222-4333-8444-000000000002
-DRIVER=33333333-2222-4333-8444-000000000003
+# Overridable so the demo can be driven by a REAL logged-in user: point it at
+# the `user_id` auth-service issued a token for and the browser's session and
+# the game's driver become the same person, which is what production looks like.
+# Defaults to a fixed synthetic id so the script needs no auth-service.
+DRIVER="${DEMO_DRIVER:-33333333-2222-4333-8444-000000000003}"
 CHANNEL=1
 ENTITY=1
 
@@ -199,8 +203,17 @@ drain() { # drain <label> [extra-flags...]
 # The stream lives in Redis and survives DROP DATABASE, so a re-run would
 # otherwise inherit the previous run's proposals and its consumer group — and
 # the group is what decides which entries are visible at all.
-echo "== clearing $PROPOSAL_STREAM (Redis outlives the databases) =="
-docker exec "$REDIS_CONTAINER" redis-cli DEL "$PROPOSAL_STREAM" >/dev/null
+# BOTH streams. Redis outlives DROP DATABASE, so a re-run would otherwise
+# inherit the previous run's proposals AND its committed events, and the turn
+# number would climb every time the script is run — a demo that is never twice
+# the same thing.
+#
+# Safe to clear the EVENT stream only because the meta database was just
+# recreated: `publisher_heartbeats` went with it, so the publisher has no cursor
+# and republishes from the beginning. Deleting that stream while a cursor
+# survives loses the events for good — measured the hard way.
+echo "== clearing both streams (Redis outlives the databases) =="
+docker exec "$REDIS_CONTAINER" redis-cli DEL "$PROPOSAL_STREAM" "lw.events.$REALITY" >/dev/null
 
 drain "creating the consumer group" --create-reality
 

@@ -10,27 +10,62 @@ test.describe('V0 smoke — static routes (no backend)', () => {
 
     await page.goto('/login');
     await expect(page).toHaveTitle(/LoreWeave/);
-    await expect(page.getByRole('heading', { name: /Login/ })).toBeVisible();
+    // The heading is the product name, not "Login" — the login screen was
+    // redesigned and this matcher was not. Asserting the form is stronger than
+    // asserting a word anyway: it is what makes the page a LOGIN page.
+    await expect(page.getByRole('heading', { name: /LoreWeave/ })).toBeVisible();
+    await expect(page.getByLabel(/Email/)).toBeVisible();
+    await expect(page.getByLabel(/Password/)).toBeVisible();
 
     expect(errors, 'no uncaught page errors').toEqual([]);
   });
 
-  test('/world-select renders', async ({ page }) => {
+  // `GO-1` — SKIPPED, not deleted and not left failing.
+  //
+  // `/world-select` moved behind `RequireAuth` after this test was written, so
+  // an unauthenticated visit lands on `/login` and every locator here misses.
+  // Reaching it needs a token auth-service issued, which is `GO-2`. The repo's
+  // own convention for a test whose stack is absent is to SKIP LOUDLY naming
+  // what it wants — a red that everyone learns to ignore is worse than an
+  // honest skip, and the guard itself is covered by the test below.
+  test.skip('/world-select renders', async ({ page }) => {
     await page.goto('/world-select');
     await expect(page.getByRole('heading', { name: /Select World/ })).toBeVisible();
   });
 
-  test('login → world-select → play navigation', async ({ page }) => {
+  // `GO-1` — this WAS `login → world-select → play navigation`, and it clicked
+  // a "Continue as guest" button that no longer exists anywhere in
+  // `frontend-game/src`. It had been asserting a flow the app removed: either
+  // failing on every full run, or never running. A test that names a control
+  // nobody ships is a claim wearing the costume of evidence.
+  //
+  // The navigation it covered is not testable here any more — `/world-select`
+  // and `/play` are both behind `RequireAuth`, and reaching them needs a token
+  // auth-service issued (`GO-2`). What IS testable without a backend, and is
+  // worth more than the dead version, is that the guard actually guards.
+  test('an unauthenticated visit to a protected route lands on /login', async ({ page }) => {
+    for (const guarded of ['/play', '/world-select']) {
+      await page.goto(guarded);
+      await expect(page, `${guarded} must not render without a session`).toHaveURL(/\/login/);
+    }
+    // Non-vacuity: an UNguarded route must still reach itself, or the assertion
+    // above would pass on an app that redirected everything to /login.
     await page.goto('/login');
-    await page.getByRole('button', { name: /Continue as guest/ }).click();
-    await expect(page).toHaveURL(/\/world-select/);
-
-    await page.getByRole('button', { name: /Enter world/ }).click();
-    await expect(page).toHaveURL(/\/play/);
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByRole('heading', { name: /Login|LoreWeave/ })).toBeVisible();
   });
 });
 
-test.describe('/play smoke — V0 HUD + V1.2 viewer surface', () => {
+// `GO-1` — every test in this block visits `/play`, which moved behind
+// `RequireAuth`. They were written before the guard existed and have been
+// asserting against a redirect ever since; nobody saw it because
+// `playwright.config.ts` pointed the webServer at a port `vite.config.ts` had
+// already left, so the CI job timed out before running a single test. Two
+// defects, each hiding the other.
+//
+// Un-skipped by `GO-2`: give the e2e stack a real session and every assertion
+// below becomes meaningful again exactly as written.
+test.describe.skip('/play smoke — V0 HUD + V1.2 viewer surface', () => {
   // Per-test capture: pageerror + console.error/warning, surfaced on
   // failure so CI logs reveal root cause without artifact download.
   test.beforeEach(async ({ page }, testInfo) => {
