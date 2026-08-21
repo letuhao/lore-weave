@@ -1,0 +1,52 @@
+{
+  "_note": "THE CONTROL THAT WOULD REFUTE ME. batch 28 measured book_steering_delete surfaced 5/5 and called 0/5: the model answered with prose every time, saying 'I cannot delete or modify the steering rules for this book. Those rules are part of the project's core configuration and cannot be changed through this chat.' That is a FALSE CAPABILITY REFUSAL - the tool was on the turn's surface, and its sibling book_steering_set was CALLED 5/5 in the same batch, on the same book, at the same tier.\n\nMY HYPOTHESIS: book_steering_set defaults inclusion_mode to `always`, so both seeded rules are rendered into the SYSTEM PROMPT as a <steering> block - '## no-weather-openings\nNever describe the weather...' - with no provenance line saying they are author-owned data. The model reads its own system directives and refuses to delete one, inventing a policy reason for it.\n\nTHE CONTROL: identical book, identical prompt, identical tool surface - the ONLY change is inclusion_mode='manual', which (with no '#name' token in the message) means the rules are NOT injected into the system prompt. If the model now CALLS the tool, the steering block is the cause. If it still refuses 5/5, my hypothesis is dead and the cause is something else - the word 'forget', the tool's own framing, or a guardrail I have not found. Either outcome is worth more than the fix I was about to write.",
+  "scenarios": [
+    {
+      "id": "book-steering-delete-not-injected",
+      "tool_under_test": "book_steering_delete",
+      "expect_tool": "book_steering_delete",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Forget the rule called no-weather-openings for this book.",
+      "prompt_source": "BYTE-FOR-BYTE the batch 28 prompt. The prompt must not change, or the control proves nothing. It deliberately contains no '#' token, so inclusion_mode='manual' means these rules are NOT rendered into the system prompt on this turn.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "no-weather-openings",
+            "body": "Never describe the weather in the first paragraph of a chapter.",
+            "inclusion_mode": "manual"
+          }
+        },
+        {
+          "tool": "book_steering_set",
+          "args": {
+            "book_id": "{book_id}",
+            "name": "keep-aldric-terse",
+            "body": "Aldric Vane speaks in short sentences.",
+            "inclusion_mode": "manual"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM book_steering WHERE book_id='{book_id}' AND inclusion_mode='manual'",
+          "expect": "2",
+          "why": "Both rules exist AND both are manual — the assertion checks the inclusion_mode explicitly, because if the seed silently fell back to the 'always' default this control would be an exact copy of the original arm and would 'confirm' the hypothesis by construction. That is the shape of a check whose seed and control agree: it must be impossible for this arm to be the same experiment twice."
+        }
+      ],
+      "falsifier": "THIS SCENARIO IS ITSELF THE FALSIFIER. If called_count is still 0/5 with the steering block absent, the <steering> injection is NOT the cause of the refusal and the prompt-provenance fix must not be written. If called_count rises to 3/5 or better, the cause is established and the fix has a measured target. A refusal here that repeats 'part of the project's core configuration' verbatim, with no such configuration in context, would be especially informative: it would mean the model is reciting a belief about the product rather than reading its own prompt.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the card is never approved.",
+        "note": "This arm exists to test a HYPOTHESIS, not to conclude the tool. book_steering_delete is concluded from the batch 28 arm plus whatever this establishes."
+      },
+      "defects": []
+    }
+  ]
+}
