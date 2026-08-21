@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 45 of 90 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 45 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/41) · `T46` (3/6) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/39) · `T46` (3/6) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7633,7 +7633,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   a finding that could not say which relationship it was about. None would have surfaced
   against a synthetic fixture.
 
-  ### 🔻 DEFERRAL `D-QC5-FULL-FLOW-CAPTURE` — the assertion is proven; the artefacts are not captured
+  ### ~~DEFERRAL~~ `D-QC5-FULL-FLOW-CAPTURE` — **CLOSED 2026-08-11 — the artefacts were captured (`Retry when`: *"RUN 2026-08-11"*).** *(heading was still marked open; the body was not)*
 
   | | |
   |---|---|
@@ -8408,7 +8408,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   looked like an invention. **A silent 40% hole in the mirror is a stronger finding than any
   judge-precision result in this section, and it invalidates the premise of several of them.**
 
-  ### 🔻 DEFERRAL `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER`
+  ### ~~DEFERRAL~~ `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER` — **CLOSED 2026-08-12 — its own `Blocker` is struck through and `Retry when` reads *"Nothing outstanding. No longer blocks QC-5"*.** *(heading was still marked open; the body was not)*
 
   | | |
   |---|---|
@@ -8581,7 +8581,7 @@ buy a fraction of one. **Retry when** picked up as their own slices, in plan ord
 enforce the allowlist T38 shrinks — the allowlist IS T38's checklist and can only shrink, the
 same shape as `D-T17-BACKFILL-CYPHER`, `D-T32-ALIVE-NO-FACTS` and `D-T35-OPAQUE-IDENTITY`.~~
 
-### 🔻 DEFERRAL `D-T38-MECHANISM-IS-VACUOUS` — T38's stated checklist cannot fail
+### ~~DEFERRAL~~ `D-T38-MECHANISM-IS-VACUOUS` — **CLOSED 2026-08-11 (its own body already said so). `authored-catalog-reader-gate` ships the checklist that can fail; `Retry when` reads *"n/a — closed"*.** *(heading was still marked open; the body was not)*
 
 | | |
 |---|---|
@@ -8675,7 +8675,7 @@ What remains is implementation, precisely located and specified in
 misattribution question has no code path to reach.** No decision is owed by anyone.
 
 
-  ### 🔻 DEFERRAL `D-QC5-FLOW-PRODUCES-NO-CANON-CONSISTENCY` — the criterion has no producer on this path
+  ### ~~DEFERRAL~~ `D-QC5-FLOW-PRODUCES-NO-CANON-CONSISTENCY` — **CLOSED 2026-08-21 (T46h) — the PO picked option (a) on 2026-08-13 and it is now WIRED, measured rather than assumed: every authoring run this session carried `critic_verdict.detail.canon_consistency` with `active_rule_count = 6`, where this block's evidence was *"`critic: null` on every job"*.** *(heading was still marked open; the body was not)*
 
   | | |
   |---|---|
@@ -14463,6 +14463,44 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `bitemporal-parity-gate` 0 asymmetries. **QC (b):** N/A because no service seam changed — this
   batch is a measurement and a tripwire. **QC (c) real data:** the live KG table holds **0 rows**
   and the repo has **0 production importers**, which is the measurement the decision rests on.
+
+  ### 📊 T46h 2026-08-21 — **four CLOSED deferrals were still advertising as open**
+
+  ```
+  QC-5's span: deferral headings counted OPEN   12 -> 8
+  ```
+
+  `plan-final-verification` refuses a `[x]` QC row whose section *"records a deferral"*, and it
+  decides that on the HEADING — an un-struck `DEFERRAL` + `D-…` counts as open, a struck-through one does not. Four
+  blocks carried the open form while their own bodies said they were finished:
+
+  | deferral | what its OWN body says |
+  |---|---|
+  | `D-T38-MECHANISM-IS-VACUOUS` | *Retry when: **n/a — closed***; `To unblock` struck; `Mechanism` ✅ |
+  | `D-QC5-FULL-FLOW-CAPTURE` | *Retry when: ~~whenever the PO wants~~ **RUN 2026-08-11*** |
+  | `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER` | `Blocker` struck, **CLOSED 2026-08-12**; *"No longer blocks QC-5"* |
+  | `D-QC5-FLOW-PRODUCES-NO-CANON-CONSISTENCY` | PO picked option (a) 2026-08-13 |
+
+  🎯 **The fourth was closed by TODAY'S runs, not by its own note.** Its blocker was *"the
+  authoring FLOW does not produce `canon_consistency`"*, evidenced as *"`critic: null` on every
+  job"*. Every authoring run this session — chapter 10 ×3, chapter 12, chapter 5 — carried
+  `critic_verdict.detail.canon_consistency` with `active_rule_count = 6`, read from the persisted
+  rows. The PO's option (a) is not merely decided, it is **wired and observable**.
+
+  ⚠️ **Each was verified from its own `Retry when` field, one at a time, not bulk-matched.** A
+  first pass with a keyword heuristic flagged three and missed the fourth, and would have swept in
+  `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`, whose section contains **both** *"FIXED AND
+  RE-MEASURED"* and a later *"is NOT closed"* — a block that genuinely disagrees with itself and
+  therefore stays open until someone reads it properly.
+
+  ⛔ **This does NOT unblock QC-5.** Eight genuinely-open deferrals remain in its span, including
+  `D-QC5-ROLE-JUDGE-PRECISION` (a spend call) and `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`. What it
+  fixes is the run-state lying about which ones they are — the same stale-record class as T33a's
+  four stale blockers and this session's two retractions.
+
+  **QC (a) gates:** plan gates green; `plan-progress-block --write` re-derived in this commit
+  (rule 5). **QC (b):** N/A because no code changed. **QC (c) real data:** the persisted
+  `critic_verdict` rows from this session's authoring runs are what closed the fourth.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
