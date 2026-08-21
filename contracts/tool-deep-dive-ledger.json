@@ -2276,10 +2276,10 @@
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch21-v3.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch22-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE after SEVEN arms — but it moved. 38 attempts produced 0 clean runs until this one, which got 1 clean run that CALLED the tool and minted its Tier-A card with the store unchanged. So the tool works; what is short is clean runs (K>=3). Every loss is the model's degenerate output after a SUCCESSFUL composition_motif_search."
+   "note": "IN CYCLE after NINE arms — 48 attempts, 1 clean run. That single clean run (arm seven) called the tool and minted its Tier-A card with the store unchanged, so the TOOL works; what cannot be obtained is K>=3 clean runs. Every other attempt died on the degenerate `<tool_call|>` output AFTER a successful composition_motif_search. Its siblings measure fine in the same arms, so this is neither the rig nor the fixture — this turn shape triggers the model defect reliably. It remains the one tool D-SILENT-TURN has taken off the board."
   },
   "composition_motif_edit": {
    "state": "proven",
@@ -2376,6 +2376,22 @@
    "cycle": "batch-17 (2026-08-14)",
    "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch22.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch22.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "plan_find_missing_material": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch22-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch22-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "plan_bootstrap_apply": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch22-v2.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a PRECONDITION CHAIN the model identified correctly. `proposal_id` comes from plan_bootstrap_propose, which has not been run here, and the seeded plan run is at status='proposed' rather than compiled — so there is no preview to materialise. Called 0/5 across two arms; instead the model read the structure and said 'there isn't an outline or a chapter list established yet', or reached for plan_compile to build one first. That is the right instinct for a tool that CREATES real book chapters. The store held at 1 chapter throughout, and the cards left suspended belong to the tools it reached for instead.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch22-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   }
@@ -3112,10 +3128,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 123,
+  "tools_concluded": 125,
   "tools_in_cycle": 1,
-  "tools_proven": 91,
-  "tools_blocked": 32,
+  "tools_proven": 92,
+  "tools_blocked": 33,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3130,7 +3146,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 128,
+  "tools_concluded_including_deprecated": 130,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [

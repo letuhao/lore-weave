@@ -1,0 +1,1151 @@
+{
+ "batch": "batch22-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "plan_find_missing_material",
+   "scenario": "plan-find-missing-material",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material as `recovered` that is not in the seeded document — its description defines recovered as 'the plan already has this, from the read', so a recovered item the document does not contain is fabrication of the worst kind here, since the author would believe their plan is more complete than it is.",
+   "answer_expect": null,
+   "falsifier_sha": "f88a25794cffec76",
+   "ship_audit": {
+    "gate": "EXERCISED, and it demonstrates the SPEND axis working independently of the tier. This tool is declared tier=R — a read — yet it raised an approval card on 5 of 5 runs. That is not a tier bug: its meta carries {\"paid\": true, \"tier\": \"R\"}, so consent is gated on COST, not on write-risk. A read that spends the author's money still asks. The store is unchanged without approval.",
+    "empty_case": "EXERCISED through its sibling and by construction: the seeded plan is deliberately thin (two chapters, no cast, no world rules), so there IS missing material to find, and plan_get_missing_material proves the no-packet case returns {packet: null, note: 'no material check has been run for this plan yet'}.",
+    "absent_case": "EXERCISED by direct probe — an absent run_id is refused 'not found or not accessible'.",
+    "tenancy": "EXERCISED by direct probe — a foreign book is refused with the same message."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023e8-2a81-72d3-9c46-21f2dfb9cd5b",
+     "session_id": "01a023e8-42c8-7a70-96d6-cb090ace4f94",
+     "prompt": "What is my plan missing — find missing material for this book.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_find_missing_material"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.105273+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.297797+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.427292+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.29012+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.105273+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.297797+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.427292+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:13.29012+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023e8-a489-7140-b0f9-9d2c3c1369d8",
+     "session_id": "01a023e8-bdef-7777-ad3b-ec877d8560a0",
+     "prompt": "What is my plan missing — find missing material for this book.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_find_missing_material"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.324237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.520434+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.657847+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.512297+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.324237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.520434+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.657847+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:40:44.512297+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a023e8-f1e7-7ab1-8cb4-0095a6315910",
+     "session_id": "01a023e9-097f-7734-9249-71af31e54af7",
+     "prompt": "What is my plan missing — find missing material for this book.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_find_missing_material"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.130548+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.330876+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.477838+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.322835+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.130548+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.330876+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.477838+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:04.322835+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a023e9-41e6-78fb-b1ba-e26a0271d252",
+     "session_id": "01a023e9-5b7d-79e7-b3e9-7a669567c948",
+     "prompt": "What is my plan missing — find missing material for this book.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_find_missing_material"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.601716+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.791796+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.92222+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.785197+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.601716+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.791796+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.92222+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:24.785197+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a023e9-92eb-7d38-b648-4e3d89ee9328",
+     "session_id": "01a023e9-ac55-759e-ad31-0a177e187ca0",
+     "prompt": "What is my plan missing — find missing material for this book.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_find_missing_material"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.364583+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.571533+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.726236+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.562236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.364583+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.571533+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.726236+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:41:45.562236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  },
+  {
+   "tool": "plan_bootstrap_apply",
+   "scenario": "plan-bootstrap-apply",
+   "intent": "write",
+   "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+   "answer_expect": null,
+   "falsifier_sha": "1d7f42435e774912",
+   "ship_audit": {
+    "gate": "NOT REACHED — never called; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "NOT REACHED.",
+    "empty_case": "NOT REACHED."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023e9-e3cc-7037-a5f4-35882a8d3c26",
+     "session_id": "01a023e9-fd2b-7e88-900b-c0620096fb3e",
+     "prompt": "Create the chapters — make the plan real for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_suggest",
+      "composition_list_outline",
+      "composition_outline_node_edit"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.051877+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.238578+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.369587+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.232018+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.051877+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.238578+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.369587+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:06.232018+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've looked at the current structure of your book, and it appears there isn't an outline or a chapter list established yet. \n\nTo \"make the plan real\" and create the chapters, we first need to generate a story plan (the arcs and beats) based on your story idea. \n\n**Would you like me to propose a story plan for your book now?** \n\n(Once we have a plan, I can then compile it into a real chapter-by-chapter outline that you can actually start writing in.)"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023ea-443a-71f3-a1bc-262c64821d96",
+     "session_id": "01a023ea-5d7b-72af-964c-53ce1568b6d6",
+     "prompt": "Create the chapters — make the plan real for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_compile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.761764+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.973437+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:31.12487+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.966035+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.761764+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.973437+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:31.12487+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:30.966035+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a023ea-8f19-7ce7-8a85-e339730bc2d9",
+     "session_id": "01a023ea-a771-7c63-a825-db15f0756534",
+     "prompt": "Create the chapters — make the plan real for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_compile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:49.898153+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.081718+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.215205+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.075452+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:49.898153+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.081718+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.215205+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:42:50.075452+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a023ea-d806-75bb-bcdd-6d2d469e62f3",
+     "session_id": "01a023ea-f077-746f-a36c-ae1feed9b1c9",
+     "prompt": "Create the chapters — make the plan real for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_compile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.573634+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.757148+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.888053+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.750648+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.573634+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.757148+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.888053+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:08.750648+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a023eb-1fdd-7fda-a6e6-2c7929f0c087",
+     "session_id": "01a023eb-373d-7c73-958b-308fa5f8ed1d",
+     "prompt": "Create the chapters — make the plan real for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_package_tree",
+      "plan_compile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:26.971317+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.171445+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.317757+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.164216+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:26.971317+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.171445+00"
+       },
+       "loreweave_composition.plan_run": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.317757+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:27.164216+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 5,
+   "blocked_reason": "BLOCKED on a PRECONDITION CHAIN the model identified correctly. `proposal_id` comes from plan_bootstrap_propose, which has not been run here, and the seeded plan run is at status='proposed' rather than compiled — so there is no preview to materialise. Called 0/5 across two arms; instead the model read the structure and said 'there isn't an outline or a chapter list established yet', or reached for plan_compile to build one first. That is the right instinct for a tool that CREATES real book chapters. The store held at 1 chapter throughout, and the cards left suspended belong to the tools it reached for instead."
+  },
+  {
+   "tool": "composition_motif_bind_edit",
+   "scenario": "composition-motif-bind-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding never asked about — OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE, a MODEL-output defect: re-run it, do not read it as 0/5.",
+   "answer_expect": null,
+   "falsifier_sha": "842394c8bc1da523",
+   "ship_audit": {
+    "gate": "See blocked_reason.",
+    "absent_case": "EXERCISED by direct probe.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "EXERCISED by direct probe.",
+    "empty_case": "NOT REACHED."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023eb-688f-734e-a2e3-143cd3495f07",
+     "session_id": "01a023eb-7fbe-7fbd-bee9-22840fe3def3",
+     "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.571841+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.744023+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:46.01959+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.737928+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.571841+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.744023+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:46.01959+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:43:45.737928+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023eb-b2c1-7665-ab9f-02b6c61017db",
+     "session_id": "01a023eb-cb4a-7c20-96d8-71c2c3776332",
+     "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.567632+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.748526+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:05.008872+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.742645+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.567632+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.748526+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:05.008872+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:04.742645+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a023ec-2822-79e5-beb6-8308facf1a10",
+     "session_id": "01a023ec-407e-75e9-bb68-fa7ffe3e6493",
+     "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.627589+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.828413+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:35.136962+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.820793+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.627589+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.828413+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:35.136962+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:44:34.820793+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a023ec-9cde-7ef2-bad9-3f95f90ef177",
+     "session_id": "01a023ec-b516-7304-8e2b-ce7a56742915",
+     "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search",
+      "composition_package_tree"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.507775+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.68341+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.947945+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.676347+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.507775+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.68341+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.947945+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:04.676347+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a023ed-5345-7e5b-a5c6-23c06c92bc4e",
+     "session_id": "01a023ed-6b53-76fd-99fe-b7beb50c8939",
+     "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "composition_motif_search"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.18761+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.36255+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.618071+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.355488+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.18761+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.36255+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.618071+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:45:51.355488+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "NINTH ARM, 0 clean runs. Every loss is the degenerate `<tool_call|>` output after a successful composition_motif_search. Not concluded."
+  }
+ ]
+}
