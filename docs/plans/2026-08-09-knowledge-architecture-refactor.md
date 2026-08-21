@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 54 of 95 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 54 of 96 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/38) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/39) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7208,6 +7208,56 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### 🔴 QC-5 C23 2026-08-21 — **arm 1b at five runs: ZERO variance, and the gate FAILS it**
+
+  §7.3's five runs on the arm where sample size actually matters — each run **re-drafts**
+  chapter 12 through `POST /authoring-runs` on lw-iso. C21 had already shown the judge is
+  deterministic; this is the drafter half.
+
+  ```
+  run A  report_ready  canon=5  raw=0  dropped=0  attributed=0  rules=6  notes=1
+  run B  report_ready  canon=5  raw=0  dropped=0  attributed=0  rules=6  notes=1
+  run C  report_ready  canon=5  raw=0  dropped=0  attributed=0  rules=6  notes=1
+  run D  report_ready  canon=5  raw=0  dropped=0  attributed=0  rules=6  notes=1
+  run E  report_ready  canon=5  raw=0  dropped=0  attributed=0  rules=6  notes=1
+  ```
+
+  🎯 **FIVE FOR FIVE IDENTICAL, on every reported field.** With C21's 10-of-10 that is **zero
+  judge variance and zero drafter variance**. §7.3 was written to bound a nondeterminism that,
+  measured, **is not there today** — and the plan already records why: the spread it was written
+  from (ch12 `1/SEVERE` in `019ff9d6` vs `2/warn` in `019ff9de`) predates an author adding **R7**,
+  after which the drafter complied. The instability was real; it was also fixed.
+
+  ⛔ **AND THAT IS EXACTLY WHY IT FAILS.** Scored through `qc5-acceptance-gate`:
+
+  ```
+  1a critic capability   UNSCORABLE  needs 5 planted runs, got 0 — the critic's ability to
+                                     attribute is UNMEASURED, so 1b cannot be read either
+  1b drafter compliance  UNSCORABLE  'zero attributed violations' is what a canon-clean drafter
+                                     and a critic that attributes nothing BOTH produce
+  2  no vacuous 5/5      FAIL        5 run(s) produced 5/5 with zero raw findings and the critic
+                                     is not proven live — indistinguishable from the defect
+  QC-5 => FAIL
+  ```
+
+  **A perfect score five times is the defect signature, not the acceptance.** Clause 2 was built
+  for precisely this and it fired on the first real five-run measurement. QC-5 **does not pass**,
+  and it fails for a reason that names itself rather than for a number nobody can interpret.
+
+  ⚠️ **The arms are NOT combined into one verdict, deliberately.** C21's planted arm ran against
+  a different passage on the critique seam (`present_facts=[]`); these ran the authoring seam on
+  chapter 12. Feeding two different setups to one gate would manufacture a verdict out of
+  mismatched inputs — the composition error this plan keeps catching. What QC-5 still needs is
+  **both arms and a `flow_control` on the same book/chapter setup**.
+
+  🦷 **A HARNESS DEFECT, this plan's own class, found the hard way.** The first attempt spun for
+  ~25 minutes and produced nothing. The JWT expired mid-run; the status poll read
+  `.get('status', '')`, so `{"detail":"invalid token"}` became `''` — **"not finished yet"** —
+  and the loop polled a run that had been `report_ready` for most of that time. An error
+  indistinguishable from *not ready* is the same shape as a drop indistinguishable from *nothing
+  found*. The harness now aborts loudly naming the cause, and run A's completed report was
+  salvaged rather than re-run, so the token expiry cost time and no LLM spend.
+
   ### ✅ QC-5 C22 2026-08-21 — **`canon_consistency` means three different things by endpoint, and none of them said so**
 
   Found by following C21 rather than by looking for it: the critique endpoint judged with
@@ -7407,7 +7457,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Evidence** | The spread that motivated the new rule is on the record: chapter 12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. Three runs produced that disagreement, so three is the sample size that failed to settle it. |
   | **Also here** | `engine/quality_report.py:138` passes `active_rules=[]` — a SECOND seam, deliberate per its own docstring (*"no structured rules here"*), but it emits no `active_rule_count`, so from the report a deliberate choice and the C3 failure look identical. The authoring-run seam solved exactly this by reporting the count; this one has not. ✅ **DONE 2026-08-21 — and it was stamped in `judge_prose` rather than at the call site, so it cannot be omitted by the next seam either. Both degrade exits carry it too.** |
   | **To unblock** | Re-run QC-5's clause-1 arms five times at temperature 0, seeded, and report the distribution rather than a number. Add `active_rule_count` to the quality report so the second seam declares itself. ⚠️ **NARROWED 2026-08-21 (C21).** The judge has **zero** variance at temperature 0 — 10 of 10 fixed-passage calls byte-identical — so five runs of arm 1a is five copies of one sample and the sample size that matters is arm **1b**, which re-drafts. And the re-score must run on the **authoring-run** seam: C21 used the critique endpoint, which passes `present_facts=[]`, so its numbers are not comparable to C17's. |
-  | **Retry when** | Immediately — both are runs and one small edit, not decisions. This row exists so the re-score is owed explicitly instead of C17's three-run PASS quietly standing in for a five-run one. |
+  | **Retry when** | ⚠️ **MEASURED 2026-08-21 (C23) — and it did not close the row.** Five runs landed on arm 1b and showed **zero** variance (5/5 identical), matching C21's zero judge variance. So §7.3's bound found no spread to bound; the 2026-08-13 instability predates an author adding R7. The gate then **FAILED** the result on clause 2 — five perfect scores with zero raw findings is the defect signature. What is still owed is narrower and nameable: **both arms plus a `flow_control` on the SAME book/chapter setup**, because C21's planted arm and C23's flow arm used different passages and different seams, and combining them would manufacture a verdict from mismatched inputs. |
 
   ⏸ **POST-REVIEW CHECKPOINT — evidence presented, execution HELD.** QC-5 is one of the three
   ⏸ rows in this plan; the run policy says present and wait rather than improvise past it.
