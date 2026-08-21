@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: QC-3 ✅ · QC-6 ✅ · `T33` bite RUNS and PASSES on iso (T33c — no dev write needed). `T46` still has NO live evidence (T46e retraction). Then `T25` ③ → `T48` → `T49` ⛔.**
+**RESUME: `T25` ③ must NOT drop the Neo4j indexes yet (T25f: soak disarmed twice, iso `secondary_failed=18`, passage scope never landed). Fix the iso secondary, then ③. `T46` has no live evidence (T46e). Then `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 43 of 85 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 43 of 87 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/7) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14228,6 +14228,72 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   status `complete`. **QC (c) real data:** a real entity (R1's betrayer) in a 595-node graph, and
   a chapter that names it eight times; every assertion read from Neo4j, never from a response
   body — QC-6a's first version trusted the body, got `None` four times and scored itself OK.
+
+  ### 🔴 T25f 2026-08-21 — **the soak gate was hiding its own worst finding**, and the dev soak disarmed itself again
+
+  ```
+  lw-iso, live:  secondary_failed = 9 on BOTH scopes (18 writes, 18 failures)
+    gate BEFORE: INDETERMINATE   rc 0     <- 18 lost rows reported as "cannot be determined"
+    gate AFTER : FAILING         rc 1
+  dev:  armed 1.0 -> 0.0 without me touching it; container CREATED 09:45:26, restarts=0,
+        config-hash back to 60831ab8 (the pre-arming hash from before this morning's recreate)
+  soak-armed-gate --selftest 12/12 -> 14/14      BITE 67
+  ```
+
+  Two live findings, and the first is a defect in the gate I shipped this morning.
+
+  🔴 **`FAILING` must outrank every arming verdict, and it did not.** T25c-2 made arming the first
+  question, which was right for telling DISARMED from ARMED_IDLE and wrong in general: **you cannot
+  fail a write to a store that was never constructed**, so a non-zero `secondary_failed` is *itself*
+  proof of arming — stronger proof than the gauge, which a service predating it cannot publish at
+  all. lw-iso runs exactly that service, and its exposition read `secondary_failed = 9` on both
+  scopes while the gate answered **INDETERMINATE and exited 0**. Nine passage rows and nine entity
+  rows the primary accepted and the secondary does not have, filed under "cannot be determined".
+
+  ⚠️ **This is the same shape as the bug it was built to catch, one turn later.** T25c-2's whole
+  finding was a zero that meant *"nothing is running"* being read as *"nothing is failing"*. This is
+  a **non**-zero that means *"rows are missing"* being read as *"cannot tell"*. Both hide the
+  measurement behind a housekeeping verdict, and both exit 0 while doing it.
+
+  ✅ **Fixed, with the live exposition as the fixture.** The failure check now runs before the
+  arming branch, and when arming is absent-or-zero the message says so explicitly rather than
+  softening the verdict. Two fixtures freeze the lw-iso shape.
+
+  ### 🔴 AND THE DEV SOAK DISARMED ITSELF WHILE I WAS WORKING
+
+  `armed` read **1.0** after this morning's recreate and **0.0** an hour later. Measured rather
+  than assumed: `restarts=0` (not a crash loop), `created=09:45:26` — a **new container** — and its
+  `com.docker.compose.config-hash` is **`60831ab8…`**, the exact hash from *before* the arming
+  recreate, while `docker compose config` from `infra/` still resolves the DSN correctly. So a
+  concurrent process in this shared checkout recreated the service from a context where
+  `${KNOWLEDGE_VECTOR_DB_URL:-}` resolved to empty, reverting the arming and leaving the 25 rows
+  stranded in a secondary nothing was writing to any more.
+
+  📐 **That is T25c's original diagnosis happening again, in-session.** The row recorded a
+  2026-08-14 recreate silently disarming the soak and nine days passing before anyone noticed. This
+  time it was **caught in under an hour, by the gauge built this morning** — which is the entire
+  argument for having a config-derived arming signal instead of inferring arming from a
+  pre-seeded counter. Re-armed: `armed 1.0`, hash back to `05feebe0`, 25 rows intact.
+
+  ⛔ **What this costs T25 ③.** *"The soak"* is what ③ is waiting on, and the soak cannot be
+  trusted to be running just because it was armed once — it has now disarmed twice, and the
+  `passage` scope has never landed a single successful write on either stack (dev 0, iso 0 of 9).
+  ③ should not drop the Neo4j vector indexes on this evidence.
+
+  **BITE 67:**
+
+  ```
+  67. ask arming first again      E "FAILING with NO arming gauge: expected FAILING, got
+                                     INDETERMINATE" + "with armed=0: got DISARMED", and on the
+                                     LIVE iso bytes the verdict flips FAILING(rc 1) ->
+                                     INDETERMINATE(rc 0) — 18 real failures, exit success
+  ```
+
+  **QC (a) gates:** `soak-armed-gate --selftest` **12/12 → 14/14**, wired; plan gates green.
+  **QC (b) the seam:** both live stacks read through their real `/metrics` — iso `:28216`
+  (FAILING) and dev `:8216` (DISARMED, then ARMED_IDLE after re-arming).
+  **QC (c) real data:** 18 real secondary failures on lw-iso and a real unplanned container
+  recreate on dev, with its config-hash as the fingerprint.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

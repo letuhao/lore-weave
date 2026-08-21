@@ -130,6 +130,26 @@ def classify(
     eight series at 0.0 (proved by running current code with it unset). Presence measures
     the code's age; it has never measured arming.
     """
+    # ── FAILING OUTRANKS EVERY ARMING VERDICT, and this ordering is a bug fix ──
+    # You cannot fail a write to a store that was never constructed, so a non-zero
+    # `secondary_failed` is ITSELF proof of arming — stronger proof than the gauge, which a
+    # service predating it cannot publish at all. The first version of this gate asked about
+    # arming first and returned INDETERMINATE on lw-iso while the exposition sat at
+    # `secondary_failed = 9` on BOTH scopes: nine rows the primary accepted and the secondary
+    # does not have, reported as "cannot be determined". A gate that hides its own worst
+    # finding behind a housekeeping verdict is the exact shape this file exists to refuse.
+    failed_early = sum(v for (outcome, _), v in counters.items() if outcome == "secondary_failed")
+    if failed_early:
+        total_early = sum(
+            v for (outcome, _), v in counters.items()
+            if outcome in ("both", "primary_only", "secondary_failed", "primary_failed")
+        )
+        return FAILING, (
+            f"secondary_failed = {failed_early:g} across {total_early:g} write(s)"
+            + ("" if armed else
+               " — and note the arming signal is absent/zero, which does NOT soften this: a "
+               "failure count can only be non-zero if the dual-write store WAS built")
+        )
     if armed is not None and not armed:
         return DISARMED, (
             f"`{ARMED_GAUGE}` reads 0 — KNOWLEDGE_VECTOR_DB_URL is not configured, so no "
@@ -182,6 +202,11 @@ def _armed(value: int) -> str:
     return f"{ARMED_GAUGE} {float(value)}\n"
 
 
+def _fail(scope: str, n: int) -> str:
+    line = FAMILY + '{outcome="secondary_failed",scope="' + scope + '"} ' + str(float(n))
+    return line + chr(10)
+
+
 _SYNTHETIC = {
     "a service too old for either signal": ("", DISARMED),
     "only the _created gauges prometheus emits at registration": (
@@ -219,6 +244,20 @@ _SYNTHETIC = {
     # A service new enough to pre-seed the counter but too old to publish arming. Not a
     # pass and not a fail — unreadable, and saying so is the point.
     "family present but no arming gauge": (_PRESEEDED, INDETERMINATE),
+    # the live lw-iso exposition, 2026-08-21, frozen as a fixture. An image predating the
+    # arming gauge, with nine rows the primary accepted and the secondary does not have.
+    # The first version of this gate answered INDETERMINATE and the failure never reached
+    # the operator.
+    "FAILING with NO arming gauge is still FAILING": (
+        _PRESEEDED + _fail('passage', 9) + _fail('entity', 9),
+        FAILING,
+    ),
+    # Belt and braces the other way: an explicitly UNARMED service cannot have failures, so
+    # if it reports them the failures win and the operator is told.
+    "FAILING with armed=0 is still FAILING": (
+        _PRESEEDED + _armed(0) + _fail('passage', 3),
+        FAILING,
+    ),
     "a bare `{}` gauge rendering is still read": (
         _PRESEEDED + f"{ARMED_GAUGE}{{}} 1.0\n",
         ARMED_IDLE,
