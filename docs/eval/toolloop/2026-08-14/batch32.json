@@ -1,0 +1,1714 @@
+{
+ "batch": "batch32",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "kg_sync_available",
+   "scenario": "kg-sync-available",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports updates available when the tool returned has_updates=false. 🔴 THE SHAPE TO WATCH is the one batch 11 caught on composition_conformance_status: describing what the sync board WOULD show as if it had shown it. 'Nothing to pull' and 'I cannot tell' are different answers, and so is 'up to date' when the truth is 'never adopted'.",
+   "answer_expect": {
+    "none_of": [
+     "updates are available",
+     "out of date",
+     "changes available"
+    ],
+    "why": "The project has adopted nothing and the tool reports has_updates=false. Claiming updates exist would be inventing a diff over a schema with no source to diff against."
+   },
+   "falsifier_sha": "12d10fc25c39941b",
+   "ship_audit": {
+    "empty_case": "This scenario IS the empty case — a project that has adopted no template, probed directly: adopted=false, has_updates=false, changes=[].",
+    "absent_case": "EXERCISED by direct probe — an unknown project_id is refused 'project not found'.",
+    "tenancy": "EXERCISED by direct probe — ANOTHER OWNER's real project_id is refused with the SAME wording as one that does not exist, so it is no existence oracle."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02533-4c7f-7a8f-b570-c1bccb3fbd7f",
+     "session_id": "01a02533-6ca6-7fa4-92b6-84d515361876",
+     "prompt": "Is my graph schema out of date — are there upstream template updates?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_sync_available"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.209177+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.416716+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.407577+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.209177+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.416716+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:41:54.407577+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "No, your graph structure is up to date. There are no upstream template updates available for your project.\n\nYour graph structure is currently using a custom configuration with the following node kinds: `artifact`, `concept`, `organization`, `other`, `person`, and `place`. It also supports several fact types, including `detail`, `causal`, `description`, `negation`, and `temporal`."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02533-a9d7-78d7-95b2-de967397dfe5",
+     "session_id": "01a02533-c655-7f78-90b9-093eed35e75c",
+     "prompt": "Is my graph schema out of date — are there upstream template updates?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_sync_available"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.104546+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.311427+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.302601+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.104546+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.311427+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:18.302601+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "No, your graph structure is up to date. There are no upstream template updates available for your current project.\n\nYour graph structure is currently using a custom configuration with the following node kinds: `artifact`, `concept`, `organization`, `other`, `person`, and `place`. It also supports several fact types, including `detail`, `causal`, `description`, `negation`, and `temporal`.\n\nThere are no upstream template updates available for this structure."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02534-0fa8-7b1c-8b25-ebd8677f79d7",
+     "session_id": "01a02534-3481-73b5-afef-28d29f641f65",
+     "prompt": "Is my graph schema out of date — are there upstream template updates?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_sync_available"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.188861+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.438921+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.421383+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.188861+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.438921+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:42:44.421383+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "No, your graph structure is up to date. There are no upstream template updates available for your current project.\n\nYour graph structure is currently using a custom configuration with the following node kinds: `artifact`, `concept`, `organization`, `other`, `person`, and `place`. It also supports several fact types, including `detail`, `causal`, `description`, `negation`, and `temporal`."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02534-7cc1-78a0-8a6d-9f75d4360baa",
+     "session_id": "01a02534-9eb7-7daa-a15f-234bda5fc579",
+     "prompt": "Is my graph schema out of date — are there upstream template updates?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_sync_available"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.13304+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.427105+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.407718+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.13304+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.427105+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:12.407718+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "No, your graph structure is up to date. There are no upstream template updates available for your current project.\n\nYour graph structure is currently using a custom structure with the following node kinds: `artifact`, `concept`, `organization`, `other`, `person`, and `place`. It also supports several fact types, including `detail`, `causal`, `description`, `negation`, and `temporal`."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02534-e2c2-76c8-a2a9-5502ecd6ef45",
+     "session_id": "01a02534-fe3f-7ffc-b286-3d122b39a07b",
+     "prompt": "Is my graph schema out of date — are there upstream template updates?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_sync_available"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.240414+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.473606+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.466936+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.240414+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.473606+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:43:38.466936+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "No, your graph structure is up to date. There are no upstream template updates available for your current project.\n\nYour graph structure is currently using a custom structure with the following node kinds: `artifact`, `concept`, `organization`, `other`, `person`, and `place`. It also supports several fact types, including `detail`, `causal`, `description`, `negation`, and `temporal`."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "kg_entity_edge_timeline",
+   "scenario": "kg-entity-edge-timeline",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes a relationship ARC that does not exist — the only edge is parked in triage, so any narrative of how the relationship changed is fabricated — OR it reports the entity itself as unknown when turn 1 listed it. CONTROL: `edge_type` is REQUIRED and the project's edge_types list is EMPTY, so there is no legal code to read out of the schema; a model that invents one is guessing, and a model that says so is right.",
+   "answer_expect": {
+    "none_of": [
+     "couldn't find",
+     "could not find",
+     "no such character",
+     "don't have a record"
+    ],
+    "why": "The node EXISTS — turn 1's graph read shows it. An empty timeline is the truthful answer; 'I can't find Aldric Vane' is a false absence over a node the previous turn just listed."
+   },
+   "falsifier_sha": "722a3e48658dcc84",
+   "ship_audit": {
+    "empty_case": "The scenario IS the empty case — a real entity whose only relationship is parked in triage, never placed.",
+    "absent_case": "EXERCISED by direct probe — an unknown entity_id is refused 'entity not found'.",
+    "tenancy": "EXERCISED by direct probe — the same 'entity not found' for another owner's project, so it is no oracle."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02535-4271-78dd-95c3-0ae9a927acbe",
+     "session_id": "01a02535-630c-7008-912d-693b6d69ff8b",
+     "prompt": "Show me the knowledge graph for this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "conversation_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.740884+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.986104+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.977524+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.740884+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.986104+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:02.977524+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't have any information about Aldric Vane in our current conversation or the book's connection map. \n\nSince the connection map is currently empty, I don't have a record of his character or his relationships. If you'd like to introduce him, you can tell me about him or paste some notes, and I can start building his profile and tracking his connections for you."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02535-b567-75c7-b06f-1c0a9b3e1d08",
+     "session_id": "01a02535-d694-741f-a8d4-4937aa8e0052",
+     "prompt": "Show me the knowledge graph for this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "conversation_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.181968+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.427076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.408718+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.181968+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.427076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:44:32.408718+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't have any information about \"Aldric Vane\" in our current conversation or in the book's connection map. \n\nSince the connection map is currently empty, I don't have a record of his relationships or his history. If you'd like to introduce him, you can tell me about him or paste some notes, and I can start building his profile and tracking his relationships for you!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02536-3286-7dba-afda-9cf0664d2afa",
+     "session_id": "01a02536-51c5-7d51-9f35-10f6196aaa64",
+     "prompt": "Show me the knowledge graph for this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "conversation_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.185924+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.409056+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.39784+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.185924+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.409056+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:04.39784+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't have any information about Aldric Vane in our current conversation or the book's connection map. \n\nIf you've mentioned him in a previous session or have notes about him, please paste them here. Once I have those details, I can extract his character profile and track how his relationships evolve as we write the story."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02536-9c13-7d71-aedc-3e4e982f2e9a",
+     "session_id": "01a02536-bac6-7b2e-a0dc-ac9c6b33c4fa",
+     "prompt": "Show me the knowledge graph for this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "conversation_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.189544+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.407676+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.399709+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.189544+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.407676+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:45:31.399709+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't have any information about \"Aldric Vane\" in our current conversation or in the book's connection map. \n\nSince the connection map is currently empty, I haven't yet recorded any characters or their relationships. If Aldric Vane is a character in your story, please tell me a bit about him and his connections, and I can start building his profile and tracking how his relationships evolve as we write!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02537-13ed-71a0-85da-c9424830a89c",
+     "session_id": "01a02537-3351-763c-8cca-a572cdda77cd",
+     "prompt": "Show me the knowledge graph for this book.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "conversation_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:01.911788+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:02.147211+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:02.139127+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:01.911788+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:02.147211+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:02.139127+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't have any information about Aldric Vane in our current conversation or the book's connection map. \n\nIf you've mentioned him in a previous session or have notes about him, please paste them here. Once I have those details, I can help you track his relationships and how they evolve throughout your story."
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED. Called 0/5 and SURFACED 0/5 across 5 clean runs.\n\nWHAT IT DID INSTEAD IS A FALSE ABSENCE. Asked how Aldric Vane's relationships changed, the model called `conversation_search` — a chat-history tool — and answered \"I don't have any information about Aldric Vane ... the connection map is currently empty, I don't have a record of his character\". The node EXISTS: the seed created it through kg_add_nodes and the seed assertion is green. So the author is told a character they added is not there.\n\nSAME CAUSE AS BATCH 31's TWO BLOCKED TOOLS: the turn's advertised catalogue did not contain it, and find_tools_call_count was 0 — the model never reached for the lazy tail that holds it. D-LAZY-TAIL-UNUSED, already settled as 'make discovery a rail step'. The TOOL is sound at the boundary (see its ship_audit); it never ran through chat."
+  },
+  {
+   "tool": "kg_run_benchmark",
+   "scenario": "kg-run-benchmark",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a benchmark runs with NO confirm card (Tier A), OR the reply reports a retrieval SCORE for a project with no embedding model — a fabricated quality number is worse than a refusal because it looks like a measurement — OR it describes the benchmark as a PRECONDITION for building the graph, which its own description explicitly denies ('a quality diagnostic, NOT a precondition: kg_build target=graph runs whether or not this has passed'). A refusal that names kg_project_set_embedding_model is the good outcome.",
+   "answer_expect": null,
+   "falsifier_sha": "7dc6d9be32d5be64",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised 5/5 with the store unchanged.",
+    "empty_case": "EXERCISED by direct probe, and this is the scenario's whole point: with no embedding model configured the tool REFUSES ('this project has no embedding model configured — set one first') rather than returning a fabricated retrieval score. The seed assertion pins embedding_model IS NULL, so the precondition is proven rather than assumed. NOTED, small and real: the refusal does NOT name its supplier (kg_project_set_embedding_model), which its sibling kg_build's description does name in exactly this situation.",
+    "absent_case": "EXERCISED by direct probe — an unknown project_id is refused 'project not found'.",
+    "tenancy": "EXERCISED by direct probe — another owner's project is refused with the same wording."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02537-861f-7f94-851a-002e71fc3471",
+     "session_id": "01a02537-a66c-7db3-91e3-6694b2d6bc0b",
+     "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_run_benchmark"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.13811+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.373275+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.365767+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.13811+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.373275+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:31.365767+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02537-dd3f-758b-8ada-2dd9b6bc13c9",
+     "session_id": "01a02537-f85a-701d-8527-ab3ecf0030db",
+     "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_run_benchmark"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.429986+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.705006+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.687308+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.429986+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.705006+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:46:53.687308+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02538-2b75-7821-8eb0-4da45d658bcb",
+     "session_id": "01a02538-4925-73f4-a684-6c5402a09697",
+     "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_run_benchmark"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.471025+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.740426+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.722773+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.471025+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.740426+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:13.722773+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02538-7a26-7ecb-8e4a-dc6c98e0fe9f",
+     "session_id": "01a02538-95eb-725b-8efb-4c3e7e4860a0",
+     "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_run_benchmark"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.582674+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.792444+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.783946+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.582674+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.792444+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:33.783946+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02538-c493-7bfb-a479-948995d5d8e4",
+     "session_id": "01a02538-de83-79d7-b493-6131b0cf6198",
+     "prompt": "How good is retrieval on this project — benchmark the embedding model.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_run_benchmark"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.6223+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.811406+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.803562+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.6223+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.811406+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:47:52.803562+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  },
+  {
+   "tool": "kg_ontology_propose",
+   "scenario": "kg-ontology-propose",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W, and its own description calls it 'High-impact'), OR the op chosen is not `schema_edit` — the enum also offers `adopt_template` (which pulls in a whole upstream template the author never asked for) and `sync_apply` (which applies upstream CHANGES) — OR the model invents an edge-type code other than the one the author named. A wrong op here is not a near-miss: adopt_template rewrites the project's whole ontology.",
+   "answer_expect": null,
+   "falsifier_sha": "638e40ae13301076",
+   "ship_audit": {
+    "gate": "NOT REACHED THROUGH ITS HAPPY PATH — see blocked_reason. Every call was refused on a PRECONDITION before a confirm_token could be minted.",
+    "empty_case": "EXERCISED by direct probe — op=schema_edit without level is refused 'op=schema_edit requires verb, level, and code'.",
+    "absent_case": "EXERCISED by direct probe — the precondition refusal names the problem, the supplier AND the exact op to use.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "UNPROBED, and recorded as such rather than as a pass: the cross-tenant probe died in VALIDATION ('requires verb, level, and code') before the ownership check ran, so nothing about this tool's tenancy was established."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02539-0c13-70ea-82c5-66bf83125ed0",
+     "session_id": "01a02539-2715-7bd9-a026-9e57633c790c",
+     "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_ontology_propose",
+      "kg_schema_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:10.925863+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:11.107191+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:11.100414+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:10.925863+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:11.107191+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:11.100414+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've attempted to add the `MENTORED_BY` edge type to your project's graph structure, but I'm encountering a technical error with the system's validation. It seems the specific code or the way I'm proposing the new relationship isn't being accepted by the current structure rules.\n\nI'll investigate this further to see if there's a specific format or requirement I'm missing. Would you like me to try a different approach, or should I check if there are any existing relationship types I should use as a template instead?I've attempted to add the `MENTORED_BY` edge type to your project's graph structure, but I've run into a technical hurdle. It appears that because this project hasn't adopted a specific categories template yet, the system is preventing direct edits to the core structure.\n\nTo fix this and get your custom relationship working, I'll need to first adopt a standard template for the project's connection map. Once that's in place, I'll be able to propose the `MENTORED_BY` relationship.\n\nWould you like me to proceed with adopting a standard template so we can add this edge type?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02539-8ec5-7f9c-bd75-3bd78b633fda",
+     "session_id": "01a02539-a814-7fbd-a95c-c74d084cb968",
+     "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_ontology_propose",
+      "kg_schema_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.388159+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.595606+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.588667+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.388159+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.595606+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:48:44.588667+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've attempted to add the `MENTORED_BY` edge type to your project's graph structure, but I'm encountering a technical error with the request. It seems the system is rejecting the specific way I'm trying to define this new relationship.\n\nI'll try a different approach to get this added for you. One moment.I've attempted to add the `MENTORED_BY` edge type to your project's graph structure, but I've run into a technical hurdle. It appears that because this project hasn't yet adopted a formal categories (like a standard template), I cannot directly modify the structure to add new relationship types.\n\nTo fix this, I first need to set up a foundation for your project's world. Once we've established the basic categories for your story, I'll be able to add the `MENTORED_BY` relationship.\n\nWould you like me to start by setting up the standard categories for your world?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a0253c-c98d-728e-8acd-6dac8db7341e",
+     "session_id": "01a0253c-e57e-7e39-9e63-2906e2d27424",
+     "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_ontology_propose",
+      "kg_schema_read"
+     ],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.094581+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.342457+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.325431+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.094581+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.342457+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:52:16.325431+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a0253e-03a2-7d80-b687-aa1cbc75759a",
+     "session_id": "01a0253e-203a-780d-9d1c-d0fcad3b7679",
+     "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.454125+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.676314+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.66495+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.454125+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.676314+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:53:36.66495+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a0253e-6848-7797-a8b6-97e332826a0c",
+     "session_id": "01a0253e-83b0-7b5c-93d9-c4ab5f37a435",
+     "prompt": "Add an edge type called mentored_by to this project's graph schema.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_ontology_propose",
+      "kg_schema_read"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.23858+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.46615+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.45644+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.23858+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.46615+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:02.45644+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 4,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED, and the reason is a PRECONDITION THAT IS ITSELF A CARD.\n\nSurfaced 5/5 and called 4/5 (2 runs lost to transport errors, which are never model results). Every call was refused, and the refusal is a GOOD one — it names the problem, the supplier and the exact op:\n    \"this project has no adopted ontology to edit — call kg_list_templates to pick one, then kg_adopt_template (or kg_ontology_propose with op='adopt_template') with its source_schema_id\"\n\nMY SCENARIO WAS WRONG, NOT THE TOOL. A fresh project has edge_types=[] and no adopted ontology, so there was nothing to edit. Verified by direct probe: the canonical call (op=schema_edit, verb=add, level=edge_type, code=mentored_by) gets exactly that refusal.\n\n🔴 AND THE FIX IS NOT AVAILABLE TO THIS LOOP. Adopting an ontology is `kg_adopt_template` (Tier W) or this tool's own op='adopt_template' (Tier W) — both confirm-gated — and there is no REST or non-gated path. So this tool's happy path sits behind ANOTHER tool's card, and the standing rule is that no card is ever approved. That is a real shippability observation, not a harness limitation: a two-card chain where the first card gates the second cannot be exercised by an agent in one sitting either.\n\nI ALSO SUSPECTED A DEFECT THAT WAS NOT ONE. `verb` and `level` are closed sets, and my first reading of the advertised schema showed enum=None for both — which would have been the exact 'closed-set arg needs an enum' defect book-service gates. It is not: both enums ARE advertised, nested inside an `anyOf` alongside the null branch, because the parameters are Optional. Reading `properties[k].enum` at the top level misses them. That is the union-extraction trap this repo has already recorded, and it nearly produced a fix for a defect that does not exist.\n\nSeparately worth noting: the model did NOT follow the refusal's own instruction to adopt a template first — the same not-chaining-after-a-refusal behaviour DQ-T36 tracks."
+  },
+  {
+   "tool": "kg_triage_place_edge",
+   "scenario": "kg-triage-place-edge",
+   "intent": "write",
+   "falsifier": "REFUTED IF: an edge is written with NO confirm card (Tier W — its description says it writes a REAL edge and so returns a confirm_token rather than applying), OR the model places the `rival_of` edge when the author named the one between Aldric and Mira as allies, OR it invents a triage_id rather than reading one out of turn 1's list. CONTROL: both edges involve the same two characters, so 'the edge between Aldric Vane and Mira Solene' is ambiguous ON PURPOSE — a model that asks which one, or that names the one it chose, is behaving better than one that silently picks.",
+   "answer_expect": null,
+   "falsifier_sha": "9a0f6abd589396b9",
+   "ship_audit": {
+    "gate": "NOT REACHED — the tool was never advertised, so no card could be raised.",
+    "absent_case": "EXERCISED by direct probe, and it NAMES ITS SUPPLIER: 'no pending proposed edge with that id (use kg_triage_list to find one)' — the quality this loop keeps asking for.",
+    "idempotency": "NOT REACHED — placing requires an approved card, and the loop never approves one.",
+    "tenancy": "EXERCISED by direct probe — another owner's project is refused 'project not found'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a0253e-db66-7374-8684-efd50f491b1c",
+     "session_id": "01a0253e-fd07-7d95-bd46-8b47abad447c",
+     "prompt": "Show me the graph triage queue.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "kg_propose_edge",
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.723593+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.981559+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.961091+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.723593+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.981559+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:54:31.961091+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble processing that request. It seems I'm unable to place the edge directly from the triage queue using the information I have.\n\nTo make sure I'm doing this correctly, could you please confirm which relationship you'd like me to prioritize: **Aldric Vane is allied with Mira Solene** (starting at chapter 1) or **Mira Solene is a rival of Aldric Vane** (starting at chapter 3)?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a0253f-56e1-7ebe-a93d-c292ad8f2488",
+     "session_id": "01a0253f-7351-7184-9827-05eaa0b355e9",
+     "prompt": "Show me the graph triage queue.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "kg_propose_edge"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.303906+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.526454+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.517481+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.303906+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.526454+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:03.517481+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a0253f-bb58-7440-95c0-d9d671f2a926",
+     "session_id": "01a0253f-d7da-7f92-9427-cc7dabe3d155",
+     "prompt": "Show me the graph triage queue.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "kg_propose_edge",
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.022239+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.213499+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.206076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.022239+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.213499+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:55:29.206076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I encountered an error while trying to place that edge. It seems I'm having trouble processing the specific details for the relationship between Aldric Vane and Mira Solene.\n\nI'll try to resolve this. One moment."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02540-3644-70ca-8fa4-e226cf30b0be",
+     "session_id": "01a02540-5a2a-730b-a0de-6a14ef86c596",
+     "prompt": "Show me the graph triage queue.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.518654+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.745223+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.735236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.518654+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.745223+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:00.735236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've found two proposed relationships between Aldric Vane and Mira Solene in the queue. Which one would you like to place in the graph?\n\n1.  **Allied with**: Aldric Vane is allied with Mira Solene (starting from Chapter 1).\n2.  **Rival of**: Mira Solene is a rival of Aldric Vane (starting from Chapter 3)."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02540-aae7-7a44-bddf-c13f32acd05b",
+     "session_id": "01a02540-ca9c-7389-ba7b-39c63963d243",
+     "prompt": "Show me the graph triage queue.",
+     "called": false,
+     "surfaced": false,
+     "called_tools": [
+      "kg_propose_edge",
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.362722+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.600345+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.590131+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.362722+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.600345+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 16:56:30.590131+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I encountered an error while trying to place that edge. It seems I'm having trouble processing the specific relationship details for Aldric Vane and Mira Solene.\n\nI'll try to resolve this by looking up their exact element IDs and the correct relationship types again. One moment."
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 4,
+   "blocked_reason": "BLOCKED. Called 0/5 and SURFACED 0/5 across 5 clean runs of a two-turn chain whose first turn successfully listed the triage queue.\n\n🔴 IT REACHED FOR A WRITE INSTEAD. Asked to PLACE the proposed edge, the model called `kg_propose_edge` — which creates ANOTHER proposed edge rather than placing the existing one. Harmless here because kg_propose_edge parks rather than writes to the graph, but the shape is worth naming: denied the tool that does what was asked, it picked the nearest-sounding one that writes. That is the same instinct that made world_map_update_region offer to CREATE a duplicate region in batch 31.\n\nSAME CAUSE AS BATCH 31's TWO BLOCKED TOOLS: the turn's advertised catalogue did not contain it, and find_tools_call_count was 0 — the model never reached for the lazy tail that holds it. D-LAZY-TAIL-UNUSED, already settled as 'make discovery a rail step'. The TOOL is sound at the boundary (see its ship_audit); it never ran through chat."
+  }
+ ]
+}
