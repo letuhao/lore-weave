@@ -3,14 +3,22 @@ import { defineConfig, devices } from '@playwright/test';
 // Cross-browser smoke for AC-FG-16 (spec §18). Tests run against the
 // dev server on :5176.
 //
-// ⚠ 5176, NOT 5174, and this file said 5174 until 2026-08-21. `vite.config.ts`
-// moved frontend-game to 5176 with `strictPort: true` — its own header explains
-// why: *"the original 5174 went stale: `frontend/` moved to 5174"*. This config
-// was left behind, and the failure is quiet in both directions. In CI the
-// webServer starts vite (which binds 5176) and then polls 5174 until it times
-// out. LOCALLY, with `reuseExistingServer: true` and the OTHER app's container
-// on 5174, every test happily runs against the wrong application: seven
-// failures that look like a rotten suite and are nothing of the kind. Backend services (tilemap-service, game-server)
+// ⚠ 5176, NOT 5174 — `vite.config.ts` moved frontend-game to 5176 with
+// `strictPort: true` ("the original 5174 went stale: `frontend/` moved to
+// 5174"). A config left on 5174 fails QUIETLY in both directions: in CI the
+// webServer starts vite on 5176 and polls 5174 until it times out, and locally
+// `reuseExistingServer: true` cheerfully hands the suite whatever is on 5174 —
+// the OTHER application — so every test runs against the wrong app and the
+// failures read like a rotten suite.
+//
+// This file carried 5174 **on `feat/game-logic` only**, and that is worth
+// stating precisely, because the first version of this comment did not: `main`
+// had already been repaired, and its `frontend-game-e2e` job has been green
+// since 2026-08-09. The branch was ~115 commits behind and stale. What looked
+// like an undiscovered defect was a fix that existed and had not been merged
+// down — `git show origin/main:<file>` would have said so in one command.
+//
+// Backend services (tilemap-service, game-server)
 // are optional — only tested when env LOREWEAVE_E2E_FULL=1.
 //
 // Run:

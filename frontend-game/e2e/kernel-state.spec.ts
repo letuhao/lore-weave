@@ -80,10 +80,12 @@ const SESSION = process.env.KERNEL_STATE_ACCESS_TOKEN ?? '';
  * its own suites. What this test must NOT do is silently look like it logged
  * in, so: it does not log in, and nothing here asserts anything about auth.
  *
- * (The obvious third option — the guest button `smoke.spec.ts` clicks — is
- * gone. There is no "Continue as guest" control in `frontend-game/src` any
- * more, which means that older test is stale; recorded as `GO-1`, not fixed
- * here.)
+ * (The obvious third option — a guest button — does not exist: there is no
+ * "Continue as guest" control in `frontend-game/src`. An older `smoke.spec.ts`
+ * on this branch still clicked one, which is what `GO-1` recorded. `GO-1` turned
+ * out to be a stale branch rather than a live defect: `main` had already
+ * replaced that suite with one that SEEDS a session, and this branch has now
+ * adopted it.)
  */
 async function openPlay(page: import('@playwright/test').Page): Promise<void> {
   await page.addInitScript((token: string) => {

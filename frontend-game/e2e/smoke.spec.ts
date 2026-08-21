@@ -1,7 +1,56 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // Cross-browser V0 smoke per spec AC-FG-16 (Chrome + Firefox + Safari).
 // Run via Playwright config which spins up dev server automatically.
+//
+// AUTH: this suite was written against the V0 shell, where every route was open
+// and /login offered "Continue as guest". The #162 game-logic promotion
+// (1dc1509ed, 2026-08-02) put /world-select and /play behind `RequireAuth` and
+// removed the guest path, so from 2026-08-03 the whole suite failed on
+// `element(s) not found` — every guarded route was redirecting to /login before
+// its assertions could run.
+//
+// The fix seeds a session instead of deleting the assertions: `RequireAuth` reads
+// `isAuthenticated` from SessionProvider, which hydrates SYNCHRONOUSLY from the
+// `lw_auth` / `lw_user` localStorage keys (packages/auth-client/src/contract.ts).
+// Writing them before first paint therefore satisfies the guard without a backend,
+// which keeps this a STATIC-ROUTE smoke — the thing AC-FG-16 actually asks for.
+// The token is never sent anywhere: no assertion here calls an authed endpoint.
+async function seedSession(page: Page): Promise<void> {
+  // Visit a PUBLIC route first. localStorage is origin-scoped, and before the first
+  // real navigation the page sits on about:blank, whose opaque origin has its own
+  // storage — an addInitScript write there lands nowhere the app can read, the guard
+  // still sees no session, and the test fails on a missing heading with no hint that
+  // the seeding was the problem. /login is unguarded, so this is one cheap hop.
+  // The seeded token is not real, so the first authed call 401s and auth-client starts
+  // its silent-refresh path, which emits auth-change events the SessionProvider
+  // subscribes to — the tree then re-renders continuously and Playwright's
+  // "visible, enabled and stable" wait never settles. The symptom is a click timing
+  // out on a button it has already resolved, which reads like anything but a network
+  // problem. Stubbed narrowly: only the auth + preference calls, so the tilemap
+  // assertions further down still talk to :8220 for real when it is up.
+  await page.route('**/v1/me/preferences', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{"prefs":{}}' }),
+  );
+  await page.route('**/v1/auth/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
+  );
+  await page.goto('/login');
+  await page.evaluate(() => {
+    // camelCase in STORAGE, snake_case on the wire — see the asymmetry note in
+    // packages/auth-client/src/contract.ts. Mirrored from that contract, not guessed:
+    // `readTokens()` reads `accessToken` off `lw_auth`, and RequireAuth gates on
+    // `isAuthenticated: !!accessToken`.
+    localStorage.setItem(
+      'lw_auth',
+      JSON.stringify({ accessToken: 'e2e-smoke-token', refreshToken: 'e2e-smoke-refresh' }),
+    );
+    localStorage.setItem(
+      'lw_user',
+      JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', email: 'e2e@smoke.local' }),
+    );
+  });
+}
 
 test.describe('V0 smoke — static routes (no backend)', () => {
   test('/login renders', async ({ page }) => {
@@ -10,65 +59,43 @@ test.describe('V0 smoke — static routes (no backend)', () => {
 
     await page.goto('/login');
     await expect(page).toHaveTitle(/LoreWeave/);
-    // The heading is the product name, not "Login" — the login screen was
-    // redesigned and this matcher was not. Asserting the form is stronger than
-    // asserting a word anyway: it is what makes the page a LOGIN page.
+    // The V0 screen had a literal "Login" heading. The real auth screen leads with
+    // the product name and puts the sign-in/register wording in a localized
+    // subtitle, so asserting /Login/ was asserting a UI that no longer exists.
     await expect(page.getByRole('heading', { name: /LoreWeave/ })).toBeVisible();
-    await expect(page.getByLabel(/Email/)).toBeVisible();
-    await expect(page.getByLabel(/Password/)).toBeVisible();
 
     expect(errors, 'no uncaught page errors').toEqual([]);
   });
 
-  // `GO-1` — SKIPPED, not deleted and not left failing.
-  //
-  // `/world-select` moved behind `RequireAuth` after this test was written, so
-  // an unauthenticated visit lands on `/login` and every locator here misses.
-  // Reaching it needs a token auth-service issued, which is `GO-2`. The repo's
-  // own convention for a test whose stack is absent is to SKIP LOUDLY naming
-  // what it wants — a red that everyone learns to ignore is worse than an
-  // honest skip, and the guard itself is covered by the test below.
-  test.skip('/world-select renders', async ({ page }) => {
+  test('/world-select renders once a session exists', async ({ page }) => {
+    await seedSession(page);
     await page.goto('/world-select');
     await expect(page.getByRole('heading', { name: /Select World/ })).toBeVisible();
   });
 
-  // `GO-1` — this WAS `login → world-select → play navigation`, and it clicked
-  // a "Continue as guest" button that no longer exists anywhere in
-  // `frontend-game/src`. It had been asserting a flow the app removed: either
-  // failing on every full run, or never running. A test that names a control
-  // nobody ships is a claim wearing the costume of evidence.
-  //
-  // The navigation it covered is not testable here any more — `/world-select`
-  // and `/play` are both behind `RequireAuth`, and reaching them needs a token
-  // auth-service issued (`GO-2`). What IS testable without a backend, and is
-  // worth more than the dead version, is that the guard actually guards.
-  test('an unauthenticated visit to a protected route lands on /login', async ({ page }) => {
-    for (const guarded of ['/play', '/world-select']) {
-      await page.goto(guarded);
-      await expect(page, `${guarded} must not render without a session`).toHaveURL(/\/login/);
-    }
-    // Non-vacuity: an UNguarded route must still reach itself, or the assertion
-    // above would pass on an app that redirected everything to /login.
-    await page.goto('/login');
+  // Replaces the old "Continue as guest" walk, which asserted a button the guest
+  // path removed. This asserts the REPLACEMENT behaviour instead of dropping the
+  // case: an unauthenticated visit to a guarded route must land on /login.
+  test('an unauthenticated /play visit is redirected to /login', async ({ page }) => {
+    await page.goto('/play');
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.getByRole('heading', { name: /Login|LoreWeave/ })).toBeVisible();
+  });
+
+  test('world-select → play navigation', async ({ page }) => {
+    await seedSession(page);
+    await page.goto('/world-select');
+    await page.getByRole('button', { name: /Enter world/ }).click();
+    await expect(page).toHaveURL(/\/play/);
   });
 });
 
-// `GO-1` — every test in this block visits `/play`, which moved behind
-// `RequireAuth`. They were written before the guard existed and have been
-// asserting against a redirect ever since; nobody saw it because
-// `playwright.config.ts` pointed the webServer at a port `vite.config.ts` had
-// already left, so the CI job timed out before running a single test. Two
-// defects, each hiding the other.
-//
-// Un-skipped by `GO-2`: give the e2e stack a real session and every assertion
-// below becomes meaningful again exactly as written.
-test.describe.skip('/play smoke — V0 HUD + V1.2 viewer surface', () => {
+test.describe('/play smoke — V0 HUD + V1.2 viewer surface', () => {
   // Per-test capture: pageerror + console.error/warning, surfaced on
   // failure so CI logs reveal root cause without artifact download.
   test.beforeEach(async ({ page }, testInfo) => {
+    // /play is behind RequireAuth since #162 — without this every test below
+    // lands on /login and fails on a missing HUD rather than on anything real.
+    await seedSession(page);
     const events: string[] = [];
     page.on('pageerror', (err) => events.push(`[pageerror] ${err.message}`));
     page.on('console', (msg) => {

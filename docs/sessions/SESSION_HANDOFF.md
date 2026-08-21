@@ -43,10 +43,13 @@
 > 1. **The local sweep is not CI.** `SWEEP_RC=0 — 91 GREEN` runs 99 of ~200 scripts;
 >    `migration-idempotency-validator` is CI-wired only, which is why a non-idempotent migration
 >    passed the sweep and was caught by a live suite (`GD-11`, `GD-12`).
-> 2. **`frontend-game-e2e` has never run green on a PR.** It fires on `frontend-game/**` or
->    `services/game-server/**` and used to time out before executing a test, because
->    `playwright.config.ts` named a port `vite.config.ts` had left. The port is fixed and the job
->    should now work — but it has not been observed working. Watch it on the first PR.
+> 2. **THIS BRANCH IS ~115 COMMITS BEHIND `main`, and that produced a whole class of false work.**
+>    I wrote here that `frontend-game-e2e` "has never run green on a PR". `gh run list` says it is
+>    **green on push to `main`, 2026-08-09, 3m27s** — and `main` already carries both fixes `GO-1`
+>    claimed to make, including a `smoke.spec.ts` that seeds a session so the guarded routes stay
+>    asserted. My branch version SKIPPED them (2 tests running vs main's 8). Main's spec is adopted
+>    here now. **Before the next task: decide whether to merge `main` down.** Three of today's rows
+>    were written against things that already existed one branch or one `ls` away (`GD-15`).
 >
 > **VERIFY.** Gate sweep **91 GREEN / 0 RED / 8 SKIP** (`gate-wiring-gate.py --run-all`; the six
 > bite gates that first reported RED in 0.1s were a stale `target/.bite-harness.lock` left by my own
