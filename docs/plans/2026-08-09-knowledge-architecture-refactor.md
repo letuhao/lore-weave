@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 57 of 102 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 57 of 103 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/43) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/44) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7254,6 +7254,59 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### 🔴 QC-5 C28 2026-08-22 — **C27's CAUSE was wrong, and the real one is worse: the run seam never reads the book's critic setting**
+
+  C27 concluded *"the studio has no control for it and its client never sends one"*. The first
+  half is true and the second is true; **the conclusion drawn from them was not.** Checked one
+  layer down, because a missing UI control is a cheap explanation and this plan's own rule is
+  that a cause is diagnosed, not inferred.
+
+  **The book HAS a distinct critic configured.** `composition_work.settings` for
+  `019f9f2d-…` holds:
+
+  ```
+  critic_model_ref    = 019eb620-bfb1-78ce-ad72-a360c604cfc1
+  critic_model_source = user_model            (drafter was 019ebb72-… — a DIFFERENT model)
+  ```
+
+  `role_ref` reads the map first and **falls back to exactly these legacy scalars**
+  (`model_roles.py:91-92`), so `resolve_critic(settings, drafter_ref)` would have returned
+  **CONFIGURED**. The setting is not stale, not half-written, and not in the wrong shape.
+
+  🔴 **It is never asked.** `authoring_run_service.py:681`:
+
+  ```python
+  judge = resolve_critic_refs(
+      params.get("critic_model_source"),
+      params.get("critic_model_ref"),
+      params.get("model_ref"),
+  )
+  model_ref = params.get("critic_model_ref") or params.get("model_ref")
+  ```
+
+  The seam resolves the critic from **run params ONLY** and never consults the Work's settings.
+  So a book with a critic configured still self-grades unless the caller repeats that critic in
+  every request body — and the second line makes the fallback silent: with no critic param the
+  critique runs **with the drafter's own model**, while `critic_enabled` defaults TRUE
+  (`:1428`), so the critique definitely ran. It just ran against itself.
+
+  ⚠️ **And `not_configured` then MISREPORTS the state.** The code's own comment says that status
+  means *"nothing is wrong, the tier is simply off"*. The tier is not off. A critic IS
+  configured on the book. A reader of that verdict is told a deliberate choice was made when the
+  truth is that a configured setting was ignored.
+
+  🎯 **This is `critic_policy`'s own documented failure mode, one seam later.** Its docstring
+  warns: *"a book whose critic was written in the map would have resolved to NOT_CONFIGURED …
+  One concept, two readers, one of them out of date."* `resolve_critic(settings, …)` exists to
+  read settings. This seam calls `resolve_critic_refs(params…)` instead — an eighth copy of the
+  rule reading a different source, which is the shape the S6 sweep was run to eliminate.
+
+  📐 **What changes in C27:** the OBSERVATION stands unaltered — a studio-driven run self-grades,
+  proven from `authoring_runs.params` and the rendered verdict. The **fix** changes completely.
+  It is not "add a picker to the new-run form": it is **make the seam read the Work settings**,
+  which is where the critic already lives and where every other consumer looks. A UI control
+  would paper over a seam that ignores configuration.
+
   ### 🔴 QC-5 C27 2026-08-22 — **driven through the STUDIO UI at last, and the first run exposed what the API path was hiding**
 
   <!-- doc-language-gate: ok -- the UI is rendered in the user's language; the labels ARE the
@@ -7731,7 +7784,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### ~~DEFERRAL~~ `D-QC5-NOT-DRIVEN-THROUGH-THE-STUDIO-UI` — **CLOSED 2026-08-22 (C27). Driven end to end through the real studio: panel picker → Agent Mode → chapter selection → gate 4/4 → start → REPORT READY → the critic verdict read out of the UI. The drive is done; what it FOUND is a different row, below.**
 
-  ### 🔻 DEFERRAL `D-STUDIO-CANNOT-CONFIGURE-A-DISTINCT-CRITIC`
+  ### ~~DEFERRAL~~ `D-STUDIO-CANNOT-CONFIGURE-A-DISTINCT-CRITIC` — **RENAMED 2026-08-22 (C28): the cause was misdiagnosed. The studio does lack the control, but the book HAS a critic configured and the run seam never reads it. Reopened below under the real cause.**
+
+  ### 🔻 DEFERRAL `D-AUTHORING-RUN-IGNORES-THE-BOOK-CRITIC-SETTING`
+
+  | | |
+  |---|---|
+  | **Blocker** | `authoring_run_service.py:681` resolves the critic from **run params only** (`resolve_critic_refs(params…)`) and never consults the Work's settings. `composition_work.settings` for the acceptance book holds `critic_model_ref=019eb620…` — a model DIFFERENT from the drafter — and `role_ref` reads exactly that legacy scalar pair, so `resolve_critic(settings, …)` would return CONFIGURED. Every authoring run therefore self-grades unless the caller repeats the critic in each request body. |
+  | **Evidence** | C27/C28. UI run `01a02548…` params `[model_ref, model_source]` → `critic_status: not_configured`, `critic_ref` = the drafter. API runs `01a024f6…` etc. passed the critic explicitly → `configured`, `critic_ref=51ea9fd7…`, 7 of 7. The book's own setting was never read in either case. |
+  | **Why it is worse than a missing UI control** | `model_ref = params.get("critic_model_ref") or params.get("model_ref")` makes the fallback **silent**, and `critic_enabled` defaults TRUE — so the critique runs, against the drafter's own model, and reports `not_configured`, a status whose own comment reads *"nothing is wrong, the tier is simply off"*. The tier is not off; a configured setting was ignored. |
+  | **Mechanism** | `critic_status` already rides every verdict and the studio already renders it, so the wrong state is visible in the product today — C28 read it out of the UI. Nothing has to be built to keep the defect observable. |
+  | **To unblock** | Resolve through `resolve_critic(work.settings, drafter_ref)` with run params as an OVERRIDE rather than the only source — that is what `resolve_critic` exists for and what every other consumer does. Then re-run C25's four arms through the studio, which is the only way to know the acceptance holds on the shipped path. |
+  | **Retry when** | Immediately. It is a seam reading the wrong source, not a decision — and the correct source is already loaded on the run. |
+
 
   | | |
   |---|---|
