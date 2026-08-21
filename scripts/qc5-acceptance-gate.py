@@ -57,15 +57,57 @@ MAJORITY = 3
 RUNS_PER_ARM = 5
 
 
-def _clause_1a(planted: list[dict]) -> tuple[str, str]:
+def _flags(r: dict) -> bool:
+    """1a's criterion, in ONE place so the arm and its control cannot be scored differently."""
+    return r["canon"] <= 3 and r["attributed"] >= 1
+
+
+def _clause_1a(planted: list[dict], control: list[dict]) -> tuple[str, str]:
+    """The planted arm AND its control. The control is not optional, and 2026-08-21 is why.
+
+    1a used to ask one question: did the planted runs flag it? Measured on chapter 12 with a
+    matched control — the SAME draft, differing only by the canon antagonist's name being
+    swapped for an invented one — the answer was:
+
+        planted  canon [2,2,2,2,2]  attributed [2,2,2,2,2]     -> 5/5 "PASS"
+        control  canon [2,2,2,2,2]  attributed [2,2,2,2,2]     -> 5/5 the SAME
+
+    The criterion was satisfied 5/5 by a draft with NOTHING planted in it. Reading the verdicts
+    showed why: both arms cite R1 (a kinship claim) and R3 (a spiritual-energy claim), and
+    neither verdict is about the misattribution at all. The critic never saw the plant; the
+    draft independently violates two rules, so `canon<=3 and attributed>=1` was true no matter
+    what was planted.
+
+    That is rule 3 exactly — *a criterion that cannot fail is not a criterion* — and it had been
+    sitting inside the gate written to enforce rule 3. So the control is mandatory: without it
+    1a is UNSCORABLE, and if the control satisfies the criterion too, 1a is UNSCORABLE rather
+    than PASS, because the number is measuring the draft and not the plant.
+    """
     if len(planted) < RUNS_PER_ARM:
         return UNSCORABLE, (
             f"1a needs {RUNS_PER_ARM} planted runs, got {len(planted)} — the critic's ability "
             "to attribute is UNMEASURED, so 1b cannot be read either"
         )
-    ok = [r for r in planted if r["canon"] <= 3 and r["attributed"] >= 1]
+    if len(control) < RUNS_PER_ARM:
+        return UNSCORABLE, (
+            f"1a needs {RUNS_PER_ARM} `planted_control` runs (the same draft with NOTHING "
+            f"planted), got {len(control)} — without them a planted arm that flags cannot be "
+            "told from a draft that was going to be flagged anyway (measured 2026-08-21: it "
+            "was the second one)"
+        )
+    ok = [r for r in planted if _flags(r)]
+    ctl = [r for r in control if _flags(r)]
+    if len(ctl) >= MAJORITY:
+        return UNSCORABLE, (
+            f"{len(ok)}/{len(planted)} planted runs flagged — but so did {len(ctl)}/"
+            f"{len(control)} CONTROL runs with nothing planted. The criterion is measuring the "
+            "draft, not the plant, and a pass the control also earns is not a pass"
+        )
     if len(ok) >= MAJORITY:
-        return PASS, f"{len(ok)}/{len(planted)} planted runs attributed a violation with canon<=3"
+        return PASS, (
+            f"{len(ok)}/{len(planted)} planted runs attributed a violation with canon<=3, "
+            f"while only {len(ctl)}/{len(control)} control runs did — it discriminates"
+        )
     return FAIL, (
         f"only {len(ok)}/{len(planted)} planted runs attributed a violation with canon<=3 — "
         "the critic cannot see a violation that IS there, so a clean flow run proves nothing"
@@ -122,7 +164,12 @@ def _clause_2(runs: list[dict], a_verdict: str) -> tuple[str, str]:
 
     Without BOTH, the original teeth stay exactly as they were.
     """
-    bad = [r for r in runs if r["canon"] == 5 and r["raw"] == 0]
+    # FLOW runs only. Clause 2 is about "the flow produced a perfect score and found nothing";
+    # the planted arm and its control are diagnostic passages, not the flow, and a CLEAN
+    # control legitimately scores 5/5 with zero findings -- that is what makes it a control.
+    # Scanning every arm made the control itself trip the clause, which would have punished
+    # the fix for 1a's vacuity with a failure on clause 2.
+    bad = [r for r in runs if r.get("arm") == "flow" and r["canon"] == 5 and r["raw"] == 0]
     if not bad:
         return PASS, "no run produced 5/5 with zero raw findings"
     control = [r for r in runs if r.get("arm") == "flow_control" and r["raw"] >= 1]
@@ -145,8 +192,9 @@ def _clause_2(runs: list[dict], a_verdict: str) -> tuple[str, str]:
 
 def score(runs: list[dict]) -> tuple[str, list[tuple[str, str, str]]]:
     planted = [r for r in runs if r.get("arm") == "planted"]
+    pcontrol = [r for r in runs if r.get("arm") == "planted_control"]
     flow = [r for r in runs if r.get("arm") == "flow"]
-    a, a_why = _clause_1a(planted)
+    a, a_why = _clause_1a(planted, pcontrol)
     b, b_why = _clause_1b(flow, a)
     c, c_why = _clause_2(runs, a)
     rows = [
@@ -164,6 +212,12 @@ def score(runs: list[dict]) -> tuple[str, list[tuple[str, str, str]]]:
 
 def _planted(canon=1, attributed=1, raw=1):
     return {"arm": "planted", "canon": canon, "attributed": attributed, "raw": raw}
+
+
+def _pctl(canon=5, attributed=0, raw=0):
+    """The matched control: the SAME draft with nothing planted. A 1a that does not check
+    this cannot tell "the critic caught the plant" from "the draft was dirty anyway"."""
+    return {"arm": "planted_control", "canon": canon, "attributed": attributed, "raw": raw}
 
 
 def _flow(canon=4, attributed=0, raw=0):
@@ -187,7 +241,7 @@ def selftest() -> int:
         bad += not ok
         print(f"  {'PASS' if ok else 'FAIL'}  {name}: expected {want}, got {got}")
 
-    signed_off = [_planted()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM
+    signed_off = [_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM
     check(f"the signed-off shape: 1a {RUNS_PER_ARM}/{RUNS_PER_ARM} and a canon-clean flow", signed_off, PASS)
 
     # THE REGRESSION THIS GATE EXISTS FOR. Identical flow arm, 1a removed.
@@ -195,22 +249,23 @@ def selftest() -> int:
           [r for r in signed_off if r["arm"] == "flow"], UNSCORABLE)
 
     check("a critic that misses the planted violation fails 1a",
-          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, FAIL)
+          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, FAIL)
 
     # The C7/C13 history: flow runs that FOUND things and attributed none.
     check("flow runs that discard what they found fail 1b",
-          [_planted()] * RUNS_PER_ARM + [_flow(canon=4, attributed=0, raw=3)] * RUNS_PER_ARM, FAIL)
+          [_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow(canon=4, attributed=0, raw=3)] * RUNS_PER_ARM, FAIL)
 
     # ── clause 2: the 2026-08-21 re-run's finding, both directions ───────────
     check("clause 2 fires on a vacuous 5/5 when only 1a backs it (no flow control)",
-          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM, FAIL)
+          [_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM, FAIL)
     check("the SAME 5/5 runs pass once a flow_control shows the critic live",
-          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM + [_control()], PASS)
+          [_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM
+          + [_control()], PASS)
     check("a flow_control that itself found NOTHING does not license the 5/5",
-          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM
+          [_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM
           + [_control(raw=0)], FAIL)
     check("clause 2 keeps its ORIGINAL teeth when 1a fails, control or not",
-          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM
+          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM
           + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM + [_control()], FAIL)
 
     # Majority, not unanimity — and the threshold MOVED with §7.3, so these pin 3-of-5 and
@@ -218,17 +273,36 @@ def selftest() -> int:
     # while asserting a rule nobody uses.
     check(f"1a passes on {MAJORITY} of {RUNS_PER_ARM} planted runs",
           [_planted()] * MAJORITY + [_planted(canon=5, attributed=0, raw=1)] * (RUNS_PER_ARM - MAJORITY)
-          + [_flow()] * RUNS_PER_ARM, PASS)
+          + [_pctl()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, PASS)
     check(f"1a fails on {MAJORITY - 1} of {RUNS_PER_ARM}",
           [_planted()] * (MAJORITY - 1) + [_planted(canon=5, attributed=0, raw=1)] * (RUNS_PER_ARM - MAJORITY + 1)
-          + [_flow()] * RUNS_PER_ARM, FAIL)
+          + [_pctl()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, FAIL)
+
+    # ── C24 2026-08-21: the case that put a control in 1a at all ────────────────────────
+    # MEASURED, not imagined. Chapter 12, five runs each, the two passages differing only by
+    # the canon antagonist's name being swapped for an invented one:
+    #     planted canon [2,2,2,2,2] attributed [2,2,2,2,2]
+    #     control canon [2,2,2,2,2] attributed [2,2,2,2,2]   <- IDENTICAL
+    # Both cite R1 and R3, and neither verdict is about the misattribution. 1a scored 5/5 on a
+    # draft that was going to be flagged anyway.
+    check("1a is UNSCORABLE when the CONTROL flags exactly as often as the plant",
+          [_planted(canon=2, attributed=2, raw=2)] * RUNS_PER_ARM
+          + [_pctl(canon=2, attributed=2, raw=2)] * RUNS_PER_ARM
+          + [_flow()] * RUNS_PER_ARM, UNSCORABLE)
+    # ...and the discriminating twin: the SAME planted numbers, a control that stays clean.
+    # If these two ever agree, the control column has stopped being read.
+    check("...and PASSES with the same planted arm once the control stays clean",
+          [_planted(canon=2, attributed=2, raw=2)] * RUNS_PER_ARM
+          + [_pctl()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, PASS)
+    check("1a with NO control at all is UNSCORABLE, not a pass",
+          [_planted()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, UNSCORABLE)
 
     # ── §7.3's CONSEQUENCE, made executable ─────────────────────────────────────────────
     # A three-run measurement no longer scores. This is the fixture that stops QC-5 C17's
     # three-run PASS from being reused as if it were a five-run one — the substitution this
     # gate exists to refuse, and the reason the constant above is not just a bigger number.
     check("a THREE-run measurement is now UNSCORABLE, not a PASS",
-          [_planted()] * 3 + [_flow()] * 3, UNSCORABLE)
+          [_planted()] * 3 + [_pctl()] * 3 + [_flow()] * 3, UNSCORABLE)
 
     # The property no single fixture pins: 1a decides how the SAME 1b input reads.
     #
@@ -238,7 +312,8 @@ def selftest() -> int:
     # entirely still produced the expected overall answer. Bite 61 landed exactly there and
     # the selftest stayed green, which is this file's own defect class caught in itself.
     flow_only = [_flow()] * RUNS_PER_ARM
-    with_a_overall, with_a_rows = score([_planted()] * RUNS_PER_ARM + flow_only)
+    with_a_overall, with_a_rows = score([_planted()] * RUNS_PER_ARM + [_pctl()] * RUNS_PER_ARM
+                                        + flow_only)
     without_a_overall, without_a_rows = score(flow_only)
     b_with = next(v for n, v, _ in with_a_rows if n.startswith("1b"))
     b_without = next(v for n, v, _ in without_a_rows if n.startswith("1b"))

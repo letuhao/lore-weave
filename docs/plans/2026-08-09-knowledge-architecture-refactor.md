@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 54 of 96 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 54 of 97 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/39) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/40) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7253,6 +7253,77 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **To unblock** | Decide where `active_rules` comes from for the headless seam — the canon-rule corpus the critique endpoint uses, or rules derived from the bible's cast facts — and feed it through `canon_bible.py` beside `present_facts`. Then re-run C3's three chapters **N ≥ 3 times** and report the score distribution, not a single number. |
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
+
+  ### 🔴 QC-5 C24 2026-08-21 — **clause 1a could not fail, and it was inside the gate written to enforce rule 3**
+
+  <!-- doc-language-gate: ok -- the rule references and the swapped NAME are the measurement -->
+
+  C23 said QC-5 needed *"both arms and a `flow_control` on the same book/chapter setup"*. Built
+  it the only honest way: the planted arm is **chapter 12's own drafted revision**
+  (`01a024e9-…`, the very text arm 1b judged), with the canon antagonist `Lâm Trạch` replaced by
+  `Lục Vô Tội` — 0 canon entities — in all 6 occurrences. Same chapter, same project, same six
+  rules. The two passages differ by that string and nothing else.
+
+  ```
+  planted  canon [2,2,2,2,2]  attributed [2,2,2,2,2]  raw [2,2,2,2,2]   sd=0.00
+  control  canon [2,2,2,2,2]  attributed [2,2,2,2,2]  raw [2,2,2,2,2]   sd=0.00
+
+  1a  planted runs flagging it : 5/5   (majority 3)  <- "PASS"
+  CTRL clean runs left alone   : 0/5
+  ```
+
+  🔴 **1a SCORED 5/5 ON A DRAFT WITH NOTHING PLANTED IN IT.** The criterion is *"canon ≤ 3 and at
+  least one attributed violation"*, and it asks only about the planted arm — never whether the
+  unplanted one stays clean. Reading the verdicts instead of the numbers shows why it is
+  satisfied either way:
+
+  ```
+  [R1] "...cho biết Lâm Trạch không phải là người anh em họ của Lâm Uyên..."   (a KINSHIP claim)
+  [R3] "...Tô Thanh Dao có thể sử dụng linh năng..."                    (a SPIRIT-ENERGY claim)
+  ```
+
+  **Neither verdict is about the misattribution.** The critic never saw the plant at all — this
+  draft independently violates two rules, so `canon<=3 and attributed>=1` was true no matter what
+  was planted. A pass the control also earns is not a pass.
+
+  ⚠️ **This is rule 3 — *a criterion that cannot fail is not a criterion* — sitting inside**
+  **`qc5-acceptance-gate.py`, the gate built to enforce rule 3.** It survived because it was
+  only ever exercised against planted arms; nothing had run the unplanted twin through it.
+
+  **Fixed:** `_clause_1a(planted, control)` now takes both, with the criterion factored into one
+  `_flags()` so the arm and its control can never be scored differently. No control ⇒
+  `UNSCORABLE`. Control flags as often as the plant ⇒ `UNSCORABLE`, not `PASS`.
+
+  **🦷 BITE — line 100, `if len(ctl) >= MAJORITY:` → `if False:`** (the control's verdict
+  ignored, i.e. the old behaviour restored):
+
+  ```
+  FAIL  1a is UNSCORABLE when the CONTROL flags exactly as often as the plant:
+        expected UNSCORABLE, got PASS                                    1 check(s) FAILED
+  ```
+
+  Exactly one check red, and it is the vacuity itself. A discriminating twin rides beside it —
+  *"...and PASSES with the same planted arm once the control stays clean"* — so if the two ever
+  agree, the control column has stopped being read. Restored; **15/15**.
+
+  ⛔ **QC-5, scored on today's matched 15-run measurement:**
+
+  ```
+  1a  UNSCORABLE  5/5 planted flagged — but so did 5/5 CONTROL runs with nothing planted.
+                  The criterion is measuring the draft, not the plant.
+  1b  UNSCORABLE  1a did not pass, so "zero attributed violations" cannot be read.
+  2   FAIL        5 flow runs at 5/5 with zero raw findings, critic not proven live.
+  QC-5 => FAIL
+  ```
+
+  🎯 **Without the control this same data reads `1a PASS 5/5`.** That is the entire value of the
+  fix, and the reason QC-5 stays `[~]`: it now fails for three reasons that each name themselves,
+  where before it would have passed one of them for free.
+
+  📐 Also fixed while wiring it: **clause 2 scanned every arm**, so a legitimately clean control
+  (5/5, nothing found — which is what makes it a control) tripped the vacuous-5/5 check. It is
+  now scoped to `flow` runs, which is what *"the flow produced a perfect score and found
+  nothing"* always meant.
 
   ### 🔴 QC-5 C23 2026-08-21 — **arm 1b at five runs: ZERO variance, and the gate FAILS it**
 
