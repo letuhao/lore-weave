@@ -618,6 +618,18 @@ regression the graph write is not worth. That is the sequencing, and it is why T
 planforge half is a prompt-and-eval batch, not a client call.
 
 ### 4.3 Causal coverage is measured in QC-6, not before — **DECIDED**
+
+⚠️ **THE TITLE OUTLIVED THE BODY — corrected 2026-08-21 (T33d).** Everything below this note
+measures **identity**, and QC-6 was ticked against that table while the causal measurement this
+section is NAMED for was never taken. Found by the supersession audit rather than by anyone
+reading the section, which is the point: a heading and its body drifted apart and the tick went
+to the body.
+
+Taken now, scoped to the one project the causal writer ran on: **32 events, 3 carrying a causal
+edge, 4 edges — 9.38 %**. That replaces the retracted global 0.34 %, which divided by residue
+from runs that never touched the causal pipeline. It is a **baseline, not a verdict**: with the
+reference corpus ruled out there is no target to pass, and causal links are genuinely sparse.
+What it buys is that X1 can now argue from a number instead of an artefact.
 *Replaces `D-T33-CAUSAL-COVERAGE-UNMEASURED`, `D-QC6-IDENTITY-LIVE-PROOF`.* Both are live
 proofs on real data, and QC-6 is where the plan runs them.
 

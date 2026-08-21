@@ -5423,6 +5423,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   the reference corpus this row's own *To unblock* records as **retracted over-engineering**. So
   T33's live bite needs either that write authorised, or the event-shape question settled first.
 
+  ### 📊 T33d 2026-08-21 — **causal coverage, finally measured — and QC-6 was ticked without taking it**
+
+  Found by the supersession audit, not by looking: §4.3 is titled *"Causal coverage is measured
+  in QC-6, not before"* and its body measures **identity only** — duplicate groups, anchor
+  resolution, opaque `e.id`. QC-6 was ticked `[x]` against that table on 2026-08-21.
+  **Causal coverage was never measured.** The section title promised a measurement its own body
+  had replaced.
+
+  Taken now, READ-ONLY on the dev graph (rule 6 — a count is a read):
+
+  ```
+  relationship census   EVIDENCED_BY 2813 · RELATES_TO 1144 · ABOUT 255 · HAS_CHILD 33
+                        CAUSES 2 · PRECEDES 2
+
+  scoped to the ONE project the causal writer actually ran on (019f9f41-…):
+      events                             32
+      events carrying a causal edge       3
+      causal edges                        4
+      coverage                        9.38 %
+  ```
+
+  ✅ **The denominator is the correction.** The retired version of this row argued from
+  *"4 of 1184 events"* = 0.34 %, and the PO withdrew that reasoning: the dev store holds residue
+  from ad-hoc runs, so a low global ratio is explained by *"nobody ran the pipeline over that
+  data"*. Scoping to the project the pipeline DID run on replaces an artefact with a number —
+  **9.38 %, not 0.34 %** — and that is the whole difference between measuring the system and
+  measuring the leftovers.
+
+  ⚠️ **9.38 % IS A NUMBER WITHOUT A TARGET, so it cannot pass or fail, and it is not being
+  reported as if it could.** Causal links are genuinely sparse — most events cause no other
+  event — so low is not automatically wrong. Saying which fraction *should* carry an edge needs
+  ground truth, and the PO ruled the hand-authored reference corpus out as over-engineering:
+  *"finish the implementation, do a live run, measure what that run produced."* **This is that
+  measurement.** What it is good for is being a BASELINE: a change that moves 9.38 % is visible,
+  where before there was nothing to move.
+
+  🎯 **And it discharges the row's actual purpose.** The `Retry when` exists so T42's engine
+  choice is not argued from *"the workload is shallow"* while the causal layer sits at an
+  artefact. It no longer does — the shallowness is now a measured 9.38 % over a real scope
+  rather than a 0.34 % over residue, and X1 can be argued against a number that means something.
+
   ### 🔻 DEFERRAL `D-T33-CAUSAL-COVERAGE-UNMEASURED` — the bite is one book, the graph is eight projects
 
   | | |
