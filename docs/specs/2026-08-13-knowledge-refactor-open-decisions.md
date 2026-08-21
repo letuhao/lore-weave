@@ -637,6 +637,17 @@ re-runs on those books. The repair is `recanon_honorifics --apply`, rehearsed en
 against a faithful clone (1819 re-keyed / 1 merged / 6 refused / 0 anchors lost, `actions=0` on a
 second pass). What is missing is the write, not the code.
 
+✅ **THE WRITE IS DONE (2026-08-21, T46d).** The PO granted it and it ran against the real dev
+graph: `rekeyed=1819, merged=1, conflicted=6, actions=1820`, and a second dry-run reports
+`rekeyed=0, merged=0, actions=0` with `clean` 3040 -> 4859. Entities 4872 -> 4871, the one
+merge. Checked against a 4.27 MB pre-apply APOC snapshot rather than trusted: `ABOUT`
+248 -> 248, `RELATES_TO` 1143 -> 1143, `EVIDENCED_BY` 1275 -> 1274 — and that single edge is a
+parallel-edge collapse, not a loss (the merged node's only edge pointed at an evidence node its
+survivor already held; 0 evidence nodes lost all links). **The armed-and-not-fired fork defect
+is therefore disarmed, and re-extraction of an affected chapter is now safe** — which is what
+§4.1's precondition was protecting. The 6 refusals are unchanged before and after; they are the
+planner declining to guess, not residue.
+
 ### 6.4 Phase 9 closes the plan: `T47 → T48 → T49` — **DECIDED**
 Docs (mandatory under the plan's own `Docs: yes`), then `/aif-verify`, then handoff and
 archive. **This is how the plan ends**, and it may not begin until every other row is `[x]` or

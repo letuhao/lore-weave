@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 41 of 87 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 42 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (1/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -13706,6 +13706,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   unchanged at 4872.
   **QC (c) real data:** 4872 real entities, 1819 real stale rows, and one real entity measured
   either side of the repair.
+
+  ### ✅ T46d 2026-08-21 — **the repair is APPLIED to the dev graph.** 1819 → 0, and nothing was destroyed.
+
+  ```
+  dry   RecanonPlan(scanned=4866, clean=3040, rekeyed=1819, merged=1, conflicted=6, actions=1820)
+  APPLY RecanonPlan(scanned=4866, clean=3040, rekeyed=1819, merged=1, conflicted=6, actions=1820)
+  dry   RecanonPlan(scanned=4865, clean=4859, rekeyed=0,    merged=0, conflicted=6, actions=0)
+  entities 4872 -> 4871      (the one merge)      clean 3040 -> 4859
+  ```
+
+  Grant 2 of the PO's four, and the write rule 6 barred until it was granted. T46c proved the
+  repair on one entity in a disposable container; this runs it on the real graph. The convergence
+  is the easy half — `actions=0` on the re-run is what "idempotent, deterministic plan" is supposed
+  to produce, and it did.
+
+  ⚠️ **The counter that mattered was the one that DROPPED.** `EVIDENCED_BY` went **1275 → 1274**,
+  and T46c's whole finding was that this merge path used to destroy `EVIDENCED_BY`/`ABOUT` edges.
+  A single missing edge is exactly what a partially-fixed merge would look like, so it was checked
+  against a **4.27 MB APOC snapshot** of the Entity subgraph taken before the apply rather than
+  reasoned about:
+
+  ```
+  ABOUT         248 -> 248        RELATES_TO   1143 -> 1143
+  EVIDENCED_BY 1275 -> 1274       distinct EVIDENCE nodes 95 -> 95
+  evidence nodes that lost ALL entity links: 0
+  the ONE evidence node whose degree changed: 6dff2c24... 18 -> 17
+    entity present PRE but not POST: 19b52144...     entity present POST but not PRE: (none)
+  ```
+
+  🎯 **A parallel-edge collapse, not a loss.** Entity `19b52144...` is the single `merged=1` node;
+  its **only** edge in the snapshot was one `EVIDENCED_BY` to `6dff2c24...`, and its survivor was
+  already attached to that same evidence. Two distinct pairs became one. No new entity appeared on
+  that evidence, no evidence node was orphaned, and the two relationship types T46c saw destroyed
+  are bit-for-bit unchanged. Had the old defect still been live, `ABOUT` and `EVIDENCED_BY` would
+  have fallen by the stranded nodes' whole degree, not by one shared edge.
+
+  ⚠️ **My first reading of the snapshot was wrong and said so loudly.** Counting `[r:TYPE]` in the
+  export gave `RELATES_TO 6, EVIDENCED_BY 7, ABOUT 2` — absurd against a live 1143 — because
+  `useOptimizations: UNWIND_BATCH` emits **one** `CREATE (start)-[r:TYPE]->(end)` per *batch*, not
+  per relationship; the rows live in the preceding `UNWIND [...]`. A regex that had happened to land
+  near the right order of magnitude would have been believed.
+
+  ⛔ **6 conflicted rows remain, and that is the designed outcome.** They are the refusals the
+  planner will not guess at; `conflicted` is 6 before and after, so the apply neither resolved nor
+  worsened them.
+
+  **QC (a) gates:** no code changed in this batch — the apply is an operator run of already-shipped,
+  already-bitten code (T35g's four merge fixes, bites 26-27). Plan gates re-run green.
+  **QC (b) the seam:** the real dev Neo4j at `bolt://neo4j:7687` through the rebuilt
+  `knowledge-service` container, which is the only path that carries the fixed merge.
+  **QC (c) real data:** 4866 scanned, 1819 re-keyed, 1 merged, 4872 -> 4871 entities, and 2666 real
+  relationships accounted for either side of the mutation.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
