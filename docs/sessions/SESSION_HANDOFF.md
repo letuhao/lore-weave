@@ -1,5 +1,55 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ THE DEMO PATH — kernel identity reaches a browser (2026-08-21, branch `feat/game-logic`)
+
+> [`2026-08-21-demo-path-RUN-STATE.md`](../plans/2026-08-21-demo-path-RUN-STATE.md) — `F1`–`F5`.
+> Opened by one question: *"does the actor hub reach the FE end to end?"* It did not, and the
+> reasons stacked in a way nothing in the tree could report.
+>
+> **`turn 0 · you are entity 1`, rendered in Chromium.** Browser → `channel` room → `onAuth`
+> (server-supplied identity) → world-service `/internal/v1/actor-control/subject` → meta binding →
+> per-reality `actors` → `entity_id 1` → `w1.frame.self` → the DOM. **Bitten**: stop world-service
+> and the same click yields *"could not resolve your actor; retry"*; restart it and entity 1 comes
+> back. So the number on screen provably comes from the control plane and both databases.
+>
+> **And the refusal is the RIGHT one** — not *"you drive nobody"*. `E3`'s four-answer design
+> (driving · nobody · realityClosed · unavailable), visible in a UI for the first time rather than
+> argued for in a test.
+>
+> **THE VIEW WAS BORN UNREACHABLE.** `ChannelPanel` shipped in `fc2ba5f8a` with its client, its
+> store, six tests and a live proof — and that proof drove the CLIENT. Nothing ever rendered the
+> panel. It stayed an orphan for three weeks, through a security review of the room it talks to and
+> a phase that rewrote the subject it renders. Nothing went red and nothing could: it compiles, its
+> store compiles, its client is tested, the suite is green. The orphan shape one tier above the one
+> `orphan-model-gate` watches — there a model with no PRODUCER, here a view with no CALLER.
+>
+> **And after `E4` the FE's only identity was not a user.** `onAuth` returned
+> ``dev:${jwt.slice(0,4)}`` — fabricated from four characters of a SHARED token — which fails
+> `isUserRefId`, so the join was refused and the demo path was structurally dead. Nothing reported
+> that BECAUSE the panel was unmounted; had it been wired, `E4` would have broken it visibly.
+> `F1` makes the identity server-supplied, UUID-validated, **no default**, so the branch fails
+> closed where it used to invent.
+>
+> **world-service had no Dockerfile and no compose entry** (`WS-COMPOSE`, closed). Both written; the
+> image builds at 139 MB and carries `contracts/`, because two config defaults are CWD-relative —
+> `ED-D8` from the player-edge run reappearing as a packaging requirement.
+>
+> **⚠ WHAT IS STILL NOT PROVEN: actor-hub STATE in the browser.** The roster was empty and the turn
+> 0 because reality `cd0747d2` has **zero committed events** (`XLEN 0`, `events` table 0 rows).
+> The SUBJECT hop is proven; hp/roster/turn have never been rendered. Doing it needs a reality with
+> both committed events AND a live binding, and no reality has both — creating one means granting a
+> binding, a write to the non-throwaway dev meta database.
+>
+> **▶ DO NEXT.** Either (a) get kernel STATE onto the screen — needs the write above, or a
+> throwaway reality provisioned for it, and the spine still hangs (`DFO-7`) so a RESOLVED turn is
+> further out; or (b) `FO-1` — `EchoRoom.onAuth` takes `options.userId ?? 'guest'` FROM THE CLIENT,
+> and that id keys the per-user connection cap, so a client evades the cap by picking a new id per
+> connection; or (c) `FO-2` — `phase0-reconcile-gate` reads only the citations before the first
+> em-dash (7 of 25 fields, 15 unread), whose fix is a convention change across tracks. `EO-1` from
+> the player-edge board is still open (no `CHECK (entity_id >= 0)` on `actors`).
+
+---
+
 ## ▶ THE PLAYER-FACING EDGE — a human drives without an operator (2026-08-21, branch `feat/game-logic`)
 
 > [`2026-08-21-player-edge-RUN-STATE.md`](../plans/2026-08-21-player-edge-RUN-STATE.md) — `E1`–`E6`,
