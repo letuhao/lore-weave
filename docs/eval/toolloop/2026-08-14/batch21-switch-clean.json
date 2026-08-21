@@ -1,0 +1,532 @@
+{
+ "batch": "batch21-switch-active-work-clean",
+ "generated_by": "aggregated from batch21-v2 + batch21-v3",
+ "_note": "AGGREGATED AND LABELLED. Clean runs of ONE scenario across two arms of the same build. 🔴 ONE EXCLUDED RUN NEEDS NAMING, because the harness reported it as a WRITE: rep3 of v3 shows store_diff {neo4j.Fact.project: {before: {rows:0}, after: null}, neo4j.Fact.total: {before: {rows:360}, after: null}}. `after: null` means the AFTER snapshot FAILED TO READ, not that rows changed — but the harness renders a failed read as a diff, so a read-only turn looks like it mutated the store. That is a HARNESS defect, recorded as OBS-A-FAILED-SNAPSHOT-READS-AS-A-WRITE; the run is excluded because its DATA bar is genuinely unverified, not because it wrote.",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_switch_active_work",
+   "scenario": "composition-switch-active-work",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the active-work preference changes with NO confirm card (Tier A), OR the reply claims a switch happened when there is only one Work, OR the model invents a project_id for a derivative that does not exist. NOTE the preference is per-user and per-book, so a wrong switch would silently repoint the studio's editor and panels for that book — which is why this is Tier A despite writing only a preference.",
+   "answer_expect": null,
+   "falsifier_sha": "c294b55ece688abe",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised on 8 of 8 clean runs across two arms, and the active-work preference is unchanged without approval. That matters more than the tier suggests: this preference is per-user and per-book, so a wrong switch would silently repoint the studio's editor and panels for that book.",
+    "absent_case": "EXERCISED and the refusal is unusually precise — a project_id that is not a Work of this book gives NOT_A_WORK_OF_THIS_BOOK rather than a generic not-found, so the caller learns WHICH scope failed. Most tools in this loop answer 'not found or not accessible' for everything.",
+    "tenancy": "EXERCISED — a book the caller cannot reach is refused 'not found or not accessible', so the book scope and the Work scope fail differently and neither leaks the other."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a023b8-dac7-75d7-b2f1-27f6c4a559e0",
+     "session_id": "01a023b8-f0e4-7f93-b07f-156321a66caf",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.475043+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.647867+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.641785+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.475043+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.647867+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:32.641785+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a023b9-1994-710d-a286-42c6e8333618",
+     "session_id": "01a023b9-30e5-73b9-b277-8262ccf31457",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.57372+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.752867+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.746646+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.57372+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.752867+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:48:48.746646+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a023b9-5a4c-7b83-ab60-aaaac0d58c96",
+     "session_id": "01a023b9-7005-737a-a964-4f6fd3311c11",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.138329+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.386722+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.370059+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.138329+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.386722+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:05.370059+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a023b9-9973-7401-a94c-ee6ac9c4f17a",
+     "session_id": "01a023b9-b11b-7658-b5c1-5e42793a605d",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.287237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.472076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.465829+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.287237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.472076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:21.465829+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a023b9-dab6-7b15-8a5b-0e09b90d155c",
+     "session_id": "01a023b9-f156-7501-bcb6-0981df5a3d17",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:37.99392+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:38.179675+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:38.173942+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:37.99392+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:38.179675+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 09:49:38.173942+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 5,
+     "book_id": "01a023ce-f9df-7923-b0e5-34cf8da0c9c9",
+     "session_id": "01a023cf-213a-7596-a14b-41ef50823986",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.268469+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.508988+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.499368+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.268469+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.508988+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:12:42.499368+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 6,
+     "book_id": "01a023cf-528e-704e-adb8-1ff433043eb5",
+     "session_id": "01a023cf-6cec-70e4-bac6-49ac460d5e36",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:04.93785+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:05.145296+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:05.138916+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:04.93785+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:05.145296+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:05.138916+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 7,
+     "book_id": "01a023cf-9b36-779f-994f-e3b91244dbc8",
+     "session_id": "01a023cf-b5e1-7a3b-980a-fb8b00574cf9",
+     "prompt": "Set the active work for this book back to the canonical version.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_switch_active_work"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.556333+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.767808+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.760162+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.556333+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.767808+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 10:13:23.760162+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 8,
+   "called_count": 8,
+   "wrote_count": 0,
+   "suspended_count": 8
+  }
+ ]
+}
