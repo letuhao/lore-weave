@@ -18,7 +18,7 @@ fn tilemap_view_roundtrips_through_json() {
     let original = TilemapView::empty(
         ChannelId("country:song_china".to_string()),
         ChannelTier::Country,
-        GridSize::COUNTRY_DEFAULT,
+        GridSize::ZOOM_192,
         TilemapTemplateId("wuxia_southern_song_v1".to_string()),
         0xDEAD_BEEF_CAFE_F00D,
     );

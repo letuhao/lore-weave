@@ -128,7 +128,7 @@ fn continent_seed(template: &TilemapTemplate) -> crate::seed::TilemapSeed {
 /// the live measurement can reuse it.
 pub fn measure_offline() -> crate::Result<(TilemapView, OfflineMeasurement)> {
     let template = continent_template();
-    let grid = GridSize::CONTINENT_DEFAULT;
+    let grid = GridSize::ZOOM_256;
     let seed = continent_seed(&template);
 
     // Single-pass timed placement. `place_tilemap_with_timings` returns the

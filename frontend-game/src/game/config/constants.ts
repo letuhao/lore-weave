@@ -11,7 +11,7 @@ export const TILE_PX = 64;
 export const CAMERA_LERP = 0.1;
 
 // Default zone fetch params for the /play tilemap viewer route. Town tier
-// per spec §3 + GridSize::TOWN_DEFAULT (64²) in tilemap-service.
+// per spec §3 + GridSize::ZOOM_64 (64²) in tilemap-service (renamed 2026-08-22, SPG-R13 -- the presets were a zoom ladder keyed by retired ChannelTier rungs, not a per-kind map).
 export const DEFAULT_ZONE_WIDTH = 64;
 export const DEFAULT_ZONE_HEIGHT = 64;
 export const DEFAULT_TIER = 'town' as const;
