@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: re-derive `T43`/`QC-7` — AGE refuses nothing now (124/41 conformance), so the 'cannot clear the floor' verdict is stale.**
+**RESUME: `T17` class (d) — 34 modules, the last thing between AGE and being the only engine. T60 cleared the coverage floor.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,72 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T60 2026-08-22 — **T43/QC-7 RE-DERIVED: AGE clears the coverage floor, 239/239 agreed**
+
+  ```
+  shadow differential, AGE vs a throwaway Neo4j 5, the full seed corpus:
+
+    cutover_permitted : True
+    operations        : 21          uncovered : NONE        blocked_by : []
+    totals            : 239 observations, 239 agreed, 0 diverged
+
+      merge_event        obs= 20  agreed= 20  diverged= 0     <- was UNCOVERED by refusal
+      merge_fact         obs= 13  agreed= 13  diverged= 0     <- was UNCOVERED by refusal
+      update_event_fields obs=  9  agreed=  9  diverged= 0    <- was UNCOVERED by refusal
+      facts_for          obs= 10  agreed= 10  diverged= 0     <- was blocked BENEATH them
+      status_at_order    obs= 11  agreed= 11  diverged= 0     <- likewise
+      events_page        obs=  9  agreed=  9  diverged= 0     <- likewise
+      … 21 of 21, every one observed
+  ```
+
+  🎯 **The verdict this row exists to correct.** `T43` recorded that *"AGE cannot clear the
+  conformance floor at all — it refuses `merge_event`/`merge_fact`"*, and that *"a candidate
+  refusing a write makes the floor unmeetable for every read beneath it, however much traffic
+  runs."* That was true and it is no longer: T58 and T59 implemented all three writes, and the
+  nine operations that were `uncovered` **by construction** are now observed and agreed.
+
+  📐 **Re-DERIVED, not re-quoted.** `QC-7` signed `cutover_permitted: True` as a datum, and
+  A12's row already carried the warning that *"a new operation starts at zero observations, so
+  A12 can UNDO QC-7's evidence"*. The same argument applies in this direction: the number had
+  to be produced by a run, on a real Neo4j and a real AGE, not inferred from the fact that two
+  methods now exist. This is rule 2 pointed at good news, which is the direction it is easiest
+  to skip.
+
+  🔧 **Run on a genuinely disposable Neo4j** (`lw-shadow-neo4j`, `neo4j:5`, port 7994). The
+  fixture's `_guard_throwaway_neo4j` REFUSES both the dev and the isolated stack's ports —
+  correctly, since these rules `CREATE` and `DETACH DELETE` — so a third container is the only
+  honest way to run this. Rule 6 intact: neither dev nor iso Neo4j was written.
+
+  ⚠️ **The report test could not fail when I first wrote it**, and that is the third time today
+  this exact shape appeared (T58's event refuser guard, T59's fact refuser guard, this). It now
+  asserts the report's denominator: the shadow must cover **exactly** the port's operation set,
+  so a 22nd operation added to `GraphStore` reds this until the shadow actually observes it.
+  **A coverage number over the wrong denominator is worse than no number.**
+
+  **BITE 23:**
+
+  ```
+  the port grows an operation the shadow does not observe
+      FAILED …test_REPORT_the_shadow_coverage_and_cutover_verdict[age]
+      FAILED …[kuzu]     — "covers ['a_new_port_operation'] differently from the port's
+                            operation set — a number over the wrong denominator"
+  ```
+
+  ⛔ **What this does NOT settle.** `cutover_permitted` is a **coverage** verdict — it says the
+  comparison is complete and the two engines agreed on all 239 observations of it. The engine
+  CHOICE is X1's, and its other inputs stand: Kuzu is embedded and refuses a second handle on
+  a database (*"the single biggest input to the engine choice"*), and AGE's advantage was
+  always colocation rather than dialect. What has changed is only that **AGE is now a
+  measurable candidate instead of an excluded one** — which is what the 2026-08-11 probe asked
+  for and never got.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate` 54/19/2, class (d) 34/34
+  unchanged.
+  **QC (b) the seam:** ✅ two live engines answering the same calls in one process — a real
+  AGE 1.7.0 and a real Neo4j 5, 239 paired observations.
+  **QC (c) real data:** the coverage report above is the run's own output, printed rather than
+  asserted-and-discarded, which is why it can be read here at all.
 
   ### ✅ T59 2026-08-22 — **AGE refuses NOTHING.** The full conformance suite, no adapter carrying an exemption
 
