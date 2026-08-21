@@ -74,6 +74,7 @@ committed event.
 | `G3` a committed event exists, produced by the real path | `[x]` | The real `spine` binary consuming a real proposal off the real stream: **`consumed 1 · admitted 1 · committed 1 · turn 1`**. Payload `{"type":"struck","attacker":"1","target":"2","damage":9,"hp_left":31}` — and `attacker: "1"` is the entity the KERNEL resolved from the binding, since the proposal carried only `user_ref_id`. `SEALED-SUBJECT`, visible in committed data. Producer identity NOT enforced in this run and the binary says so; stated, not glossed |
 | `G4` the event reaches `lw.events.<reality>` and the room folds it | `[x]` | Publisher (second instance, pointed at the smoke meta) → **`lw.events.<reality>` XLEN=1**, and the room folded it: the browser turn went 0 → 1 |
 | `G5` live — a browser renders a roster entry that came from that event | `[x]` **manual**, `[ ]` **automated** | **`turn 1 · you are entity 1` + roster `entity-2 · healthy · [Strike]`**, reproduced from a clean stack. **Bitten**: delete `lw.events.<reality>`, re-join → `turn 0` and an EMPTY roster; restore → the entry returns. `you are entity 1` survives both, which is the control — the subject hop is independent of events. The Playwright spec is written and SKIPS: `/play` is behind `RequireAuth` and the app CLEARS an unusable token, so it needs one auth-service issued (`GO-2`) |
+| `G7` the loop BACK — the browser causes the state it renders | `[x]` | **Was declared OUT and it was reachable.** Browser Strike → proposal (`user_ref_id` server-stamped, **no `actor` field**) → `spine --drain-once`: **`consumed 1 · admitted 1 · committed 1 · turn 2`** → publisher → the room's tail → the page updated **with no reload**: `turn 2` and an outcome line **`1 strikes 2 for 9 (31 left)`**. That line prints the hub's NUMBER, not the derived badge |
 | `G6` suite + sweep green | `[x]` | **`SWEEP_RC=0` — 91 GREEN / 0 RED / 8 SKIP.** Rust workspace **2568 passed / 0 failed** / 14 ignored · **23 of 23** live suites · frontend-game **214 / 0** (22 files) · game-server **84 / 0** (2 skipped, live Redis) · `service_acl`+`pii`+`meta`+`publisher` green · `design-lint` and `actor-hub-figures` green. **No RED, tracked or otherwise** — the first board of the three where the sweep found nothing of mine to fix |
 
 ### Why `G2` is its own row rather than a step of `G5`
@@ -84,6 +85,30 @@ unrepeatable, which is the same defect `EO-2` opened against `E1` and the same o
 week and nobody will know.
 
 ---
+
+### `G7` — the boundary was wrong, and the reason it was wrong is the useful part
+
+`§2` put *"a turn RESOLVED from the browser"* OUT, on the grounds that it *"needs the proposal to
+survive producer signing (`LW_PRODUCER_KEY_GAME_SERVER` is unset and the room warns that
+commit-service will reject it at the producer-identity stage)"*.
+
+**That reason was wrong, and it was wrong in a checkable way.** `services/commit-service/src/bin/spine.rs:128` prints
+*"no `LW_PRODUCER_KEY_*` configured — producer identity is NOT enforced"*: with no key on the
+CONSUMER side there is nothing to verify against, so an unsigned proposal is admitted. The room's
+warning is about what happens when the spine DOES hold a key. I read one side's warning and inferred
+the other side's behaviour instead of reading it.
+
+So the only real blocker was a spine that consumes, and `--drain-once` is a spine that consumes.
+
+**What the loop proves that the read half did not.** The proposal came from the browser: the panel's
+own Strike button, `user_ref_id` stamped by the server from `LW_WS_DEV_USER_REF_ID`, and **no
+`actor` field at all** — `SEALED-SUBJECT` on the wire, verified by reading the entry off the stream.
+The island resolved the subject from the binding, `actor_hub::Actor::set_quantity` moved the vital,
+and the committed event came back through the publisher to a page that had not reloaded.
+
+**Still not a deployment.** The spine ran as `--drain-once`, invoked by hand between the click and
+the update. A real deployment runs it as a consumer, and that binary hangs (`DFO-7`). So the loop is
+proven; the AUTOMATIC turn is not.
 
 ## §4 OPEN
 
@@ -96,6 +121,8 @@ week and nobody will know.
 
 | id | what |
 |---|---|
+| `GD-8` | **`citation-gate` blocked the `G7` commit, and it was right.** I cited a bare `spine.rs` with a line number, three times; there are TWO files by that name in this repo (`crates/world-gen/src/shape/spine.rs` and `services/commit-service/src/bin/spine.rs`), so the citation resolved to neither. The gate's own message is the lesson — *"a citation nobody can follow is worse than none: it reports evidence and silences review"* — and it lands hard here, because the paragraph doing the citing is the one correcting a claim I had ALSO not checked. Two unresolvable references inside a correction block about unverified references — and then this row, describing the defect in the defect's own syntax, tripped the gate a second time. Hence the circumlocution above: the gate reads a `name.rs:NNN` anywhere, including inside a sentence about how not to write one. |
+| `GD-7` | **I declared something OUT for a reason I had not checked.** `§2` excluded the loop back because the room warns that unsigned proposals are rejected at the producer-identity stage. That warning is about the room's side; the CONSUMER decides, and `services/commit-service/src/bin/spine.rs:128` says plainly that with no key configured identity is not enforced. One grep would have settled it. **A boundary is a claim about the work, and it needs the same evidence as any other claim** — this one cost the board a row it could have had from the start, and the only reason it was recovered is that the PO asked whether the goal was actually complete. |
 | `GD-3` | **A pid file is only as true as the thing it names, and this cost three separate incidents in one afternoon.** `$!` after `npx vite`, after `go run`, and after `go run` again captured WRAPPERS; the real process kept the port or the database connection. Symptoms differed every time and none of them said "wrong pid": vite refused to start with *"Port 5199 is already in use"* (correct, and I read it as a cache problem), and the publisher held a connection that made `DROP DATABASE` fail on the next run. The eviction I added for that is ALSO insufficient — terminating a backend just makes a 1s poller reconnect. Fixed properly by BUILDING the publisher and running the binary. |
 | `GD-4` | **I chose a demo action that renders nothing, and it would have looked like success.** `foldEvent` mutates the view for `struck`, `downed`, `fled` and `moved`; `defended` falls to `default: break`. My first proposal was `defend`, which commits a real event and advances the turn — so the browser would have shown `turn 1` with an empty roster, and "the turn moved" is exactly the partial result worth mistaking for the whole thing. Caught by READING the fold before asserting on it, not by running it. |
 | `GD-5` | **I mis-read a log line as a defect.** `channel-room: consuming … from: "$"` looked like the room refusing to replay history, and I said so. It is the TAIL cursor, set after `replayView(..., options.from ?? '0')` has already replayed from zero. The code said one thing and the log said another; reading the code settled it in thirty seconds. |
@@ -115,4 +142,4 @@ stop: |
   the browser would render a value that did not come from a committed event
 ```
 
-**RESUME: the board is CLOSED — 6 of 6. `GO-1` and `GO-2` remain open and neither is this board's to fix. The question three boards were opened to answer is answered: an event the actor hub produced renders in a browser, and the proof bites. What is NOT proven is the loop BACK — clicking Strike and watching the outcome return — which needs `LW_PRODUCER_KEY_GAME_SERVER` on both sides and a consuming spine (`DFO-7`).**
+**RESUME: the board is CLOSED — 7 of 7 (`G7` was added after the fact; see the drift log). `GO-1` and `GO-2` remain open and neither is this board's to fix. The question three boards were opened to answer is answered: an event the actor hub produced renders in a browser, and the proof bites. The loop BACK is now proven too: a browser Strike causes the state the browser renders. What is NOT proven is the AUTOMATIC turn — the spine ran as `--drain-once` by hand between the click and the update, and the long-running consumer hangs (`DFO-7`).**

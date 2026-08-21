@@ -31,6 +31,21 @@
 > commits a turn through the real spine and starts all three services, with `--down`. Re-run clean
 > from scratch: RC=0. That is why this board could proceed where `F4` stopped on Rule 5.
 >
+> **AND THE LOOP BACK CLOSES (`G7`, added after the board was called done).** `§2` had declared it
+> OUT because *"the room warns commit-service will reject an unsigned proposal at the
+> producer-identity stage"* — which is the ROOM's side. The CONSUMER decides, and `services/commit-service/src/bin/spine.rs:128`
+> says with no key configured identity is not enforced. One grep would have settled it; the row was
+> only recovered because the PO asked whether the goal was actually complete.
+>
+> Browser Strike → proposal (`user_ref_id` server-stamped, **no `actor` field** — `SEALED-SUBJECT`
+> read off the stream) → `spine --drain-once`: `consumed 1 · admitted 1 · committed 1 · turn 2` →
+> publisher → the room's tail → **the page updated with no reload**: `turn 2` and
+> **`1 strikes 2 for 9 (31 left)`**, which prints the hub's NUMBER rather than the derived badge.
+>
+> **Still not a deployment:** the spine ran as `--drain-once` invoked by hand between the click and
+> the update. The long-running consumer hangs (`DFO-7`), so the loop is proven and the AUTOMATIC
+> turn is not.
+>
 > **⚠ NOT DONE: the AUTOMATED browser assertion (`GO-2`).** The Playwright spec is written and
 > SKIPS. `/play` is behind `RequireAuth` and the app CLEARS a token it cannot use, so a seeded
 > placeholder is impossible by design; it needs one auth-service issued. The browser proof above is
