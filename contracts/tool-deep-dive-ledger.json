@@ -2276,10 +2276,10 @@
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch24.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE after THIRTEEN arms — 68 attempts, 1 clean run. That run called the tool and minted its Tier-A card with the store unchanged, so the TOOL works. Every other attempt died on the degenerate `<tool_call|>` output after a SUCCESSFUL composition_motif_search. Its siblings measure fine in the same arms and the prompt wording has been varied five times, so it is neither the rig, the fixture, nor the phrasing. It is the one tool D-SILENT-TURN has taken off the board."
+   "note": "IN CYCLE after FOURTEEN arms — 73 attempts, 1 clean run. Prompt wording varied six times; siblings measure fine in the same arms; the fixture flaw is fixed. Every loss is the degenerate `<tool_call|>` output after a SUCCESSFUL composition_motif_search."
   },
   "composition_motif_edit": {
    "state": "proven",
@@ -2458,6 +2458,38 @@
    "cycle": "batch-17 (2026-08-14)",
    "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch24.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch24.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "glossary_book_sync_available": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch25.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "glossary_entity_delete": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch25.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "glossary_entity_restore": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch25.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and the reason is a platform gap the model found for me. Called 0/5 with 0 errors across 5 clean runs: a real soft-deleted entity was seeded and the model was asked to restore it BY NAME. It searched the glossary, the chapter text and project memory, found nothing — because a deleted row is invisible to all three — and said so: 'I couldn't find \"Mira Solene\" ... Since I can't see her in the trash (the recycle bin) without an ID, I'll need you to provide her element ID.' That is the correct answer.\n🔴 THE TOOL IS UNREACHABLE BY DESIGN, not by accident: NOTHING in the catalogue lists a soft-deleted glossary entity. Measured across the whole surface — 10 restore tools ship, only 4 of the things they restore can be listed, and this is one of the 6 that cannot (D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE). The tool ITSELF is honest: restoring an id that is not deleted returns {restored: false} rather than claiming success — the correct counter-example to the arc_template archive defect.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "glossary_book_sync_apply": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch25.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a precondition, and the model handled it exactly right. Never surfaced (0/5) and never called; instead it called glossary_book_sync_available and reported 'there are currently no upstream changes to apply. Your world's categories and standards are already up to date.' That is a CHECK followed by a truthful report — not the claimed-write shape that plan_keep_material produced in batch 23, where the model asserted an update with zero tool calls. `items` is REQUIRED and each item decides whether an author's value is overwritten, so fabricating that list would have been an editorial decision about their story bible; it did not.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   }
@@ -2741,6 +2773,14 @@
    "why_it_matters": "A failed or cancelled LLM request still consumed provider resources up to the point it stopped. Those rows are the usage and billing record, and every one of them is being discarded at the database with the caller none the wiser — the INSERT carries ON CONFLICT DO NOTHING and the error surfaces only in the postgres log. This is the swallowed-signal class: a write that always fails, silently, at scale.",
    "how_it_was_found": "Not by looking for it. Postgres was recreated mid-probe during batch 24 and I read its log to find out why; the constraint violations were sitting in it. The restart itself was benign (RestartCount 0, OOMKilled false, ExitCode 0).",
    "not_fixed_and_why": "The fix is either to widen the CHECK or to map the writer's vocabulary onto it, and choosing between those needs to know which vocabulary is canonical — this repo already has a recorded case of turn-outcome and call-outcome being two different vocabularies that overlap only at `failed`. Guessing at a BILLING schema mid-loop is exactly the move this loop keeps punishing. Recorded with the measurement so the fix starts from evidence."
+  },
+  "D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE": {
+   "state": "open",
+   "found": "2026-08-21",
+   "measured": "The platform ships TEN `*_restore` tools. Only FOUR of the things they restore can be listed at all: arcs (composition_arc_list include_archived), arc templates (composition_arc_template_list status), motifs (composition_motif_search status) and outline nodes (composition_list_outline include_archived).\nSIX HAVE NO DISCOVERY PATH — nothing in the catalogue lists what they can restore:\n  composition_canon_rule_restore, composition_entity_override_restore,\n  composition_scene_link_restore, composition_structure_template_restore,\n  glossary_entity_restore, glossary_user_restore\nEach takes an id, and the only way to hold that id is to have written it down BEFORE deleting. An undo you cannot reach is not an undo.",
+   "live_confirmation": "batch 25, glossary_entity_restore, 5 of 5 runs. A real soft-deleted entity was seeded and the model was asked to restore it by NAME. It searched the glossary, the chapter text and project memory, found nothing — because a deleted row is invisible to all of them — and said so: 'I couldn't find \"Mira Solene\" in the story bible or the current chapter's text. Since I can't see her in the trash (the recycle bin) without an ID, I'll need you to provide her element ID.' That is the correct answer and the tool is unreachable because of it.",
+   "the_control_that_narrowed_it": "My first count said no restore tool had a lister, from a grep for include_archived-style FLAGS. That was too crude: motifs and arc templates are discoverable through a `status` enum instead, which the flag search missed. Re-measured across both mechanisms, the gap is 6 of 10 rather than 10 of 10.",
+   "not_fixed_and_why": "The remedy is a listing surface per family — a filter on an existing list tool, or a recycle-bin read — and which of those is right is an owner call per domain, not a loop call. Recorded with the measurement."
   }
  },
  "deferred_questions": {
@@ -3211,10 +3251,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 133,
+  "tools_concluded": 137,
   "tools_in_cycle": 1,
-  "tools_proven": 99,
-  "tools_blocked": 34,
+  "tools_proven": 101,
+  "tools_blocked": 36,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3229,7 +3269,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 138,
+  "tools_concluded_including_deprecated": 142,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
