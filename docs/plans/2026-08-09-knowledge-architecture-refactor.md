@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `entities` ON CREATE/MATCH + CALL{} — 19 sites left in it, semantics-preserving rewrites not token swaps.**
+**RESUME: rewrite the 16 per-property `ON CREATE SET` branches onto `coalesce`; §10.3's whole-map one is its own unit.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,47 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 📊 T67 2026-08-22 — **16 of 17 `ON CREATE SET` branches take the recipe; the 17th cannot**
+
+  ```
+  ON CREATE SET branches in the repo layer: 17
+      per-property  16     ->  SET x = coalesce(x, v)          the probe's recipe
+      WHOLE-MAP      1     ->  no coalesce form exists
+
+  entities.py::_MERGE_REWIRE_EVIDENCED_BY_CYPHER
+      MERGE (t)-[e2:EVIDENCED_BY {job_id: props.job_id}]->(ext)
+      ON CREATE SET e2 = props
+  ```
+
+  🎯 **`coalesce` takes a VALUE, not a property map.** `SET e2 = coalesce(e2, props)` is not a
+  thing, and the naive unconditional `SET e2 = props` changes the semantics **on Neo4j as well
+  as on AGE**: first-writer-wins becomes last-writer-wins. Two source edges sharing a `job_id`
+  and pointing at one `:ExtractionSource` would have their order decide the winner.
+
+  📐 **DECIDED — spec §10.3: that one becomes two statements in one transaction**, T58's
+  `update_event_fields` pattern, which 2026-08-11 already showed is the correct form on AGE
+  regardless. First-writer-wins is preserved exactly, on both engines.
+
+  ⚠️ **Third time a "mechanical" step in this migration was not**, and all three were found the
+  same way — by measuring before applying, when the failure would have been silent afterwards:
+
+  ```
+  §10.2  datetime() -> timestamp()      a stored-TYPE change; mixed ORDER BY sorts by type
+  T63    the dialect counter            counted PROSE; a ceiling targeting zero could not reach it
+  §10.3  ON CREATE SET -> coalesce      does not cover its own rarest form (1 of 17)
+  ```
+
+  **BITE — N/A, and the reason:** no code changed. This is rule 8 splitting a batch before it
+  is built, and its criterion can fail: each `ON CREATE SET` branch either has per-property
+  assignments the recipe covers, or it does not — and one did not, which is the whole result.
+  A criterion that had asked *"does the recipe look applicable"* could not have failed.
+
+  **QC (a) gates:** `port-adoption-gate` PASS, dialect 121/121 unchanged (nothing migrated);
+  four plan gates green.
+  **QC (b) the seam:** N/A — a measurement over the repo layer's own Cypher.
+  **QC (c) real data:** the 17 branches are parsed from source on every run of the count, and
+  the shape split is derived, not estimated.
 
   ### ✅ T66 2026-08-22 — **`entities` loses its 26 `datetime()` sites; dialect 147 → 121**
 

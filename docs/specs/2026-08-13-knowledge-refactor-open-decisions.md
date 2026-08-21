@@ -1225,6 +1225,42 @@ they are rewritten, not tokenised. `datetime()` is the one whose naive translati
 STORED TYPE, and it is the only one that gets an indirection. A per-construct decision, because
 the measurement was per-construct.
 
+### 10.3 `ON CREATE SET <map>` is the one construct with no `coalesce` form — **DECIDED (T67, 2026-08-22)**
+
+The 2026-08-11 probe's recipe is `ON CREATE SET` → `SET x = coalesce(x, v)`. Measured across
+the whole repo layer before applying it:
+
+```
+ON CREATE SET branches: 17    per-property: 16    WHOLE-MAP: 1
+
+the whole-map one:  entities.py::_MERGE_REWIRE_EVIDENCED_BY_CYPHER
+    MERGE (t)-[e2:EVIDENCED_BY {job_id: props.job_id}]->(ext)
+    ON CREATE SET e2 = props
+```
+
+`coalesce` takes a VALUE, not a property map. `SET e2 = coalesce(e2, props)` is not a thing,
+and the naive unconditional `SET e2 = props` **changes the semantics on Neo4j as well as on
+AGE**: first-writer-wins becomes last-writer-wins. Two source edges sharing a `job_id` and
+pointing at one `:ExtractionSource` would then have their order decide the winner, where today
+the first one keeps it.
+
+**DECIDED: this one becomes two statements in one transaction** — does the target edge exist,
+and create it with `props` only if it does not. That is T58's `update_event_fields` pattern,
+which the 2026-08-11 probe established is the correct form on AGE anyway (a single-statement
+CTE has no guaranteed evaluation order there). It preserves first-writer-wins exactly, on both
+engines, and it is one query rather than a class of them.
+
+**Why this is recorded rather than just done.** The recipe table in §10.1 reads as if the six
+constructs are six uniform find-and-replaces. Sixteen of seventeen are. The seventeenth is not,
+and the failure mode of assuming otherwise is **silent**: a rewired `EVIDENCED_BY` edge taking
+the last writer's properties instead of the first's, on both engines, with no error. The recipe
+is per-construct; this says it is also per-SHAPE, and the count of shapes is 2.
+
+⚠️ **This is the third time a "mechanical" step in this migration was not.** `datetime()` was a
+stored-TYPE change (§10.2), the dialect counter was over-counting prose (T63), and now the
+`ON CREATE SET` recipe does not cover its own rarest form. Each was found by measuring before
+applying, and each would have been silent afterwards.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
