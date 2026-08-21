@@ -146,3 +146,56 @@ def test_project_not_found_404():
     client = _client(None)
     resp = _post(client)
     assert resp.status_code == 404
+
+
+# ── D-K17-EMBED-FAILURE-REPORTED-AS-A-CLEAN-DRAIN ────────────────────────────
+# Measured live 2026-08-21 while feeding the T25 vector soak: the embedding provider
+# answered 502 with an HTML body, 25 anchored entities were left with no vector, and this
+# endpoint returned {"embedded":0,"skipped":0,"iterations":1,"drained":true,"reason":null}.
+# `EmbedEntitiesResult.embed_failed` was already set by the producer and simply never read,
+# so the outage fell into the short-batch branch and was rendered as a finished drain. The
+# soak it was meant to feed stayed at zero, and the zero looked healthy — which is the exact
+# shape `soak-armed-gate` exists to refuse.
+
+
+def test_a_provider_failure_is_NOT_reported_as_a_clean_drain():
+    """The live shape: fewer candidates than a batch AND the provider failed.
+
+    The short-batch terminator is what makes this dangerous — it is the branch that sets
+    `drained=True`, so the smaller the leftover queue, the more convincing the false
+    success. A caller polling `drained` to decide "the queue is empty" would stop here
+    forever while every candidate still needs a vector.
+    """
+    client = _client(_project())
+    side = [EmbedEntitiesResult(embedded=0, skipped=0, candidates=25, embed_failed=True)]
+    with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side), \
+            patch("app.routers.internal_extraction.get_glossary_client"), \
+            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.clients.embedding_client.get_embedding_client"):
+        resp = _post(client)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["embedded"] == 0
+    assert body["drained"] is False, (
+        "a provider failure was reported as a drained queue — 25 candidates still need "
+        "a vector and the caller has been told there is nothing left to do"
+    )
+    assert body["reason"], "the failure reached the caller with no reason attached"
+    assert "provider" in body["reason"]
+
+
+def test_a_GENUINE_short_batch_still_drains_so_the_fix_is_not_a_blanket_never_drained():
+    """The control. `drained` must still be True when the batch was short for the ordinary
+    reason — the queue really is empty. Without this, setting `drained=False` unconditionally
+    would pass the test above and break every caller that polls to completion.
+    """
+    client = _client(_project())
+    side = [EmbedEntitiesResult(embedded=25, skipped=0, candidates=25)]
+    with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side), \
+            patch("app.routers.internal_extraction.get_glossary_client"), \
+            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.clients.embedding_client.get_embedding_client"):
+        resp = _post(client)
+    body = resp.json()
+    assert body["drained"] is True
+    assert body["reason"] is None

@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 42 of 88 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 43 of 90 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -1096,8 +1096,7 @@ argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit test
 | **Evidence** | `app/adapters/vector_store_provider.py` returns a plain `Neo4jVectorStore` when the env var is unset (T25a, asserted by test). Consequently `vector_dual_write_total{outcome="secondary_failed"}` reads **0** — and as T25a's own docstring puts it, *a gate that reads zero because nothing is wired looks exactly like a gate that reads zero because nothing failed*. The counter is not evidence of health here; it is evidence of absence. |
 | **To unblock** | Someone with authority over the dev stack sets `KNOWLEDGE_VECTOR_DB_URL`, and the secondary then takes real traffic for long enough that a zero on the failure counter means something. **This is an operational decision about a shared environment, not a code change** — which is exactly why it is not mine to make unilaterally. |
 | **Mechanism** | `tests/unit/test_vector_primary_owns_anchor_score.py::test_the_provider_keeps_neo4j_as_primary` asserts on the **constructed** store that Neo4j is primary and that `DualWriteVectorStore(primary, secondary)` keeps that argument order. Any attempt to begin the read cutover reds it with a message naming this deferral. A note in a file nobody is editing would not have done that; T27 already proved that failure mode here, shipping handlers that could never run. |
-| **Retry when** | 🟡 **ARMED 2026-08-21 (T25c-2) — AND THE CAUSE RECORDED HERE ON 2026-08-21 WAS WRONG.** This cell said `KNOWLEDGE_VECTOR_DB_URL` is UNSET. It was not: `infra/.env:12` has carried it since 2026-08-12, under a comment naming OD-2, and `docker compose config` resolves it. The `knowledge_vector_dual_write_total` family was absent because the running **image** was built before the metric existed — its `/app/app/metrics.py` was 28763 bytes and ended at `knowledge_extraction_writer_autocreate_total`, i.e. the byte before the T24 block that commit `1361a56e4` added on 2026-08-10. Absence measured the code’s AGE, not the config, so recreating the container (twice) changed nothing until `docker compose build knowledge-service` ran. Now: `armed 1.0`, gate **ARMED_IDLE**. The secondary still holds **0 rows** against 1051 passages, so the second half is unchanged and still requires writes to flow: a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Was: *First half DONE 2026-08-12*. Both halves are required; the second without the first is the trap above. |
-
+| **Retry when** | 🟢 **THE FIRST HALF IS DONE — SOAKING 2026-08-21 (T25d), and this cell has now been wrong twice.** It first said `KNOWLEDGE_VECTOR_DB_URL` is UNSET; it was set in `infra/.env:12` from 2026-08-12 and the running **image** predated the metric (T25c-2). Now measured end to end: `soak-armed-gate` reads **SOAKING — 25 write(s) landed, secondary_failed = 0**, `knowledge_vector_dual_write_total{outcome="both",scope="entity"} 25.0`, and `entity_vectors_1024` in `loreweave_knowledge_vectors` holds **25 rows** where every table held 0 for nine days. So both halves of the original clause are now satisfiable and the first is satisfied: the variable is set on the dev stack **and** writes are demonstrably flowing with `secondary_failed` observed at zero *while they flowed*. What remains is duration and the `passage` scope, which is still 0 — 25 entity writes is a working dual-write, not yet a soak. Was: *First half DONE 2026-08-12*. |
 **PO decisions (both ANSWERED, kept for the record):**
 
 1. **The entity read path.** `PgVectorStore.search(scope="entity")` refuses, because
@@ -13758,6 +13757,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `knowledge-service` container, which is the only path that carries the fixed merge.
   **QC (c) real data:** 4866 scanned, 1819 re-keyed, 1 merged, 4872 -> 4871 entities, and 2666 real
   relationships accounted for either side of the mutation.
+
+  ### ✅ T25d / QC-6b 2026-08-21 — **the live run.** Re-extraction forks NOTHING, and the soak is SOAKING.
+
+  ```
+  soak-armed-gate   DISARMED -> ARMED_IDLE -> SOAKING (25 write(s), secondary_failed = 0)
+  entity_vectors_1024 in loreweave_knowledge_vectors   0 -> 25 rows   (was 0 for nine days)
+  re-extract ch1  job 01a02362  4 LLM calls  7205 in / 1665 out  $0.0040  20s
+  entities 4871 -> 4853   groups 4853   LARGEST GROUP 1   NEW NODES 0
+  knowledge-service unit 4246 -> 4248     BITE x2 (54-55)
+  ```
+
+  The run RESUME asked for, on the graph `T46d` had just repaired. Two things had to be true
+  at once: re-extraction must not fork, and something must actually reach the secondary.
+
+  🎯 **Identity holds on real data.** Pass 2 wrote `entities=10, relations=4, events=3, facts=7`
+  and produced **zero new nodes** — every one of the 10 resolved onto an existing id. The whole
+  graph groups 4853 entities into 4853 `(user, project, canonical_name, kind)` groups, largest
+  **1**. §6.3's precondition said any re-extraction of an affected chapter forks it *today*; this
+  is the same operation after the repair, and nothing forked. That is QC-6's claim measured on
+  production-shaped data rather than a seeded row.
+
+  ⚠️ **The entity count FELL by 18, and that had to be chased before it could be reported.** A
+  drop is what a destructive merge looks like, and T46c's defect was exactly that. It is not:
+  `delete_entities_with_zero_evidence` is the documented cascade for a partial re-extraction —
+  re-extracting a chapter replaces that chapter's evidence, and entities left with
+  `evidence_count = 0` are removed. The 18 were supported **only** by the old chapter-1 pass and
+  the new pass did not re-find them; the 29 survivors all carry `evidence_count >= 1` and none
+  sits at 0. Worth naming plainly: **re-extraction is destructive to entities the new pass misses**,
+  even with the same model — a recall difference between two runs silently shrinks the graph.
+
+  ### 🔴 THE SOAK COULD NOT BE FED, AND THE REASON WAS A CHECK THAT REPORTED SUCCESS
+
+  The extraction path writes no vectors at all (`targets` are entities/relations/events/facts/
+  summaries), so the counter stayed at 0 through a completed run. `backfill-passages` returned
+  `chapters_ingested: 4, passages_created: 0` — the passages already existed. Then
+  `embed-entities-backfill` returned:
+
+  ```
+  {"embedded":0,"skipped":0,"iterations":1,"drained":true,"reason":null}
+  ```
+
+  read as *"nothing to embed"*. Measured instead of believed: **all 29 entities had no
+  `embedding_1024`**, 25 of them anchored, and running the endpoint's own
+  `_FIND_NEEDING_EMBEDDING_CYPHER` by hand against the live graph returned **25**. The service log
+  had the truth — `K17: embed failed … EmbeddingError: embedding failed (502)`, an HTML body from
+  the embedding provider.
+
+  🔴 **`EmbedEntitiesResult.embed_failed` was set by the producer and never read by the route.** The
+  outage therefore fell into the short-batch terminator, which sets `drained = True`. The smaller
+  the leftover queue, the more convincing the false success — and a caller polling `drained` to
+  decide "the queue is empty" stops forever while every candidate still needs a vector. This is
+  the `soak-armed-gate` failure shape one layer up: **a zero that means "nothing ran" wearing the
+  face of a zero that means "nothing left to do"**, and it is why the soak read healthy at 0.
+
+  ✅ **Fixed:** a provider failure breaks the loop, keeps `drained` false, and returns a `reason`.
+  The retry then embedded **25**, and those 25 are the writes that moved the gate to SOAKING.
+
+  **BITE ×2, each red on its own assertion:**
+
+  ```
+  54. drop the embed_failed branch      E "a provider failure was reported as a drained queue
+                                           — 25 candidates still need a vector and the caller
+                                           has been told there is nothing left to do"
+  55. drained=False unconditionally     E test_drains_across_multiple_batches: assert False is True
+  ```
+
+  ⚠️ **Bite 55 is the control, and it is the point.** Returning `drained=False` on every path
+  would have passed the failure test and broken every caller that polls to completion. A fix that
+  only satisfies the test it was written for is the defect class this plan keeps finding.
+
+  ⛔ **25 entity writes is a working dual-write, not a finished soak.** The `passage` scope is
+  still 0 and duration is still duration. What changed is that the number is no longer vacuous:
+  `secondary_failed = 0` was observed *while writes were flowing*, which is the clause
+  `D-T25B-SOAK` has been asking for since 2026-08-12.
+
+  **QC (a) gates:** knowledge-service unit **4246 → 4248**; `soak-armed-gate --selftest` 12/12;
+  plan gates re-run green.
+  **QC (b) the seam:** a real extraction job through `knowledge-service` → `provider-registry-service`
+  → LM Studio on rebuilt images, and the dual-write reaching a second live Postgres.
+  **QC (c) real data:** 4853 live entities in 4853 groups, a real 20 s extraction job costing
+  $0.0040, and 25 real 1024-dim vectors in the secondary.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

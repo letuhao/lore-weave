@@ -2168,6 +2168,7 @@ async def embed_entities_backfill(
     glossary_client = get_glossary_client()
     embedded = skipped = iterations = 0
     drained = False
+    embed_failed = False
 
     async with neo4j_session() as session:
         while iterations < _EMBED_BACKFILL_MAX_ITER and embedded < body.max_entities:
@@ -2185,6 +2186,18 @@ async def embed_entities_backfill(
             embedded += res.embedded
             skipped += res.skipped
             iterations += 1
+            if res.embed_failed:
+                # A provider failure is NOT a drain: every candidate in this batch still
+                # needs a vector. The previous version dropped `embed_failed` on the floor
+                # and fell into the branch below, which sets `drained = True` whenever the
+                # batch was short — so an outage returned
+                # `{"embedded":0,"skipped":0,"drained":true,"reason":null}`, which an
+                # operator reads as "nothing to do". Measured live 2026-08-21: the
+                # embedding provider answered 502 with an HTML body, 25 anchored entities
+                # had no vector, and this endpoint reported a clean drain. The soak it was
+                # supposed to feed stayed at zero, and the zero looked healthy.
+                embed_failed = True
+                break
             if res.candidates < _EMBED_BACKFILL_BATCH:
                 # Fewer candidates than a full batch → the queue is drained.
                 drained = True
@@ -2198,5 +2211,15 @@ async def embed_entities_backfill(
                 break
 
     return EmbedBackfillResponse(
-        embedded=embedded, skipped=skipped, iterations=iterations, drained=drained,
+        embedded=embedded,
+        skipped=skipped,
+        iterations=iterations,
+        # `and not embed_failed` is belt-and-braces — the break above leaves `drained`
+        # False — but it is the invariant that matters, so it is stated where it is read.
+        drained=drained and not embed_failed,
+        reason=(
+            "embedding provider failed — candidates remain unembedded"
+            if embed_failed
+            else None
+        ),
     )
