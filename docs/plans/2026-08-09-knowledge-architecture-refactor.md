@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 55 of 99 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 56 of 100 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (5/11) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14901,6 +14901,54 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (FAILING) and dev `:8216` (DISARMED, then ARMED_IDLE after re-arming).
   **QC (c) real data:** 18 real secondary failures on lw-iso and a real unplanned container
   recreate on dev, with its config-hash as the fingerprint.
+
+  ### ✅ T25i 2026-08-21 — **one of the two live readers is off the Neo4j vector indexes**
+
+  PO 2026-08-21: *migrate the two readers*. `tools/executor.py` — the memory-search tool's
+  semantic leg — now goes through `VectorStore`.
+
+  ```
+  before  find_passages_by_vector(session, …, source_type=…, limit=…)   -> h.passage.text
+  after   store.search(scope="passage", k=…, filter=VectorFilter(…))    -> h.attributes["text"]
+  ```
+
+  It is a straight swap because **both adapters already populate what this caller reads** —
+  `attributes["text"]` and `attributes["source_type"]`. That is the established pattern, not a
+  new one: `context/selectors/passages.py` reads `chapter_index` the same way.
+
+  🦷 **BITE 1 — the attribute contract.** `attributes.get("text")` → `attributes.get("body")` at
+  `executor.py:526`: **3 failed** (`happy_path`, `truncates_long_snippets`,
+  `chat_source_skips_manuscript_leg`) — the snippet goes empty and the tool returns nothing.
+  Restored; **60 passed**.
+
+  ⚠️ **THE TEST DOUBLES HAD TO MOVE WITH IT, and that is the part worth recording.** Five tests
+  stubbed `find_passages_by_vector` and returned `SimpleNamespace(passage=…, raw_score=…)`. A
+  double shaped like the OLD return keeps passing while production calls something else
+  entirely — the fake agreeing with the code that was deleted. They now stub
+  `get_vector_store` and return real `VectorHit`s, so the seam the code actually uses is the
+  seam the suite exercises. `test_memory_search_forwards_limit_and_source_type` moved with them:
+  it asserted the repo's `limit=`/`source_type=` kwargs and now asserts the port's `k=` and
+  `VectorFilter.source_type`.
+
+  ✅ **QC (b) — LIVE SMOKE against a REBUILT iso image**, driving the exact call the migrated
+  code makes:
+
+  ```
+  store: DualWriteVectorStore     hits: 3
+    id=478ef904c9860b score=0.5131 text_len=1137 source_type='chapter'
+    id=d5457bf01d0ea1 score=0.5118 text_len=1394 source_type='chapter'
+    id=3c6c2a0dc6aeec score=0.5073 text_len=727  source_type='chapter'
+  CONTRACT the migrated executor depends on: HOLDS
+  ```
+
+  ⚠️ The first smoke read **0 hits** and said `BROKEN`. That was my filter, not the code:
+  `embedding_model` on iso is a model **ref UUID** (`019e7f71-…`), not `bge-m3`. Recorded because
+  a 0-hit smoke that is really a bad filter is exactly the kind of red that gets explained away
+  — it was checked against the graph census rather than assumed either way.
+
+  📐 **Ceiling moved in the SAME COMMIT (rule 5): `MAX_VECTOR_BYPASS` 4 → 3**, and the gate said
+  so itself before I touched it — *"vector bypass IMPROVED to 3 but the ceiling still says 4"*.
+  One LIVE reader remains: `routers/public/entities.py`. Suite: **4288 passed**.
 
   ### 🔴 T25h 2026-08-21 — **③ IS NOT A DATABASE OPERATION.** The grant was given, and it cannot be spent as written
 

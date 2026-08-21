@@ -159,7 +159,11 @@ _CONCRETE = "neo4j_repos"
 _VECTOR_SYMS = {"find_entities_by_vector", "find_passages_by_vector"}
 #: the adapter is the sanctioned caller -- it IS the port's Neo4j implementation
 _VECTOR_EXEMPT = {"adapters/neo4j_vector_store.py"}
-MAX_VECTOR_BYPASS = 4
+#: 4 -> 3 (2026-08-21, T25 (3)): `tools/executor.py` migrated onto the port. Its test doubles
+#: moved with it -- from stubbing `find_passages_by_vector` to stubbing `get_vector_store`,
+#: because a double shaped like the OLD return keeps passing while production calls something
+#: else. `routers/public/entities.py` is the one LIVE reader left.
+MAX_VECTOR_BYPASS = 3
 #: benchmarks stay; a floor of 2 says so out loud rather than leaving a future reader to
 #: "finish the job" by deleting the only thing that can compare the two backends.
 MIN_VECTOR_BYPASS = 2

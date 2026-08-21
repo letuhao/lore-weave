@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.ports.vector_store import VectorHit
 from app.tools.executor import (
     TOOL_FACT_CONFIDENCE,
     TOOL_FACT_SOURCE_TYPE,
@@ -129,20 +130,28 @@ def _remember_ctx(monkeypatch, *, redis=None, memory_remember_confirm=False,
 
 
 def _hit(text: str, score: float = 0.9, source_type: str = "chapter"):
-    return SimpleNamespace(
-        passage=SimpleNamespace(text=text, source_type=source_type),
-        raw_score=score,
+    """A `VectorHit`, not a repo row. T25 (3) moved this reader onto the port, and the double
+    has to move with it: a stub shaped like `find_passages_by_vector`'s return would keep
+    passing while the real call returns something else entirely — the fake agreeing with the
+    old code instead of the new contract."""
+    return VectorHit(
+        record_id=f"p-{abs(hash(text)) % 10_000}",
+        score=score,
+        scope="passage",
+        attributes={"text": text, "source_type": source_type},
     )
 
 
 def _search_ctx(monkeypatch, hits, *, project=None):
-    """Wire a memory_search-ready context: project lookup + embed +
-    find_passages_by_vector all stubbed."""
-    monkeypatch.setattr(
-        "app.tools.executor.find_passages_by_vector",
-        AsyncMock(return_value=hits) if not isinstance(hits, Exception)
-        else AsyncMock(side_effect=hits),
-    )
+    """Wire a memory_search-ready context: project lookup + embed + the VECTOR STORE stubbed.
+
+    Patching `get_vector_store` rather than the repo function is the point: it is the seam the
+    production code now goes through, so a future engine swap is exercised here instead of
+    being invisible to the suite."""
+    store = AsyncMock()
+    store.search = (AsyncMock(return_value=hits) if not isinstance(hits, Exception)
+                    else AsyncMock(side_effect=hits))
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=project or _project())
     embedding_client = AsyncMock()
@@ -232,10 +241,16 @@ async def test_memory_search_truncates_long_snippets(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_memory_search_forwards_limit_and_source_type(monkeypatch):
-    """/review-impl LOW#3 — lock that limit + source_type actually
-    reach the repo, so a future refactor can't silently drop them."""
-    repo = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_passages_by_vector", repo)
+    """/review-impl LOW#3 — lock that limit + source_type actually reach the STORE, so a
+    future refactor cannot silently drop them.
+
+    T25 (3): the assertion moved from the repo's `limit=`/`source_type=` kwargs to the port's
+    `k=` and `VectorFilter.source_type`. That is not cosmetic — had it kept asserting on the
+    old kwargs it would have gone green against a mock nobody calls, which is the exact shape
+    this test exists to prevent."""
+    store = AsyncMock()
+    store.search = AsyncMock(return_value=[])
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=_project())
     embedding_client = AsyncMock()
@@ -247,9 +262,12 @@ async def test_memory_search_forwards_limit_and_source_type(monkeypatch):
         "memory_search",
         {"query": "x", "limit": 7, "source_type": "chat"},
     )
-    kwargs = repo.await_args.kwargs
-    assert kwargs["limit"] == 7
-    assert kwargs["source_type"] == "chat"
+    kwargs = store.search.await_args.kwargs
+    assert kwargs["k"] == 7, f"limit must reach the port as k=, got {kwargs.get('k')!r}"
+    assert kwargs["filter"].source_type == "chat", (
+        f"source_type must ride VectorFilter, got {kwargs['filter']!r}"
+    )
+    assert kwargs["scope"] == "passage"
 
 
 @pytest.mark.asyncio
@@ -287,8 +305,9 @@ async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
     chapter-only) — even with the manuscript engine wired."""
     hybrid = AsyncMock()
     monkeypatch.setattr("app.search.retriever.run_hybrid_search", hybrid)
-    repo = AsyncMock(return_value=[_hit("a past chat turn", source_type="chat")])
-    monkeypatch.setattr("app.tools.executor.find_passages_by_vector", repo)
+    store = AsyncMock()
+    store.search = AsyncMock(return_value=[_hit("a past chat turn", source_type="chat")])
+    monkeypatch.setattr("app.tools.executor.get_vector_store", AsyncMock(return_value=store))
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=SimpleNamespace(
         embedding_model="bge-m3", embedding_dimension=1024, book_id=_BOOK,

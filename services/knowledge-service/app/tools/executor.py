@@ -47,6 +47,8 @@ if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_s
     from app.db.repositories.triage import TriageRepo
     from app.ontology.resolver import OntologyResolver
 
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
@@ -58,7 +60,6 @@ from app.db.neo4j_repos.events import list_events_filtered
 from app.db.neo4j_repos.facts import invalidate_fact, merge_fact
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
 )
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
@@ -490,12 +491,30 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                 )
         if embed and embed.embeddings and embed.embeddings[0]:
             try:
+                # T25 (3) — through the PORT. This was one of the two production readers that
+                # still called `neo4j_repos` directly, and neither was in §3.1's migration list,
+                # so the module-level adoption count (54) could not see them: a vector reader
+                # and any other `neo4j_repos` caller looked identical to it.
+                #
+                # Retiring the Neo4j vector indexes means deleting their DDL from
+                # `neo4j_schema.cypher` (a graph DROP is recreated at startup — proven on
+                # lw-iso in 4s), and that deletion breaks every module on this list.
+                #
+                # The migration is a straight swap because the port already carries what this
+                # caller reads: `attributes["text"]` and `attributes["source_type"]` are
+                # populated by BOTH adapters, so the snippet and the source label survive the
+                # engine change that `h.passage.<field>` would not have.
                 async with neo4j_session() as session:
-                    hits = await find_passages_by_vector(
-                        session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
-                        query_vector=embed.embeddings[0], dim=project.embedding_dimension,
-                        embedding_model=project.embedding_model,
-                        source_type=_passage_source, limit=args.limit,
+                    store = await get_vector_store(session)
+                    hits = await store.search(
+                        scope="passage", user_id=str(ctx.user_id),
+                        embedding=embed.embeddings[0], dim=project.embedding_dimension,
+                        k=args.limit,
+                        filter=VectorFilter(
+                            project_id=str(ctx.project_id),
+                            embedding_model=project.embedding_model,
+                            source_type=_passage_source,
+                        ),
                     )
             except ValueError as exc:
                 # query_vector length disagrees with the stored dim (model changed
@@ -504,15 +523,15 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                     raise ToolExecutionError(f"memory search failed: {exc}")
                 hits = []
             for h in hits[: args.limit]:
-                key = _one_line(h.passage.text)
+                key = _one_line(h.attributes.get("text") or "")
                 if not key or key in seen:
                     continue
                 seen.add(key)
                 items.append({
                     "snippet": key,
-                    "text": _truncate(h.passage.text),
-                    "source_type": h.passage.source_type,
-                    "score": round(h.raw_score, 4),
+                    "text": _truncate(h.attributes.get("text") or ""),
+                    "source_type": h.attributes.get("source_type"),
+                    "score": round(h.score, 4),
                 })
 
     items = items[: args.limit]
