@@ -109,6 +109,20 @@ def normalize_critique(parsed: dict[str, Any] | None) -> dict[str, Any]:
         for n in (parsed.get("craft_notes") or [])
         if isinstance(n, dict) and str(n.get("note", "")).strip()
     ][:10]
+    # NOTHING WAS JUDGED, and it has to SAY so. `parse_critique_json` returns None on a hard
+    # failure and this function then produced all-None dims, an empty violations list and NO
+    # error marker -- a shape a consumer cannot tell from a verdict. Measured 2026-08-21 on a
+    # 7187-char passage: 2 of 3 critique calls came back `canon_consistency=None,
+    # violations=[], error=None`, intermittently, while 10 earlier calls on the SAME passage
+    # scored 2. A silent parse failure that reads as "unjudged" is the same defect class as a
+    # dropped verdict that reads as "nothing found" -- and unlike those, this one had no
+    # counter beside it at all.
+    #
+    # The condition is deliberately "the judge scored NOTHING", not "parsed was falsy": a reply
+    # that parses but carries no dims is equally not a verdict, and keying on the parse result
+    # would miss it.
+    if all(crit[d] is None for d in _DIMENSIONS):
+        crit["error"] = "critic_unparsable"
     return crit
 
 

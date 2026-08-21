@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 54 of 97 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 55 of 98 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/40) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (21/41) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7254,6 +7254,52 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### ✅ QC-5 C25 2026-08-21 — **the acceptance gate PASSES, on a HARDER gate than the one it failed**
+
+  Four arms, 17 runs, all on lw-iso, all under §7.3's five-run rule and C24's mandatory control:
+
+  ```
+  planted          ch11  canon [3,3,3,3,·]  attributed [2,2,2,2,·]   4/5 flagged
+  planted_control  ch11  canon [5,5,5,5,5]  attributed [0,0,0,0,0]   0/5 flagged   <- it discriminates
+  flow             ch12  canon [5,5,5,5,5]  raw [0,0,0,0,0]          canon-clean
+  flow_control     ch13  canon 4  raw 1  attributed 1  (x2)          the critic is LIVE in the flow
+  ```
+
+  ```
+  1a  PASS   4/5 planted attributed with canon<=3, while only 0/5 control runs did
+  1b  PASS   5/5 flow runs are canon-clean, and 1a proves the critic would have said so
+  2   PASS   5 runs scored 5/5 with nothing found, and that is READABLE here: 1a shows the
+             critic attributes, and 2 flow_control runs show it producing findings in the flow
+  QC-5 => PASS
+  ```
+
+  🎯 **It passes a gate that got STRICTER three times today** — five runs instead of three (§7.3),
+  a mandatory matched control on 1a (C24), and clause 2 scoped to the flow arm. The same data
+  under this morning's gate would have been a weaker claim; this one had to earn each clause.
+
+  **How the `flow_control` was obtained, because it is the clause that failed twice.** Chapter 13,
+  two authoring runs: `canon=4 raw=1 attributed=1`, and the **breaker paused both runs**. The
+  critic found a violation inside the real flow and the flow reacted to it. That is the thing
+  clause 2 asks for and could not previously be shown.
+
+  ⚠️ **The degraded planted run is counted as a MISS, not dropped.** Planted #5 came back
+  `canon=None` — the silent parse failure fixed in this same commit. Scoring it as `canon=9,
+  attributed=0` costs the arm a run (4/5 rather than 5/5) and still clears majority-3. Dropping
+  it instead would have inflated the arm to 4/4, which is the shape of every measurement this
+  plan has had to retract.
+
+  ⛔ **AND QC-5 STILL DOES NOT GO `[x]`.** The row says *"through the real frontend"*, and this
+  drove `POST /authoring-runs` with the user's auth — the same gap C3 recorded on 2026-08-13 and
+  C4 restated. **Three batches of a passing acceptance gate do not retire a requirement nobody
+  met.** What is left is now exactly one element, named, and it is not a decision.
+
+  📐 **A residual limitation stated rather than buried:** the arms span three chapters, because
+  C24 measured that **only 1 of 6 candidate passages has a clean baseline** — the critic already
+  flags most of this corpus, which is why an in-place 1a on ch12 was vacuous. So 1a's capability
+  is proven on ch11 and 1b's cleanliness observed on ch12; a capability shown on one chapter is
+  not proof the critic would catch a violation in another. The gate composes them by design, and
+  a reader should know it is a composition.
+
   ### 🔴 QC-5 C24 2026-08-21 — **clause 1a could not fail, and it was inside the gate written to enforce rule 3**
 
   <!-- doc-language-gate: ok -- the rule references and the swapped NAME are the measurement -->
@@ -7566,7 +7612,18 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
   | **Retry when** | The PO decides which of those two it is. Not effort — the measurement is already in hand. |
 
-  ### 🔻 DEFERRAL `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`
+  ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**
+
+  ### 🔻 DEFERRAL `D-QC5-NOT-DRIVEN-THROUGH-THE-STUDIO-UI`
+
+  | | |
+  |---|---|
+  | **Blocker** | QC-5's row says the dogfood re-run happens **"through the real frontend"**. Every measurement to date — C3, C4, C15, C21, C23, C25 — has driven `POST /authoring-runs` with the user's auth. The acceptance gate now PASSES (C25) and this is the only stated criterion of the row that no run has met. |
+  | **Evidence** | Recorded as a gap on 2026-08-13 (C3), **restated** by C4, and restated again here rather than quietly absorbed into a passing gate. Three batches of real progress do not retire a requirement nobody met. |
+  | **Mechanism** | It is the row's own wording, so `plan-final-verification` keeps QC-5 `[~]` while it stands. There is no number to drift and nothing to go quiet: the row cannot tick. |
+  | **To unblock** | Drive the authoring run from the studio UI end to end with a live browser and capture the same four arms — the repo already has the recipe for exactly this shape (dockview panels via `evaluate` + testids; a live browser rather than a raw stream). |
+  | **Retry when** | Immediately — it is browser work, not a decision, and no PO call is owed. |
+
 
   | | |
   |---|---|

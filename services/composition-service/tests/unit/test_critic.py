@@ -51,6 +51,34 @@ def test_normalize_handles_none():
     assert out["coherence"] is None and out["violations"] == []
 
 
+def test_a_critique_that_scored_NOTHING_marks_itself_as_an_error():
+    """Measured 2026-08-21: on a 7187-char passage, 2 of 3 critique calls returned
+    `canon_consistency=None, violations=[], error=None` — intermittently, while ten earlier
+    calls on the SAME passage scored 2. `parse_critique_json` returns None on a hard failure
+    and this function turned that into a shape no consumer could tell from a verdict.
+
+    A silent parse failure reading as "unjudged" is the same defect class as a dropped verdict
+    reading as "nothing found" — and unlike those, this one had no counter beside it.
+    """
+    for parsed in (None, {}, {"violations": []}):
+        out = critic.normalize_critique(parsed)
+        assert out.get("error") == "critic_unparsable", (
+            f"a critique that scored nothing must say so; {parsed!r} produced {out.get('error')!r}"
+        )
+
+
+def test_a_critique_that_DID_score_is_not_marked_unparsable():
+    """The control. Marking everything would make the marker meaningless — and would flip every
+    healthy verdict into an error, which is a worse failure than the one being fixed. One real
+    dim is enough to make it a verdict.
+    """
+    assert "error" not in critic.normalize_critique(
+        {"coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5, "violations": []}
+    )
+    # ...and a PARTIAL judgement is still a judgement: one dim scored, the rest unjudged.
+    assert "error" not in critic.normalize_critique({"canon_consistency": 2})
+
+
 # ── de-bias prompt ──
 
 def test_prompt_carries_source_language_no_english_default():
