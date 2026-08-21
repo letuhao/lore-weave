@@ -305,18 +305,57 @@ def test_craft_notes_SURVIVE_normalisation_or_the_channel_writes_to_nowhere():
 # is what stops the next added field repeating it.
 
 
-def test_the_degrade_critic_shape_carries_every_key_the_success_shape_does():
+async def test_the_degrade_critic_shape_carries_every_key_the_success_shape_does():
+    """⚠️ REWRITTEN 2026-08-21. This compared `_empty_critic()` against
+    `normalize_critique(...)` — and `normalize_critique` is NOT the success shape a consumer
+    sees. `judge_prose` stamps four more keys AFTER it: `violations_dropped`,
+    `violations_raw_count`, `violations_dropped_labels` and `active_rule_count`. All four
+    were missing from the degrade shape while this test passed, so the exact bug the function
+    documents itself as preventing was live the whole time.
+
+    The old comparison was green by construction: it was validated on `craft_notes`, the one
+    key that motivated it, and `craft_notes` happens to be added by `normalize_critique`.
+    Driving the REAL `judge_prose` is what makes the assertion mean what it says.
+    """
     from app.engine.quality_report import _empty_critic
 
-    success = critic.normalize_critique(
-        {"coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5,
-         "violations": [], "craft_notes": [{"note": "n", "span": "s"}]}
+    judge = FakeJudge(content=json.dumps({
+        "coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5,
+        "violations": [{"rule_id": "r1", "violated": True, "span": "s", "why": "w"}],
+        "craft_notes": [{"note": "n", "span": "s"}],
+    }))
+    success = await critic.judge_prose(
+        judge, user_id="u", model_source="user_model", model_ref="m", passage="prose",
+        active_rules=[{"rule_id": "r1", "text": "no magic"}], present_facts=[], profile=NEUTRAL,
     )
     degraded = _empty_critic()
     missing = sorted(set(success) - set(degraded))
     assert not missing, (
         f"the degrade shape is missing {missing} — a consumer that reads those on a healthy "
         f"judge raises KeyError the moment one degrades. Add them to `_empty_critic`."
+    )
+
+
+async def test_the_success_shape_under_test_is_RICHER_than_normalize_critique():
+    """The control for the rewrite above. If `judge_prose` ever stopped adding keys of its own,
+    the new comparison would silently collapse back into the old weaker one and pass for the
+    old wrong reason. Pin the difference itself.
+    """
+    judge = FakeJudge(content=json.dumps({
+        "coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5, "violations": [],
+    }))
+    success = await critic.judge_prose(
+        judge, user_id="u", model_source="user_model", model_ref="m", passage="prose",
+        active_rules=[{"rule_id": "r1", "text": "no magic"}], present_facts=[], profile=NEUTRAL,
+    )
+    normalised = critic.normalize_critique(
+        {"coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5, "violations": []}
+    )
+    added = set(success) - set(normalised)
+    assert "active_rule_count" in added, (
+        f"`judge_prose` no longer stamps `active_rule_count`; the second seam "
+        f"(`quality_report`, which passes `active_rules=[]` on purpose) goes back to being "
+        f"indistinguishable from the C3 attribution failure. added={sorted(added)}"
     )
 
 

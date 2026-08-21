@@ -58,6 +58,17 @@ def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
         **{d: None for d in _CRITIC_DIMS},
         "violations": [],
         "craft_notes": [],
+        # ⚠️ These four are stamped by `judge_prose`, NOT by `normalize_critique`, and that is
+        # why they were missing here for so long: the paired test compared the degrade shape
+        # against `normalize_critique` — the case `craft_notes` came from — so every key the
+        # judge adds AFTER normalisation was outside what it could see. Measured 2026-08-21:
+        # a consumer reading `critic["violations_dropped"]` worked on a healthy judge and
+        # raised KeyError on a degrade, which is the exact bug this function documents itself
+        # as preventing. The test now drives the real `judge_prose`.
+        "violations_dropped": 0,
+        "violations_raw_count": 0,
+        "violations_dropped_labels": [],
+        "active_rule_count": 0,
         "error": err,
     }
 

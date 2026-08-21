@@ -272,10 +272,10 @@ async def judge_prose(
         )
     except LLMError as exc:
         logger.warning("judge_prose degraded (LLM error): %s", exc)
-        return {**{d: None for d in _DIMENSIONS}, "violations": [], "error": "critic_unavailable"}
+        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules), "error": "critic_unavailable"}
     if job.status != "completed":
         logger.info("judge_prose job status=%s → degraded", job.status)
-        return {**{d: None for d in _DIMENSIONS}, "violations": [], "error": f"critic_{job.status}"}
+        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules), "error": f"critic_{job.status}"}
     content = extract_judge_content(job.result)
     crit = normalize_critique(parse_critique_json(content))
     # Attribute the verdicts before anyone sees them. Done here rather than inside
@@ -326,4 +326,11 @@ async def judge_prose(
             dropped, len(raw_violations),
             [str(v.get("rule_id"))[:24] for v in raw_violations], len(active_rules),
         )
+    # HOW MANY RULES THE JUDGE WAS ACTUALLY GIVEN, stamped here rather than by the caller.
+    # `authoring_run_service` has added this since C5 and `quality_report` never did, so the
+    # SAME empty `violations: []` was self-explaining on one seam and mute on the other — and
+    # the mute one is the second seam that passes `active_rules=[]` deliberately. A reader of
+    # that report could not tell a deliberate no-rules critique from the C3 failure it looks
+    # exactly like. One home, every exit, including both degrades above.
+    crit["active_rule_count"] = len(active_rules)
     return crit

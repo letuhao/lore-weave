@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 51 of 91 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 52 of 92 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (18/35) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7167,13 +7167,59 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### ✅ QC-5 C19 2026-08-21 — the second seam now declares itself, and the guard that was supposed to protect it was **green by construction**
+
+  The small half of `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`: `quality_report` passes
+  `active_rules=[]` deliberately, but emitted no `active_rule_count`, so from the report a
+  deliberate no-rules critique and the C3 attribution failure looked identical.
+
+  Fixed in `judge_prose` (`engine/critic.py`), **not at the call site** — `authoring_run_service`
+  had stamped it since C5 and `quality_report` never did, which is precisely what one-home
+  prevents. All three exits carry it, both degrades included.
+
+  🔴 **AND THE FIX EXPOSED A LIVE BUG THE PAIRED TEST WAS BUILT TO PREVENT.**
+  `_empty_critic()` documents itself as *"the degrade shape, which must carry EVERY key the
+  success shape does"*, and `test_the_degrade_critic_shape_carries_every_key_the_success_shape_does`
+  was written to enforce it. It compared `_empty_critic()` against **`normalize_critique(...)`**
+  — which is not the success shape a consumer sees. `judge_prose` stamps four more keys AFTER
+  normalisation, and **three of them were missing from the degrade shape the whole time**:
+
+  ```
+  violations_dropped          stamped by judge_prose   MISSING from _empty_critic
+  violations_raw_count        stamped by judge_prose   MISSING from _empty_critic
+  violations_dropped_labels   stamped by judge_prose   MISSING from _empty_critic
+  active_rule_count           (added today)            MISSING from _empty_critic
+  ```
+
+  So a consumer reading `critic["violations_dropped"]` worked on a healthy judge and raised
+  `KeyError` the moment one degraded — **the exact failure the function and its test both say
+  they exist to stop.** The test passed because it was validated on `craft_notes`, the one key
+  that motivated it, and `craft_notes` happens to be added by `normalize_critique`. Every key
+  added at the `judge_prose` level was outside what it could ever see.
+
+  **🦷 BITE — and the discrimination is the point, not the red.** Removed `"violations_dropped"`
+  from `_empty_critic`:
+
+  ```
+  REWRITTEN test  AssertionError: the degrade shape is missing ['violations_dropped']   1 failed
+  OLD comparison  normalize_critique vs _empty_critic  ->  NOTHING MISSING = would PASS
+  ```
+
+  Same bite, opposite verdicts. That is the rule-3 check this plan keeps asking for — the
+  detector was validated on a case it was **not** derived from, and the case it was derived
+  from is exactly the one it could still handle. Restored; `3640 passed`.
+
+  A control rides with it: `test_the_success_shape_under_test_is_RICHER_than_normalize_critique`
+  pins the DIFFERENCE, so if `judge_prose` ever stops stamping keys the new comparison cannot
+  quietly collapse back into the old weaker one and pass for the old wrong reason.
+
   ### 🔻 DEFERRAL `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`
 
   | | |
   |---|---|
   | **Blocker** | QC-5 has never been measured under the rule that now governs it. Its PASS (C17) was taken under §2.1's **three runs, majority**; PO §7.3 (2026-08-21) replaced that with **five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION**. A verdict measured under a retired rule is not wrong — it is unrescored, and saying otherwise would be the green-by-construction move this plan keeps catching. |
   | **Evidence** | The spread that motivated the new rule is on the record: chapter 12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. Three runs produced that disagreement, so three is the sample size that failed to settle it. |
-  | **Also here** | `engine/quality_report.py:138` passes `active_rules=[]` — a SECOND seam, deliberate per its own docstring (*"no structured rules here"*), but it emits no `active_rule_count`, so from the report a deliberate choice and the C3 failure look identical. The authoring-run seam solved exactly this by reporting the count; this one has not. |
+  | **Also here** | `engine/quality_report.py:138` passes `active_rules=[]` — a SECOND seam, deliberate per its own docstring (*"no structured rules here"*), but it emits no `active_rule_count`, so from the report a deliberate choice and the C3 failure look identical. The authoring-run seam solved exactly this by reporting the count; this one has not. ✅ **DONE 2026-08-21 — and it was stamped in `judge_prose` rather than at the call site, so it cannot be omitted by the next seam either. Both degrade exits carry it too.** |
   | **To unblock** | Re-run QC-5's clause-1 arms five times at temperature 0, seeded, and report the distribution rather than a number. Add `active_rule_count` to the quality report so the second seam declares itself. |
   | **Retry when** | Immediately — both are runs and one small edit, not decisions. This row exists so the re-score is owed explicitly instead of C17's three-run PASS quietly standing in for a five-run one. |
 
