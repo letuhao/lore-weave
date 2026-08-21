@@ -312,24 +312,57 @@ class ArcTemplateRepo:
             return None
         raise VersionMismatchError(_row_to_arc(current))
 
-    async def archive(self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None) -> None:
+    async def archive(
+        self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None,
+    ) -> str:
         """Soft-archive (status='archived'). OWNER-only by default; with an EDIT-gated
         `book_id` a collaborator may archive that book's SHARED rows (D-ARC-TEMPLATE-BOOK-TIER).
-        Idempotent. A foreign/missing id is a no-op the router maps to H13 (no oracle)."""
+
+        Returns which of the three things actually happened:
+          "archived"         — the row was active and is now archived
+          "already_archived" — the row is the caller's and was already archived (idempotent)
+          "not_found"        — no such row for this caller
+
+        🔴 D-ARCHIVE-FABRICATES-SUCCESS. This used to return None and DISCARD the UPDATE's own
+        status string, so `UPDATE 0` and `UPDATE 1` were indistinguishable and the tool reported
+        `archived: true` for an id that does not exist — handing back an undo_hint for a row that
+        was never there. Measured 2026-08-14 with a random UUID: {"id": "<the uuid I invented>",
+        "archived": true}, and 0 rows in arc_template.
+
+        The docstring called that "no oracle", and that WAS the intent — but the anti-oracle is
+        already defeated by this class's own siblings. Same tool, same nonexistent arc_id:
+        op=archive succeeded while op=restore and op=update both returned "not found or not
+        accessible". Anyone probing for existence calls op=update. So the silence bought nothing
+        and cost the author the truth about their own library.
+
+        Distinguishing already_archived from not_found is what keeps idempotency intact: a second
+        archive of a row you own is still a success, because the end state is the one you asked
+        for. Only a row that is not yours (or not there) refuses."""
         async with self._pool.acquire() as c:
             if book_id is not None:
-                await c.execute(
+                visible = ("(owner_user_id = $1 OR (book_shared AND book_id = $3))", (book_id,))
+                tag = await c.execute(
                     "UPDATE arc_template SET status = 'archived', updated_at = now() "
                     "WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) "
                     "AND id = $2 AND status <> 'archived'",
                     caller_id, arc_id, book_id,
                 )
             else:
-                await c.execute(
+                visible = ("owner_user_id = $1", ())
+                tag = await c.execute(
                     "UPDATE arc_template SET status = 'archived', updated_at = now() "
                     "WHERE owner_user_id = $1 AND id = $2 AND status <> 'archived'",
                     caller_id, arc_id,
                 )
+            if str(tag).rsplit(" ", 1)[-1] != "0":
+                return "archived"
+            # 0 rows: either the caller already archived it, or it is not theirs at all. Only a
+            # SELECT can tell those apart, and only the second is a refusal.
+            row = await c.fetchval(
+                f"SELECT 1 FROM arc_template WHERE {visible[0]} AND id = $2",
+                caller_id, arc_id, *visible[1],
+            )
+            return "already_archived" if row else "not_found"
 
     async def restore(self, caller_id: UUID, arc_id: UUID, *, book_id: UUID | None = None) -> ArcTemplate | None:
         """S-08 — archive()'s exact inverse. OWNER-only by default; with an EDIT-gated `book_id` a

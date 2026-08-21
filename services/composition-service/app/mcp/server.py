@@ -7469,8 +7469,9 @@ async def composition_arc_template_update(ctx: MCPContext, args: _ArcTemplateUpd
 @mcp_server.tool(
     name="composition_arc_template_archive",
     description=(
-        "Soft-archive the caller's OWN arc template (status='archived'). A foreign/missing/system "
-        "row is a uniform no-op (returns archived:true — no existence oracle)."
+        "Soft-archive the caller's OWN arc template (status='archived'). Archiving one you have "
+        "already archived is a success (the end state is what you asked for); an id that is not "
+        "yours is refused with the same 'not found or not accessible' its sibling ops use."
     ),
     meta=require_meta("W", "book",
                       synonyms=["archive arc template", "delete arc template", "remove arc template"],
@@ -7482,9 +7483,25 @@ async def composition_arc_template_archive(
     arc_id: Annotated[str, "The arc_template id (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    await ArcTemplateRepo(get_pool()).archive(tc.user_id, _uuid(arc_id, "arc_id"))
+    # 🔴 D-ARCHIVE-FABRICATES-SUCCESS. This discarded the repo's result and returned
+    # `archived: True` unconditionally, so archiving an id that does not exist reported success
+    # AND handed back an undo_hint for a row that was never there. Measured 2026-08-14 with a
+    # random UUID: {"id": "<the uuid I invented>", "archived": true}, 0 rows in arc_template.
+    #
+    # The old description called that "no existence oracle" and that was the honest intent — but
+    # the anti-oracle is already defeated by this tool's OWN siblings. Same tool, same nonexistent
+    # arc_id: op=archive succeeded while op=restore and op=update both returned "not found or not
+    # accessible". Anyone probing existence calls op=update, so the silence protected nothing and
+    # only cost the author the truth about their own library.
+    #
+    # Idempotency is preserved deliberately: archiving a row you own that is ALREADY archived is
+    # still a success, because the end state is the one that was asked for. Only a row that is not
+    # yours refuses, which is exactly what restore and update already do.
+    outcome = await ArcTemplateRepo(get_pool()).archive(tc.user_id, _uuid(arc_id, "arc_id"))
+    if outcome == "not_found":
+        raise uniform_not_accessible()
     # honest undo (S-08): the reverse verb is composition_arc_template_restore.
-    return {"id": arc_id, "archived": True,
+    return {"id": arc_id, "archived": True, "already_archived": outcome == "already_archived",
             "_meta": {"undo_hint": _undo("composition_arc_template_restore", arc_id=arc_id)}}
 
 
