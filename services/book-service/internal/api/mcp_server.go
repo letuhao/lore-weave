@@ -284,7 +284,9 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · "+
 			"home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters "+
 			"(chapter_ids — the complete new order for one language track). Every op is reversible (Undo). "+
-			"To DELETE a part, use this same tool's archive op — there is no separate delete tool.",
+			"To DELETE a part, call the SEPARATE tool book_structure_part_archive (soft-delete to "+
+			"trash, restorable — its chapters keep their text and fall to Unassigned). This tool "+
+			"has no archive op.",
 		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"create part", "add act", "add volume", "rename part", "reorder parts",
 			"move chapter to act", "put chapter in volume", "home chapter", "reorder chapters", "change reading order",
