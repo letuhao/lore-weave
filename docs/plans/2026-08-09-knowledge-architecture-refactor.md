@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-5`'s blocker is NOT spend — C12 settled it from the workload. Replaying the STORED judge request (job `01a02149-…`) reproduces the invented rule id **3/3**, and the stored RESULT shows the judge was **right**: its `why` translates to *"uses the pronoun 'anh' as the narrative person instead of conventional pronouns"* — a real craft finding, `voice_match` 2 in every arm — with nowhere to go but `violations[]`, which is keyed to a listed rule. A **contract gap**, not a model gap; C10 inherited the spend framing by analogy (rule 13). Fixed with a `craft_notes` channel: 3 runs/arm gave invented **[2,6,6] → [0,0,0]** with the finding **preserved** (`craft_notes [2,2,2]`), where the obvious *"do not invent a rule"* also reaches 0 but **destroys** it. Live on rebuilt images: `raw 0 · dropped 0 · 0 warnings · craft_notes 2`. ⛔ Clause 1 still scores 0 — attributed violations are 0 in EVERY arm because the draft does not contradict the six canon rules (they are character facts). **That is a FIXTURE question**: QC-5's premise is a *misattributed betrayal*, so clause 1 needs a chapter where a violation is actually present. PO's call. Also owed: `recanon --apply` (1819 fork, T46b) · `OD-2` soak never ran (T25c) · `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: `QC-5` measured on the BETRAYAL chapter (C13) — still **DOES NOT PASS**, and it falsified my own previous cycle twice. **(1)** C12 called the `craft_notes` channel *fixed, live-proven* on one run — of the chapter the fix was built from. On chapter 12 the judge **still invents** (`raw 3/6/2, all dropped`, one run even producing a typo'd `QUY UOCZ XUNG HO`). The channel is a real improvement — it captures a genuine world-building anachronism (*'subatomic particles' in a xianxia setting*) that previously had nowhere to go — but it routes SOME out-of-rule findings and not others. **(2)** C12 called the fixture choice the PO's; it was mine. `R1` IS the misattributed-betrayal rule, chapter 12 is in that arc and did not set §2.1's rule, so picking it was work. ⛔ Clause 1 still **0/3**, and now for a MEASURED reason: `canon_consistency` is **5 in all three runs** — the drafts are canon-consistent, so there is nothing to attribute. Six runs across two chapters have produced zero canon violations. **Clause 1 cannot be satisfied by re-drafting alone; the bad draft has to be PLANTED.** Seeding a known-bad draft, or restating clause 1, changes the acceptance criterion — that is the PO's. Also owed: `recanon --apply` (1819 fork, T46b) · `OD-2` soak never ran (T25c) · `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 37 of 79 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 36 of 81 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (13/33) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/35) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6188,7 +6188,82 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
-  ### ✅ QC-5 C12 2026-08-21 — the judge was RIGHT and had nowhere to put it. Fixed, live-proven.
+  ### 🔻 QC-5 C13 2026-08-21 — clause 1 on the BETRAYAL chapter, and **C12's fix is PARTIAL, not complete**
+
+  ```
+  chapter 12 "the two he trusted most step forward" · 3 runs · C12's channel deployed
+    run A  canon=5  raw=3  dropped=3  attributed=0  craft_notes=1
+    run B  canon=5  raw=6  dropped=6  attributed=0  craft_notes=1
+    run C  canon=5  raw=2  dropped=2  attributed=0  craft_notes=1
+  clause 1  >=2 runs canon<=3 AND an attributed violation : 0/3 -> FAIL
+  clause 2  no run is 5/5 with ZERO raw findings          : all three found some -> holds
+  VERDICT: DOES NOT PASS
+  ```
+
+  ### 🔴 FIRST: C12 OVERCLAIMED, AND THIS CORRECTS IT
+
+  C12 reported the `craft_notes` channel as *"Fixed, live-proven"* on the strength of one live run
+  that showed `raw 0 · dropped 0 · craft_notes 2`. **That run was on chapter 5 — the chapter whose
+  failure the fix was built from.** Rule 3's trap, committed by me one cycle after writing that the
+  session had caught it six times.
+
+  On chapter 12 the judge **still invents**: `QUY UOC XUNG HO` in all three runs, and run A also
+  produced `QUY UOCZ XUNG HO` — a typo'd variant, which shows the label is being generated freely
+  rather than recalled. So the honest claim is narrower:
+
+  | | before C12 | after C12, ch5 | after C12, ch12 |
+  |---|---|---|---|
+  | invented + dropped | 2 | **0** | **3 / 6 / 2** |
+  | `craft_notes` | *field did not exist* | 2 | **1 / 1 / 1** |
+
+  ✅ **The channel is a real improvement and not a fix.** It captures a finding that previously had
+  nowhere to go — every run put the same one in `craft_notes`: *"the term 'subatomic particles' does
+  not fit the xianxia setting"*, a genuine world-building anachronism the author would never have
+  seen before. But the pronoun-convention finding still comes through as a violation with an
+  invented id, so the judge uses the channel for **some** out-of-rule findings and not others.
+
+  📐 **Corrected framing, third revision of this blocker.** C10 called it a model gap; C12 called it
+  a contract gap and fixed it; C13 says it is a contract gap that is **partly** fixed. What remains
+  is genuinely a judge-behaviour question — the same model, given an explicit channel and an
+  explicit prohibition, still routes one finding to the wrong field. That is closer to C10's spend
+  reading than C12 allowed, and the honest position is that **neither framing is fully established
+  and the measurement is now precise enough to say which findings route correctly and which do not.**
+
+  ### ⛔ CLAUSE 1 FAILS ON THE BETRAYAL CHAPTER TOO — and now the reason is measured
+
+  C12 said clause 1 could not pass on chapter 5 because that chapter has no betrayal, and called
+  choosing a better chapter the PO's. **That was wrong and this batch corrects it too**: `R1` reads
+  *"Lam Trach is the cousin of Lam Uyen, and Lam Trach is the one who betrayed Lam Uyen. **No one
+  else is the betrayer** in the trap at the Lam family"* — the exact rule QC-5's *"misattributed
+  betrayal"* premise names. Chapter 12 is in that arc and did **not** set §2.1's rule (only
+  chapter 11's runs A/B/C did), so it is a principled fresh fixture, and picking it was work rather
+  than a decision.
+
+  🎯 **It still scores 0/3, and the reason is now visible rather than assumed: the drafts are
+  canon-consistent.** `canon_consistency` is **5 in all three runs**, every raw finding is a craft
+  observation, and not one is a betrayal misattribution. The flow has nothing to attribute because
+  the drafter did not contradict `R1`.
+
+  📐 **So clause 1 as written cannot be satisfied by re-drafting alone.** It requires a draft that
+  actually violates canon, and three chapters across two arcs have now produced none. QC-5's premise
+  is a draft *"scoring 5/5 on a misattributed betrayal"* — that draft has to be **planted**, not
+  waited for. Whether the acceptance test seeds a known-bad draft, or clause 1 is restated against
+  what the flow does produce, is a change to the acceptance criterion and therefore the PO's — but
+  unlike C12's version of this sentence, it is now backed by six runs across two chapters rather
+  than by one chapter's absence of a trap.
+
+  **BITE — N/A, and its control:** no code changed; this batch runs the shipped flow six times
+  (three here, three in C7) and applies a decided rule. Its non-vacuity is that it **falsified my
+  own previous cycle** — C12's "fixed" and C12's "the fixture is the PO's" were both tested here and
+  both failed, which is the only reason to trust the parts that held.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** three full authoring runs on the **rebuilt** composition images carrying
+  C12's channel, driven through `POST /v1/composition/authoring-runs`.
+  **QC (c) real data:** three real re-drafts of the acceptance book's chapter 12, 11 raw critic
+  findings, 3 craft notes, and the six real canon rules.
+
+  ### 🔻 QC-5 C12 2026-08-21 — the judge was RIGHT and had nowhere to put it. ⚠️ **PARTIALLY fixed — see C13, which corrects the "live-proven" below: it was proven on the chapter the fix was built from, and chapter 12 still invents.**
 
   ```
   composition unit 3626 -> 3628        BITE x2, each red on its own assertion
