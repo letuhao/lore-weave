@@ -269,3 +269,84 @@ async def test_the_judge_IS_GIVEN_the_active_canon_rules(judged, monkeypatch):
     # And the COUNT rides the verdict: `violations: []` beside `rules: 0` means "nothing to
     # attribute to"; beside `rules: 1` it means "the judge found nothing".
     assert verdict.detail["active_rule_count"] == 1
+
+
+async def test_the_seam_reads_the_BOOK_CRITIC_SETTING_when_params_omit_it(judged, monkeypatch):
+    """C28 — the seam resolved its critic from run params ONLY, and never asked the Work.
+
+    Measured 2026-08-22 on the acceptance book: `composition_work.settings` carried
+    `critic_model_ref=019eb620…`, a model DIFFERENT from the drafter, and every studio-driven
+    run still reported `critic_status: not_configured` with the drafter as critic — because the
+    studio sends `[model_ref, model_source]` and nothing else. The API-driven QC-5 runs passed
+    the critic explicitly and read `configured`. Two paths, one book, opposite answers, and both
+    looked fine on their own.
+
+    `resolve_critic` is the reader that knows about settings; calling
+    `resolve_critic_refs(params…)` made this an eighth copy of the rule reading a different
+    source — the shape `critic_policy` was consolidated to remove.
+    """
+    from uuid import uuid4
+    from types import SimpleNamespace
+
+    import app.db.pool as db_pool
+    import app.db.repositories.works as works_mod
+
+    drafter, settings_critic = str(uuid4()), str(uuid4())
+
+    class _Works:
+        def __init__(self, _pool): ...
+        async def resolve_by_book(self, _book_id):
+            return [SimpleNamespace(
+                settings={"critic_model_ref": settings_critic,
+                          "critic_model_source": "user_model"},
+                project_id=uuid4())]
+
+    monkeypatch.setattr(db_pool, "get_pool", lambda: object())
+    monkeypatch.setattr(works_mod, "WorksRepo", _Works)
+
+    verdict = await EngineCriticSeam().critique(
+        created_by=uuid4(), book_id=uuid4(), chapter_id=uuid4(), plan_run_id=uuid4(),
+        params={"model_ref": drafter, "model_source": "user_model"},   # NO critic param
+    )
+    assert verdict.detail["critic_status"] == "configured", (
+        "the book has a critic configured and the seam ignored it — the prose graded itself "
+        "while the settings said otherwise"
+    )
+    assert verdict.detail["critic_ref"] == settings_critic
+
+
+async def test_a_run_PARAM_still_overrides_the_book_setting(judged, monkeypatch):
+    """The control for the fix above, and it is not decoration.
+
+    Making the seam read settings must not make an explicit per-run critic unreachable: the
+    QC-5 acceptance harness supplies one deliberately, and a settings value silently winning
+    over it would be the same class of defect in the other direction. If this test and the one
+    above ever agree, the precedence has stopped being read.
+    """
+    from uuid import uuid4
+    from types import SimpleNamespace
+
+    import app.db.pool as db_pool
+    import app.db.repositories.works as works_mod
+
+    drafter, settings_critic, param_critic = str(uuid4()), str(uuid4()), str(uuid4())
+
+    class _Works:
+        def __init__(self, _pool): ...
+        async def resolve_by_book(self, _book_id):
+            return [SimpleNamespace(
+                settings={"critic_model_ref": settings_critic,
+                          "critic_model_source": "user_model"},
+                project_id=uuid4())]
+
+    monkeypatch.setattr(db_pool, "get_pool", lambda: object())
+    monkeypatch.setattr(works_mod, "WorksRepo", _Works)
+
+    verdict = await EngineCriticSeam().critique(
+        created_by=uuid4(), book_id=uuid4(), chapter_id=uuid4(), plan_run_id=uuid4(),
+        params={"model_ref": drafter, "model_source": "user_model",
+                "critic_model_ref": param_critic, "critic_model_source": "user_model"},
+    )
+    assert verdict.detail["critic_ref"] == param_critic, (
+        "an explicit per-run critic must win over the book setting"
+    )

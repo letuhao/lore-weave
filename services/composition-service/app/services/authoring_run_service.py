@@ -656,6 +656,7 @@ class EngineCriticSeam:
         from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
         from app.engine.critic_policy import resolve_critic_refs
+        from app.engine.model_roles import role_ref
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
         from app.packer.profile import BookProfile, from_settings
@@ -678,21 +679,49 @@ class EngineCriticSeam:
         # half-written critic, which is a misconfiguration with a fix) instead of
         # NOT_CONFIGURED (nothing is wrong, the tier is simply off) — the exact two states
         # `critic_policy` exists to keep apart. Caught by its own test, not by review.
-        judge = resolve_critic_refs(
-            params.get("critic_model_source"),
-            params.get("critic_model_ref"),
-            params.get("model_ref"),
-        )
-        model_ref = params.get("critic_model_ref") or params.get("model_ref")
+        # ── the Work, resolved ONCE ──────────────────────────────────────────────────────
+        # Moved above the critic resolution 2026-08-22 (C28). It used to be resolved further
+        # down, for the source-language profile only, which is why the critic never saw it.
+        marked_work = None
+        try:
+            _marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
+            if len(_marked) == 1:
+                marked_work = _marked[0]
+        except Exception:  # noqa: BLE001 — best-effort, exactly as before
+            logger.debug("critic Work resolve failed", exc_info=True)
+        work_settings = getattr(marked_work, "settings", None) or {}
+
+        # C28 — SETTINGS FIRST, run params as an OVERRIDE.
+        #
+        # This resolved from `params` alone, so a book with a critic configured still
+        # self-graded unless the caller repeated that critic in every request body. Measured
+        # 2026-08-22: the acceptance book carries `critic_model_ref=019eb620…` (a model
+        # DIFFERENT from its drafter) and every studio-driven run still reported
+        # `critic_status: not_configured` with the DRAFTER as critic — because the studio
+        # sends `[model_ref, model_source]` and nothing else. The API-driven QC-5 runs passed
+        # the critic explicitly and read `configured`, which is how the two paths silently
+        # disagreed while both looked fine.
+        #
+        # `resolve_critic` is the reader that knows about settings (map form first, legacy
+        # scalars second). Calling `resolve_critic_refs(params…)` instead made this an eighth
+        # copy of the rule reading a different source — the exact shape `critic_policy` was
+        # consolidated to remove.
+        #
+        # Params still WIN when present: an explicit per-run critic is a deliberate override
+        # and the acceptance harness depends on it.
+        _crit_src = params.get("critic_model_source")
+        _crit_ref = params.get("critic_model_ref")
+        if not _crit_ref and not _crit_src:
+            _crit_src, _crit_ref = role_ref(work_settings, "critic")
+        judge = resolve_critic_refs(_crit_src, _crit_ref, params.get("model_ref"))
+        # the resolved critic, whatever its source — not just the param
+        model_ref = _crit_ref or params.get("model_ref")
         if not model_ref:
             return CriticVerdict(
                 severity="warn",
                 summary="critic unavailable (params.model_ref required)",
             )
-        model_source = str(
-            params.get("critic_model_source") or params.get("model_source")
-            or "user_model"
-        )
+        model_source = str(_crit_src or params.get("model_source") or "user_model")
 
         bearer = mint_service_bearer(created_by, settings.jwt_secret)
         draft = await get_book_client().get_draft(book_id, chapter_id, bearer)
@@ -712,14 +741,9 @@ class EngineCriticSeam:
         # same resolve the drafting seam does at :329. Threaded out of this block rather than
         # re-resolved, so the rules and the language always describe the SAME Work.
         rules_project_id = None
-        try:
-            marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
-            if len(marked) == 1:
-                profile = from_settings(marked[0].settings)
-                rules_project_id = marked[0].project_id
-        except Exception:  # noqa: BLE001 — language resolve is best-effort
-            logger.debug("critic source-language resolve failed (using auto)",
-                         exc_info=True)
+        if marked_work is not None:
+            profile = from_settings(marked_work.settings)
+            rules_project_id = marked_work.project_id
 
         # C2 — the canon the judge is graded against. Until 2026-08-13 this was two empty
         # lists, so `canon_consistency` was a self-consistency reading of the passage: the

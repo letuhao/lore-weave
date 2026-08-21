@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 57 of 103 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 58 of 104 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/44) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7254,6 +7254,56 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### ✅ QC-5 C29 2026-08-22 — **the seam reads the book's critic, and the SAME clicks now produce the opposite verdict**
+
+  <!-- doc-language-gate: ok -- the UI labels and the judge's own reasons ARE the evidence -->
+
+  The fix C28 named: `authoring_run_service` resolves the critic through
+  `role_ref(work_settings, "critic")` when the run params carry none, and the Work is now
+  resolved **once**, above the critic decision instead of below it. Run params still WIN when
+  present — an explicit per-run critic is a deliberate override and the acceptance harness
+  depends on it.
+
+  **Proven by re-driving the identical studio flow** — panel picker → Agent Mode → ch12 only →
+  gate → Start. No API call anywhere, same book, same chapter, same clicks:
+
+  ```
+                     BEFORE (run 01a02548…)        AFTER (run 01a0255d…)
+  critic_status      not_configured                configured
+  critic_ref         019ebb72…  (the DRAFTER)      019eb620…  (the BOOK's setting)
+  canon_consistency  5                             3
+  violations         []                            2, attributed to R1 and R3
+  verdict            ỔN  (OK)                      NGHIÊM TRỌNG  (SEVERE)
+  run status         report_ready                  PAUSED by the breaker
+  params sent by UI  [model_ref, model_source]     [model_ref, model_source]   (unchanged)
+  ```
+
+  🎯 **The UI sends exactly what it sent before.** The entire difference is that the seam now
+  asks the Work. A run that reported a clean 5/5 was a model grading its own prose; the same
+  prose, judged by the critic the book already had configured, is a SEVERE verdict with two
+  attributed canon violations — and the breaker stopped the run on it.
+
+  One of those verdicts, to show it is not noise:
+
+  > `[R1]` *"Lâm Trạch là kẻ phản bội và chính y mới là người gây ra cạm bẫy. Tô Thanh Dao
+  > không phải là người gây ra cạm bẫy."* — against a span placing Tô Thanh Dao inside the
+  > trap's design. R1 says the betrayer is Lâm Trạch and **no one else**.
+
+  🦷 **BITE — the settings fallback removed** (`if not _crit_ref and not _crit_src: …` → `pass`):
+  *"AssertionError: the book has a critic configured and the seam ignored it — the prose graded
+  itself while the settings said otherwise"*. Restored; **3646 passed**.
+
+  A precedence control rides with it — `test_a_run_PARAM_still_overrides_the_book_setting` —
+  because making the seam read settings must not make an explicit per-run critic unreachable.
+  If those two tests ever agree, the precedence has stopped being read.
+
+  ⛔ **QC-5 still does not tick, and now for a REASON WORTH HAVING.** C25's four arms were
+  measured with a critic supplied in the request body. The shipped path now resolves one too —
+  but it resolves a **different** critic (`019eb620…`, the book's) than the harness used
+  (`51ea9fd7…`), and on this chapter that critic returns SEVERE where the harness's returned
+  clean. **The acceptance has to be re-measured on the path users take.** That is no longer a
+  missing capability; it is a run.
+
   ### 🔴 QC-5 C28 2026-08-22 — **C27's CAUSE was wrong, and the real one is worse: the run seam never reads the book's critic setting**
 
   C27 concluded *"the studio has no control for it and its client never sends one"*. The first
@@ -7786,7 +7836,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### ~~DEFERRAL~~ `D-STUDIO-CANNOT-CONFIGURE-A-DISTINCT-CRITIC` — **RENAMED 2026-08-22 (C28): the cause was misdiagnosed. The studio does lack the control, but the book HAS a critic configured and the run seam never reads it. Reopened below under the real cause.**
 
-  ### 🔻 DEFERRAL `D-AUTHORING-RUN-IGNORES-THE-BOOK-CRITIC-SETTING`
+  ### ~~DEFERRAL~~ `D-AUTHORING-RUN-IGNORES-THE-BOOK-CRITIC-SETTING` — **FIXED 2026-08-22 (C29). The seam resolves through `role_ref(work_settings, "critic")` when params carry none, params still override, and the Work is resolved once above the decision. Proven by re-driving the identical studio flow: `not_configured`/OK/canon-5 became `configured`/SEVERE/canon-3 with two attributed violations and a breaker pause, while the UI sent exactly the same two params. Bitten; 3646 passed.**
+
+  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC`
+
+  | | |
+  |---|---|
+  | **Blocker** | C25's four arms passed with a critic supplied in the request body (`51ea9fd7…`). The studio path now resolves a critic too (C29) — but the **book's** one (`019eb620…`), which is a different model. On chapter 12 the harness critic returned clean and the book critic returns **SEVERE with two attributed canon violations**. The acceptance has never been measured against the critic users actually get. |
+  | **Evidence** | C29: identical studio clicks, identical params, opposite verdicts — the only variable is which critic resolved. C25: `critic_ref=51ea9fd7…` on all seven runs. |
+  | **Why it is not a regression** | Neither verdict is known to be wrong. The book critic flagging R1 on a span that places the wrong character inside the trap is plausible, and C26 showed this judge family produces both sound and invented verdicts. What is established is only that **the two critics disagree on the acceptance chapter**, which makes C25's PASS silent about the shipped path. |
+  | **Mechanism** | `critic_ref` and `critic_status` ride every verdict and the studio renders both, so which critic judged is visible per run — the disagreement cannot recur unnoticed. |
+  | **To unblock** | Re-run C25's four arms through the studio with the book's critic, and score them with `qc5-acceptance-gate`. If the arms still pass, QC-5 ticks on the shipped path; if they do not, the failure is the product's and worth having. |
+  | **Retry when** | Immediately — it is runs, not a decision. |
+
 
   | | |
   |---|---|
