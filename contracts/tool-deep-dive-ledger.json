@@ -2214,6 +2214,46 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "composition_get_generation_job": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch18-v3.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_library_translate": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch18-v3.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 4/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_generate": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch18-v3.json. MEASURED: surfaced 5/5, called 3/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and the reason is the most serious finding of this batch. The tool itself works: with the chapter named it is called 5/5 and its card is minted. What is not shippable is what happens when it cannot be called. `model_ref` is REQUIRED and there is no supplier the model will use, so across three measured arms: (v1) undeclared — model_ref='default' 5/5, a card minted every time, and the confirm effect does UUID(...) so approving yields a bare 400; (v2) declared — the placeholder is gone 0/5, 1 of 5 called settings_list_models and came back with a real id, but 4 of 5 abandoned the tool and proposed book_chapter_save_draft carrying prose THE MODEL WROTE ITSELF; (v3) declared + the refusal quoting that declaration — 0 of 5 looked the model up and 5 of 5 proposed self-written prose. The author asks for the grounded cowrite engine and is offered ungrounded invention on a card that looks the same: the measured text was about 'Kaelen' in 'the Great Library of Aethelgard', neither of which exists in that book. See DQ-T35.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_entity_override_edit": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch18-v3.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a PRECONDITION CHAIN, and MY SCENARIO'S PREMISE WAS WRONG — the tool told me so. A direct probe returns 'NOT_A_DERIVATIVE — overrides exist only on a dị bản': an entity override exists only on a what-if derivative, never on the canonical Work. My prompt asked to override an entity on a canonical book, which the tool correctly refuses, so 0/5 is the right answer and the model reaching for glossary_propose_entity_edit instead was arguably MORE correct than calling this tool. Reaching it needs a derivative, and the only way to make one is composition_create_derivative, whose card this loop never approves because deriving is 'only archivable (not undoable)'. Boundaries are otherwise clean: an override_id that does not exist and a foreign project are both refused.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_glossary_build": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch18-v3.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a missing precondition the model correctly identified. Called 0/5; on every run it read glossary_list_system_standards / glossary_book_ontology_read and then asked the author for the material — 'I'm ready to build your story's foundation. To get started, I'll need you to share the story idea, notes, or any text you have so far.' That is right: op=start needs `source_text` and a fresh book has none, and for a tool that spends at every stage of a multi-stage pipeline, asking beats guessing. The card left suspended belongs to glossary_adopt_standards, not to this tool. Its own boundaries are clean — op=status and op=approve_plan with a run_id that does not exist are both refused 'NOT_FOUND: run not found', and a foreign book gets the same message (anti-oracle) — and the glossary stayed empty throughout.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -2467,6 +2507,15 @@
    "found": "2026-08-14",
    "measured": "composition_decompile_arcs minted a confirm card titled 'Decompile 0 chapter(s) into ~0 arc(s)' with dry_run {chapters: 0, would_create_arcs: 0}, and the model told the author 'I've prepared the arc structure for your book; please confirm the change in the card' on 5 of 5 runs. After the fix it returns {outcome: no_op, reason: 'no chapters to decompile'} with no token and the model says 'there are no chapters in the book's outline to group' — 5 of 5.",
    "control": "The ZERO was correct and I chased that before touching it. The engine groups outline_node rows minted by scene_decompile AT IMPORT; the fixture's chapters came from book_chapter_create, which does not create them. Three controls: stable across three attempts with delays (not a sync lag), composition_package_tree on the same book reported chapter_count=3 (the service can see the book), and the engine reads the same rows as the dry-run (pinned by a test, so the card can never promise work the engine will not do)."
+  },
+  "D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE": {
+   "state": "open",
+   "found": "2026-08-14",
+   "severity": "the worst user-visible outcome measured in this loop",
+   "measured": "Asked 'use the cowrite engine to draft the prose for Chapter I', the model wrote prose ITSELF and proposed book_chapter_save_draft carrying it. The text was about 'Kaelen' in 'the Great Library of Aethelgard' — neither exists in that book, whose Chapter I is about Aldric Vane and Hollow Keep. The author asks for GROUNDED generation and is offered ungrounded invention on a card that looks the same.",
+   "three_arms": "v1 model_ref undeclared: placeholder 'default' 5/5, self-written prose 0/5. v2 declared: placeholder 0/5, looked up the model 1/5, self-written prose 4/5. v3 declared + the refusal quoting that declaration: looked up the model 0/5, self-written prose 5/5. Declaring the argument reliably removed the placeholder; NOTHING removed the fabrication.",
+   "why_prose_cannot_fix_it": "v3 WAS a prose intervention — rewording the refusal to quote the tool's own declaration — and it was MEASURED AND REFUTED: lookup went 1/5 -> 0/5 and fabrication 4/5 -> 5/5. At n=5 per arm neither direction is proven, but the intended redirect plainly did not happen. That is the fourth prose intervention this loop has measured and refuted. The reword is KEPT anyway, on correctness grounds only: the old sentence claimed the tool declared no supplier while the runtime was holding one, and a false statement is worth removing whether or not it changes behaviour.",
+   "what_would_fix_it": "See DQ-T35 — the fix is a contract decision, not a sentence."
   }
  },
  "deferred_questions": {
@@ -2529,6 +2578,15 @@
    "question": "Should a *_edit tool that requires an opaque id ALSO accept the human-readable key its own sibling lists (here `code`, e.g. 'throwaway-loop-skeleton-b15')?",
    "evidence": "composition_arc_template_edit(op=archive) requires `arc_id` and refuses `code` with 'op=archive requires arc_id'. Measured 5 of 5: the model would not resolve the name and asked the author for a UUID instead. Accepting `code` — which is already unique per owner and is what op=create takes — would remove the resolution step entirely for the commonest case.",
    "why_not_decided_here": "It changes a tool's argument contract and its uniqueness story across the whole template family, which is an owner call, not a loop call. Recorded rather than invented."
+  },
+  "DQ-T35": {
+   "state": "open",
+   "raised": "2026-08-14",
+   "blocked_by": "a product decision, so recorded and not invented",
+   "question": "Should composition_generate's `model_ref` become OPTIONAL with a server-resolved default, the way 16 of its 19 siblings already declare?",
+   "evidence": "Across the catalogue 16 of 19 `model_ref` properties are optional and state the convention outright — 'omit to use the author's default planner model' (plan_*), 'omit to use the user's default' (glossary_*). Only THREE are required: composition_generate, composition_library_translate, kg_build_wiki. composition_generate is the outlier on the one tool where the cost of getting it wrong is highest, and both measured failure modes (placeholder, then abandonment) vanish if the runtime supplies the model it already knows.",
+   "why_it_is_not_mine_to_decide": "Three resolution tiers were checked and none is a clean answer. SESSION: composer_model_source/composer_model_ref are EMPTY on every harness session. WORK: of 664 composition_work rows, 0 carry the `model_roles` map and 13 the legacy default_model_ref — so a Work-tier default is inert for 98% of books. ACCOUNT: user_default_models IS populated and keyed by `capability`, but the capabilities are chat|distill|planner|rerank — there is no composer/prose capability, so defaulting would mean choosing to spend the author's money through the `chat` model on a prose-generation call. Which capability a spending tool falls back to is a product call, and the resolver (resolve_user_default_model) lives in knowledge-service, not composition-service.",
+   "what_shipped_meanwhile": "model_ref is now DECLARED as a UUID naming its supplier, so the placeholder no longer reaches the tool and approve-then-fail is gone. The abandonment is not fixed."
   }
  },
  "carried_observations": [
@@ -2927,10 +2985,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 109,
+  "tools_concluded": 114,
   "tools_in_cycle": 0,
-  "tools_proven": 84,
-  "tools_blocked": 25,
+  "tools_proven": 86,
+  "tools_blocked": 28,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
