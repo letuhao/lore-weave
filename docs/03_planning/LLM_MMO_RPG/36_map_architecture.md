@@ -451,6 +451,76 @@ disguised ladder.
 Reading the matrix: every ✅ is a legal edge, validated **on write**. Anything not marked is rejected
 with a named rule id. `Arena` is a leaf by construction.
 
+
+### 3.2 Portals — the CONNECTIVE relation (`SPG-A18`, `SDF-R3` applied 2026-08-22)
+
+> **⚠ AMENDED 2026-08-22.** This section did not exist. §3.1's matrix is **containment**, and this
+> document had **no traversal relation at all** — `parent` was the only edge, and `parent` cannot
+> express a door.
+
+**`R-14` states the gap:** HoMM3's Monolith and Subterranean Gate are edges that **deliberately
+violate containment**, and a single `parent` pointer cannot express them. Neither can *"the door of
+the house"*, which is a traversal edge between a `Locale` and the `Domain` it contains — an edge that
+runs **along** a containment edge rather than across it, and is still a different relation.
+
+> **`SPG-A18` — containment and connectivity are TWO relations over one node set. A `Portal` is a
+> first-class object with its own identity, ONE record with TWO ends, and it stores no world
+> coordinate.**
+
+```rust
+pub struct Portal {
+    pub id: PortalId,
+    pub a: PortalEnd,
+    pub b: PortalEnd,
+    /// Which layer decides whether it is passable right now. A locked door is a
+    /// LAYER on the portal, never a second portal.
+    pub gate: Option<LayerId>,
+}
+
+pub struct PortalEnd {
+    pub node: NodeId,
+    /// Parent-relative, in the node's own frame (`SPG-A5`/`SPG-A17`). NEVER a
+    /// world coordinate.
+    pub anchor: Transform,
+}
+```
+
+**Three properties, each earned by a shipped failure rather than chosen for symmetry:**
+
+1. **ONE RECORD, TWO ENDS — not two one-way records.** Bethesda's `XTEL` stores only a destination
+   reference and a transform, **never a destination cell id**, so a door pair is two independent
+   one-way records that nothing keeps in step. `R-59`: *"which is exactly why one-sided door links are
+   a classic mod bug."* Making the portal one row with two ends means a one-sided link is **not
+   representable**, rather than validated.
+2. **NO WORLD COORDINATES, EVER.** An end is `(node, anchor)` and the anchor is parent-relative. Combined
+   with `SPG-A5`, **a `Domain` with `Mobility` can move and every portal into it stays valid with zero
+   fixups** — a ship sails and its gangway still lands where it should. Storing an absolute position
+   would make every portal into a moving frame a repair job.
+3. **PORTALS ARE FIRST-CLASS OBJECTS, and that is 30 years old.** `R-53`: Teller's 1992 cells-and-portals
+   gives portals their own identity and maintains object→cell membership **incrementally on crossing,
+   never by search** — which is also what makes `SPG-A12`'s lazy materialization affordable, since a
+   `Domain` with zero occupants and no pending timers is a dematerialization candidate.
+
+**Residency (`R-59`, the second half).** A portal END must stay addressable while the node behind it is
+unmaterialized — Bethesda routes such references into *"Cell Persistent Children"* precisely so a door
+survives its cell being unloaded. So **a portal is resident at a lower materialization tier than the
+`Domain` it opens into**: you can see the door of a house that has not been built yet, which is the whole
+point of a door.
+
+**What a portal is NOT.** It is not a [`Passage`](#). `SPG-A13`'s `Passage` is a **node** — a road you
+travel *through*, with its own derived geometry, where an ambusher can stand. A portal is an **edge** —
+a doorway you travel *across*, with no interior. A `Passage` therefore has portals at its ends, and
+`R-21`'s turn restrictions live on the `(in_portal, out_portal)` pair **inside** the passage node, which
+is why routing's edge-expanded graph is our native representation rather than a transformation we pay
+for.
+
+**And this is one of TWO adjacency relations, not the only one.** [`SDF-A25`](41_space_dataflow.md)
+distinguishes **connective** adjacency (this — mutable, authored, the portal graph) from **geometric**
+adjacency (the generated mesh's `neighbors`, immutable, shared by digest). Two `Locale`s can share a
+border with no road between them, and an army marches overland. **A spatial read must declare which
+relation it means**; Paradox ships `adjacencies.csv` separately from its province raster for exactly this
+reason.
+
 ---
 
 ## 4 — The node
