@@ -2656,6 +2656,16 @@ def _is_nil_uuid(value: str) -> bool:
 #: the value the server already knows. A non-context id has no such fallback.
 _RUNTIME_CONTEXT_IDS = frozenset({"book_id", "chapter_id", "project_id"})
 
+#: Words that appear in a model's fill-me-in stub and never in an identifier this platform issues.
+#: Matched case-insensitively on a word-ish boundary, so `PLACEHOLDER`, `unknown_id`,
+#: `YOUR_ID_HERE` and `run_12345_placeholder` all hit while a real UUID cannot: hex has no
+#: letters past `f`, so "unknown", "placeholder", "provide", "todo" and "example" are unreachable.
+_PLACEHOLDER_TOKEN_RE = re.compile(
+    r"(?:^|[^a-z])(?:unknown|placeholder|your[_-]?id|id[_-]?here|todo|tbd|example|"
+    r"provide|fill[_-]?me|xxx+)(?:[^a-z]|$)",
+    re.IGNORECASE,
+)
+
 
 def _declares_uuid(props: dict | None, name: str) -> bool:
     """Does the tool's OWN declaration for this argument say it is a UUID?
@@ -2773,6 +2783,32 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # Context ids are exempt here too, for the reason recorded below: the runtime injects them
         # and they are not guaranteed to be UUIDs. None of them contains whitespace either, so the
         # exemption costs nothing.
+        # 🔴 A NAMED PLACEHOLDER IS NEVER AN IDENTIFIER THIS PLATFORM ISSUES. The whitespace arm
+        # below needs a space and the declaration arm needs a description; a value like
+        # "UNKNOWN_ID_PLEASE_PROVIDE" has neither, so both miss it.
+        #
+        # MEASURED LIVE 2026-08-21, batch 21, composition_reference_update, 5 of 5 runs. The
+        # reference table is EMPTY on this deployment, so no real id exists — and the model said
+        # so in prose ("I need to know which reference you are referring to") while ALSO calling
+        # the tool with reference_id="UNKNOWN_ID_PLEASE_PROVIDE" and title=[]. A Tier-A confirm
+        # card was minted for it: the author is asked to approve updating a reference whose id is
+        # the literal text UNKNOWN_ID_PLEASE_PROVIDE. `reference_id` is advertised as
+        # {"title": "Reference Id", "type": "string"} — no description — which is why the
+        # declaration arm is blind to it.
+        #
+        # This is the THIRD placeholder to reach a card: model_ref="default" (batch 18),
+        # run_id="run_12345_placeholder" (recorded earlier in this loop), and now this one. The
+        # token list is deliberately SMALL and matched on word-ish boundaries: every entry is a
+        # word that appears in a filled-in-by-the-model stub and never in a UUID, a slug or a
+        # code. A hex id cannot contain any of them.
+        if (
+            _identifierish
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and _PLACEHOLDER_TOKEN_RE.search(value)
+        ):
+            out.append(name)
+            continue
         if (
             name.endswith("_id")  # `*_ref` is deliberately NOT here — see the loop head:
                                   # image_ref is a MinIO object key, not an identifier this

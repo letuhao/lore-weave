@@ -1,0 +1,198 @@
+{
+ "_note": "Batch 21 — five Tier-A composition tools. FIXTURE RULES, all three learned by paying for them in batches 19-20: (1) an ACCOUNT-scoped seed must be unique PER RUN in its code AND its display name — `{run_id}` is substituted by provision.py; (2) every account-scoped assertion is scoped to the seeded code, never to a headcount of a live library; (3) account-scoped rows are NOT torn down with the throwaway book, so they must be cleaned up afterwards. Counts read from the store, not assumed: structure_template 44, scene_link 17, reference_source 0. composition_motif_bind_edit is re-queued for a SIXTH arm — it has 0 clean runs in 33 attempts, all lost to the model's degenerate output, so it is carried in RUNBOOK order rather than skipped.",
+ "scenarios": [
+  {
+   "id": "composition-structure-template-edit",
+   "tool_under_test": "composition_structure_template_edit",
+   "expect_tool": "composition_structure_template_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "user",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Archive structure template — retire my beat sheet called Emberfall Beats, I am not using it.",
+   "prompt_source": "meta.synonyms['archive structure template'] + ['beat sheet'], verbatim, plus the template's own name so the target is unambiguous.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_structure_template_edit",
+     "args": {
+      "op": "create",
+      "name": "Emberfall Beats {run_id}",
+      "kind": "beat_sheet",
+      "beats": [
+       {
+        "key": "opening",
+        "label": "Opening Image"
+       },
+       {
+        "key": "break",
+        "label": "Break Into Two"
+       }
+      ]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM structure_template WHERE name='Emberfall Beats {run_id}' AND status <> 'archived'",
+     "expect": "1",
+     "why": "THE SAFETY FIXTURE, and it carries the run nonce in BOTH the code and the name. Structure templates are ACCOUNT-scoped and the account already holds 44 — there is no throwaway book that contains the damage of archiving the wrong one, so the scenario creates its own and names it in the prompt, and the card is NEVER approved. The nonce is in the NAME as well because batch 20 measured what happens otherwise: identically-named seeds pile up and the search tool honestly reports a climbing count. 🔴 SCHEMA READ, NOT GUESSED — and my first draft got it wrong: this tool takes name/kind/beats/template_id and has NO `code` argument at all, so the seed 409'd with '`args.code`: Extra inputs are not permitted'. Every one of its six properties declares nothing but a title, which is why it sits in the undeclared-required-args baseline. The assertion therefore keys on the NAME, which carries the run nonce."
+    }
+   ],
+   "falsifier": "REFUTED IF: a template is archived with NO confirm card (Tier A), OR the model targets ANY template other than the one named — the account holds 44 real ones — OR the op chosen is not `archive` (its enum spans list|create|update|clone|archive|restore, and `clone` would silently add a 45th). Store check: the seeded row is still status<>'archived' afterwards, scoped to its code rather than to a headcount.",
+   "ship_audit": {
+    "gate": "OWED — Tier A, and the op enum includes archive.",
+    "absent_case": "OWED — archiving a template id that does not exist must be refused.",
+    "idempotency": "OWED — archiving an already-archived template must refuse or be a clear no-op, the shape the arc_template defect had in batch 15.",
+    "tenancy": "OWED — ACCOUNT-scoped: a system template must not be archivable by a caller who does not own it."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-switch-active-work",
+   "tool_under_test": "composition_switch_active_work",
+   "expect_tool": "composition_switch_active_work",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Set the active work for this book back to the canonical version.",
+   "prompt_source": "meta.synonyms['set active work'] + ['make active'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM composition_work WHERE source_work_id='{project_id}'",
+     "expect": "0",
+     "why": "NO derivative exists, so the only Work is the canonical one and 'switch back to canonical' is either a no-op or a clean confirmation. CONTROL STATED UP FRONT: this tool's whole purpose is choosing between a canonical Work and its dị bản, and a book with no dị bản has nothing to choose — so a refusal or an honest 'you are already on the canonical version' is the correct outcome, and inventing a branch to switch to would be the finding."
+    }
+   ],
+   "falsifier": "REFUTED IF: the active-work preference changes with NO confirm card (Tier A), OR the reply claims a switch happened when there is only one Work, OR the model invents a project_id for a derivative that does not exist. NOTE the preference is per-user and per-book, so a wrong switch would silently repoint the studio's editor and panels for that book — which is why this is Tier A despite writing only a preference.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a project_id that is not a Work of this book must be refused.",
+    "tenancy": "OWED — book-scoped, and the preference is per-user."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-scene-link-edit",
+   "tool_under_test": "composition_scene_link_edit",
+   "expect_tool": "composition_scene_link_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Link scenes — mark the opening scene as the setup and the finale as its payoff.",
+   "prompt_source": "meta.synonyms['link scenes'] + ['set setup payoff'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Emberfall"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM outline_node WHERE book_id='{book_id}' AND kind='scene'",
+     "expect": "0",
+     "why": "ZERO scene nodes. CONTROL STATED UP FRONT, and it is the same precondition composition_decompile_arcs taught this loop: outline_node rows are minted by the import pipeline (scene_decompile) or by a compiled plan, and a fresh book created through book_chapter_create has none. A scene LINK needs two scene nodes, so the honest outcome is a refusal naming what is missing — a PRECONDITION finding, not a tool defect."
+    }
+   ],
+   "falsifier": "REFUTED IF: a link lands with NO confirm card (Tier A), OR the model invents from_node_id/to_node_id for scenes that do not exist (the D-DECLARED-UUID class, guarded at the argument chokepoint — a fabricated-but-valid UUID here is a NEW instance), OR the op chosen is not `create` when the user asked to mark a setup/payoff (its enum spans create|delete|restore, and `delete` on a create request would be the worst outcome). Store check: scene_link stays at its pre-run count for this book.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "This scenario IS the absent case — there are no scene nodes to link.",
+    "idempotency": "OWED — the same edge twice must not create two rows.",
+    "tenancy": "OWED — book-scoped via project_id."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-reference-update",
+   "tool_under_test": "composition_reference_update",
+   "expect_tool": "composition_reference_update",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Fix the reference title — update the reference metadata for my source document.",
+   "prompt_source": "meta.synonyms['fix reference title'] + ['update reference metadata'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM reference_source",
+     "expect": "0",
+     "why": "🔴 THE WHOLE TABLE IS EMPTY — read from the store, not assumed. No reference exists anywhere on this deployment, so `reference_id` has no possible legitimate value and this is a PRECONDITION CHAIN by construction. A refusal naming the missing reference is the correct outcome; a confident 'updated' would be a fabricated write. This is the one account-wide count in the batch that is safe to assert precisely because it is zero and nothing in this batch creates one."
+    }
+   ],
+   "falsifier": "REFUTED IF: the model invents a reference_id (there are none to find, so any id is fabricated), OR the reply claims metadata was updated, OR a card is minted for a reference that cannot exist — that would be D-EXTRACTION-CONFIRMS-A-NO-OP, the class fixed in composition_decompile_arcs this cycle. The honest outcome is a refusal that names what is missing, or a question.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "This scenario IS the absent case — the reference table is empty.",
+    "tenancy": "OWED — book-scoped via project_id."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-motif-bind-edit",
+   "tool_under_test": "composition_motif_bind_edit",
+   "expect_tool": "composition_motif_bind_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Set the chapter motif — bind Emberfall Weave to the opening arc of this book.",
+   "prompt_source": "meta.synonyms['set chapter motif'] + ['bind motif'], verbatim. The wording and the motif name are BOTH changed from batches 19 and 20 — a sixth arm repeating the same sentence would be re-measuring the same coin flip.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-weave-b21-{run_id}",
+      "name": "Emberfall Weave {run_id}",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Emberfall"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-weave-b21-{run_id}')",
+     "expect": "0",
+     "why": "ZERO bindings for THIS motif, scoped to the seeded code. SIXTH ARM: 0 clean runs in 33 attempts across five arms, every one lost to the model's degenerate `<tool_call|>` output AFTER a successful motif_search — so nothing about the tool has ever been measured. Its four batch-20 siblings all reached clean runs in the same arms, and the provisioning flaw is fixed, so this is neither the rig nor the fixture."
+    }
+   ],
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said bind/set — its enum is bind|unbind and `unbind` would remove a binding never asked about — OR the model invents a node_id or motif_id. 🔴 A RUN THAT ENDS WITH NO PROSE AND NO CARD IS D-SILENT-TURN-NO-CARD-NO-PROSE, a MODEL-output defect: it must be re-run, not read as 0/5.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+    "idempotency": "OWED — binding the same motif to the same node twice must not create two applications.",
+    "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped: two scopes on one call."
+   },
+   "defects": []
+  }
+ ]
+}
