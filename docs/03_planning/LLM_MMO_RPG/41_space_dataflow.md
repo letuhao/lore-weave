@@ -5,7 +5,7 @@
      namespace, which is the opposite of what the catalog is for. -->
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
-> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **one applied (`R2`), eight proposed** —
+> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **two applied (`R1`, `R2`), seven proposed** —
 > open `SDF-Q1..Q18`, of which **sixteen are resolved and TWO remain** — `Q12`, blocked on a `PROG_001`
 > parameter that does not exist and which this tier may not invent, and `Q15`, which needs a space
 > view to measure and that view is not built yet, §8.1).
@@ -500,7 +500,7 @@ RUN-STATE §22):
 
 ## 7 — Amendments this doc raises against sealed docs 36 and 37
 
-**Status: `SDF-R2` is APPLIED (2026-08-22); the other eight are PROPOSED.** Doc 36's `SPG-A17` now carries the integer `Transform`
+**Status: `SDF-R1` and `SDF-R2` are APPLIED (2026-08-22); the other seven are PROPOSED.** Doc 36's `SPG-A17` now carries the integer `Transform`
 and an amendment note recording what applying it corrected; every other row is still only here, which is
 the mechanism. `R1..R6` come from
 the first pass; **`R7..R9` were raised by the deep dives in §11–§13** and two of them target doc 37, which
@@ -508,7 +508,7 @@ is why the section title changed.
 
 | # | target | change | evidence |
 |---|---|---|---|
-| `SDF-R1` | `SPG-A12` | the existence ladder is an **INDEX**; `materialization` is a denormalisation; the tick may not scan residents | **measured, §2** |
+| `SDF-R1` ✅ **APPLIED 2026-08-22** | `SPG-A12` | the existence ladder is an **INDEX**; `materialization` is a denormalisation; the tick may not scan residents | **APPLIED** — the field is removed from doc 36 §4 and `SPG-A12` gains an amendment note carrying **both** the 92.4× result and its limits (0.7× at 100 % live, 1.3× under heavy work). Landed **before the first migration** deliberately: a column is cheap to add and expensive to remove, and this would have been the first column in the space schema the project had already measured as wrong |
 | `SDF-R2` ✅ **APPLIED 2026-08-22** | `SPG-A17` | `Transform` is **integer + `scale_exp`**, not float | **APPLIED — and applying it struck its own lead evidence.** `R-36`'s magnitude argument (f64 covers one of fifteen orders) **was already dissolved by the target itself**: `SPG-A17`'s coordinate roots mean no chain ever spans those orders, so there was nothing for `f64` to fail at. What survives is **sufficient on its own and is not about range** — `R-37` (floats are not bit-reproducible across machines; transcendentals differ AMD vs Intel), `R-13` (a house at tile 137,42 must round-trip), and `WDS-A7`, which reached the identical conclusion one tier down. **`scale_exp` is not the field `SPG-Q3` rejected**: that one was COMPOSED down the chain, this one is never composed and is a power of two, so a frame conversion is an integer shift |
 | `SDF-R3` | doc 36 §3 | add **`PortalSet`** — containment ≠ connectivity; portals are first-class, bidirectional, and resident below their Domain's tier | `R-14` · `R-53` (Teller 1992) · `R-59` (one-sided door links are a classic Bethesda mod bug) |
 | `SDF-R4` | `SPG-D1` | in-place combat needs an **Encounter closure**; `Arena` and `Encounter` are different things | `R-6` · `R-7` |

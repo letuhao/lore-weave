@@ -316,6 +316,37 @@ is the same pattern the repo already shipped twice: `MAP_001`'s lazy-cell `map_l
 S2.6) and `CSC_001`'s *"first PC entry to cell triggers compute"*. USD names the general form: a
 **payload** is a reference whose subtree is deferred until explicitly loaded.
 
+> **⚠ AMENDED 2026-08-22 — `SDF-R1` APPLIED, and it is the only row in this document backed by a
+> MEASUREMENT rather than an argument.**
+>
+> `SPG-A12` is unchanged as a **policy** — an interior is a declaration until something enters it, and
+> that is still right. What changes is its **representation**, which this axiom never stated and §4
+> silently answered with a field:
+>
+> | | |
+> |---|---|
+> | **was** | `SpaceNode.materialization: Materialization` — a per-node enum, so *"what is live?"* is a **scan over every node** |
+> | **is** | a **live-set INDEX** (doc 41 `T2`). Membership is the index; the node carries nothing |
+>
+> **The measurement** (doc 41 §2, `M-1`): rustc 1.89, release + LTO + `codegen-units=1`, best-of-7,
+> single core, 65 536 residents. **Ladder-as-FIELD versus ladder-as-INDEX is 92.4× at 0.1 % live.**
+>
+> **And the measurement's limits are part of the amendment, not a footnote:** the advantage **collapses
+> to 0.7×** at 100 % live and **1.3×** under heavy per-node work, and index maintenance costs ~1 µs at
+> 512 churn/tick. So this is a win *for a world where almost nothing is live* — which is precisely the
+> world `SPG-A12` describes and §2's own line at `:136` already argued (*"99.99 % of actors"*). **If that
+> premise ever stops holding, this amendment stops paying**, and no capacity table is inferred from it
+> (doc 21 §7 forbids it).
+>
+> **Why it had to land before the first migration.** A column is cheap to add and expensive to remove:
+> this document's own opening says *"the cost of being wrong rises to a migration the moment the first
+> row is written."* `materialization` would have been the first column in the space schema that the
+> project had already measured as wrong.
+>
+> **`Materialization` as a TYPE survives** — a node still moves between declared and live, and `R-56`
+> argues the state is really three plus a generation stage. **It is the LOCATION of that fact that
+> moved**: into the index, out of the row.
+
 ### SPG-A13 — A `Passage` is a map whose geometry is DERIVED, never authored
 
 > The road between two places is a **node**, but its map is generated on demand from the world field
@@ -432,7 +463,11 @@ pub struct SpaceNode {
     pub transform: Transform,          // RELATIVE to parent (SPG-A5). Never absolute.
     pub holder: Option<EntityId>,      // the entity whose interior this is (SPG-A1)
     pub definition: Option<DefRef>,    // shared template, if any (SPG-A14)
-    pub materialization: Materialization, // Declared | Materialized (SPG-A12)
+    // SDF-R1, APPLIED 2026-08-22. NOT a field: the live set is an INDEX,
+    // and the tick iterates the index. Keeping a per-node enum here is a
+    // DENORMALISATION of that index, and the tick reading it would be a
+    // scan over residents -- measured at 92.4x worse (doc 41 section 2).
+    //   pub materialization: Materialization,   <- REMOVED
     pub mobility: Mobility,            // Static | Kinematic { trajectory } (SPG-A9)
 }
 ```
