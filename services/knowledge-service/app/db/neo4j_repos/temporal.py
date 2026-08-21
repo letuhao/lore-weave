@@ -59,6 +59,7 @@ from __future__ import annotations
 # (its docstring explains why INT64_MAX over INT32_MAX), and F3 must not mint a
 # second, drifting copy.
 from app.db.neo4j_repos.events import _NULL_ORDER_SENTINEL
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_write
 
 __all__ = [
@@ -158,7 +159,7 @@ SET cur.valid_to_ordinal =
     // not even the timestamp: a pinned row is untouched by derivation, so an operator
     // reading `updated_at` is not told the chain rewrote something it did not.
     cur.updated_at =
-      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE {NOW} END
 RETURN count(cur) AS maintained
 """
 
@@ -217,7 +218,7 @@ SET cur.valid_to_ordinal =
     // not even the timestamp: a pinned row is untouched by derivation, so an operator
     // reading `updated_at` is not told the chain rewrote something it did not.
     cur.updated_at =
-      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE {NOW} END
 RETURN count(cur) AS restitched
 """
 
@@ -258,7 +259,7 @@ SET cur.valid_to_ordinal =
     // not even the timestamp: a pinned row is untouched by derivation, so an operator
     // reading `updated_at` is not told the chain rewrote something it did not.
     cur.updated_at =
-      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE {NOW} END
 RETURN count(cur) AS restitched
 """
 
@@ -282,7 +283,7 @@ async def restitch_chains_after_retract(
     """
     fact_res = await run_write(
         session,
-        _RESTITCH_ALL_FACT_CHAINS_CYPHER,
+        render(_RESTITCH_ALL_FACT_CHAINS_CYPHER, "neo4j"),
         user_id=user_id,
         project_id=project_id,
         open_ceiling=ORDINAL_OPEN_CEILING,
@@ -290,7 +291,7 @@ async def restitch_chains_after_retract(
     fact_row = await fact_res.single()
     rel_res = await run_write(
         session,
-        _RESTITCH_ALL_RELATION_CHAINS_CYPHER,
+        render(_RESTITCH_ALL_RELATION_CHAINS_CYPHER, "neo4j"),
         user_id=user_id,
         project_id=project_id,
         open_ceiling=ORDINAL_OPEN_CEILING,
@@ -341,6 +342,6 @@ SET cur.valid_to_ordinal =
     // not even the timestamp: a pinned row is untouched by derivation, so an operator
     // reading `updated_at` is not told the chain rewrote something it did not.
     cur.updated_at =
-      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE {NOW} END
 RETURN count(cur) AS maintained
 """

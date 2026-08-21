@@ -24,6 +24,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from app.db.cypher_dialect import render
+
 import pytest
 
 from app.db.neo4j_repos import facts as fm
@@ -195,7 +197,8 @@ async def test_merge_fact_absent_date_is_null_safe_with_ordinal_chain(mock_run):
     assert first["event_date_iso"] is None        # absent date
     assert first["valid_from_ordinal"] == 500     # ordinal axis intact
     cyphers = [c.args[1] for c in mock_run.await_args_list]
-    assert fm.MAINTAIN_FACT_CHAIN_CYPHER in cyphers  # chain still maintained
+    # §10.2 — compare the RENDERED query; the template carries `{NOW}`.
+    assert render(fm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j") in cyphers  # chain still maintained
 
 
 # ── create_relation threads the value ───────────────────────────────────

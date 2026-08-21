@@ -35,6 +35,7 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
 from app.db.neo4j_repos.temporal import (
@@ -355,7 +356,9 @@ async def merge_fact(
         if maintain_chain and effective_valid_from_ordinal is not None:
             await run_write(
                 session,
-                MAINTAIN_FACT_CHAIN_CYPHER,
+                # §10.2 — the timestamp token is engine-chosen. This repo runs on Neo4j;
+                # the AGE arm renders the same template with `timestamp()`.
+                render(MAINTAIN_FACT_CHAIN_CYPHER, "neo4j"),
                 user_id=user_id,
                 entity_id=subject_id,
                 attr=type,

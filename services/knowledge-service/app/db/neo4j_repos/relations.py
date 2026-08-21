@@ -40,6 +40,7 @@ from pydantic import BaseModel, Field
 # Re-exported below for back-compat with non-extraction call sites.
 from loreweave_extraction.canonical import relation_id
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.temporal import (
     MAINTAIN_RELATION_CHAIN_CYPHER,
@@ -399,7 +400,8 @@ async def create_relation(
     if maintain_chain and valid_from_ordinal is not None:
         await run_write(
             session,
-            MAINTAIN_RELATION_CHAIN_CYPHER,
+            # §10.2 — engine-chosen timestamp token.
+            render(MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j"),
             user_id=user_id,
             subject_id=subject_id,
             predicate=predicate,

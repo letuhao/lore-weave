@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: build the per-engine timestamp token (§10.2), then translate `entities` — 46 of the 151 dialect sites.**
+**RESUME: translate `entities` — 46 of the 147 dialect sites; `{NOW}` handles 27, the rest are ON CREATE/MATCH and CALL{}.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,76 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T64 2026-08-22 — **§10.2 ships, and with both engines live the suite has NO SKIPS AT ALL**
+
+  ```
+  conformance, real Neo4j 5 + real AGE 1.7.0 both configured:
+
+      102 passed / 59 skipped     this morning
+      124 passed / 41 skipped     T59 (AGE stopped refusing)
+      165 passed /  0 skipped     <- now. Four adapters, every rule, no exemption anywhere.
+
+  knowledge unit 4296 -> 4302        dialect ratchet 151 -> 147
+  shadow differential 16 passed      chain integration 8 passed
+  ```
+
+  `app/db/cypher_dialect.py` renders `{NOW}` per engine — `datetime()` for Neo4j,
+  `timestamp()` for AGE — and the four `MAINTAIN_*` / `RESTITCH_*` chain templates now carry
+  the token instead of one engine's function name. **The 41 skips that remained after T59 were
+  the `neo4j` PARAMETER**, waiting on `TEST_NEO4J_URI`; with a throwaway Neo4j alongside the
+  throwaway AGE, every rule runs on every adapter.
+
+  📐 **It lives OUTSIDE `neo4j_repos`, and that is load-bearing.** The dialect ratchet counts
+  Neo4j-only constructs in that package's code strings; defining `"datetime()"` inside it would
+  make the gate count its own cure and the number could never fall. Caught while placing the
+  file, not after.
+
+  ⚠️ **Six unit tests went red, and every one was RIGHT.** They asserted on the template
+  (`"datetime()" in cy`) or compared the executed query against the constant. What executes is
+  now the *rendered* text, so they were repointed at `render(CONST, "neo4j")` — which makes
+  them **stronger**: they pin what the driver receives rather than what the module declares.
+  A migration whose tests stay green never moved anything, and these moved.
+
+  **BITE ×3, each on a way the seam could be a seam in name only:**
+
+  ```
+  27. both engines get the same spelling
+        FAIL — "both engines rendered the same text — the token is not doing anything, and
+                every `{NOW}` template is still one engine's dialect with extra steps"
+        FAIL — "two engines share a timestamp spelling: {'neo4j': 'datetime()', 'age':
+                'datetime()'}"
+  28. render replaces only the FIRST token
+        FAIL — test_EVERY_occurrence_is_replaced_not_just_the_first
+  29. a template ships UNRENDERED
+        FAIL — "…MAINTAIN_FACT_CHAIN_CYPHER carries a `{NOW}` token but NOTHING under app/
+                renders it — an unrendered token reaches the driver as a map projection and
+                fails at query time, not at import"
+  ```
+
+  🎯 **Bite 27 is the one that matters.** A renderer emitting identical text for both engines
+  is a no-op wearing a seam's clothes: every `{NOW}` template would read as migrated while
+  still baking Neo4j's function name in, and the dialect ratchet would fall to zero on a lie.
+  Bite 29 catches the opposite failure — the ratchet falls because the `datetime()` literal
+  left, but the query is now broken at runtime rather than migrated.
+
+  🐞 **The token check was wrong on its first run, and its fix was a real correction.** It
+  required the renderer to live in the template's own module; `MAINTAIN_FACT_CHAIN_CYPHER` is
+  defined in `temporal` and rendered in `facts`. Requiring co-location would have forced the
+  wrong refactor to satisfy a test. Now scanned package-wide.
+
+  🐞 **And I broke `facts.py` restoring a bite**: `MAINTAIN_FACT_CHAIN_CYPHER,` appears twice —
+  once in the import block, once at the call site — and my index took the first. 75 collection
+  errors. Fourth harness error of the day, same family as the others: **an index into a file is
+  not an identifier**, and every one of these cost more than the bite it was serving.
+
+  **QC (a) gates:** unit **4302**; `port-adoption-gate` PASS, dialect **147/147** moved in this
+  commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ the rendered query runs — 165/0 conformance across four adapters with
+  both engines live, 8 chain-integration tests, and the shadow differential unchanged at
+  239/239 agreed.
+  **QC (c) real data:** facts and relations chained and re-stitched in a real Neo4j through the
+  rendered template, and in a real AGE through the adapter's own path.
 
   ### 🔴 T63 2026-08-22 — **the "mechanical rename" would silently corrupt every time-ordered list**
 

@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from app.db.cypher_dialect import render
+
 import pytest
 
 from app.db.neo4j_repos import facts as fm
@@ -66,7 +68,9 @@ def test_maintain_chain_cypher_is_ordinal_aware_not_wallclock():
         assert "ORDER BY" in cy and "valid_from_ordinal ASC" in cy
         assert "valid_until IS NULL" in cy           # only survivors
         assert "valid_from_ordinal IS NOT NULL" in cy  # positionless excluded
-        assert "datetime()" in cy  # only for updated_at, see next assert
+        # §10.2 — the TEMPLATE carries `{NOW}`; what executes carries the engine's
+        # spelling. Assert on the rendered form, because that is what Neo4j sees.
+        assert "datetime()" in render(cy, "neo4j")  # only for updated_at, see next
         # the CLOSE value is the next STRICTLY-GREATER survivor's valid_from_ordinal, never now()
         # — strictly-greater so a same-ordinal tie can't collapse into a zero-width [base,base)
         # interval (the A2 bug); mirrors the Postgres maintain_chain core.
@@ -123,8 +127,9 @@ async def test_merge_fact_maintain_chain_fires_after_merge_with_subject(mock_run
     # 1: MERGE fact, 2: link subject, 3: maintain_chain
     cyphers = [c.args[1] for c in mock_run.await_args_list]
     assert fm._MERGE_FACT_CYPHER in cyphers
-    assert tm.MAINTAIN_FACT_CHAIN_CYPHER in cyphers
-    assert cyphers.index(tm.MAINTAIN_FACT_CHAIN_CYPHER) > cyphers.index(fm._MERGE_FACT_CYPHER)
+    assert render(tm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j") in cyphers
+    assert cyphers.index(render(tm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j")) > cyphers.index(
+        fm._MERGE_FACT_CYPHER)
 
 
 @pytest.mark.asyncio
@@ -185,7 +190,7 @@ async def test_create_relation_maintain_chain_fires_after_create(mock_run):
     )
     cyphers = [c.args[1] for c in mock_run.await_args_list]
     assert rm._CREATE_RELATION_CYPHER == cyphers[0]
-    assert tm.MAINTAIN_RELATION_CHAIN_CYPHER == cyphers[-1]
+    assert render(tm.MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j") == cyphers[-1]
 
 
 @pytest.mark.asyncio
@@ -220,7 +225,7 @@ async def test_single_active_and_maintain_chain_are_distinct(mock_run):
     cyphers = [c.args[1] for c in mock_run.await_args_list]
     assert cyphers[0] == rm._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
     assert cyphers[1] == rm._CREATE_RELATION_CYPHER
-    assert cyphers[2] == tm.MAINTAIN_RELATION_CHAIN_CYPHER
+    assert cyphers[2] == render(tm.MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j")
 
 
 # ── T46: pin-aware supersession, the KG half ────────────────────────────────────────────
@@ -279,7 +284,7 @@ def test_a_pinned_row_keeps_its_TIMESTAMP_too():
     for name, cy in _chain_cyphers().items():
         assert (
             "cur.updated_at =\n      CASE WHEN coalesce(cur.valid_to_pinned, false) "
-            "THEN cur.updated_at ELSE datetime() END" in cy
+            "THEN cur.updated_at ELSE datetime() END" in render(cy, "neo4j")
         ), f"{name} bumps updated_at on a pinned row it did not modify"
 
 
