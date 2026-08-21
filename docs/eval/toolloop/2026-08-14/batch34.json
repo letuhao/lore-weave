@@ -1,0 +1,1708 @@
+{
+ "batch": "batch34",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "settings_get_profile",
+   "scenario": "settings-get-profile",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model INVENTS profile values rather than reporting what the tool returned — a display name or a language list that is not the account's is fabrication about the user themselves, which is the least excusable place for it — OR it reports another account's profile. CONTROL: this tool returns email and email-verified status, so a reply that volunteers those when the author asked only for display name and languages is over-disclosure the author did not request.",
+   "answer_expect": {
+    "none_of": [
+     "couldn't find",
+     "could not find",
+     "don't have access"
+    ],
+    "why": "The account exists and the tool is a plain owner-scoped read. Reporting no access to one's own profile would be a false absence over the simplest object on the platform."
+   },
+   "falsifier_sha": "a950c04a24be4632",
+   "ship_audit": {
+    "empty_case": "EXERCISED by direct probe — the account has bio='', languages=[], locale='' and avatar_url=''. The fields come back EMPTY rather than absent, so 'you have not set a bio' is distinguishable from 'I cannot read your profile'.",
+    "tenancy": "EXERCISED AS NOT APPLICABLE, with the reason — 'no tenancy argument' is a different statement from 'tenancy passed'. This tool is scope=USER: it takes no id a cross-tenant probe could drive, and reads the SIGNED-IN account from the envelope identity. Verified by direct probe that it returns the caller's own row (user_id 019d5e3c…, the harness account) rather than anything else."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a0258b-f2ff-7524-8d13-d5a3e2f4617c",
+     "session_id": "01a0258c-1472-7c40-aa45-41e65be424fe",
+     "prompt": "Show me my account profile — my display name and languages.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_profile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.036118+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.275562+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.263535+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.036118+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.275562+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:18:44.263535+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your display name is **Claude Test** and you currently have no languages set in your profile."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a0258c-4c17-7b19-b2ce-fbc0260e6628",
+     "session_id": "01a0258c-7184-7d42-b988-50df0023abf7",
+     "prompt": "Show me my account profile — my display name and languages.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_profile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:06.815449+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:07.023045+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:07.013578+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:06.815449+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:07.023045+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:07.013578+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your display name is **Claude Test** and you currently have no languages set in your profile."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a0258c-fca7-75ef-9701-5cddda66573c",
+     "session_id": "01a0258d-2026-7f11-bb7b-a6ab210be57b",
+     "prompt": "Show me my account profile — my display name and languages.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_profile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.069476+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.363385+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.333765+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.069476+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.363385+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:19:52.333765+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your display name is **Claude Test** and you currently have no languages listed in your profile."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a0258d-5c65-7758-9ed3-31a283bd0427",
+     "session_id": "01a0258d-7d33-77bc-b08c-80dbcc633f05",
+     "prompt": "Show me my account profile — my display name and languages.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_profile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.5294+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.756968+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.745084+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.5294+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.756968+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:16.745084+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your display name is **Claude Test** and you currently have no languages set in your profile."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a0258d-b50b-7389-8b1f-f2c0728002d1",
+     "session_id": "01a0258d-d2c5-7c91-95de-71f4a6b9cbd0",
+     "prompt": "Show me my account profile — my display name and languages.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_profile"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.242108+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.479704+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.470959+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.242108+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.479704+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:39.470959+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your display name is **Claude Test** and you currently have no languages set in your profile."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "settings_get_defaults",
+   "scenario": "settings-get-defaults",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model names an embedding model that the tool did not return. This is the cheapest possible invention to check: the answer is one field, and either it came from the tool or it came from the model's prior about what embedding models exist. A reply that says no default is set, when none is, is CORRECT and must not be scored as a failure.",
+   "answer_expect": {
+    "none_of": [
+     "I think",
+     "probably",
+     "likely uses"
+    ],
+    "why": "The tool returns the configured defaults exactly. Hedged language is the signature of a model describing what the answer would look like instead of reading it — the shape batch 11 caught on composition_conformance_status."
+   },
+   "falsifier_sha": "f45fd98f03d89d29",
+   "ship_audit": {
+    "empty_case": "EXERCISED by direct probe, and it is the scenario's own question: the account has defaults for `chat` and `distill` and NO embedding default. So the truthful answer to 'which model is my default for embedding?' is that none is set — a capability with no default is simply absent from the map rather than reported as a guess.",
+    "tenancy": "EXERCISED AS NOT APPLICABLE, with the reason — 'no tenancy argument' is a different statement from 'tenancy passed'. This tool is scope=USER: it takes no id a cross-tenant probe could drive, and reads the SIGNED-IN account from the envelope identity. Verified by direct probe that it returns the caller's own row (user_id 019d5e3c…, the harness account) rather than anything else."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a0258e-05ee-78c8-90f8-c9c72d65ba24",
+     "session_id": "01a0258e-21b5-7929-b461-fc0fb247e23a",
+     "prompt": "Which model is my default for embedding?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_defaults"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:59.939002+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:00.158427+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:00.150835+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:20:59.939002+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:00.158427+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:00.150835+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your default model for embedding is not explicitly listed in your current settings; the defaults provided are for `chat` and `distill`. \n\nIf you'd like to set a specific model as your default for embedding, I can help you with that once you've registered it in your settings."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a0258e-5a49-71c7-90bc-c901aeaaa700",
+     "session_id": "01a0258e-79c3-7c71-88f7-de2610c872e8",
+     "prompt": "Which model is my default for embedding?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_defaults"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.542179+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.81734+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.798767+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.542179+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.81734+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:21.798767+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your default model for embedding is not explicitly listed in your current settings; only your default models for **chat** and **distill** are configured."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a0258e-af1f-7048-9722-ff07facdfd52",
+     "session_id": "01a0258e-ccb0-7a36-80b3-5017a52d49cc",
+     "prompt": "Which model is my default for embedding?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_defaults"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.236924+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.449408+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.441788+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.236924+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.449408+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:21:43.441788+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your default model for embedding is not explicitly listed in your current settings; only your default models for **chat** and **distill** are configured."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a0258f-0473-76f7-a76b-c9154a9aeaa0",
+     "session_id": "01a0258f-2fc1-7b33-aef5-6b677c779a18",
+     "prompt": "Which model is my default for embedding?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_defaults"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.091798+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.324079+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.315807+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.091798+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.324079+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:22:05.315807+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your default model for embedding is not explicitly listed in your current settings; only your default models for **chat** and **distill** are configured."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02590-662e-7d6a-8214-fac9784f9fef",
+     "session_id": "01a02591-0cf5-7bf5-9ad8-da6674f9433c",
+     "prompt": "Which model is my default for embedding?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_get_defaults"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:35.837085+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:36.553854+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:36.534649+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:35.837085+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:36.553854+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:23:36.534649+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Your default model for embedding is not explicitly listed in your current settings; the defaults provided are for `chat` and `distill`. \n\nIf you'd like to set a specific model for embedding, I can help you register and activate one."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "memory_timeline",
+   "scenario": "memory-timeline",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents a CHRONOLOGY when no events are stored. 🔴 THE TEMPTATION IS THE POINT: the fixture's chapter is in the model's context, so it can produce a plausible 'what happened first' without the tool answering at all. Reporting that nothing has been extracted yet is the correct outcome, and saying the book must be indexed first is better still.",
+   "answer_expect": {
+    "none_of": [
+     "first,",
+     "then,",
+     "after that"
+    ],
+    "why": "There are no stored events. A narrated sequence would be the model retelling the chapter it can see rather than reporting what the timeline tool returned — the D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE shape, on a read."
+   },
+   "falsifier_sha": "155e875507e211c8",
+   "ship_audit": {
+    "empty_case": "This scenario IS the empty case — a project with no extracted events.",
+    "absent_case": "OWED — a project_id that does not exist must be refused.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02591-593b-7fc0-a138-46b33347a6e0",
+     "session_id": "01a02591-82d1-72ed-afd8-bdfea7989a24",
+     "prompt": "What happened first in this book — show me the timeline of events.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "composition_package_tree",
+      "memory_timeline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:37.893219+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:38.147847+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:38.129748+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:37.893219+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:38.147847+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:24:38.129748+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no narrative events recorded in the timeline for this book. \n\nThe manuscript begins with **Chapter I — The Ember Codex**, which opens with:\n> \"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02591-dfd0-7b27-b891-bf4284086b35",
+     "session_id": "01a02592-0571-72da-ad48-e74749d9978f",
+     "prompt": "What happened first in this book — show me the timeline of events.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree",
+      "memory_timeline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.347135+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.599764+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.591234+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.347135+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.599764+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:12.591234+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02592-481a-7791-bc87-f1d9a84757ad",
+     "session_id": "01a02592-6904-7ae4-a62f-4040ac072a9f",
+     "prompt": "What happened first in this book — show me the timeline of events.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "composition_package_tree",
+      "memory_timeline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.037287+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.30065+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.282472+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.037287+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.30065+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:25:39.282472+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no narrative events recorded in the timeline for this book. \n\nThe only content available is the first chapter, **\"Chapter I — The Ember Codex\"**, which begins with:\n> \"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02592-b125-721b-a4e8-2bcd05a8618a",
+     "session_id": "01a02592-d5e8-791f-bf8f-b9fce269ae95",
+     "prompt": "What happened first in this book — show me the timeline of events.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "composition_package_tree",
+      "memory_timeline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:05.978716+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:06.269422+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:06.251281+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:05.978716+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:06.269422+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:06.251281+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no narrative events recorded in the timeline for this book. \n\nThe manuscript begins with **Chapter I — The Ember Codex**, where Aldric Vane climbs the black stair of Hollow Keep as a storm breaks. \n\nIf you'd like me to start tracking specific events or milestones as they happen in your story, just let me know!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02593-1eba-778f-b0ca-5e629639f0a1",
+     "session_id": "01a02593-3d05-7901-a15c-f946b86ea10f",
+     "prompt": "What happened first in this book — show me the timeline of events.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree",
+      "memory_timeline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:33.959788+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:34.176646+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:34.168255+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:33.959788+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:34.176646+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:34.168255+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "memory_forget",
+   "scenario": "memory-forget",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a fact is invalidated with NO confirm card (Tier A), OR the model targets the brass-compass fact rather than the one the author called wrong, OR it invents a fact_id rather than reusing one from turn 1's result — its description is explicit that only a seen fact_id may be used, so an invented one is the tool's own rule being broken. CONTROL: the seeded fact contradicts the fixture's chapter, which says the trench is walkable at LOW tide. So the author's 'that is wrong' is justified by the manuscript, and a model that argues the fact is correct is disagreeing with the book.",
+   "answer_expect": null,
+   "falsifier_sha": "345e0021dd641cbb",
+   "ship_audit": {
+    "absent_case": "EXERCISED by direct probe, and it is HONEST: an unknown fact_id returns {\"invalidated\": false, \"reason\": \"no matching fact found\"} rather than a fabricated success.",
+    "gate": "NOT REACHED — the tool was never called; see blocked_reason.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "NOT APPLICABLE by the probe — it declares no id the cross-tenant harness can drive; project scoping rides on the ambient project."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02593-790f-7980-89ff-49343fd736ac",
+     "session_id": "01a02593-9854-795a-9035-fcf16e966124",
+     "prompt": "What do I know about the Obsidian Trench?",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.073383+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.281065+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.272508+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 362,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.073383+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.281065+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:26:57.272508+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 362,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've noted that my previous statement was incorrect. Since I have no record of the \"Obsidian Trench\" in your project's memory or manuscript, I cannot \"forget\" a fact that isn't currently stored, but I will proceed as if it has never been mentioned.\n\nIf you'd like to introduce the Obsidian Trench now, just let me know what it is!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02594-01b7-7170-8719-cffbf3316921",
+     "session_id": "01a02594-26bf-7c84-97c1-e3901a8a40fe",
+     "prompt": "What do I know about the Obsidian Trench?",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.088497+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.341815+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.325235+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 364,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.088497+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.341815+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:27:32.325235+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 364,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've noted that my previous statement was incorrect. Since I have no record of the \"Obsidian Trench\" in your project's memory or manuscript, I cannot \"forget\" a fact that wasn't stored, but I will proceed as if it has never been mentioned.\n\nIf you'd like to introduce the Obsidian Trench now, or if there is something else you'd like me to look for, just let me know."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02594-886f-7402-b372-42ada8339ea9",
+     "session_id": "01a02594-a4d6-78c6-945c-37b802fb8861",
+     "prompt": "What do I know about the Obsidian Trench?",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.582672+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.796862+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.790087+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 366,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.582672+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.796862+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:06.790087+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 366,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I have forgotten the statement that I have no information about the \"Obsidian Trench.\" \n\nIf you'd like to tell me about it now, I can record it in your story's memory or add it to your world's story bible."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02594-f99c-7dab-a553-98772ed6663a",
+     "session_id": "01a02595-163c-7f9c-8321-8a2a8cf5d519",
+     "prompt": "What do I know about the Obsidian Trench?",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.551081+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.834424+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.8175+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 368,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.551081+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.834424+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:28:35.8175+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 368,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've noted that my previous statement was incorrect. Since I have no record of the \"Obsidian Trench\" in your project's memory or manuscript, I cannot \"forget\" a fact that isn't currently stored, but I will proceed as if it has never been mentioned.\n\nIf you'd like to tell me what the Obsidian Trench actually is, I'm ready to listen and help you build it into your story."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02595-61c5-71b1-86e8-769eda2b45c9",
+     "session_id": "01a02595-7e5b-7fa5-ae6d-1b674ad592a1",
+     "prompt": "What do I know about the Obsidian Trench?",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.203412+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.420294+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.41368+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.203412+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.420294+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:02.41368+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 2,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've noted that my previous statement was incorrect. Since I have no record of the \"Obsidian Trench\" in your project's memory or manuscript, I cannot \"forget\" it as a stored fact, but I will proceed as if it has never been mentioned.\n\nIf you'd like to introduce the Obsidian Trench now, just let me know what it is!"
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED, and the cause is a supplier that CANNOT answer — not the model, and not the tool.\n\nSURFACED 5/5 but called 0/5, which is a different finding from the last three batches: this tool WAS advertised. In the measured turn the model made ZERO tool calls and said \"Since I have no record of the 'Obsidian Trench' in your project's memory or manuscript, I cannot forget a fact that isn't currently stored\".\n\n🔴 IT WAS RIGHT, AND THE STORE PROVES BOTH HALVES. The seed stored TWO facts — the run's own snapshot reads neo4j.Fact.project = 2 before and after — so the facts exist. But a direct probe of the supplier shows why turn 1 found nothing:\n    memory_search(query='Obsidian Trench') -> {\"hits\": [], \"total\": 0,\n                                               \"degraded\": {\"semantic\": \"not_indexed\"},\n                                               \"note\": \"this project has no indexed memory yet\"}\nA fact stored by memory_remember is NOT findable by memory_search until the project is indexed. memory_forget's own description says 'Only use a fact_id you have seen in an earlier tool result' — so on an unindexed project its single supplier returns nothing and the tool is unreachable BY DESIGN, however well the model behaves.\n\nNAMING IT: D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED. It is the exact shape found one batch earlier in the graph subsystem — D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ, where kg_add_nodes says 'node ready' and kg_graph_query reports zero nodes. Two independent subsystems, one pattern: a write tool confirms it stored something and the only read that would surface it returns nothing, so the model tells the author their own content is not there. In both cases the model's sentence was TRUE and the false absence belonged to the platform."
+  },
+  {
+   "tool": "settings_model_register",
+   "scenario": "settings-model-register",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a model is registered with NO confirm card (Tier A — it writes to the account's permanent model list), OR the model INVENTS a provider_credential_id rather than reading one from turn 1, OR it invents a provider_model_name the author did not give. 🔴 CONTROL WORTH READING: the tool's description says it does NOT take an API key and that a secret must be added in Settings first — so a reply that asks the author to paste a key, or claims to have stored one, is describing a capability this tool explicitly does not have. If the account has NO provider credentials, refusing and saying so is the correct outcome.",
+   "answer_expect": null,
+   "falsifier_sha": "02f08e84f2db6c6c",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised 5/5 with the store unchanged; no model was registered on the account.",
+    "absent_case": "EXERCISED by direct probe — an unknown provider_credential_id is refused 'provider credential not accessible', which is owner-scoped wording that does not distinguish 'not yours' from 'does not exist'.",
+    "empty_case": "EXERCISED — the account HAS provider credentials (settings_list_providers returns real rows), so the no-credentials branch was not reachable here and is recorded as not exercised rather than claimed.",
+    "idempotency": "NOT REACHED — the card is never approved, so no model was registered to re-register.",
+    "tenancy": "EXERCISED AS NOT APPLICABLE, with the reason — 'no tenancy argument' is a different statement from 'tenancy passed'. This tool is scope=USER: it takes no id a cross-tenant probe could drive, and reads the SIGNED-IN account from the envelope identity. Verified by direct probe that it returns the caller's own row (user_id 019d5e3c…, the harness account) rather than anything else."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02595-da0a-76f4-800d-25bf59c9180f",
+     "session_id": "01a02595-f8ad-7184-85c3-73ec6643cb33",
+     "prompt": "List my AI provider credentials.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_register"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.008393+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.267164+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.256695+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.008393+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.267164+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:29:33.256695+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02596-4913-7550-a4e7-c3644c8e3f81",
+     "session_id": "01a02596-6b70-7609-bc09-51713f998d7b",
+     "prompt": "List my AI provider credentials.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_register"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.417787+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.633682+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.623432+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.417787+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.633682+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:01.623432+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02596-cc08-7c3f-9518-77df92e4ae2b",
+     "session_id": "01a02596-f78d-7e00-956c-db73372d9e0b",
+     "prompt": "List my AI provider credentials.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_register"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:34.93272+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:35.167731+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:35.149899+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:34.93272+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:35.167731+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:30:35.149899+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02597-560a-78be-a307-66b9fece3c32",
+     "session_id": "01a02597-7b2a-7df1-a4c0-6409e78f888e",
+     "prompt": "List my AI provider credentials.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_register"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.284744+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.553335+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.533695+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.284744+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.553335+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:10.533695+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02597-cd7d-7335-85c2-d5e86edc3829",
+     "session_id": "01a02597-ede4-7ba3-b554-3864d9173788",
+     "prompt": "List my AI provider credentials.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_register"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:40.860102+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:41.09701+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:41.088543+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:40.860102+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:41.09701+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 18:31:41.088543+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  }
+ ]
+}

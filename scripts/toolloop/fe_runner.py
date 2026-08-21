@@ -586,7 +586,16 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
                 "rep": r.get("rep"),
                 "book_id": r.get("book_id"),
                 "session_id": r.get("session_id"),
-                "prompt": sc["prompt"],
+                # 🔴 THE MEASURED TURN, not the scenario's first line. These differ for every
+                # multi-turn scenario, and recording the wrong one is not cosmetic: reading
+                # batch 34 back, world_map_remove_marker's evidence was labelled "List my
+                # worlds." and it took a detour through the answers to establish that the
+                # follow-ups had run at all. Evidence that misnames what it measured is
+                # evidence that will be misread. `prior_turns` rides along for the same
+                # reason: the setup turns are what make the last one interpretable.
+                "prompt": (r.get("prompt") or sc["prompt"]),
+                "scenario_prompt": sc["prompt"],
+                "prior_turns": r.get("prior_turns") or [],
                 "called": sc.get("expect_tool") in called_names(r),
                 "surfaced": sc.get("expect_tool") in surfaced_names(r),
                 "called_tools": sorted(called_names(r)),
