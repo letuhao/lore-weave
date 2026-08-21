@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ step 5 — the two benchmarks must self-provision their Neo4j index before any DDL is deleted (T25m).**
+**RESUME: `T25` ③ step 3 — delete the passage vector DDL. Steps 1/2/5 done; needs a deployment on `postgres` first (T25n).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 61 of 111 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 62 of 112 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (8/15) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (9/16) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3577,6 +3577,78 @@ vectors and validity intervals live in different stores.
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### ✅ T25n 2026-08-22 — **the benchmarks own their index**, and the reason I gave for it was wrong
+
+  ```
+  iso, rebuilt image, throwaway graph:
+
+    BITE ARM   drop, no ensure      before ['passage_embeddings_1024'] -> after DROP ABSENT
+                                    after "ensure"  ABSENT        <- what deleting the DDL does today
+    REAL ARM   drop, then ensure    after DROP ABSENT
+                                    ensure_passage_vector_index -> passage_embeddings_1024
+                                    after ensure ['passage_embeddings_1024']
+  ```
+
+  `flat_knn_rawsearch` and `vector_backend_bench._from_neo4j` are `port-adoption-gate`'s vector
+  bypass **floor of 2** — they measure the Neo4j backend on purpose and are the only things that
+  can compare it with pgvector. Both inherited `passage_embeddings_<dim>` from
+  `neo4j_schema.cypher`, applied at every service start, so ③ deleting that DDL would have
+  retired the comparison that justified the cutover. They now ensure it themselves, under the
+  **same name and options**, so it is the identical index rather than a second one beside it and
+  a no-op against a stack that still applies the schema.
+
+  🔴 **AND THE JUSTIFICATION I WROTE FOR IT WAS FALSE — measured, in four places, before the
+  commit.** The first draft of every comment on this change said a missing vector index *"does
+  not raise, it returns nothing, so the ANN recall would have quietly read 0.0 and been reported
+  as the backend losing."* Run it:
+
+  ```
+    index PRESENT   -> 5 hit(s)   (no exception)
+    index DROPPED   -> RAISED ClientError: Neo.ClientError.Procedure.ProcedureCallFailed
+                                 Failed to invoke procedure `db.index.vector.queryNodes`
+    index RESTORED  -> 5 hit(s)   (no exception)
+  ```
+
+  It **raises**. The benchmarks would have broken loudly, which is the better failure — and the
+  work is still needed, because a broken benchmark is a broken comparison either way. But the
+  *silent-zero* story was invented, it is the kind of story that sounds most convincing, and it
+  had already been copied into two source comments and a test docstring. Corrected in all four.
+  **Third over-claim of this session** (A14's *"10 available"*, T25m's entity-scope zero, this)
+  and the third caught by running the thing rather than reasoning about it — which is rule 2
+  earning its place three times in one day.
+
+  📐 **It also sharpens T25k.** Deleting this DDL while a deployment still reads `neo4j` does not
+  degrade semantic search to empty results — it turns it into a **500**. The ordering T25k
+  imposed was right; the consequence of getting it wrong is worse than recorded there.
+
+  🔧 **`dim` is validated against `SUPPORTED_PASSAGE_DIMS`, not merely typed `int`**, because
+  Cypher has no parameter form for an index NAME and the dimension is part of it. Same argument
+  `app/domain/passage_contract.py` records for the Postgres side: the tuple is the injection
+  barrier, so it is checked here rather than assumed of the caller.
+
+  **BITE ×4:**
+
+  ```
+  11. the dimension guard drops (`if False:`)
+        2 failed — "...REFUSED rather than templated into a name", "a string dim ... refused"
+  12. the index name drifts (`bench_passage_embeddings_{dim}`)
+        2 failed — "is not declared in neo4j_schema.cypher … would create a SECOND index"
+  13. drop the real index on iso and DON'T ensure   -> ABSENT (the bite arm above)
+  14. drop it and search                            -> RAISED, not empty (the correction above)
+  ```
+
+  ⚠️ **`test_the_benchmark_index_name_is_the_one_the_schema_declares` is EXPECTED to go red on
+  the commit that deletes the passage DDL**, and that is its second job. Whoever deletes it has
+  to confront that the benchmarks became the only definition of that name, instead of finding
+  out from a benchmark that stopped running.
+
+  **QC (a) gates:** knowledge-service unit **4291 → 4295**; four plan gates green;
+  `port-adoption-gate` unchanged at 54/19/2 — the benchmarks stay class (c) and stay the bypass
+  floor, which is correct: this batch makes them self-sufficient, not port-adopting.
+  **QC (b) the seam:** ✅ rebuilt iso image, real Neo4j, index really dropped and really
+  recreated, search exercised on both sides of the drop.
+  **QC (c) real data:** 545 real passages; 5 hits before, an exception during, 5 hits after.
 
   ### ✅ T25m 2026-08-22 — **the read cutover works and is SCOPE-CORRECT**, proven on both stores at once
 

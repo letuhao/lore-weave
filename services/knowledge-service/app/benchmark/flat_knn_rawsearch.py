@@ -41,6 +41,11 @@ async def _run(args: Any) -> int:
     from app.clients.embedding_client import init_embedding_client
     from app.db.neo4j import init_neo4j_driver, neo4j_session
     from app.db.neo4j_repos.passages import find_passages_by_vector
+    # T25 ③ step 5 — this benchmark OWNS its index. It used to inherit
+    # `passage_embeddings_<dim>` from `neo4j_schema.cypher`, which the cutover deletes;
+    # a missing vector index RAISES ProcedureCallFailed out of `db.index.vector.queryNodes`
+    # (measured on iso, T25n), so this benchmark would simply stop working.
+    from app.db.neo4j_repos.vector_indexes import ensure_passage_vector_index
 
     _logging.basicConfig(level=_logging.WARNING)
 
@@ -55,6 +60,9 @@ async def _run(args: Any) -> int:
     k = args.k
 
     await init_neo4j_driver()
+    async with neo4j_session() as _s:
+        _idx = await ensure_passage_vector_index(_s, args.embedding_dim)
+        print(f"[flat_knn] ensured {_idx}", file=_sys.stderr)
     embed = init_embedding_client()
 
     per_query: list[dict] = []

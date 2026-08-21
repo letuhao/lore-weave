@@ -32,6 +32,8 @@ __all__ = [
     "list_summary_vector_indexes",
     "parse_summary_index_name",
     "summary_index_name",
+    "ensure_passage_vector_index",
+    "passage_index_name",
 ]
 
 
@@ -222,3 +224,57 @@ async def query_summary_index(
             "score": record["score"],
         })
     return rows
+
+
+# ── passage vector index (plan T25 ③ step 5) ─────────────────────────────────
+#
+# The two backend benchmarks — `flat_knn_rawsearch` (ANN recall vs exact) and
+# `vector_backend_bench._from_neo4j` (a per-engine corpus dump) — both reach the graph
+# through `find_passages_by_vector`, which needs `passage_embeddings_<dim>` to exist. They
+# never created it: it arrived from `neo4j_schema.cypher`, applied at every service start.
+#
+# ⚠️ That is why ③ cannot simply delete the DDL. `port-adoption-gate` holds the vector bypass
+# at a FLOOR of 2 precisely because these two measure the Neo4j BACKEND on purpose, and they
+# are the only things that can compare it with pgvector. Deleting the shared DDL without this
+# would retire the comparison that justified the cutover. MEASURED on iso (T25n), because the
+# first draft of this comment guessed and guessed wrong: a missing index does NOT return an
+# empty result, it RAISES `Neo.ClientError.Procedure.ProcedureCallFailed` out of
+# `db.index.vector.queryNodes`. So the benchmarks would break loudly rather than report a
+# false zero — which is the better failure, and still a broken comparison. It also means
+# deleting this DDL while a deployment reads `neo4j` turns semantic search into a 500, not
+# into empty results.
+#
+# So the benchmarks own their index. Same NAME and same options as the schema file, so this
+# is the identical index rather than a second one beside it, and running a benchmark against
+# a stack that still applies the schema is a no-op.
+async def ensure_passage_vector_index(session: CypherSession, dim: int) -> str:
+    """Idempotent CREATE of `passage_embeddings_<dim>`; returns the index name.
+
+    `dim` is validated against `SUPPORTED_PASSAGE_DIMS` rather than merely typed as `int`,
+    because Cypher has no parameter form for an index NAME and the dimension is part of it.
+    The same argument `passage_contract` records for the Postgres side: the tuple is the
+    injection barrier, so it has to be checked here and not assumed by the caller.
+    """
+    from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
+
+    if dim not in SUPPORTED_PASSAGE_DIMS:
+        raise ValueError(
+            f"dim {dim!r} is not a supported passage dimension "
+            f"{SUPPORTED_PASSAGE_DIMS!r} — refusing to template it into an index name"
+        )
+    name = passage_index_name(dim)
+    await session.run(
+        f"CREATE VECTOR INDEX {name} IF NOT EXISTS "
+        f"FOR (p:Passage) ON (p.embedding_{dim}) "
+        "OPTIONS {indexConfig: {"
+        "`vector.dimensions`: $dim, "
+        "`vector.similarity_function`: 'cosine'}}",
+        dim=dim,
+    )
+    return name
+
+
+def passage_index_name(dim: int) -> str:
+    """The name `neo4j_schema.cypher` declares. Kept as a function with one caller pair so
+    the benchmark and any future DDL cleanup cannot drift to two spellings of one index."""
+    return f"passage_embeddings_{dim}"

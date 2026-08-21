@@ -217,11 +217,16 @@ async def _from_neo4j(project_id: str, user_id: str, dim: int, limit: int):
     """Real passage vectors, READ-ONLY. The dev graph holds real books; this only reads."""
     from app.db.neo4j import init_neo4j_driver, neo4j_session
     from app.db.neo4j_repos.passages import find_passages_by_vector
+    # T25 ③ step 5 — own the index rather than inheriting it from `neo4j_schema.cypher`,
+    # which the cutover deletes. Same name and options, so this is the identical index and
+    # a no-op against a stack that still applies the schema.
+    from app.db.neo4j_repos.vector_indexes import ensure_passage_vector_index
 
     await init_neo4j_driver()
     probe = [0.0] * dim
     probe[0] = 1.0
     async with neo4j_session() as session:
+        await ensure_passage_vector_index(session, dim)
         hits = await find_passages_by_vector(
             session, user_id=user_id, project_id=project_id, query_vector=probe, dim=dim,
             embedding_model=None, source_type="chapter", limit=limit,
