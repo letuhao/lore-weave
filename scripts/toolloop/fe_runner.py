@@ -645,8 +645,50 @@ def main():
                     help="standing tool approvals for this batch; 'none' clears and restores")
     a = ap.parse_args()
     scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
+def preflight_seed_asserts(scenarios) -> list[str]:
+    """Run every seed_assert query ONCE, before the batch spends a turn.
+
+    🔴 WHY THIS EXISTS. Batch 32 lost all 25 runs to a single typo: the assertion said
+    `WHERE id=` and knowledge_projects' primary key is `project_id`. Every run failed in
+    provisioning, the report read "0/5 called, 5 err" for five tools, and nothing about any
+    tool was measured. The same class had already cost batch 31 four of five runs (an
+    account-wide `label='Ironhold'` matching earlier arms) and batch 29 a whole arm.
+
+    A seed assertion is SQL I wrote against a schema I did not read. Executing it once with a
+    placeholder is two seconds and turns a 25-turn loss into a message before anything starts.
+    The placeholders are substituted with a syntactically valid UUID rather than a real one, so
+    the query is CHECKED but its RESULT is meaningless here — this catches a bad column, a bad
+    table or bad syntax, never a wrong expectation. The real assertion still runs per-run
+    against the real fixture, where it belongs.
+    """
+    import re as _re
+
+    import provision as _prov  # noqa: PLC0415 — the oracle lives beside the loop
+
+    dummy = "00000000-0000-4000-8000-000000000000"
+    problems: list[str] = []
+    for sc in scenarios:
+        for c in (sc.get("seed_assert") or []):
+            sql = _re.sub(r"\{[a-z_]+(?::[^}]*)?\}", dummy, c.get("query", ""))
+            try:
+                _prov.oracle.db_query(c["db"], sql)
+            except Exception as exc:  # noqa: BLE001 — any failure here is a broken assertion
+                problems.append(f"{sc.get('id') or sc.get('tool_under_test')}: "
+                                f"[{c['db']}] {str(exc).strip()[:200]}")
+    return problems
+
+
     globals()["APPROVAL_MODE"] = a.approvals
     globals()["KEEP_FIXTURES"] = a.keep_fixtures
+    bad = preflight_seed_asserts(scenarios)
+    if bad:
+        print("REFUSING to run — a seed assertion is not valid SQL against its own database. "
+              "A scenario whose assertion cannot execute measures nothing, and every run would "
+              "fail in provisioning:", file=sys.stderr)
+        for b in bad:
+            print(f"  {b}", file=sys.stderr)
+        return 2
+
     with ApprovalState(a.approvals):
         results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency, a.approvals))
     if a.out:
