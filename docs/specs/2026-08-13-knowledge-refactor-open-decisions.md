@@ -165,6 +165,29 @@ limit honestly: these are the same three runs this section cites as its reason, 
 evaluation scores a rule against its own motivating examples and cannot validate the RULE. It
 validates the PIPELINE, and only because the rule fitted to these runs still fails on them. A
 fresh three-run measurement on a chapter that did not set the rule is what QC-5 now owes.
+
+🔴 **CLAUSE 1 IS MEASURING THE DRAFTER (2026-08-21, QC-5 C14) — a defect in the criterion, not
+in the flow.** Clause 1 requires *">=2 runs with `canon<=3` and at least one attributed
+violation"*, which is only satisfiable when the DRAFTER produces a canon violation. Six runs
+across two chapters (C7 chapter 5, C13 chapter 12 — the betrayal arc) produced
+`canon_consistency=5` every time and **zero** canon violations, so clause 1 scored 0/6.
+
+**The critic is not the problem, and that is measured.** A passage constructed to contradict `R1`
+— naming a different betrayer, where `R1` says *"no one else is the betrayer in the trap"* — run
+through the real system prompt with the real six rules scores **`canon=1`, attributed to `R1`,
+3/3, with zero invented ids**. Same prompt, same model, same rules as the six failing runs; only
+the passage changes.
+
+⚠️ **This section forbids the experiment that separates the two**, and that is the actual defect:
+*"Each run re-drafts… a fixed-draft experiment would measure a component nobody uses in
+isolation."* Sound for measuring the FLOW, wrong as the only measurement — it leaves the
+criterion unable to tell a critic that cannot see a violation from a drafter that does not make
+one, and it has been reporting the second as the first.
+
+**The PO's choice, now a real one:** seed a known-bad draft so clause 1 has something to attribute
+(accepting a fixed-draft arm alongside the end-to-end one), or restate clause 1 against what the
+flow does produce. Either changes the acceptance criterion. What is no longer in question is
+whether the critic can attribute a violation: it can, 3/3.
 ✅ **DELIVERED 2026-08-21 (QC-5 C7) — chapter 5, and the verdict is still DOES NOT PASS.** Three
 runs, same models, same chapter, on lw-iso against local models for $0.18: canon **4 / 5 / 4**,
 raw findings **3 / 5 / 1**, attributed **0 / 0 / 0**. Clause 1 scores **0 of 3**; clause 2 holds,

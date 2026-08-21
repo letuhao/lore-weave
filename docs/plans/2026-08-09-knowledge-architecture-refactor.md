@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-5` measured on the BETRAYAL chapter (C13) — still **DOES NOT PASS**, and it falsified my own previous cycle twice. **(1)** C12 called the `craft_notes` channel *fixed, live-proven* on one run — of the chapter the fix was built from. On chapter 12 the judge **still invents** (`raw 3/6/2, all dropped`, one run even producing a typo'd `QUY UOCZ XUNG HO`). The channel is a real improvement — it captures a genuine world-building anachronism (*'subatomic particles' in a xianxia setting*) that previously had nowhere to go — but it routes SOME out-of-rule findings and not others. **(2)** C12 called the fixture choice the PO's; it was mine. `R1` IS the misattributed-betrayal rule, chapter 12 is in that arc and did not set §2.1's rule, so picking it was work. ⛔ Clause 1 still **0/3**, and now for a MEASURED reason: `canon_consistency` is **5 in all three runs** — the drafts are canon-consistent, so there is nothing to attribute. Six runs across two chapters have produced zero canon violations. **Clause 1 cannot be satisfied by re-drafting alone; the bad draft has to be PLANTED.** Seeding a known-bad draft, or restating clause 1, changes the acceptance criterion — that is the PO's. Also owed: `recanon --apply` (1819 fork, T46b) · `OD-2` soak never ran (T25c) · `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: ✅ **THE CRITIC WORKS — measured (C14).** Six runs across two chapters scored `canon=5, attributed=0`, and clause 1 read that as a flow failure. It is not: a passage constructed to contradict `R1` (naming a different betrayer, where R1 says *no one else is the betrayer*) scores **`canon=1`, attributed to `R1`, 3/3, zero invented ids** — same prompt, same model, same rules; only the passage changes. **Clause 1 requires the DRAFTER to produce a violation, and it reliably does not**, so the criterion measures drafter quality and reports it as a critic failure. §2.1 forbids the fixed-draft experiment that separates them; that prohibition is the defect, and running it once is the only reason this is known. It also explains the invention: given a real rule the judge USES it — the invented ids only appear when it has a craft finding and no matching rule. ⛔ PO: **(1)** `QC-5` — seed a known-bad draft or restate clause 1 (either changes the criterion; the critic is no longer in question) · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 36 of 81 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 37 of 82 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/35) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (13/36) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6188,6 +6188,72 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### ✅ QC-5 C14 2026-08-21 — **the critic WORKS.** Clause 1 measures the drafter, not the flow.
+
+  ```
+  planted violation of R1 · same system prompt the flow builds · same six real rules · 3 runs
+    run 1  canon=1  attributed=['R1']  invented=[]  craft_notes=0
+    run 2  canon=1  attributed=['R1']  invented=[]  craft_notes=0
+    run 3  canon=1  attributed=['R1']  invented=[]  craft_notes=0
+  ```
+
+  Six runs across two chapters (C7, C13) produced `canon_consistency=5` every time, zero canon
+  violations, and clause 1 at **0/6**. C13 concluded the bad draft has to be planted. Before
+  handing that over, the obvious question had never been asked: **is the critic even capable of
+  attributing a violation?** Clause 1 has been failing for two chapters and nobody had separated
+  *"the critic cannot catch one"* from *"there was nothing to catch"*.
+
+  🎯 **Separated, and the answer is unambiguous.** A passage was constructed — not taken from any
+  failing run (rule 3) — that names **To Thanh Dao** as the betrayer, directly contradicting `R1`:
+  *"Lam Trach is the one who betrayed Lam Uyen. **No one else is the betrayer** in the trap at the
+  Lam family."* Run through the real system prompt with the real six rules:
+
+  * attributed to **`R1`**, correctly, **3/3**
+  * `canon_consistency` **1** — severe, 3/3
+  * **zero** invented rule ids
+  * **zero** spurious `craft_notes`
+
+  ### 📐 THIS EXPLAINS EVERY EARLIER OBSERVATION AT ONCE
+
+  | the passage contains | what the judge does |
+  |---|---|
+  | a real canon violation | attributes it to the rule, scores severe, **invents nothing** |
+  | no canon violation, but a craft problem | **invents a rule id** to carry it (C10/C12/C13) |
+
+  The invention is not a defect of the judge's canon reasoning — it is what the judge does when it
+  has a true observation and the schema offers only a rule-keyed field. When a rule genuinely
+  applies, it uses the rule.
+
+  🔴 **So `QC-5`'s "DOES NOT PASS" is an artefact of clause 1, not evidence of a broken flow.**
+  §2.1's clause 1 requires *">=2 runs with `canon<=3` **and** at least one attributed violation"*,
+  which can only be satisfied when the DRAFTER produces a canon violation. Six runs say it
+  reliably does not. **Clause 1 therefore measures drafter quality and reports it as a critic
+  failure** — two different things, and the flow is being failed for the one that is going right.
+
+  ⚠️ **§2.1 forbids the experiment that would separate them, and that is the actual defect.** It
+  says *"Each run re-drafts… a fixed-draft experiment would measure a component nobody uses in
+  isolation."* That reasoning is sound for measuring the FLOW and wrong as the ONLY measurement:
+  it makes the criterion unable to distinguish a critic that cannot see a violation from a drafter
+  that does not make one. This batch ran exactly the forbidden experiment **once**, deliberately,
+  and it is the only reason the distinction is now known.
+
+  📐 **What this does NOT claim.** One judge call is not the flow. It does not show the end-to-end
+  path attributes correctly under a real re-draft — it shows the critic and its prompt are sound
+  on the property QC-5 exists to protect, so a failing clause 1 is no longer evidence against
+  them. The end-to-end claim still needs a run whose draft actually violates canon.
+
+  **BITE — N/A, and the control that replaces it:** no code changed. Its non-vacuity is structural
+  — the SAME prompt, model and rules that scored `canon=5, attributed=0` on six real drafts score
+  `canon=1, attributed=R1` on a planted one, 3/3. The instrument is held fixed and only the
+  passage changes, so the difference belongs to the passage. A criterion that reported the same
+  verdict for both would be the one that cannot fail.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** N/A — deliberately below the seam. This isolates the judge, which is the
+  whole point; the seam-crossing runs are C7 and C13.
+  **QC (c) real data:** the six real canon rules and the real production system prompt, taken from
+  the stored request for job `01a02149-…`.
+
   ### 🔻 QC-5 C13 2026-08-21 — clause 1 on the BETRAYAL chapter, and **C12's fix is PARTIAL, not complete**
 
   ```
