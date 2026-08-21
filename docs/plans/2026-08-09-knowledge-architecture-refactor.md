@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-5`'s two open threads are ONE PO decision, diagnosed 2026-08-21 (C10). C3/C6/C7 each RECORDED the same drop and none diagnosed it (rule 13). Read live: the judge returns `rule_id` = a naming-convention rule while the book's **6 active rules are all character facts** — it INVENTS a category, so the mapper drops it and is **correct** to. The cause written in the code (*"`active_rules` being empty is the CAUSE"*) is wrong for this workload and is corrected. ⚠️ The tempting fix — match on the label — would re-open `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` (fixed 2026-08-12) by attaching a fabricated rule to a real one; a test now pins the refusal. So clause 1 (*at least one attributed violation*) cannot pass while the judge invents ids — the same family as `D-QC5-ROLE-JUDGE-PRECISION`, already ruled **a spend question**. The plumbing is sound (C3 counter · C5 channel · C8 name-grounding truth side · C10 mapper). **What is left is the judge model.** ⛔ PO: **(1)** the model budget above · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: `QC-5`'s two open threads are ONE PO decision, diagnosed 2026-08-21 (C10). C3/C6/C7 each RECORDED the same drop and none diagnosed it (rule 13). Read live: the judge returns `rule_id` = a naming-convention rule while the book's **6 active rules are all character facts** — it INVENTS a category, so the mapper drops it and is **correct** to. The cause written in the code (*"`active_rules` being empty is the CAUSE"*) is wrong for this workload and is corrected. ⚠️ The tempting fix — match on the label — would re-open `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` (fixed 2026-08-12) by attaching a fabricated rule to a real one; a test now pins the refusal. So clause 1 (*at least one attributed violation*) cannot pass while the judge invents ids — the same family as `D-QC5-ROLE-JUDGE-PRECISION`, already ruled **a spend question**. The plumbing is sound (C3 counter · C5 channel · C8 name-grounding truth side · C10 mapper). **What is left is the judge model — and C11 TESTED that framing instead of inheriting it:** the prose judge's prompt never states a closed set, so a closed-set constraint was measured A/B on the real rules and the real drafted passage. **The control never fails** (0 violations across three progressively more faithful fixtures), so no prompt change ships — a treatment beating a control that cannot fail proves nothing. Rule 8's third killed batch this session. ⛔ PO: **(1)** the model budget above · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -6188,6 +6188,69 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### 📊 QC-5 C11 2026-08-21 — the prompt fix was MEASURED and NOT BUILT: the control never fails
+
+  ```
+  same model (gemma-4-26b-a4b-qat) · same 6 real rules · temperature 0 · 3 fixture variants
+  CONTROL   (shipped prompt)  0 violations, 0 invented
+  TREATMENT (closed-set rule) 0 violations, 0 invented
+  ```
+
+  C10 ruled the judge-model a **spend** call by analogy with `D-QC5-ROLE-JUDGE-PRECISION`. But
+  that gap was measured on `_build_role_judge_messages` — the **role** judge. C10's finding is
+  the **prose** judge, a different prompt that had never been tested for it, and its system
+  message never states a CLOSED SET: it says rules are *"labelled [R1], [R2]"* and asks for
+  *"that rule's label exactly"*, but nothing forbids inventing one. That is a cheap hypothesis
+  and it would flip a spend decision into a code fix, so it was worth measuring.
+
+  🔴 **It does not reproduce.** Three fixtures, each closing a real fidelity gap in the harness
+  rather than fishing for a result:
+
+  ```
+  1. published chapter 5 prose            CONTROL 0 violations
+  2. the DRAFTED text the live judge saw  CONTROL 0 violations   (revision 01a02149-…)
+  3. + the `lang` directive the shipped   CONTROL 0 violations
+     prompt appends (the live judge
+     answered in Vietnamese BECAUSE of it)
+  ```
+
+  ⚠️ **A treatment measured against a control that cannot fail proves nothing** (rule 3), so no
+  prompt change ships. Declaring the closed-set constraint a fix on this evidence would be the
+  same green-by-construction error this session has now caught six times — including twice in my
+  own fixtures.
+
+  📐 **The null is still informative, and it points AWAY from the prompt.** The invented rule id
+  is not a deterministic property of the shipped prompt: at temperature 0, with the real rules,
+  the real drafted passage and the real language directive, the judge produced **no** violations
+  at all — while the live run on that same draft scored `canon_consistency 4` with **2 findings**.
+  Whatever produces the invented category is conditioned on something the harness does not hold
+  (the critic model variant — live used `51ea9fd7-…`, the **non-qat** build — or `present_facts`,
+  or sampling). A prompt constraint cannot be shown to fix a failure that will not appear when
+  the prompt is held fixed.
+
+  ⚠️ **And the harness's own first run was a null of a different kind, recorded so it is not
+  mistaken for data:** both arms returned EMPTY content until `reasoning_effort=none` +
+  `chat_template_kwargs.thinking=false` were added — the production call spreads
+  `**no_thinking_fields()` for exactly this reason, and without it gemma spends the budget on a
+  preamble. Two empty arms are not agreement.
+
+  **BITE — N/A, and the control that replaces it:** no code changed; the batch was killed by its
+  own measurement. Its validity rests on the CONTROL arm, which is the shipped prompt verbatim
+  (system text, `[R1]` rendering, and the `lang` suffix) — and the reason the result is
+  reportable is that the control was made progressively MORE faithful across three runs and
+  still did not fail.
+
+  🎯 **Rule 8, third time this session.** *"MEASURE THE BATCH BEFORE BUILDING IT. Twice this week
+  it killed the batch; that was the result."* A11 killed one, C10 killed the label-matching
+  fallback, and this kills the prompt fix. **C10's spend framing stands — now tested rather than
+  inherited by analogy.**
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `doc-language-gate` OK.
+  **QC (b) the seam:** three live calls to the local model through LM Studio's OpenAI-compatible
+  endpoint; no service code changed, so no image rebuild applies.
+  **QC (c) real data:** the book's six real canon rules, the real drafted revision the live
+  critic judged, and the real language directive.
+
   ### 🔻 QC-5 C10 2026-08-21 — **why** the verdicts are dropped: the recorded cause is wrong, and the obvious fix re-opens a fixed defect
 
   ```
