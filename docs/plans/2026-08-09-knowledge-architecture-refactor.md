@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 45 of 88 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 46 of 87 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/39) · `T46` (3/6) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/37) · `T46` (4/7) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7101,7 +7101,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   The attribution channel is wired and demonstrated. What replaced it is a sharper problem.
 
-  ### 🔻 DEFERRAL `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
+  ### ~~DEFERRAL~~ `D-QC5-PIPELINE-NOT-REPRODUCIBLE` — **CLOSED 2026-08-21 (T46j) — its `To unblock` asked to *"decide what the acceptance measurement IS: N runs with a stated pass rule … **or** a fixed draft judged N times to separate drafter variance from judge variance"*. §2.1 chose the first (three runs, majority) and the 2026-08-21 clause-1 split delivers the second as **arm 1a** — a planted draft judged three times — so the acceptance now separates the two variances instead of confounding them. `scripts/qc5-acceptance-gate.py` makes the rule executable (11 selftest cases, five bites). `Retry when` read *"the measurement rule is chosen"*; it is.**
 
   | | |
   |---|---|
@@ -8196,7 +8196,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   component expansion reds the two precision tests. **QC:** 3706 composition tests pass
   (+7 new), worker + service images rebuilt and verified to carry the fix.
 
-  ### 🔻 DEFERRAL `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION`
+  ### ~~DEFERRAL~~ `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION` — **CLOSED 2026-08-21 (QC-5 C8, re-verified T46j) — the blocker was `audit_names(draft, packed_prompt, …)` with `known_names` **never passed**, so production compared the draft against the drafter's own input. Both call sites in `canon_reflect.py` now pass it (lines 230-231 and 375-377), sourced from the authored cast with a fail-safe degrade.**
 
   | | |
   |---|---|
@@ -14554,6 +14554,46 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   service seam changed — this is a diagnosis and a pin. **QC (c) real data:** the cast shape is the
   acceptance book's own (`Lam Trach` / `Lam Uyen` / `To Thanh Dao`), which is why the
   recurring-syllable collision is not hypothetical.
+
+  ### ✅ T46j 2026-08-21 — **two more deferrals close on evidence already in the repo**
+
+  ```
+  QC-5 span, OPEN deferral headings:  12 -> 8 (T46h) -> 6
+  ```
+
+  Both were verified from the WORKLOAD, not from their own notes — the discipline T46h's
+  self-contradicting block earned.
+
+  ✅ **`D-QC5-PIPELINE-NOT-REPRODUCIBLE`.** Its `To unblock` asked to *"decide what the acceptance
+  measurement IS: N runs with a stated pass rule … **or** a fixed draft judged N times to separate
+  drafter variance from judge variance"*, and `Retry when` read *"the measurement rule is chosen"*.
+  Both halves now exist: §2.1 chose three runs with a majority rule, and the clause-1 split
+  delivers the second as **arm 1a** — a planted draft judged three times, which is precisely "a
+  fixed draft judged N times". The acceptance separates the two variances instead of confounding
+  them, which was this deferral's whole complaint, and `qc5-acceptance-gate` makes the rule
+  executable rather than prose.
+
+  ✅ **`D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION`.** Blocker: `audit_names(draft,
+  packed_prompt, …)` with `known_names` **never passed**, so production compared the draft against
+  the drafter's own input. Verified in the source rather than assumed from C8's note — **both**
+  call sites now pass it (`canon_reflect.py` 230-231 and 375-377), the second being the re-run
+  against the FINAL text so the report describes the draft the author actually receives.
+
+  📐 **Half of QC-5's blockers were bookkeeping.** Twelve headings counted as open at the start of
+  this run; six do. Four were closed-but-marked-open (T46h) and two are closed by work that had
+  already landed. Nothing was hand-waved: each was read, its unblock condition checked against the
+  code or the spec, and the two that disagree with themselves were left alone.
+
+  ⛔ **The six that remain are not bookkeeping**, and three of them are not mine to close:
+  `D-QC5-ROLE-JUDGE-PRECISION` is a **spend** call (a stronger judge model),
+  `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` needs a rule-source **design decision**, and
+  `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE` is recorded as *"out of this plan's scope"*.
+  `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` contains **both** *"FIXED AND RE-MEASURED"* and a later
+  *"is NOT closed"* — it disagrees with itself and needs a human reading, not a heuristic.
+
+  **QC (a) gates:** plan gates green; `plan-progress-block --write` re-derived in this commit.
+  **QC (b):** N/A because no code changed. **QC (c) real data:** the two closures rest on
+  `canon_reflect.py`'s actual call sites and on §2.1's actual text, both read at HEAD.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
