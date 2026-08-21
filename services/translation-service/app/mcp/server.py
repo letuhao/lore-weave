@@ -498,6 +498,23 @@ async def translation_save_edited_version(
     translated_body: Annotated[str, "The edited translation text."],
 ) -> dict:
     tc = _ctx(ctx)
+    # An EMPTY edit is not an edit. Measured 2026-08-22 (tool deep-dive batch 36) against the
+    # live service: translated_body="" and "   " were both accepted and each minted a real
+    # version (version_num 2 and 3) returning success:true. The row is written authored_by
+    # ='human', so it sits in the chapter's version list looking like a human edit and
+    # translation_set_active_version can later publish it to readers.
+    #
+    # 🔴 THE CHECK IS HERE, NOT ONLY ON THE MODEL. SaveEditedTranslationRequest's docstring has
+    # always said "one of translated_body / translated_body_json must be present" and now
+    # enforces it — but THIS tool never builds that model: it writes the INSERT directly, so a
+    # validator on the request object guarded the REST route and left the MCP path wide open.
+    # Verified the hard way: the model fix was deployed and md5-confirmed in the container, and
+    # an empty body still saved. Guard the call site, not the helper.
+    if not (translated_body or "").strip():
+        return {"success": False,
+                "error": "translated_body must not be empty — saving an empty human edit "
+                         "would create a version that looks like a translation and contains "
+                         "nothing"}
     await _require_edit(tc, _uuid(book_id))
     db = get_pool()
     src = await db.fetchrow(
