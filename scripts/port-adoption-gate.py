@@ -467,6 +467,37 @@ def selftest() -> int:
         print("  FAIL — `datetime($when)` was counted as the zero-arg `datetime()`")
         ok = False
 
+    # The correction that matters most about this detector: PROSE must not count. Its ceiling's
+    # target is ZERO, and a docstring explaining the migration would hold the number above the
+    # floor forever — the exact defect §1.3 records about the module ceiling above.
+    doc_only = (
+        '"""This query used to say ON CREATE SET and call datetime().' + chr(10) +
+        'It also mentioned apoc.coll.union and a CALL { } subquery."""' + chr(10) +
+        "x = 1" + chr(10) +
+        "# ON MATCH SET e.a = datetime()" + chr(10)
+    )
+    if _code_strings(doc_only).strip():
+        print("  FAIL — a module docstring and a comment survived `_code_strings`; every "
+              "construct named in prose would be counted as unmigrated Cypher")
+        ok = False
+
+    # And the other direction, on a case the fix was NOT derived from: a Cypher string assigned
+    # to a NAME is code and must survive, including one nested in a function.
+    real = (
+        '"""doc."""' + chr(10) +
+        "def q():" + chr(10) +
+        '    """also doc."""' + chr(10) +
+        "    return " + chr(34)*3 + "MERGE (e:E) ON CREATE SET e.at = datetime()" + chr(34)*3 + chr(10)
+    )
+    kept = _code_strings(real)
+    if "ON CREATE SET" not in kept or "datetime()" not in kept:
+        print("  FAIL — a real Cypher string was dropped as if it were a docstring; the "
+              "backlog would read lower than it is")
+        ok = False
+    if "doc." in kept:
+        print("  FAIL — a nested function docstring was kept")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring and a comment, in both directions (non-vacuous)")
     return 0 if ok else 1
@@ -700,12 +731,46 @@ _DIALECT_PATTERNS = (
 #: this backlog was counted rather than estimated. The 2026-08-11 probe predicted "~33
 #: anchoring rewrites + 157 renames + 14 CALL{}"; measured inside the repo layer it is 37
 #: anchoring, 106 renames, 14 CALL{}, plus 3 FOREACH and 1 apoc the probe did not look for.
-MAX_NEO4J_DIALECT_SITES = 161
+MAX_NEO4J_DIALECT_SITES = 151
+
+
+def _code_strings(src: str) -> str:
+    """Every string literal in the module that is NOT a docstring, joined.
+
+    ⚠️ The first cut of this detector matched the RAW FILE TEXT, and it over-counted by 10:
+    a docstring naming `ON CREATE SET` was scored as Cypher, and the single `apoc.` hit in the
+    whole layer turned out to be a COMMENT — there is no APOC dependency left in `neo4j_repos`
+    at all. Shipped 2026-08-22 as an "accepted limit"; corrected the same day, because it was
+    not one. **This ceiling's target is ZERO, and prose can never reach zero** — a document
+    explaining the migration would have held the number above the floor forever, which is the
+    exact defect §1.3 records about `port-adoption-gate`'s own ceiling.
+
+    Comments never appear as AST nodes, so they are excluded for free. Docstrings are excluded
+    by identity, not by heuristic.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src
+    docs: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.body and isinstance(node.body[0], ast.Expr) \
+                    and isinstance(node.body[0].value, ast.Constant) \
+                    and isinstance(node.body[0].value.value, str):
+                docs.add(id(node.body[0].value))
+    return "\n".join(
+        n.value for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in docs
+    )
 
 
 def scan_dialect() -> dict[str, dict[str, int]]:
-    """Neo4j-only Cypher constructs per repo module. Text, not AST, and deliberately so:
-    these live inside triple-quoted Cypher STRINGS, which an AST walk sees as opaque."""
+    """Neo4j-only Cypher constructs per repo module, counted in CODE STRINGS only.
+
+    The constructs live inside triple-quoted Cypher strings, so the match itself is textual —
+    but it runs over `_code_strings`, not the raw file, so a docstring describing the
+    migration is not counted as the migration being incomplete."""
     out: dict[str, dict[str, int]] = {}
     if not os.path.isdir(_DIALECT_ROOT):
         return out
@@ -717,7 +782,8 @@ def scan_dialect() -> dict[str, dict[str, int]]:
                        errors="replace").read()
         except OSError:
             continue
-        hits = {name: len(pat.findall(src)) for name, pat in _DIALECT_PATTERNS}
+        blob = _code_strings(src)
+        hits = {name: len(pat.findall(blob)) for name, pat in _DIALECT_PATTERNS}
         hits = {k: v for k, v in hits.items() if v}
         if hits:
             out[fname[:-3]] = hits

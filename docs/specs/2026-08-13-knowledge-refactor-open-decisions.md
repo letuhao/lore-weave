@@ -1186,6 +1186,45 @@ and building that ratchet is the next unit rather than another decision.
 **Retry/registration:** supersedes the *To unblock* row of
 `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`, which named only path 1.
 
+### 10.2 The timestamp token is rendered PER ENGINE — **DECIDED (T63, 2026-08-22)**
+
+The 2026-08-11 construct probe listed `datetime()` → `timestamp()` as a **"mechanical
+rename"**, and it is 106 of the 151 dialect sites — the single biggest line item in §10.1's
+second path. Measured on a throwaway Neo4j 5 before doing any of them:
+
+```
+CREATE (a:N {t: datetime()})    chronologically FIRST
+CREATE (b:N {t: timestamp()})   chronologically SECOND
+CREATE (c:N {t: datetime()})    chronologically THIRD
+
+ORDER BY n.t ASC  ->  old_datetime (DATETIME) · old_datetime2 (DATETIME) · new_timestamp (INTEGER)
+```
+
+**Neo4j sorts by TYPE first and raises nothing.** The rename changes the stored type from
+`ZONED DATETIME` to `INTEGER`; existing rows keep the old type; and `created_at`/`updated_at`
+drive `ORDER BY` at ten or more read sites. Every one would return a silently wrong order on
+live data, with new rows pinned to one end regardless of time.
+
+**DECIDED: the token is chosen where the query is built — `datetime()` on Neo4j,
+`timestamp()` on AGE.** The stored type stays whatever each engine already uses, and each
+engine's reads keep working unchanged.
+
+* **No data migration.** The alternative — one wire type everywhere — rewrites `created_at`
+  and `updated_at` on every `:Entity`, `:Fact`, `:Event` and `:Relation` node in every
+  deployment, to fix a problem no deployment has.
+* **No mixed-type window.** A migration would have one, and §10.1's whole argument for the
+  repo-layer path was that it is *bounded*. A rewrite with a silent-wrong-order failure mode
+  during the window is not bounded.
+* **It is the seam §10.1 asked for**, at its smallest: the repo layer stops naming one
+  engine's function, without changing what it stores.
+
+⚠️ **This does NOT generalise to the other five constructs.** `ON CREATE SET` → `coalesce`,
+`ON MATCH SET` → unconditional `SET`, `CALL {}` → CTE/`LATERAL` and `FOREACH` → two statements
+are all **semantics-preserving on both engines** and were demonstrated as such by T57–T59;
+they are rewritten, not tokenised. `datetime()` is the one whose naive translation changes a
+STORED TYPE, and it is the only one that gets an indirection. A per-construct decision, because
+the measurement was per-construct.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

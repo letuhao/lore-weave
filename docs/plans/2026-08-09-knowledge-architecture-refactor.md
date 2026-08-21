@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: translate `entities` to AGE-neutral Cypher — 50 of the 161 dialect sites, every construct with a measured equivalent.**
+**RESUME: build the per-engine timestamp token (§10.2), then translate `entities` — 46 of the 151 dialect sites.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,75 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 🔴 T63 2026-08-22 — **the "mechanical rename" would silently corrupt every time-ordered list**
+
+  ```
+  throwaway Neo4j 5, three nodes, one property:
+
+    CREATE (a:N {t: datetime()})     <- chronologically FIRST
+    CREATE (b:N {t: timestamp()})    <- chronologically SECOND
+    CREATE (c:N {t: datetime()})     <- chronologically THIRD
+
+    MATCH (n:N) RETURN n.name, valueType(n.t) ORDER BY n.t ASC
+      "old_datetime"    ZONED DATETIME NOT NULL
+      "old_datetime2"   ZONED DATETIME NOT NULL     <- THIRD, sorted second
+      "new_timestamp"   INTEGER NOT NULL            <- SECOND, sorted last
+  ```
+
+  🔴 **Neo4j does not error on a mixed-type `ORDER BY`. It sorts by TYPE first.** The
+  2026-08-11 probe called `datetime()` → `timestamp()` a *"mechanical rename"* — 106 of the 151
+  sites — and rule 2 says a number that reads as success is guilty until checked. Checked: the
+  rename changes the STORED TYPE from `ZONED DATETIME` to `INTEGER`, existing rows keep the old
+  type, and `created_at` / `updated_at` drive `ORDER BY` at **ten or more sites** (the entity
+  list, the relation reads, four fact reads). Every one of them would return a silently wrong
+  order on live data — new rows pinned to one end regardless of time, no error, no log.
+
+  📐 **DECIDED — spec §10.2: render the timestamp TOKEN per engine, do not change the stored
+  type.** `datetime()` for Neo4j, `timestamp()` for AGE, chosen where the query is built.
+  Zero data migration, zero mixed-type window, and each engine keeps the type its own reads
+  already expect. The alternative — one wire type everywhere — is a data migration of every
+  `:Entity`, `:Fact`, `:Event` and `:Relation` node in every deployment, to fix a problem
+  nobody has.
+
+  🎯 **AND THE DETECTOR I SHIPPED AN HOUR AGO OVER-COUNTED BY 10.** It matched the raw file
+  text, so a docstring naming `ON CREATE SET` scored as unmigrated Cypher — and the **single
+  `apoc.` hit in the entire repo layer turned out to be a COMMENT**. There is no APOC
+  dependency left in `neo4j_repos` at all.
+
+  ```
+  raw file text        161      <- what T62 shipped
+  code strings only    151      <- docstrings and comments excluded
+  difference            10      prose counted as migration debt
+  ```
+
+  ⚠️ **I called that an "accepted limit" in T62 and it was not one.** This ceiling's target is
+  **ZERO**, and prose can never reach zero — a document explaining the migration would have
+  held the number above the floor permanently. That is the exact defect §1.3 records about
+  `port-adoption-gate`'s own module ceiling, reintroduced by me one screen further down the
+  same file, sixty minutes after writing the comment that describes it. Ceiling **161 → 151**
+  in this commit (rule 5).
+
+  **BITE 26 — `_code_strings` becomes a passthrough (the bug as shipped):**
+
+  ```
+  selftest FAIL — "a module docstring and a comment survived `_code_strings`; every construct
+                   named in prose would be counted as unmigrated Cypher"
+  selftest FAIL — "a nested function docstring was kept"
+  live: dialect GREW to 161 (ceiling 151)     <- exactly the 10 back again
+  ```
+
+  The selftest's other direction is validated on a case the fix was **not** derived from — a
+  Cypher string returned from a function that also has a docstring — because a detector that
+  only ever drops things reads the backlog LOWER than it is, which is the more comfortable
+  error and therefore the more dangerous one.
+
+  **QC (a) gates:** `port-adoption-gate` PASS at 54/19/2, class (d) 34/34, dialect **151/151**
+  moved in this commit; `--selftest` PASS and proven red by bite 26; four plan gates green.
+  **QC (b) the seam:** N/A — one gate script; the Neo4j behaviour above was measured on a
+  throwaway container (`lw-dt-probe`, removed after the run), not on dev or iso.
+  **QC (c) real data:** the sort order above is the query's own output, and it is the reason
+  this row exists rather than a rename batch.
 
   ### ✅ T62 2026-08-22 — **§10.1's second path gets its number: 161 dialect sites, ratcheted**
 
