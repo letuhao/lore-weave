@@ -301,6 +301,15 @@ class Throwaway:
             cur = cur[part]
         return cur
 
+    def substitute_text(self, text: str) -> str:
+        """The public form of `_substitute` for a single string — used for scenario PROMPTS.
+
+        Same nonce and same ids as the seeds, so a scenario can name the fixture it just
+        created. See the note at the `turns = ...` line in fe_runner for what a prompt that
+        did NOT get this substitution cost.
+        """
+        return self._substitute(text) if isinstance(text, str) else text
+
     def _substitute(self, obj):
         if isinstance(obj, str):
             def _ref(m):

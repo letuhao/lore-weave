@@ -354,7 +354,19 @@ async def run_scenario(client, auth, sc, idx, fx):
     # ONE — the re-ask is the thing under test, not the setup that precedes it. The earlier
     # turns are kept in `prior_turns` so the evidence can show turn A worked, which is exactly
     # what makes the failure of turn B a finding rather than a broken fixture.
-    turns = [sc["prompt"], *(sc.get("follow_ups") or [])]
+    # 🔴 THE PROMPT GETS THE SAME SUBSTITUTION THE SEEDS DO. It did not until 2026-08-21,
+    # and batch 29 paid the whole batch for it: five ACCOUNT-scoped scenarios named their
+    # fixture "Emberfall Reach {run_id}" so the world would be unique among the account's
+    # 200, the seed created "Emberfall Reach a1b2c3", and the model was then asked about
+    # "Emberfall Reach {run_id}" LITERALLY. Every run was measured against a world that
+    # existed under a different name.
+    #
+    # The model was RIGHT every time — "I can't use the placeholder `{run_id}`" is the
+    # invented-id guard working exactly as designed — which is what made the batch read as
+    # five tool failures instead of one fixture bug. A nonce the seed expands and the prompt
+    # does not is a scenario that cannot be written correctly, so it is fixed here rather
+    # than worked around per scenario.
+    turns = [fx.substitute_text(t) for t in (sc["prompt"], *(sc.get("follow_ups") or []))]
     prior = []
     for _ti, _prompt in enumerate(turns):
         res = await send_turn(client, auth, sid, _prompt,
