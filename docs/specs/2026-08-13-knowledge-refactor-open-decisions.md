@@ -227,6 +227,22 @@ load-bearing selftest asserts the 1b **clause row**, not the overall verdict —
 the overall answer left the 1a-gating unpinned, and a bite that removed it stayed green.
 
 **Scored on the 2026-08-21 re-run: `1a PASS · 1b PASS · 2 PASS` -> QC-5 PASS.**
+
+✅ **AND RE-SCORED ON AN INDEPENDENT CHAPTER (QC-5 C17) — the verdict now counts.** The first
+scoring used the chapter-12 runs that MOTIVATED the clause-2 regate, so it graded a rule
+against its own examples. Re-run on **chapter 10**, which has zero prior critic runs and sits
+in the betrayal arc so `R1`-`R6` are live over it: three runs, `canon=5`, `raw=0`,
+`violations_dropped=0`, `active_rule_count=6`, and one substantive craft note each — C11's
+channel routing an out-of-rule finding correctly on a chapter that did not motivate it.
+`1a PASS · 1b PASS · 2 PASS` -> **QC-5 PASS**. The ROW stays `[~]`: `plan-verify` refuses a QC
+task that certifies open work, and QC-5's section still carries `D-QC5-ROLE-JUDGE-PRECISION`
+(spend), `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`, `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER` and
+`D-T38-MECHANISM-IS-VACUOUS`. The MEASUREMENT and the ROW are different claims; what closes the
+row is those deferrals, not another run.
+
+The `flow_control` arm stays the chapter-12 PRE-R7 runs on purpose: it is an INSTRUMENT
+CHECK (*"does this flow's critic ever produce a violation record?"*), not evidence about the
+chapter under test. The part that had to become independent is the FLOW ARM, and it did.
 ✅ **DELIVERED 2026-08-21 (QC-5 C7) — chapter 5, and the verdict is still DOES NOT PASS.** Three
 runs, same models, same chapter, on lw-iso against local models for $0.18: canon **4 / 5 / 4**,
 raw findings **3 / 5 / 1**, attributed **0 / 0 / 0**. Clause 1 scores **0 of 3**; clause 2 holds,

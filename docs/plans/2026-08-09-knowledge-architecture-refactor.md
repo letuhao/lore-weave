@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: GRANTS all done. `QC-5` owes an INDEPENDENT verdict — 3 flow runs on a chapter that did NOT motivate the split, via `qc5-acceptance-gate`. Then `T46` → `T25` ③ → `QC-6` → `T48` → `T49` ⛔.**
+**RESUME: GRANTS done · QC-3 ✅ · QC-5 acceptance PASSES on an independent chapter (row `[~]` on open deferrals). Next `T46` merge → `T25` ③ → `QC-6` → `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**58 of 66 rows done · 8 open · 43 of 88 evidence blocks closed inside them.**
+**58 of 66 rows done · 8 open · 44 of 89 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (16/40) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -13998,6 +13998,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   control arms are the persisted `critic_verdict` rows recovered from the lw-iso composition
   database, not numbers retyped from a report.
   **QC (c) real data:** nine real runs — three fresh planted, three POST-R7, three PRE-R7.
+
+  ### ✅ QC-5 C17 2026-08-21 — **the INDEPENDENT verdict. QC-5 PASSES**, on a chapter that did not write the rule.
+
+  ```
+  chapter 10 "the path shown by the trusted one" — 0 prior critic runs, ever
+    run A  canon=5  raw=0  dropped=0  attributed=0  craft_notes=1  active_rules=6
+    run B  canon=5  raw=0  dropped=0  attributed=0  craft_notes=1  active_rules=6
+    run C  canon=5  raw=0  dropped=0  attributed=0  craft_notes=1  active_rules=6
+
+  [qc5-acceptance] 1a PASS · 1b PASS · 2 PASS   =>   QC-5 PASS
+  ```
+
+  C16 shipped the split and scored **PASS**, then said the verdict did not count: the flow arm
+  was the same chapter-12 runs that **motivated** the clause-2 regate, so it scored a rule
+  against its own examples — §2.1's standing warning about itself. This is the measurement that
+  removes that objection.
+
+  🎯 **Chapter 10 was chosen because it has no history at all.** Chapters 5, 11 and 12 produced
+  every run this criterion was built from; a query over `authoring_run_units` returns **0 rows**
+  for chapter 10. It sits in the betrayal arc, so `R1`–`R6` are live over its prose rather than
+  irrelevant to it. Nothing about it shaped 1a, 1b or clause 2.
+
+  ✅ **Three runs, canon-clean, and the critic demonstrably engaged.** `active_rule_count=6` on
+  every run, so the real rules were sent; `violations_dropped=0`, so nothing was found-and-
+  discarded; and each run returned a **craft note** — different in each, and substantive: one
+  flags an honorific used before the character's standing is established, two flag science-fiction
+  register (`subatomic particles`, `L-Field`) colliding with the work's xianxia idiom. That is
+  **C11's `craft_notes` channel doing its job on a chapter that did not motivate it**: a true
+  finding no listed rule covers now leaves through its own channel instead of arriving as an
+  invented rule id, which is precisely the defect C10 diagnosed.
+
+  ⚠️ **What the control arm is, stated plainly.** `flow_control` is the chapter-12 PRE-R7 runs at
+  raw **3 / 6 / 2**. It is an INSTRUMENT CHECK — it answers *"does this flow's critic ever produce
+  a violation record?"* — and it is not evidence about chapter 10. It comes from the motivating
+  data and it stays there deliberately: the part that had to become independent is the **flow
+  arm**, the thing the verdict is about, and that is what changed. The craft notes above are
+  in-measurement corroboration that the critic engaged on chapter 10 too, but they are NOT scored
+  as the control: a critic emitting a boilerplate note would satisfy that, and a criterion is not
+  allowed to get easier because a nicer signal turned up.
+
+  📐 **The ACCEPTANCE PASSES. The ROW does not close, and `plan-verify` is why.**
+  on a virgin chapter with nothing dropped; clause 2 is readable because the critic is proven live
+  both below the seam and in the flow. The architecture's canon loop — an author writes a rule,
+  the prose obeys it, the critic confirms without inventing anything — is measured end to end on
+
+  1a is a fresh 3/3 on a planted violation; 1b is three canon-clean runs on a virgin chapter
+  with nothing dropped; clause 2 is readable because the critic is proven live both below the
+  seam and in the flow. The architecture's canon loop — an author writes a rule, the prose obeys
+  it, the critic confirms without inventing anything — is measured end to end on data that did
+  not define the measurement.
+
+  ⛔ **And ticking the box was still wrong.** `plan-verify` went red on the attempt: *"a QC task
+  cannot certify work that is still open"*. QC-5's section carries open deferrals it would
+  certify by being `[x]` — `D-QC5-ROLE-JUDGE-PRECISION` (a spend call),
+  `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`, `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER`,
+  `D-T38-MECHANISM-IS-VACUOUS` among them. **The acceptance MEASUREMENT and the acceptance ROW
+  are not the same claim**, and the gate holds the difference. So the row stays `[~]` with the
+  verdict recorded: what closes it is those deferrals, not another run.
+  data that did not define the measurement.
+
+  **QC (a) gates:** `qc5-acceptance-gate --selftest` 11/11 (wired, bitten ×5 in C16); plan gates
+  green. **N/A because** no code changed in this batch — it is the acceptance run the criterion
+  was built to score.
+  **QC (b) the seam:** three real authoring runs through `lw-iso` composition-service and worker
+  → `provider-registry-service` → LM Studio, drafter and critic both live, `report_ready` each time.
+  **QC (c) real data:** nine runs behind the verdict — three fresh planted, three on chapter 10,
+  three control — with the chapter-10 verdicts read from the persisted `critic_verdict` rows
+  rather than from the report I printed.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
