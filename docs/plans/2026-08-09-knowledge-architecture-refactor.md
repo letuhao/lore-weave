@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T46` — pin lands (T46f, parity asymmetries 0); still owed: natural key, interval invariants, anchor+delta fold. `T25` ③ needs a dev passage soak + a drop grant.**
+**RESUME: `T46` — pin landed (T46f), fold scoped out to F3/§12.1 (T46g). `T25` ③ needs a dev passage soak + a drop grant. `T48` is terminal: it needs every row closed.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -14408,6 +14408,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuilt `lw-iso` image, results read back from the graph.
   **QC (c) real data:** a three-instance chain with an **unpinned control that had to move in the
   same run** — without it, an inert maintainer would have passed every other assertion.
+
+  ### 📊 T46g 2026-08-21 — **rule 8 killed the fold port**, and the reason is that the destination is unreachable
+
+  ```
+  PG   canonical_fold_state + fold_handler.go (296 lines) READS AND WRITES the counters
+  KG   entity_canonical_snapshots: schema OK  repo OK  unit+integration tests OK
+                                   PRODUCER x  READER x  0 rows
+       the ONLY importers of the repo are the two test files that test it
+  knowledge-service unit 4285 -> 4288        BITE x2 (70-71)
+  ```
+
+  T46's row names four capabilities. Three are settled: pin-aware supersession landed (T46f,
+  parity asymmetries **1 → 0**), the content-addressed natural key is present on the KG side, and
+  the half-open interval invariant is present and tested. This measured the fourth — the
+  `anchor+delta` fold with `folds_since_reground` — **before building it**, which is the whole
+  point of rule 8, and the batch died.
+
+  🎯 **The counters would be bookkeeping for a consumer that does not exist.** The re-ground
+  trigger counts folds; the KG performs none. Porting it would read as parity on the gate while
+  nothing ran — the shape T46's own *"move it WORKING"* instruction exists to prevent, and the
+  shape this session has now found four separate times.
+
+  ⚠️ **It is also the wrong shape, and that is the more interesting half.** Both sides solve
+  staleness deliberately and differently: Postgres uses counters because its fold is **batch +
+  debounced** and needs a deterministic re-ground trigger; the KG uses `fact_coverage_at` +
+  `fold_algo_version`, a coverage-keyed **lazy rebuild-on-read** that is self-healing by
+  construction. A counter-driven trigger on a rebuild-on-read cache has nothing to trigger. Two
+  designs, not a gap — and the borrowing already runs both ways: Postgres's own
+  `fold_attempts`/`fold_failed_at` comment says it **mirrors the KG's** `RETRY_BUDGET=3`.
+
+  ✅ **Decided and specced, not deferred** —
+  [§6.3b](../specs/2026-08-13-knowledge-refactor-open-decisions.md): the fold half belongs to
+  **F3/§12.1** (wiring the KG fold), not to T46's bitemporal port. T46 owns what
+  `bitemporal-parity-gate` tracks, and that is now at **zero** asymmetries.
+
+  🔔 **The decision ships a TRIPWIRE, not a promise.** `test_canonical_fold_reachability.py` reds
+  the moment production code imports the snapshot repo — at which point the fold has a consumer,
+  this measurement is stale, and the scoping gets re-decided deliberately rather than by whoever
+  notices first. It carries **two controls of its own**, because "no importers" passes just as
+  happily when the module was renamed away: the subject must still exist, and the import matcher
+  must demonstrably match a real import line.
+
+  **BITE ×2:**
+
+  ```
+  70. add a production importer      E "the canonical-snapshot fold now has production
+                                        importer(s): ['db/repositories/_t46_probe.py'] ...
+                                        that reason no longer holds"
+  71. neuter the import matcher      E test_the_import_matcher_can_actually_MATCH
+  ```
+
+  **QC (a) gates:** knowledge-service unit **4285 → 4288**; plan gates green;
+  `bitemporal-parity-gate` 0 asymmetries. **QC (b):** N/A because no service seam changed — this
+  batch is a measurement and a tripwire. **QC (c) real data:** the live KG table holds **0 rows**
+  and the repo has **0 production importers**, which is the measurement the decision rests on.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

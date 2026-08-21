@@ -687,6 +687,48 @@ Image, then bootstrap, then the adapter, then the gate that guards it, then the 
 measures it, then the swap. **T43's floor may re-block a cutover after new port operations
 land, and that is the floor working** — a new operation starts at zero observations.
 
+### 6.3b T46's FOLD half is scoped OUT, with the measurement — **DECIDED (T46g, 2026-08-21)**
+
+T46's row names four capabilities to move Go → Python. Three are settled: `maintain_chain`'s
+pin-aware supersession landed (T46f, parity asymmetries **1 → 0**), the content-addressed
+natural key is present on the KG side, and the half-open interval invariant is present and
+tested. The fourth — **the `anchor+delta` fold with `folds_since_reground`** — was measured
+before building (rule 8) and the measurement killed the batch:
+
+```
+PG   canonical_fold_state + fold_handler.go (296 lines) READS AND WRITES the counters —
+     working machinery: a debounced batch fold with a deterministic re-ground trigger.
+KG   entity_canonical_snapshots: schema ✓  repository ✓  unit + integration tests ✓
+                                 PRODUCER ✗  READER ✗  0 rows
+     the ONLY importers of the repo are the two test files that test it.
+```
+
+🎯 **Porting the counters would be bookkeeping for a consumer that does not exist.** The
+re-ground trigger counts folds; the KG performs none. The result would read as parity on the
+gate while nothing ran — the failure shape this plan has hit repeatedly, and the one T46's own
+*"move it WORKING"* instruction exists to prevent.
+
+⚠️ **And it is the wrong shape regardless.** The two sides solve staleness differently, both
+deliberately: Postgres uses counters (`folds_since_reground` / `invalidations_since_reground`)
+because its fold is **batch + debounced** and needs a deterministic re-ground trigger; the KG
+uses `fact_coverage_at` + `fold_algo_version` — a coverage-keyed **lazy rebuild-on-read** that
+is self-healing by construction (B3: a back-filled fact bumps the coverage key and every
+snapshot at or after that ordinal goes stale). A counter-driven trigger on a rebuild-on-read
+cache has nothing to trigger. This is two designs, not a gap — and the cross-pollination
+already runs both ways: Postgres's own `fold_attempts`/`fold_failed_at` comment says it
+**mirrors the KG's** `RETRY_BUDGET=3`.
+
+📐 **So the fold half belongs to F3/§12.1 — wiring the KG fold — not to T46's bitemporal**
+**port.** T46 owns what `bitemporal-parity-gate` tracks, and that is now at zero asymmetries.
+
+🔔 **The decision carries a tripwire, not a promise.**
+[`test_canonical_fold_reachability.py`](../../services/knowledge-service/tests/unit/test_canonical_fold_reachability.py)
+fails the moment production code imports the snapshot repo: the fold would then have a
+consumer, this measurement would be stale, and the scoping must be re-decided deliberately
+instead of by whoever notices first. It carries two controls of its own — the subject still
+exists, and the import matcher can actually match — because an emptiness assertion passes just
+as happily when its subject was renamed away.
+
 ### 6.3 Phase 8 is `T44 → T45 → T46`, after identity — **DECIDED · AMENDED (T46a, 2026-08-14)**
 `T46` merges the stores and cannot be done before the id is opaque (§4.1). `T45`'s
 scope-dependent valid-time axis (`story_ordinal` | `wall_clock`) is the axis distinction §1.1
