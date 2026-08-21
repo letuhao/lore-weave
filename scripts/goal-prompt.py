@@ -78,6 +78,13 @@ QUEUE: list[tuple[str, str, list[str]]] = [
     ("A identity", "§6.1", ["T35", "T32", "T33", "QC-6"]),
     ("B caches", "§6.6/6.5", ["T39", "T40", "T51"]),
     ("C vector", "§3.1", ["QC-3", "T25"]),
+    # 🔴 F is the lane the plan never had. The 2026-08-22 audit measured the run against its
+    # ORIGINAL goal and found nothing owned the graph cutover: the port, two adapters, the
+    # conformance suite, the shadow harness and QC-7's `cutover_permitted: True` all landed,
+    # and `KNOWLEDGE_GRAPH_BACKEND=age` still raises. A plan can close green having built
+    # every precondition for a change it never made — which is why this lane sits ahead of
+    # "D close", whose T48 refuses to certify while anything is open.
+    ("F goal", "§8", ["T54", "T55", "T56"]),
     ("D close", "§6.3/6.4", ["T44", "T45", "T46", "T47", "T48", "T49"]),
     # 🔴 QC-5 had NO LANE. It was open, listed as a ⏸ checkpoint, and named by no run — so a
     # long run following this queue would never have reached it. Found by the coverage check

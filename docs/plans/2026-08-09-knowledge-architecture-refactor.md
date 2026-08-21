@@ -20,7 +20,7 @@ Design (SEALED): [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-
 
 scope if full plan, not small slices, need full plan first before do anything else
 
-## ▶ CURRENT RUN STATE — the only block that answers "what next" *(audited 2026-08-11)*
+## ▶ CURRENT RUN STATE — the only block that answers "what next" *(audited 2026-08-22)*
 
 > **Everything below the `## Superseded run-state strata` heading is HISTORY.** It is kept for its
 > evidence, its measurements and its commands — not for its "next" pointers. Four of those
@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T46` — pin landed (T46f), fold scoped out to F3/§12.1 (T46g). `T25` ③ needs a dev passage soak + a drop grant. `T48` is terminal: it needs every row closed.**
+**RESUME: `T54` — wire the AGE provider (it raises `NotImplementedError`) and flip the default; QC-7 signed `cutover_permitted: True`, no row did it. Then `T55`: INV-KAL guards 7 of 98.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 58 of 104 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 58 of 104 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -15924,6 +15924,53 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   contract was checked against its client by path, both sides read.
   **QC (c) real data:** the counts in the corrected prose are the T44a measurements — 1184
   events, 35 statuses (0 anchored), 567 unanchored entities — re-cited rather than re-invented.
+
+- [~] **T54** — **Wire the AGE provider and flip the default** — the row this plan never had
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.1, §8.2. Unfinished, not undecided.
+  🔴 **FOUND BY THE 2026-08-22 AUDIT: nothing owned the graph cutover.** T18 built the port,
+  T42 built two adapters, T42a the conformance suite, T43 the shadow comparison, T42d the
+  adoption gate — and **QC-7 signed off `cutover_permitted: True`** on 9-of-9 agreement plus a
+  timed rebuild drill. Then no row performed it. `T25` is the *vector* cutover (Neo4j vectors →
+  pgvector), not the graph engine. Measured: `KNOWLEDGE_GRAPH_BACKEND=age` **raises
+  `NotImplementedError`**, and both live stacks read `<unset → neo4j>`.
+  **The work:** give the provider what its own error message asks for — an asyncpg pool and a
+  per-project graph name — then flip the default to `age`. Neo4j and Kuzu stay selectable (§8.1);
+  this is a default change, not a retirement.
+  **Bite:** set `KNOWLEDGE_GRAPH_BACKEND=neo4j` and confirm the graph still answers — a default
+  flip that silently ignores the switch is the same defect in the other direction.
+  **QC:** the conformance suite green against the AGE adapter *through the provider* (not
+  constructed directly — that is what T42a already proves); a live smoke on lw-iso with the
+  default flipped; `port-adoption-gate` floor unchanged at 2.
+
+- [~] **T55** — **INV-KAL: enforce the FULL federated read surface, derived not hand-listed**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.3. Unfinished, not undecided.
+  🔴 **Measured 2026-08-22: the gate guards 7 endpoints; the owners expose 98 `/internal/*` route
+  literals.** composition-service reads knowledge through **13** direct internal paths, three of
+  them plainly knowledge reads (`context/build`, `context/glossary-semantic`,
+  `projects/{id}/fact-for-check`), none guarded. `fact-for-check` was watched firing in live logs
+  while `knowledge-http-surface-gate` reported PASS.
+  ✅ **The TABLE half is NOT the gap and must not be re-litigated:** the Neo4j driver is imported
+  by `knowledge-service` alone (9 files), and the glossary EAV is referenced outside its owner
+  only by an allowlisted admin one-shot and tests. That half of INV-KAL genuinely holds.
+  **The work:** derive the guarded set from the KAL's federated-read manifest so a new federated
+  read is guarded the day it is federated, then migrate or explicitly exempt each of the 13.
+  **Bite:** add a consumer call to a federated read and watch the gate red **without editing the
+  gate** — that is the whole difference between a manifest and a hand-list.
+
+- [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.4. Unfinished, not undecided.
+  The PO asked what to audit so the migration does not rot. §8.4 tabulates eight rot patterns,
+  each with the place in THIS plan where it happened. The sharpest is **built-but-unreachable**:
+  T42/T43 closed green with 30 conformance tests passing while the thing they built could not be
+  selected — which is T54's entire existence.
+  **The work, smallest-first:** (a) a gate asserting every adapter with a conformance suite is
+  **selectable from its provider**; (b) every gate prints its number unconditionally (the
+  `port-adoption-gate` floor bug, fixed 2026-08-21 — generalise it); (c) an acceptance criterion
+  carries a control arm (done for QC-5 clause 1a — generalise it).
+  **Bite:** each gate mutated to the shape of the defect it was written from; a check that cannot
+  red on its own founding case is not a check.
+  ⚠️ **Scope guard:** this row is a GATE set, not a refactor. If it starts changing production
+  code beyond wiring, it has drifted and should be split.
 
 - [~] **T48** — `/aif-verify` against this plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.

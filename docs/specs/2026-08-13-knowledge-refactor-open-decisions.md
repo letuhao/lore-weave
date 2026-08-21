@@ -962,6 +962,76 @@ says so — an unseeded five-run spread is weaker evidence than a seeded one, an
 them would be the same green-by-construction move this plan keeps finding.
 
 
+## 8 · PO decisions — 2026-08-22, after the run-state audit
+
+An audit of the whole run against its ORIGINAL goal — *"make the KAL the SSOT and stop the
+scattered glossary/KG access"* — measured three things the plan had stopped tracking. All three
+become rows rather than notes, because a gap recorded in prose is how the last three got lost.
+
+### 8.1 The goal is **AGE as the DEFAULT**, not "retire Neo4j" — **DECIDED**
+
+The PO corrected the framing and the code agrees. `graph_store_provider` is already
+env-switchable (`KNOWLEDGE_GRAPH_BACKEND=neo4j|age`), so "default" is a one-line change once
+the AGE branch is wired. **Neo4j must remain a supported adapter**: T43's shadow harness
+compares Neo4j↔AGE and the two backend benchmarks are the only things that can compare engines.
+Retiring Neo4j deletes the instrument that proves AGE correct. `port-adoption-gate`'s floor of
+**2** was set on 2026-08-21 for exactly this reason.
+
+⚠️ **This also settles a choice QC-7 left unrecorded.** X1 scoped T42 as *"build BOTH candidates
+and let T43 choose"*. T42 built AGE and Kuzu; QC-7 signed off `cutover_permitted: True` on 9-of-9
+agreement — **and named no winner**. Searched: no X1 decision record, no winner in any spec. The
+engine choice is **AGE**, made here, 2026-08-22.
+
+**Kuzu stays a supported adapter** (PO): it already passes the conformance suite, costs nothing
+to keep, and a THIRD implementation is what keeps the port honest — two adapters can agree by
+sharing a bug, which is T43's own stated risk.
+
+### 8.2 The default flips NOW, without a production shadow — **DECIDED**
+
+QC-7 refused a cutover *"while any port operation has zero shadow observations"*. The PO: **there
+is no production**, so there is no live traffic to shadow and waiting for it is waiting for
+something that cannot arrive. The bar is met by the evidence that exists rather than waived:
+T43 delivered a property-based differential suite (**five seeds × twenty operations**) plus the
+shadow comparison, and QC-7 recorded **9 of 9 operations agreeing, zero divergences**. Those ARE
+the observations; what they are not is production traffic.
+
+⚠️ Stated so it cannot be misread later: the dev graph is acknowledged residue from ad-hoc runs
+(§4.3), so a flip there proves the wiring, not a migration under load. When production exists,
+the shadow bar applies again to anything not covered by the differential suite.
+
+### 8.3 INV-KAL's HTTP half must be DERIVED, not hand-listed — **DECIDED**
+
+Measured 2026-08-22: `knowledge-http-surface-gate` guards **7 endpoints**; the two owning
+services expose **98** distinct `/internal/*` route literals. composition-service alone reads
+knowledge through **13** direct internal paths — `/internal/context/build`,
+`/internal/context/glossary-semantic`, `/internal/projects/{id}/fact-for-check` — none of them
+guarded. `fact-for-check` was observed firing in live logs while the gate reported PASS.
+
+✅ **The TABLE half is genuinely enforced and is not the gap.** The Neo4j driver is imported by
+`knowledge-service` only (9 files); the glossary EAV is referenced outside its owner only by an
+allowlisted admin one-shot and test files. No runtime service code reaches either substrate
+directly.
+
+**Decided:** the guarded set is derived from the KAL's own federated-read manifest, so a new
+federated read is guarded the day it is federated. A hand-list is a scope list, and rule 5 says
+a scope list moves with the code — this one did not move for 98 routes.
+
+### 8.4 The migration gets an ANTI-ROT audit set, grounded in defects this run actually hit — **DECIDED**
+
+The PO asked what to audit so the migration does not rot. Every item below is a defect **found
+in this plan**, generalised into a check — not a hypothetical:
+
+| rot pattern | where it actually happened | the check |
+|---|---|---|
+| **Built but unreachable** | T42/T43 closed green with 30 conformance tests passing, and `KNOWLEDGE_GRAPH_BACKEND=age` raises `NotImplementedError`. Permission to cut over was granted and no row ever performed it. | every adapter with a conformance suite must be **selectable from its provider** |
+| **Scope list drifts from reality** | the HTTP gate guarded 7 of 98 routes and nothing said so | derive guarded sets from a manifest (§8.3) |
+| **A gate goes silent on success** | `port-adoption-gate` matched no branch at its floor: printed nothing, returned 0 | every gate prints its number unconditionally |
+| **A criterion that cannot fail** | QC-5 clause 1a scored 5/5 on a draft with nothing planted in it | an acceptance criterion needs a **control arm** |
+| **One concept, two readers** | the critic resolved from run params in one seam and settings in another; knowledge read via KAL in one place and direct HTTP in another | single-reader checks on resolution rules |
+| **Doubles shaped like deleted code** | five tests stubbed `find_passages_by_vector` and kept passing after the call site moved to the port | when a call site moves to a port, its doubles move with it |
+| **Measured on a config the product does not offer** | QC-5 passed with a critic supplied in the request body; the studio path resolved a different one | acceptance runs on the **shipped path** |
+| **Documents disagreeing with each other** | 29 supersession claims, 16 unstruck; one deferral in two opposite states; §4.3's title outliving its body | `superseded-deferral-gate` + the supersession ledger |
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
