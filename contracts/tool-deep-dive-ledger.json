@@ -2254,6 +2254,50 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch18-v3.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "composition_list_derivatives": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch19-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_motif_adopt": {
+   "state": "in_cycle",
+   "provider": "composition",
+   "cycle": "batch-19 (2026-08-21)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+  },
+  "composition_motif_bind_edit": {
+   "state": "in_cycle",
+   "provider": "composition",
+   "cycle": "batch-19 (2026-08-21)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+  },
+  "composition_motif_edit": {
+   "state": "in_cycle",
+   "provider": "composition",
+   "cycle": "batch-19 (2026-08-21)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+  },
+  "composition_motif_link_edit": {
+   "state": "in_cycle",
+   "provider": "composition",
+   "cycle": "batch-19 (2026-08-21)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
   }
  },
  "defects": {
@@ -2985,9 +3029,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 109,
-  "tools_in_cycle": 0,
-  "tools_proven": 81,
+  "tools_concluded": 110,
+  "tools_in_cycle": 4,
+  "tools_proven": 82,
   "tools_blocked": 28,
   "defects_proven": 23,
   "defects_open": 0,
@@ -3003,7 +3047,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 114,
+  "tools_concluded_including_deprecated": 115,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
@@ -3023,7 +3067,16 @@
   {
    "id": "OBS-PROVIDER-STREAM-ERROR-WITH-NO-REASON",
    "occurrences": [
-    "2026-08-14, batch 16: 4 of 25 live runs (16%) died with RUN_ERROR / STREAM_ERROR — 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why'. It struck 4 of the 5 scenarios, one rep each, and a straight re-run of the same four came back 20/20 clean, so it is transient and not scenario-specific. NOT a tool defect and NOT counted as a model result — the gate's LIVE-clean bar refuses an errored run, which is why the re-run happened rather than an argument about a 4-of-5. Recorded because a 16% loss rate against the local provider is a reliability fact about the rig this whole loop measures through, and because the chat-service message is doing the right thing: it says the provider failed WITHOUT saying why, rather than inventing a reason."
+    "2026-08-14, batch 16: 4 of 25 live runs (16%) died with RUN_ERROR / STREAM_ERROR — 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why'. It struck 4 of the 5 scenarios, one rep each, and a straight re-run of the same four came back 20/20 clean, so it is transient and not scenario-specific. NOT a tool defect and NOT counted as a model result — the gate's LIVE-clean bar refuses an errored run, which is why the re-run happened rather than an argument about a 4-of-5. Recorded because a 16% loss rate against the local provider is a reliability fact about the rig this whole loop measures through, and because the chat-service message is doing the right thing: it says the provider failed WITHOUT saying why, rather than inventing a reason.",
+    "2026-08-21, batch 19: 21 of 25 runs died — 19 with the same 'upstream sent \"error\" with no error message' and 2 with 'HTTP 500: Model does not exist.' at 84%, against 16% in batch 16. The batch is VOID: a transport failure is not a model result.\nIT IS NOT THE PROVIDER BEING DOWN, and I checked rather than assumed. lm_studio had 71 models loaded including google/gemma-4-26b-a4b-qat, and the harness's model_ref (019ebb72-…) resolves to exactly that row — provider_kind=lm_studio, is_active=t. So the registry and the provider agree; 'Model does not exist' is most likely LM Studio's JIT unload/reload racing under load.\nCONTROL: the same scenario re-run at --concurrency 1 returned 1/1 called, 0 errors. The runner defaults to --concurrency 4, i.e. four simultaneous turns against one local 26B model. That is a one-run control and not proof, but it is the first evidence pointing at a CAUSE rather than at bad luck, and it is cheap to act on: re-running at --concurrency 2.\nWORTH KNOWING FOR EVERY FUTURE BATCH: a run's error count is a property of the RIG, not of the tool. Reading 0/5 called off a batch where 5/5 runs errored would have blamed five tools for a provider stall."
+   ]
+  },
+  {
+   "id": "OBS-ALREADY-IN-THAT-STATE-REPORTED-AS-NOT-FOUND",
+   "found": "2026-08-21",
+   "state": "observed by direct probe; no live harm measured yet",
+   "occurrences": [
+    "composition_motif_edit, probed directly on my own throwaway motif. The two reverse ops disagree about the SAME situation — the row is already in the state you asked for:\n  op=archive on an already-ARCHIVED motif -> OK {archived: true}\n  op=restore on an already-ACTIVE motif   -> ERR 'not found or not accessible'\nThe refusal is FALSE: the row exists and is the caller's own. It is the same class as knowledge-service's 'this project has no indexed memory yet' note — reporting a state the code never checked. A model that retries a restore is told the motif does not exist, which sends it looking for a row it already has.\nNOT the arc_template defect: archive on a NONEXISTENT motif_id IS refused here (probed), so there is no fabricated success and no anti-oracle asymmetry. The class sweep across the motif family came back otherwise CLEAN — link delete, bind unbind and motif patch all refuse an absent id.\nNOT FIXED, deliberately: this is a direct-probe finding with no measured live harm, and the loop's own rule is to run the control before writing the fix. The shape to watch for in a live run is a model told 'not found' about a row it just created."
    ]
   }
  ]
