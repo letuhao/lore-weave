@@ -1,16 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `b536ffd97` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+**HEAD:** `26703be3f` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
 
-## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 166 of 198 shippable tools concluded
+## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 184 of 198 shippable tools concluded
 
 **Where it stands, derived not typed** — `python scripts/toolloop/work_remaining.py`:
 
 ```
-198 shippable (315 federated − 117 deprecated) | 166 concluded | 32 remaining | 0 in flight
+198 shippable (315 federated − 117 deprecated) | 184 concluded | 14 remaining | 0 in flight
 ```
 
-122 proven, 44 blocked, batches 1–32 closed. The `/goal` directive that drove it was
+128 proven, 56 blocked, batches 1–36 closed. The `/goal` directive that drove it was
 CLEARED on 2026-08-21; [`../plans/2026-08-13-tool-deep-dive-GOAL.md`](../plans/2026-08-13-tool-deep-dive-GOAL.md)
 is the prompt to paste back to resume, and
 [`../plans/2026-08-13-tool-deep-dive-RUNBOOK.md`](../plans/2026-08-13-tool-deep-dive-RUNBOOK.md)
@@ -46,13 +46,30 @@ defect, the owning suite green, and the image verified BY CONTENT (md5 per file,
 * `D-SILENT-TURN-NO-CARD-NO-PROSE` — recording is fixed (stored `failed`, not `completed`); the
   silence itself is not.
 
-**🔴 `gate.py audit` is RED, deliberately — two tools, both for the same honest reason.**
-`kg_entity_edge_timeline` and `kg_ontology_propose` have evidence and no ledger row.
-The first replies with a FALSE ABSENCE ("I don't have any information about Aldric Vane") over a
-node its own seed created; the answer bar refuses to let a dishonest answer be concluded around.
-The second is refused on a precondition whose only fix is approving ANOTHER tool's card, and a
-dedicated clean arm lost 2 of 5 to transport errors twice running. **Do not clear the audit by
-concluding them.**
+**🔴 `gate.py audit` is RED, deliberately — ONE tool.** `translation_update_settings` has
+evidence and no ledger row: it surfaces 5/5 but its turns keep erroring (5 of 5, then 1 of 5, then
+4 of 5 — "upstream sent 'error' with no error message"). A transport failure is never a model
+result, so 15 runs produced no clean distribution, and the gate correctly refuses `blocked` while
+the turn itself is unproven. Three arms is where re-rolling stops being sampling. **Do not clear
+the audit by concluding it.**
+
+**THE DOMINANT BLOCKER IS NOW SURFACING, NOT THE TOOLS** — the highest-value thing an owner could
+fix. Most blocked tools were never advertised (`find_tools_call_count: 0`; the lazy tail is never
+reached), and two things make it urgent rather than cosmetic:
+
+* **A missing write tool does not produce "I can't" — it produces a FALSE SUCCESS.** Measured 5/5
+  on `world_map_update_marker` ("Ironhold is now Ironhold Keep", pin unchanged) and 5/5 on
+  `kg_triage_resolve` ("I've dismissed the rival_of edge proposal", still pending). The same
+  condition produced an honest "I don't have a tool for that" on two others — so which one the
+  author gets is unpredictable.
+* **Two hypotheses for WHICH tools get advertised have been refuted by measurement** — simple
+  randomness, and batch composition. `world_map_update_marker` ranks **#1 of all 315 tools** for
+  its own prompt and surfaced 0/5. Tier, scope, family and id-depth do not explain it. See DQ-T36.
+
+**Two platform false-absences, same shape, different subsystems:** `kg_add_nodes` says "node ready"
+while `kg_graph_query` reports zero nodes (it projects nodes FROM EDGES, so an edgeless node is
+invisible), and `memory_remember` stores a fact `memory_search` cannot find until the project is
+indexed. In both, the model's "it isn't there" was TRUE and the false absence was the platform's.
 
 **Three hazards this stretch found the hard way — all now guarded:**
 
