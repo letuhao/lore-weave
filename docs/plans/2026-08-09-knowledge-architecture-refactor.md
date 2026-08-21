@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ✅ **THE CRITIC WORKS — measured (C14).** Six runs across two chapters scored `canon=5, attributed=0`, and clause 1 read that as a flow failure. It is not: a passage constructed to contradict `R1` (naming a different betrayer, where R1 says *no one else is the betrayer*) scores **`canon=1`, attributed to `R1`, 3/3, zero invented ids** — same prompt, same model, same rules; only the passage changes. **Clause 1 requires the DRAFTER to produce a violation, and it reliably does not**, so the criterion measures drafter quality and reports it as a critic failure. §2.1 forbids the fixed-draft experiment that separates them; that prohibition is the defect, and running it once is the only reason this is known. It also explains the invention: given a real rule the judge USES it — the invented ids only appear when it has a craft finding and no matching rule. ⛔ PO: **(1)** `QC-5` — seed a known-bad draft or restate clause 1 (either changes the criterion; the critic is no longer in question) · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: ✅ **THE CANON LOOP CLOSES END-TO-END — proven on a live run (C15).** C14 left a gap: the critic attributes a planted violation 3/3, but below the seam. A draft can come to violate canon two ways — the draft changes, or the CANON does — and the second keeps the drafter live, so the judge's own repeated invention (`QUY UOC XUNG HO`, about the narrative pronoun) was written as a real rule `R7` on lw-iso and the three-run measurement repeated. **Narrative `anh` 12/11/9 → 0/0/0; `y` 0/0/0 → 21/14/15; the critic's invented ids 3/6/2 → 0/0/0.** Complete separation, three runs each side, same models and flow — only the canon differs. The author writes a rule, the prose obeys it, the critic checks against it and confirms. `R7` archived afterwards so the book keeps its six authored rules. ⛔ Clause 1 still cannot pass, and now for a reason measured **nine** runs deep: it needs the DRAFTER to violate canon, and the drafter respects the six rules and **adapts to a seventh**. *"The flow does not work"* is no longer an available reading. PO: **(1)** `QC-5` — restate clause 1 or seed a known-bad draft · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 37 of 82 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 39 of 84 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (13/36) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6188,6 +6188,84 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### ✅ QC-5 C15 2026-08-21 — **the canon loop closes end-to-end.** Add a rule, the prose obeys it, the critic confirms.
+
+  ```
+  chapter 12 · 3 runs BEFORE a new canon rule, 3 runs AFTER · same models, same flow
+                       narrative 'anh'      'y'        critic: invented / dropped
+    PRE-R7   run 1          12               0                3 / 3
+    PRE-R7   run 2          11               0                6 / 6
+    PRE-R7   run 3           9               0                2 / 2
+    POST-R7  run 1           0              21                0 / 0
+    POST-R7  run 2           0              14                0 / 0
+    POST-R7  run 3           0              15                0 / 0
+  ```
+
+  C14 proved the critic attributes a violation when one is present, but deliberately below the
+  seam — one judge call, no drafter. The gap it left was stated plainly: *"the end-to-end claim
+  still needs a run whose draft actually violates canon."* §2.1 forbids seeding a draft, and it is
+  right to: that bypasses the drafter.
+
+  🎯 **But a draft can come to violate canon two ways — the draft changes, or the CANON changes.**
+  An author adding a rule that existing prose breaks is an ordinary scenario, it keeps the drafter
+  fully live, and it is not a fixed-draft experiment. The judge had been telling us which rule to
+  add: it kept inventing `QUY UOC XUNG HO` with a `why` about the narrative pronoun. So that was
+  written as a real rule (`R7`: *the narration must use 'han' or 'y' for the protagonist, never
+  'anh'*) on **lw-iso**, and the same three-run measurement was repeated.
+
+  ### 📊 THE PROSE CHANGED, AND THE SEPARATION IS COMPLETE
+
+  Narrative `anh` — excluding the compound *"anh em"* (brother), which is a noun and not the
+  pronoun — went **12 / 11 / 9 → 0 / 0 / 0**, and `y`, the form `R7` asks for, went
+  **0 / 0 / 0 → 21 / 14 / 15**. Three runs each side, no overlap, and a swing far outside what
+  sampling explains: `y` appears **zero** times in every pre-draft and **fourteen or more** in
+  every post-draft.
+
+  ⚠️ **The first read of this was wrong and the workload corrected it.** A naive `'anh '` count
+  said 5 occurrences remained, which looked like the drafter ignoring `R7`. Reading the sentences
+  showed all of them inside *"người anh em"* — brother — with the narration itself using `Hắn`. <!-- doc-language-gate: ok -- the three tokens ARE the measurement: the finding is that a substring match counted 'anh' inside the compound noun, so quoting them in English would destroy the evidence -->
+  A substring is not a word (rule 13: diagnose from the workload, not from the count).
+
+  ### ✅ AND THE CRITIC'S INVENTION STOPPED FOR THE RIGHT REASON
+
+  Invented-and-dropped ids went **3 / 6 / 2 → 0 / 0 / 0** in the same runs. Not because the judge
+  was told to stop, but because **there was no longer anything to report**: the prose now complies.
+  Its craft note in the final run says so directly — *"using 'vung toi' may be slightly modern for
+  xianxia prose, **but does not violate the convention**"* — the judge reasoning about `R7` by name
+  and finding compliance.
+
+  📐 **That is the architecture's canon loop, proven on a live run:** an author writes a rule → the
+  drafter's prose changes to obey it → the critic checks against it and confirms → the spurious
+  findings disappear. Every earlier observation now sits in one explanation:
+
+  | the draft | the critic |
+  |---|---|
+  | violates a listed rule (C14, planted) | attributes it, `canon=1`, **invents nothing** |
+  | breaks a convention with no rule (C10–C13) | **invents a rule id** to carry a true finding |
+  | complies (C15, after `R7`) | reports nothing, **invents nothing** |
+
+  ⛔ **And this is why clause 1 cannot pass.** It needs the DRAFTER to violate canon. Nine runs now
+  say it does not — it respects the six authored rules, and when a seventh is added it **adapts to
+  that too**. Clause 1 measures drafter quality; the drafter keeps passing. Restating clause 1, or
+  seeding a known-bad draft, remains the PO's call — but *"the flow does not work"* is no longer
+  one of the available readings.
+
+  🧹 **`R7` was an experiment's instrument and has been archived** (`is_archived = true`) so the
+  book returns to its six authored rules and the next QC-5 measurement is not silently run against
+  seven.
+
+  **BITE — N/A, and the control that replaces it:** no code changed. The control is the three
+  PRE-R7 runs: same book, same chapter, same models, same flow, same day — only the canon differs,
+  and the outcome separates completely. A measurement where both sides looked alike would be the
+  one that proves nothing.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** six full authoring runs through
+  `POST /v1/composition/authoring-runs` on the **rebuilt** composition images, three either side of
+  the canon change.
+  **QC (c) real data:** six real re-drafts of the acceptance book's chapter 12, their revision
+  bodies read back from Postgres, and the critic verdicts the flow recorded for each.
+
   ### ✅ QC-5 C14 2026-08-21 — **the critic WORKS.** Clause 1 measures the drafter, not the flow.
 
   ```
