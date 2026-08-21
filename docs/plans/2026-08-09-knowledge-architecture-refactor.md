@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ step 3 is OWED to the PO (spec §9.1) — dev must cut over first, and that needs a write GRANTS does not cover.**
+**RESUME: `T17` class (d) — read `docs/measurements/2026-08-11-age-construct-probe.md` first; it may already price the 34.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 62 of 112 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 63 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (9/16) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3570,13 +3570,83 @@ vectors and validity intervals live in different stores.
 
 - [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.1. Unfinished, not undecided.
-  **① backup path ✅ · ② cutover switch ✅ (2026-08-13) · ③ dropping the Neo4j indexes — owed.**
+  **① backup path ✅ · ② cutover switch ✅ (2026-08-13) · ③ PASSAGE indexes ✅ (2026-08-22,
+  T25o) — soak SOAKING, dev cut over, DDL deleted; ENTITY/EVENT stay per §3.3 until
+  `D-T25B-PG-ANCHOR-SCORE`.**
 
   ⚠️ **The paragraph below saying the cutover is ⛔ blocked is HISTORY and is kept for its
   measurement, not its verdict.** It was right when written — nothing held a `VectorStore`,
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### ✅ T25o 2026-08-22 — **③ lands: dev is cut over and the passage vector DDL is DELETED**
+
+  📐 **PO 2026-08-22, spec §9.1 — option 2, chosen with the consequence stated.** I recommended
+  option 1 (backfill, then flip) and the PO chose to **flip dev without backfilling**. That is
+  their call and it is a coherent one: there is no production, and the cost is that passage
+  semantic search on dev returns **empty** until something re-ingests. Recorded here so the
+  emptiness is never later diagnosed as a bug.
+
+  ```
+  dev KNOWLEDGE_VECTOR_READ_PRIMARY = postgres
+    passage  SERVED BY PgVectorStore          shadow=Neo4jVectorStore   <- secondary holds 0 rows
+    entity   SERVED BY Neo4jVectorStore       shadow=PgVectorStore
+
+  neo4j_schema.cypher:  passage_embeddings_*  5 -> 0
+                        entity_embeddings_*   5 -> 5      <- §3.3, NOT an oversight
+                        event_embeddings_1024 1 -> 1
+  dev restart on the rebuilt image: healthy; the schema applies entity/event only.
+  ```
+
+  🔧 **Pinned in `infra/.env`, not left in a shell.** This is the same kind of setting whose
+  disappearance cost this plan nine days: T25c found `KNOWLEDGE_VECTOR_DB_URL` set in a
+  2026-08-12 shell session, the container recreated two days later without it, and the soak
+  stopped silently. `infra/.env` is where dev's config lives — git-ignored, same home as the
+  vector DSN — and the pin carries the reason and the accepted consequence beside it.
+
+  ⚠️ **Deleting the DDL does not drop the existing indexes, and that is worth knowing rather
+  than fixing.** Dev's Neo4j still physically holds all five `passage_embeddings_*`; removing
+  the declaration only stops them being recreated. So the change is forward-only and
+  reversible — an existing deployment keeps working, a fresh one simply never builds them, and
+  the benchmarks create their own either way (T25n).
+
+  **BITE ×2, on the two tests that now guard the deletion:**
+
+  ```
+  15. someone re-adds a passage vector index to the schema
+        FAIL — "the schema declares ['passage_embeddings_1024'] again — passage vectors read
+                from Postgres (§3.3) and ensure_passage_vector_index is the only definition"
+  16. the entity DDL is swept up with the passage DDL
+        FAIL — "no entity_embeddings_* index is declared any more — entity/event reads are
+                still served by Neo4j (§3.3) and a missing vector index RAISES"
+  ```
+
+  🎯 **Bite 16 guards the mistake this batch was one keystroke away from making.** Deleting the
+  entity DDL in the same sweep is the obvious tidy-up, nothing else in the tree said the two
+  families have different fates, and T25n measured what it would cost: a missing vector index
+  raises `ProcedureCallFailed`, so it is a 500 in waiting rather than degraded results. Now a
+  test says so.
+
+  ⚠️ **`test_the_benchmark_index_name_is_the_one_the_schema_declares` went red on this commit,
+  exactly as T25n said it would**, and was inverted rather than deleted. Its docstring predicted
+  *"whoever deletes it has to confront that the benchmarks became the only definition of that
+  name"* — that is what happened, one batch later. The replacement keeps teeth in the other
+  direction: re-adding the DDL would give one index two owners that can drift in
+  `vector.dimensions` or the similarity function while agreeing on the name.
+
+  **QC (a) gates:** knowledge unit **4295 → 4296**; four plan gates green; `port-adoption-gate`
+  unchanged at 54/19/2, class (d) 34/34.
+  **QC (b) the seam:** ✅ dev rebuilt and restarted with the DDL gone — healthy, the schema
+  applies entity/event only, and the provider routes passage→Postgres / entity→Neo4j on the
+  live stack.
+  **QC (c) real data:** dev's live vector-index inventory read back after the restart, and the
+  dev secondary's `passage_vectors_1024` count (**0**) is stated rather than hidden — it is the
+  accepted cost of option 2.
+
+  ⛔ **③ is complete for the PASSAGE scope only.** Entity and event vector indexes stay on Neo4j
+  until `D-T25B-PG-ANCHOR-SCORE` has an answer (§3.3), so **T25 stays `[~]`** — what remains is
+  the entity scope, gated on a named deferral rather than on unstarted work.
 
   ### ✅ T25n 2026-08-22 — **the benchmarks own their index**, and the reason I gave for it was wrong
 

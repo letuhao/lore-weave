@@ -40,24 +40,44 @@ class _RecordingSession:
         return None
 
 
-def test_the_benchmark_index_name_is_the_one_the_schema_declares():
-    """One index, not two beside each other.
+def test_the_schema_no_longer_declares_a_passage_vector_index():
+    """T25 ③ step 3 landed: `ensure_passage_vector_index` is the SOLE definition.
 
-    ⚠️ This test is EXPECTED to fail on the commit that deletes the passage vector DDL, and
-    that is its second job: whoever deletes it has to confront that the benchmarks became the
-    only definition of the name, rather than discovering it from an empty recall number.
+    This test previously asserted the opposite — that the name matched a declaration in
+    `neo4j_schema.cypher` — and its docstring said it was expected to go red on the commit
+    that deleted that DDL, so whoever deleted it would confront becoming the only owner
+    rather than finding out from a benchmark that stopped running. It went red on exactly
+    that commit and is inverted here, deliberately.
+
+    It keeps teeth in the other direction now: re-adding the DDL would give one index two
+    owners that can drift in options (`vector.dimensions`, the similarity function) while
+    agreeing on the name.
     """
-    declared = set(
-        re.findall(r"CREATE VECTOR INDEX (passage_embeddings_\d+)", _SCHEMA.read_text())
+    declared = re.findall(r"CREATE VECTOR INDEX (passage_embeddings_\d+)", _SCHEMA.read_text())
+    assert declared == [], (
+        f"the schema declares {declared} again — passage vectors read from Postgres "
+        f"(§3.3) and `ensure_passage_vector_index` is the only definition these names "
+        f"should have"
     )
-    assert declared, "the schema declares no passage vector index at all"
-    for dim in SUPPORTED_PASSAGE_DIMS:
-        if passage_index_name(dim) not in declared:
-            pytest.fail(
-                f"{passage_index_name(dim)} is not declared in neo4j_schema.cypher "
-                f"(declared: {sorted(declared)}) — the benchmark would create a SECOND "
-                f"index beside the real one instead of ensuring it"
-            )
+
+
+def test_the_ENTITY_and_EVENT_vector_ddl_must_SURVIVE():
+    """§3.3 cut over the passage scope ONLY.
+
+    Entity reads stay on Neo4j until `D-T25B-PG-ANCHOR-SCORE` has an answer, because
+    `PgVectorStore` omits `anchor_score` and entity reads RANK by it. Deleting this DDL in
+    the same sweep as the passage indexes is the obvious next tidy-up and it would turn
+    entity semantic search into a `ProcedureCallFailed` — measured on iso (T25n), a missing
+    vector index raises rather than returning empty. Nothing else in the tree says these two
+    families have different fates, so this test does.
+    """
+    schema = _SCHEMA.read_text()
+    for family in ("entity_embeddings", "event_embeddings"):
+        found = re.findall(rf"CREATE VECTOR INDEX ({family}_\d+)", schema)
+        assert found, (
+            f"no {family}_* index is declared any more — entity/event reads are still served "
+            f"by Neo4j (§3.3) and a missing vector index RAISES, so this is a 500 in waiting"
+        )
 
 
 @pytest.mark.asyncio

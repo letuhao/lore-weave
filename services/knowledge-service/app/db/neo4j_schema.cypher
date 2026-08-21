@@ -306,50 +306,21 @@ FOR (p:Passage) ON (p.user_id, p.project_id);
 CREATE INDEX passage_user_source IF NOT EXISTS
 FOR (p:Passage) ON (p.user_id, p.source_type, p.source_id);
 
-CREATE VECTOR INDEX passage_embeddings_384 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_384)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 384,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_1024 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_1024)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 1024,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_1536 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_1536)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 1536,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_2560 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_2560)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 2560,
-    `vector.similarity_function`: 'cosine'
-  }
-};
-
-CREATE VECTOR INDEX passage_embeddings_3072 IF NOT EXISTS
-FOR (p:Passage) ON (p.embedding_3072)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 3072,
-    `vector.similarity_function`: 'cosine'
-  }
-};
+// ── PASSAGE VECTOR INDEXES — DELETED 2026-08-22 (plan T25 ③ step 3) ──────────────
+//
+// `passage_embeddings_{384,1024,1536,2560,3072}` lived here and were applied at every
+// service start. §3.1 moved passage vectors to Postgres and §3.3 cut the PASSAGE scope
+// over; dev and iso both read them from pgvector now, so this DDL had no reader left.
+//
+// ⚠️ ENTITY and EVENT vector indexes below STAY, and that is not an oversight. §3.3 keeps
+// entity reads on Neo4j until `D-T25B-PG-ANCHOR-SCORE` has an answer — `PgVectorStore`
+// omits `anchor_score` by design and entity reads RANK by it.
+//
+// The two BENCHMARKS still need a passage index: they measure the Neo4j backend on purpose
+// and are `port-adoption-gate`'s vector-bypass floor of 2. They create it themselves now —
+// `neo4j_repos.vector_indexes.ensure_passage_vector_index` (T25n), same name, same options.
+// That function is the ONLY definition of these index names in the tree; if you are looking
+// for the DDL, it is there.
 
 // ─────────────────────────────────────────────────────────────────
 // KG-ML M6 (D12 / V6) — CJK full-text index over :Passage text.
