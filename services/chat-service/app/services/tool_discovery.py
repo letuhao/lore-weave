@@ -452,6 +452,80 @@ INTENT_GATED_SETUP_TOOLS: frozenset[str] = frozenset({
 SETUP_INTENT_SKILL = "glossary_shaping"
 
 
+def drop_superseded_tools(
+    catalog: list[dict],
+    pinned: "set[str] | frozenset[str] | None" = None,
+) -> tuple[list[dict], list[str]]:
+    """Drop a legacy tool from a TURN CATALOG when its replacement is on the same wire.
+
+    🔴 THE THIRD REACH-PATH. CAT-4's own comment states the invariant — "A legacy tool must
+    never be discoverable: excluded from search_catalog() and from every domain hot-seed" —
+    and both of those do exclude it. The turn catalog that is actually ADVERTISED to the model
+    did not, so a superseded tool sat on the wire beside the tool that replaced it.
+
+    MEASURED 2026-08-14, batch 17: 5 of the 54 distinct tools advertised across the batch were
+    legacy, and every one was the direct predecessor of a tool under test —
+
+        composition_canon_rule_delete      -> composition_canon_rule_edit
+        composition_authoring_run_pause    -> composition_authoring_run_review
+        composition_archive_derivative     -> composition_derivative_edit
+        composition_divergence_spec_update -> composition_derivative_edit
+        book_list_chapters                 -> book_list
+
+    That is not coincidence: the answerability matcher pulls the sibling in because it shares
+    the user's vocabulary with its replacement. And the predecessor WINS, because it is the
+    more specific name for the exact ask — the model called the legacy tool on 3 of 5
+    scenarios, so the unified tool under test scored 0/5 while nothing was actually wrong.
+
+    🔴 THE RULE IS DELIBERATELY NARROWER THAN "DROP EVERY LEGACY TOOL". Of the 117 legacy
+    tools, 31 name NO ``superseded_by`` — including ``book_create``, ``book_chapter_publish``
+    and ``book_chapter_delete``. Dropping those would delete reach the platform still needs
+    with nothing to redirect to. So a tool is dropped ONLY when its named replacement is
+    present in the same catalog, which makes the swap capability-preserving by construction:
+    whatever the caller wanted, the tool that does it is right there. All 86 such tools were
+    verified to have their replacement in the live catalog (0 dangling ``superseded_by``).
+
+    ``pinned`` — the session's ``pinned_legacy_tools`` (CAT-4 Part D). A user who deliberately
+    pinned a legacy tool keeps it; that column, its closed-set validator and its picker feed
+    existed with no consumer on the turn path, because nothing was filtering these out for it
+    to re-admit.
+
+    Returns ``(kept, dropped_names)`` so the caller can record the withholding rather than
+    narrow the surface silently.
+    """
+    pinned = set(pinned or ())
+    present = {tool_name(td) for td in catalog}
+    _by_name = {tool_name(td): td for td in catalog}
+    kept: list[dict] = []
+    dropped: list[str] = []
+    for td in catalog:
+        name = tool_name(td)
+        replacement = tool_superseded_by(td)
+        if (
+            name
+            and name not in pinned
+            and is_legacy_tool(td)
+            and replacement
+            and replacement in present
+        ):
+            dropped.append(name)
+            continue
+        kept.append(td)
+    if dropped:
+        # Registered, not silently narrowed — the same reason filter_intent_gated_setup_tools
+        # registers its own drops: "the runtime chose not to offer this and here is why" must
+        # stay distinguishable from "this tool does not exist". Recorded HERE rather than at the
+        # call site so a future caller cannot forget it.
+        from app.services.instrument import record_surface_withheld
+        for _n in dropped:
+            record_surface_withheld(
+                _n, stage="superseded",
+                reason=(f"superseded by {tool_superseded_by(_by_name[_n])}, which is advertised "
+                        "on this same turn — pin it via pinned_legacy_tools to keep it"),
+            )
+    return kept, dropped
+
+
 def filter_intent_gated_setup_tools(
     catalog: list[dict],
     injected_skill_codes: list[str] | set[str],

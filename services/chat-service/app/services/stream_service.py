@@ -7166,6 +7166,7 @@ async def stream_response(
         "SELECT system_prompt, generation_params, project_id, project_ids, composer_model_source, composer_model_ref, "
         "planner_model_ref, working_memory_seed, enabled_tools, enabled_skills, activated_tools, "
         "compact_summary, compacted_before_seq, message_count, created_at, "  # A4 (RV-M5): anchor progress + wrap
+        "pinned_legacy_tools, "  # CAT-4 Part D — legacy tools this session deliberately keeps (see drop_superseded_tools)
         "book_id "  # studio context binding — the session's bound book, so _ctx_book_id can fall back to it (X-Book-Id)
         "FROM chat_sessions WHERE session_id = $1",
         session_id,
@@ -8214,6 +8215,33 @@ async def stream_response(
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
                 )
+                # ── D-SUPERSEDED-TOOL-COMPETES-WITH-ITS-REPLACEMENT ───────────────────────
+                # CAT-4 states the invariant in tool_discovery: "A legacy tool must never be
+                # discoverable: excluded from search_catalog() and from every domain hot-seed."
+                # Both of those do exclude it. THIS catalog — the one actually advertised to the
+                # model — did not, so a superseded tool sat on the wire beside its replacement.
+                #
+                # MEASURED 2026-08-14, batch 17: 5 of the 54 distinct tools advertised across the
+                # batch were legacy, and every one was the direct predecessor of a tool under
+                # test. The model then called the predecessor on 3 of 5 scenarios — it is the more
+                # specific name for the exact ask — so three unified tools scored 0/5 while
+                # nothing was actually wrong with them.
+                #
+                # The rule is narrower than "drop every legacy tool": only when the named
+                # replacement is present in this same catalog, which makes the swap
+                # capability-preserving by construction. 31 of the 117 legacy tools name no
+                # replacement (book_create, book_chapter_publish, book_chapter_delete …) and are
+                # deliberately left alone.
+                from app.services.tool_discovery import drop_superseded_tools
+                discovery_catalog, _superseded = drop_superseded_tools(
+                    discovery_catalog, set(session_row.get("pinned_legacy_tools") or ())
+                    if session_row else set(),
+                )
+                if _superseded:
+                    logger.info(
+                        "superseded gate: withholding %d legacy tool(s) whose replacement is on "
+                        "the same wire: %s", len(_superseded), sorted(_superseded)[:8],
+                    )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.
                 discovery_extra_frontend = frontend_tool_defs(editor=editor, book_scoped=book_scoped)

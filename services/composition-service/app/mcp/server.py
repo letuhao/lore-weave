@@ -2788,6 +2788,35 @@ async def composition_decompile_arcs(
         "SELECT count(*) FROM outline_node WHERE book_id=$1 AND kind='chapter' AND NOT is_archived", bid,
     ) or 0
     would_arcs = (int(n_chapters) + per - 1) // per  # integer ceil
+    # 🔴 D-EXTRACTION-CONFIRMS-A-NO-OP. The comment above says the dry-run "gives a clean
+    # 'nothing to decompile' answer up front for a book with no chapters" — and it did not. The
+    # count was computed, found to be 0, and a confirm_token was minted anyway, so the author was
+    # asked to approve a card whose own title read "Decompile 0 chapter(s) into ~0 arc(s)".
+    #
+    # MEASURED 2026-08-14 on a book with 3 chapters where this legitimately reads 0: the chapters
+    # were created through book_chapter_create, which does not mint the `outline_node` rows this
+    # engine groups (an IMPORTED book gets them from scene_decompile at import time). So the zero
+    # was correct and the card was still offered. Whatever the reason for the zero, approving it
+    # can only produce the engine's own {"arcs": 0, "reason": "no chapters to decompile"}.
+    #
+    # Returning that reason WITHOUT a token is the same answer the engine would give, minus a
+    # pointless confirmation. It also stops a no-op consuming the confirm surface, which is what
+    # made this class worth a name the first time.
+    if would_arcs == 0:
+        return {
+            "outcome": "no_op",
+            "descriptor": _DECOMPILE_DESCRIPTOR,
+            "domain": "composition",
+            "arcs": 0,
+            "chapters_assigned": 0,
+            "reason": "no chapters to decompile",
+            "guidance": (
+                "This book has no chapter rows in the spec outline, so there is nothing to group "
+                "into arcs and no confirmation is needed. An IMPORTED book gets those rows from "
+                "the import pipeline; a book whose chapters were created directly does not have "
+                "them yet."
+            ),
+        }
     payload = {"book_id": book_id, "chapters_per_arc": per}
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
