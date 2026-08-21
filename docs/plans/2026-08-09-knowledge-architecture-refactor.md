@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 51 of 91 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 51 of 89 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2262,7 +2262,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   | **To unblock** | Give the port a fact read — the minimum is `facts_for(subject_id, type, as_of=None) -> list[Fact]`, which makes the chain, the duplication and the as-of window all observable in one operation. It is the same shape `relations_for` already has, and it is what `fact_for_check.py` is doing behind the port today. |
   | **Retry when** | Any batch that adds a fact READ — T32 (the reveal axis) and T35 (identity) both need one, so this closes as a side effect rather than as its own task. |
 
-  ### 🔻 DEFERRAL `D-MAINTENANCE-IS-NINE-JANITORS`
+  ### ~~DEFERRAL~~ `D-MAINTENANCE-IS-NINE-JANITORS` — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -3154,7 +3154,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 <!-- Commit checkpoint: T14–T17 -->
 
 
-  ### 🔻 DEFERRAL `D-T17-PORT-SCOPE-UNDECIDED` — 60 modules wait on one question
+  ### ~~DEFERRAL~~ `D-T17-PORT-SCOPE-UNDECIDED` — 60 modules wait on one question — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -7156,15 +7156,26 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   did land — a grounded critic, a distinct judge, a visible drop count — are recorded above as
   C1–C3, with their bites and their live runs. What is missing is one specific channel.
 
-  ### 🔻 DEFERRAL `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`
+  ### ~~DEFERRAL~~ `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — **CLOSED 2026-08-21. This id was ALREADY closed at line 7100 on 2026-08-13 and this second heading was never struck — the same deferral existed twice, in two states, in one file.** That duplicate is not a curiosity: it is the mechanism that made a settled question read as open for eight days and stopped a run on a decision nobody owed. The rule-source half was closed by C5/§2.2 (verified in source, see the corrected Blocker below); the nondeterminism half is decided by PO §7.3. What is genuinely left is neither of those, is smaller than both, and now has its own id below rather than borrowing a closed one.
 
   | | |
   |---|---|
-  | **Blocker** | QC-5's assertion is about ATTRIBUTION (*"the trap must be attributed to the cast-designated antagonist"*), and the critic's rule channel is unwired: the seam passes `active_rules=[]`, so `map_rule_tokens` can attribute nothing and drops every verdict. The score channel works and is now grounded; the naming channel is empty by construction. |
+  | **Blocker** | QC-5's assertion is about ATTRIBUTION (*"the trap must be attributed to the cast-designated antagonist"*), and the critic's rule channel is unwired: the seam passes `active_rules=[]`, so `map_rule_tokens` can attribute nothing and drops every verdict. The score channel works and is now grounded; the naming channel is empty by construction. ⚠️ **CORRECTED 2026-08-21.** The clause *"the seam passes `active_rules=[]`"* is **no longer true and is struck**: C5 wired it on 2026-08-13 and it was re-verified from source today — `services/composition-service/app/services/authoring_run_service.py:745-751` builds `active_rules` from `CanonRulesRepo.list_active` and passes it to `judge_prose`, and `active_rule_count` rides the critique so a reader can tell `rules=0` from `rules=6`. What survives is the SECOND seam: `engine/quality_report.py:138` still passes `active_rules=[]` — deliberately, per its own docstring (*"no structured rules here"*) — but it reports no `active_rule_count`, so from the report that choice is indistinguishable from the failure this row was opened about. |
   | **Evidence** | Run `019ff9de-4afd-…`, chapters 11–13 with a distinct critic and an `as_of` bible of 13 cast members: `canon_consistency` 2 / 2 / 4, `violations: []`, and **`violations_raw_count` 1 / 3 / 3 with `violations_dropped` 1 / 3 / 3** — 7 findings produced, 7 discarded, `rules=0` in every `judge_prose` log line. Plus the reproducibility gap: ch12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. |
   | **Mechanism** | `violations_dropped` / `violations_raw_count` now ride every critique (`engine/critic.py`), so this deferral cannot go quiet: any consumer sees `violations: []` **next to** the count of what was thrown away. Before C3 the only detector was a WARNING line, and an empty violations list was indistinguishable from a clean passage. The deferral has a self-reporting number rather than a promise. |
   | **To unblock** | Decide where `active_rules` comes from for the headless seam — the canon-rule corpus the critique endpoint uses, or rules derived from the bible's cast facts — and feed it through `canon_bible.py` beside `present_facts`. Then re-run C3's three chapters **N ≥ 3 times** and report the score distribution, not a single number. |
-  | **Retry when** | The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs. Then QC-5's first clause becomes testable and this row can close or fail for a reason that names itself. |
+  | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
+
+
+  ### 🔻 DEFERRAL `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`
+
+  | | |
+  |---|---|
+  | **Blocker** | QC-5 has never been measured under the rule that now governs it. Its PASS (C17) was taken under §2.1's **three runs, majority**; PO §7.3 (2026-08-21) replaced that with **five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION**. A verdict measured under a retired rule is not wrong — it is unrescored, and saying otherwise would be the green-by-construction move this plan keeps catching. |
+  | **Evidence** | The spread that motivated the new rule is on the record: chapter 12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. Three runs produced that disagreement, so three is the sample size that failed to settle it. |
+  | **Also here** | `engine/quality_report.py:138` passes `active_rules=[]` — a SECOND seam, deliberate per its own docstring (*"no structured rules here"*), but it emits no `active_rule_count`, so from the report a deliberate choice and the C3 failure look identical. The authoring-run seam solved exactly this by reporting the count; this one has not. |
+  | **To unblock** | Re-run QC-5's clause-1 arms five times at temperature 0, seeded, and report the distribution rather than a number. Add `active_rule_count` to the quality report so the second seam declares itself. |
+  | **Retry when** | Immediately — both are runs and one small edit, not decisions. This row exists so the re-score is owed explicitly instead of C17's three-run PASS quietly standing in for a five-run one. |
 
   ⏸ **POST-REVIEW CHECKPOINT — evidence presented, execution HELD.** QC-5 is one of the three
   ⏸ rows in this plan; the run policy says present and wait rather than improvise past it.
@@ -7673,7 +7684,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   Full write-up, including the four distinct failure modes and the exact prompt change they
   imply: `docs/measurements/2026-08-11-qc5-full-flow-capture.md`.
 
-  ### 🔻 DEFERRAL `D-QC5-ROLE-JUDGE-PRECISION` — the check fires on correct prose
+  ### ~~DEFERRAL~~ `D-QC5-ROLE-JUDGE-PRECISION` — the check fires on correct prose — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -9227,7 +9238,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   pattern: **a task whose blocker is a DECISION reads, in a checkbox list, exactly like a task
   whose blocker is EFFORT** — and gets scheduled as though someone could grind it down.
 
-  ### 🔻 DEFERRAL `D-T38-KAL-SCOPE-UNDECIDED` — the migration target fits none of its consumers
+  ### ~~DEFERRAL~~ `D-T38-KAL-SCOPE-UNDECIDED` — the migration target fits none of its consumers — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -9462,7 +9473,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4221 passed — knowledge-service unit suite
   ```
 
-  ### 🔻 DEFERRAL `D-T39-NO-COVERAGE-DIGEST-SOURCE`
+  ### ~~DEFERRAL~~ `D-T39-NO-COVERAGE-DIGEST-SOURCE` — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -12854,7 +12865,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **428 integration** (up from 419), the drill writing and reading back 120 real entities per
   adapter.
 
-  ### 🔻 DEFERRAL `D-T41-RELATIONS-NOT-REBUILDABLE` — a rebuild restores identity, not edges
+  ### ~~DEFERRAL~~ `D-T41-RELATIONS-NOT-REBUILDABLE` — a rebuild restores identity, not edges — **CLOSED 2026-08-21, adjudicated SUPERSEDED in the supersession ledger**
 
   | | |
   |---|---|
@@ -14180,6 +14191,88 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   three control — with the chapter-10 verdicts read from the persisted `critic_verdict` rows
   rather than from the report I printed.
 
+  ### 🔴 QC-5 / RUN-STATE C18 2026-08-21 — **the run stopped on three decisions and two of them were already made**
+
+  Asked to list the open questions, I listed three. Two had been answered on **2026-08-13** and
+  the plan never said so. That is not a bookkeeping slip — it held an armed run at a STOP for a
+  PO decision nobody owed, and I reported it to the PO as owed.
+
+  **The rule-source question, verified in source rather than believed from a spec:**
+
+  ```
+  services/composition-service/app/services/authoring_run_service.py:745-751
+      active_rules: list[dict[str, Any]] = []
+      if rules_project_id is not None:
+          rules = await CanonRulesRepo(get_pool()).list_active(rules_project_id)
+          active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
+      ... judge_prose(..., active_rules=active_rules, ...)   # + active_rule_count on the critique
+  ```
+
+  So `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`'s Blocker — *"the seam passes `active_rules=[]`"* — has
+  been false since C5. §2.2 recorded it. The heading stayed open.
+
+  **HOW it stayed open, measured across every plan and spec in the repo:**
+
+  ```
+  deferrals a spec declares REPLACED ............................ 29
+  of those, plan headings still UNSTRUCK ........................ 16
+  ids appearing BOTH struck and open in one file ................  1   <- D-QC5-ATTRIBUTION-…
+  ```
+
+  🔴 **The duplicate is the sharpest one.** `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` sat struck and
+  closed at line 7100 (2026-08-13) *and* open at 7159, in the same file, for eight days. Whoever
+  searched the id found whichever came first. Both readings were "correct".
+
+  ⚠️ **AND THE SIXTEEN ARE NOT ALL STALE — this is why no sweep was run.** Adjudicating each pair
+  by hand against its `Retry when` and the section claiming it:
+
+  ```
+  SUPERSEDED  6   struck; the spec really does close them
+  MIS-CITED   3   the spec names the WRONG deferral — §3.1 wires VectorStore and claims a
+                  GraphStore row; §1.1 grows a fact READ and claims a WRITE-path row
+  OPEN        6   the spec is POLICY, not closure; the Retry-when names a future event
+  PARTIAL     1   half closed, a named residue reopened under its own id
+  ```
+
+  A rule of *"strike every heading a spec says is replaced"* would have silently closed the three
+  MIS-CITED rows. They are live. That is the whole reason the new gate adjudicates instead of
+  sweeping — and the bite below is that exact discrimination.
+
+  **🦷 BITE 1 — `scripts/superseded-deferral-gate.py:53`, `_DEMANDS_STRIKE = "SUPERSEDED"` →
+  `"MIS-CITED"`.** Selftest 11/11 → **3 FAILED**, and the live scan flipped from demanding six
+  strikes to demanding them on `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` and
+  `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` — precisely the live rows a blanket rule kills. Restored.
+
+  **🦷 BITE 2 — `scripts/stale-deferral-gate.py`, the new `decided` opener stripped of its
+  qualifier (`decided\s+(?:by\b|on\b|\d{4}-…)` → `decided\b`).** Exactly one check red:
+  *"a future condition that OPENS with `Decided`" — expected open, got STALE*. A bare opener
+  would retire a row whose `Retry when` reads *"Decided only after T42 lands."* Restored.
+
+  **🦷 BITE 3 — the LIVE path, not a fixture.** Un-struck the real duplicate at plan line 7159 and
+  ran the gate against the real repo: `FAIL — appears BOTH struck and open in the same file`,
+  rc=1. Restored. A fixture proves the predicate; this proves it is wired to the scan.
+
+  **Built:** `scripts/superseded-deferral-gate.py` (12 selftest checks, wired into `.githooks/
+  pre-commit`) + `docs/specs/2026-08-21-deferral-supersession-ledger.md` (16 hand adjudications).
+  `stale-deferral-gate` gained the two openers it was measured missing — 14/14.
+
+  **Also corrected, because it was found while checking a claim rather than reading one:** §4.5
+  said the B9 event invalidation was *"the answer for both caches"* and made the LRU's
+  `"never cleared"` comment *"false rather than tolerated"*. `invalidate_anchor_cache` is called
+  from `events/handlers.py:1060` and `:1464` and reaches **only** `context/anchors.py`. The LRU
+  in `jobs/glossary_anchor_cache.py` still says *"never cleared"* at line 8 with **no caller**.
+  The clause is struck and the LRU is closed on its real argument: bounded at 1000 with eviction,
+  read-only within a run per M5. Accept-and-document, not invalidate-by-event.
+
+  **PO decisions this cycle (§7):** T25 ③ granted (index drop, not data) · the role judge stays
+  local with its precision documented as the accepted ceiling · QC-5 bounds nondeterminism at
+  **five runs, temperature 0, seeded**, reporting the distribution.
+
+  ⚠️ **§7.3 retires §2.1's three-run rule, so C17's PASS is UNRESCORED, not wrong.** It was
+  measured under three runs, majority. Saying nothing and letting it stand as a five-run result
+  is exactly the substitution this plan exists to catch, so it is now owed explicitly as
+  `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`.
+
   ### ✅ QC-6b 2026-08-21 — **the row's proof AS THE ROW WRITES IT**: rename → re-kind → REAL re-extraction, in that order
 
   ```
@@ -14380,7 +14473,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   Flipping `kg_expected` to `True` is worthless if the probe cannot detect the guard leaving.
   **Bite 69 renamed every `valid_to_pinned` in the KG and the gate stayed GREEN.** Its cypher probe
-  was `valid_to_pinned|pinned`, and `pinned` matched **my own comments** — the same
+  was `valid_to_pinned|\bpinned\b`, and `\bpinned\b` matched **my own comments** — the same
   literal-token-in-a-comment false positive this repo has hit before. The probe now matches the
   executable guard, `coalesce\(cur\.valid_to_pinned,\s*false\)`, and the re-run bite reds it
   **while the prose still says "pinned"**, which is the only version of this check worth having.

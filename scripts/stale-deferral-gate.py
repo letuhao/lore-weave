@@ -64,6 +64,21 @@ _CLOSED_OPENERS = (
     r"no longer",
     r"run \d{4}-\d{2}-\d{2}",
     r"never — ",
+    # ── added 2026-08-21, from a MEASURED miss ────────────────────────────────────────────
+    # The supersession audit found three cells this gate walked straight past:
+    #   `~~The scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13`
+    #   `~~The KAL scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13`
+    #   `~~The PO decides whether…~~ ✅ **ANSWERED — §1.2`
+    # `answered` is safe bare: nothing schedules future work by opening with it.
+    #
+    # ⚠️ `decided` is NOT safe bare, and that is the point of the qualifier. A live condition can
+    # legitimately open *"Decided only after T42 lands."* — a future event, not a closure — and a
+    # bare `decided\b` would sweep it in. Requiring an ATTRIBUTION or a DATE after it
+    # ("decided by the PO", "decided 2026-08-13") keeps the past-tense closure and rejects the
+    # future-tense condition. Fixture `a future condition that OPENS with "Decided"` is the
+    # case this was validated against, and it is not one of the three that motivated the rule.
+    r"answered\b",
+    r"decided\s+(?:by\b|on\b|\d{4}-\d{2}-\d{2})",
 )
 _CLOSED_RE = re.compile(r"^\W*(?:\*\*)?(?:" + "|".join(_CLOSED_OPENERS) + ")", re.IGNORECASE)
 _STRUCK_PREFIX = re.compile(r"^\s*~~.*?~~\s*")
@@ -126,6 +141,18 @@ _SYNTHETIC: list[tuple[str, str, bool]] = [
     ("a RUN date is a closure",
      "### 🔻 DEFERRAL `D-X`\n| **Retry when** | ~~Whenever the PO wants.~~ RUN 2026-08-11. |\n",
      True),
+    # the three shapes the supersession audit MEASURED this gate missing, 2026-08-21
+    ("a struck condition followed by an ANSWERED marker",
+     "### 🔻 DEFERRAL `D-X`\n| **Retry when** | ~~The PO decides whether.~~ ✅ **ANSWERED — §1.2** |\n", True),
+    ("a struck condition followed by DECIDED BY THE PO",
+     "### 🔻 DEFERRAL `D-X`\n| **Retry when** | ~~The scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13** |\n",
+     True),
+    ("a bare DECIDED with a date is a closure",
+     "### 🔻 DEFERRAL `D-X`\n| **Retry when** | Decided 2026-08-13 — the port owns everything. |\n", True),
+    # THE DISCRIMINATING NEGATIVE, and NOT one of the three above: `decided` opening a FUTURE
+    # condition. A bare `decided\b` opener would call this closed and retire a live row.
+    ("a future condition that OPENS with `Decided`",
+     "### 🔻 DEFERRAL `D-X`\n| **Retry when** | Decided only after T42 lands. |\n", False),
     ("a deferral with no Retry-when row at all is not guessed at",
      "### 🔻 DEFERRAL `D-X`\n| **Blocker** | something closed long ago |\n", False),
     ("a heading inside the block ends it, so a LATER table is not attributed here",

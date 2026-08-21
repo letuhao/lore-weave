@@ -106,6 +106,14 @@ command -v python >/dev/null 2>&1 || PY=python3
 # plan files, which the repo always has, so the scan runs too.
 "$PY" "$ROOT/scripts/stale-deferral-gate.py" --selftest
 "$PY" "$ROOT/scripts/stale-deferral-gate.py"
+# The SAME fact split across two documents: a spec says `Replaces `D-X``, the plan heading
+# still says OPEN, and `plan-final-verification` reads the HEADING. Measured 2026-08-21: 29
+# supersession claims, 16 headings still unstruck. NOT auto-strikable -- four of the sixteen
+# were mis-citations (a section about VectorStore claiming a GraphStore deferral), so a
+# blanket rule would have closed four LIVE rows. The gate demands a hand adjudication in
+# docs/specs/2026-08-21-deferral-supersession-ledger.md and enforces only what that records.
+"$PY" "$ROOT/scripts/superseded-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/superseded-deferral-gate.py"
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call neo4j_repos with no Cypher of its own, pass that gate, and still break on an engine

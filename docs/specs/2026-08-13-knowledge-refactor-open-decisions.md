@@ -654,12 +654,25 @@ so** — `ISOLATED_STACK.md` already documents the resulting graph as entity-com
 edge-empty. Making relations rebuildable would mean a second SSOT, which is the thing this
 refactor exists to remove.
 
-### 4.5 T39 invalidates by event, both caches — **DECIDED**
+### 4.5 T39 invalidates the TTL cache by event; the LRU is accept-and-document — **DECIDED**
 *Replaces `D-T39-NO-COVERAGE-DIGEST-SOURCE`.* There is no coverage digest and building one is
 not worth it: `project_graph_stats` is a full scan and a write-path counter is a schema change
-for a cache. **The event-driven invalidation shipped in B9 is the answer for both caches** —
-proven in-repo, cheaper than a digest, and it makes the LRU's "never cleared" comment false
-rather than tolerated. The TTL stays as the backstop for missed events.
+for a cache. ~~**The event-driven invalidation shipped in B9 is the answer for both caches** — proven
+in-repo, cheaper than a digest, and it makes the LRU's "never cleared" comment false rather
+than tolerated.~~ **The event-driven invalidation shipped in B9 is the answer for the TTL
+automaton cache.** The TTL stays as the backstop for missed events.
+
+⚠️ **CORRECTED 2026-08-21.** The struck clause above claimed both caches. Measured: `invalidate_anchor_cache` is called from `events/handlers.py:1060`
+and `:1464` and reaches **only** `context/anchors.py`. The per-process LRU in
+`jobs/glossary_anchor_cache.py` still reads *"per-process, never cleared"* at line 8 and
+*"Production code never calls clear (M5 spec)"* at line 104, with **no caller anywhere**.
+The comment was never made false.
+
+The digest decision is unaffected — no digest is worth building. The **LRU** is closed by a
+different argument than the one given above: it is keyed by `(book_id, chapter_index)`,
+bounded to 1000 entries with LRU eviction, and M5 scoped its staleness to *"read-only within
+an extraction run"*. That is **accept-and-document**, not invalidate-by-event. The deferral's
+claim that the LRU *"has no such bound"* was wrong too — eviction is one.
 
 ---
 
@@ -852,6 +865,40 @@ same fact"* means, not a storage tweak.
 fails when the table crosses 500 000 rows unpartitioned (`--live`), and fails the day `book_id`
 joins the natural key (static, pre-commit) — because that is the one change that would make
 partitioning cheap, and it is otherwise invisible.
+
+## 7 · PO decisions — 2026-08-21
+
+Three calls made in one sitting, after an audit showed the run had **stopped on decisions that
+were already made**: §2.2 and §2.3 had settled two of them on 2026-08-13 and the plan headings
+never moved. `scripts/superseded-deferral-gate.py` and
+`docs/specs/2026-08-21-deferral-supersession-ledger.md` exist so that cannot recur.
+
+### 7.1 T25 ③ — the Neo4j vector indexes are DROPPED on the dev graph — **GRANTED**
+The cutover to `halfvec` HNSW in Postgres made them dead weight. The grant is deliberate about
+what it authorises: **an index drop, not a data drop**. Neo4j vector indexes are derived from
+node properties, so the embeddings survive and the index is recreatable by re-indexing if the
+cutover is ever reverted. Rule 6 otherwise bars this write; this section is the exception that
+names it.
+
+### 7.2 The role-attribution judge stays LOCAL, and its precision is documented — **DECIDED**
+*Closes `D-QC5-ROLE-JUDGE-PRECISION`, which §2.3 cited loosely — §2.3 is about verdict SHAPE, a
+different question.* No paid judge is bought. The measured precision of the local judge is
+recorded as **the accepted ceiling**, not as a defect awaiting spend. What makes that
+affordable is that `judge_role_attribution` is **off by default**, so the false-positive rate
+cannot reach an author; turning it on is a separate decision that would have to re-open this.
+
+### 7.3 QC-5 bounds its nondeterminism at FIVE runs, temperature 0, seeded — **DECIDED**
+*Closes the second half of `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`; the first half was
+§2.2, done 2026-08-13.* QC-5's verdicts moved between runs on unchanged inputs (ch12 scored
+`1/SEVERE` and `2/warn`), and a single run cannot tell a verdict from a flake. The bound is
+**five runs at temperature 0, seeded where the provider supports it**, and the report is the
+**distribution**, never one number. Five rather than three because three was already the
+shape that produced the disagreement above.
+
+⚠️ Seeding is best-effort by provider. A run that cannot seed still reports five samples and
+says so — an unseeded five-run spread is weaker evidence than a seeded one, and conflating
+them would be the same green-by-construction move this plan keeps finding.
+
 
 ## How this file is kept honest
 
