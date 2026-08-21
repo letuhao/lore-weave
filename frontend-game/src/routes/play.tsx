@@ -200,7 +200,15 @@ export function PlayRoute(): JSX.Element {
           from the server's `LW_WS_DEV_USER_REF_ID` (`F1`), never from here — a
           client that could name its own `user_ref_id` would be choosing whose
           bindings to inherit. */}
-      <ChannelPanel url={SERVICES.gameServer} jwt={SERVICES.devToken} />
+      {/* POSITIONED, and the first mount was not — which a browser caught and a
+          source scan could not. `PlayRoute` is a full-screen canvas with
+          absolutely-positioned overlays; a panel dropped into normal flow
+          renders underneath them and `top-4 left-4` swallows every click. The
+          panel styles its CONTENTS and leaves placement to the caller (unlike
+          `EchoPanel`, which positions itself), so the caller must say where. */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto z-10 w-96 rounded bg-slate-800/90 text-slate-100 shadow-lg">
+        <ChannelPanel url={SERVICES.gameServer} jwt={SERVICES.devToken} />
+      </div>
 
       {/* Mobile + modal overlays */}
       <VirtualGamepad />

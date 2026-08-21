@@ -71,7 +71,7 @@ stack · the panel mounted · a browser showing the entity the binding names.
 | `F1` a dev identity that can BE a subject — `LW_WS_DEV_USER_REF_ID`, UUID-validated, no default | `[x]` | `onAuth` no longer fabricates. **2 bites**: give the var a default (reds the fail-closed arm), let a join option override it (reds the client-cannot-choose arm). game-server **84 pass / 0 fail** |
 | `F2` world-service in compose, and game-server pointed at it | `[x]` | New `services/world-service/Dockerfile` (the image carries `contracts/`, because two config defaults are CWD-relative — the `E5` lesson as a packaging requirement). Compose service + healthcheck + `:7120`; game-server gains `LW_WORLD_SERVICE_URL`, `LW_CHANNEL_*`, and the no-default dev identity. `docker compose --profile game config` rc=0 |
 | `F3` the panel is MOUNTED, and a test keeps it mounted | `[x]` | Mounted in `routes/play.tsx` beside `EchoPanel`. `channel-panel-reachable.test.ts` — 3/3, **bitten** by unmounting it (the state HEAD was in until today). Its reach arm fired for real on the first run and caught two path bugs |
-| `F4` live — a browser shows the entity the binding names | `[ ]` | |
+| `F4` live — a browser shows the entity the binding names | `[x]` | **`turn 0 · you are entity 1`**, rendered in Chromium at `/play`. Server-side corroboration: world-service `http_requests_total{method="POST",status="200"} 1` for the join. **Bitten**: stop world-service, re-join → *"could not resolve your actor; retry"* — NOT "you drive nobody"; restart → entity 1 again. Image builds too: `docker build` rc=0, 139 MB |
 | `F5` suite + sweep green | `[ ]` | |
 
 ### Why `F1` is a narrowing, not a loosening
@@ -117,6 +117,32 @@ is unmounted", and a mock deep enough to make it pass would be mocking the wirin
 
 | row | what | mechanism |
 |---|---|---|
+### `F4` — the chain, and the bite that makes it a proof
+
+**`turn 0 · you are entity 1`** in a browser. The whole path, each hop real:
+
+```
+Chromium /play → ChannelPanel → colyseus `channel` room
+  → onAuth: LW_WS_DEV_USER_REF_ID (the SERVER's env, never the client)
+  → onJoin: resolveSubject → HTTP → world-service /internal/v1/actor-control/subject
+  → meta: actor_control_binding WHERE reality_id AND user_ref_id AND revoked_at IS NULL
+  → per-reality: actors → entity_id 1
+  → w1.frame.self → channel-store → the DOM
+```
+
+Entity 1 is actor `9ca0c9c8-…`, which is what `bbbb1111-…` holds the live binding for. Not asserted
+from the fixture — **bitten**: with world-service stopped the same click yields *"could not resolve
+your actor; retry"*, and restarting it yields entity 1 again. So the number on screen provably comes
+from the control plane and both databases, and not from a cache, a default, or the client.
+
+**And the refusal is the RIGHT refusal.** It does not say *"you drive nobody"*. That distinction is
+`E3`'s four-answer design — driving · nobody · realityClosed · unavailable — and this is the first
+time it has been visible in a UI rather than argued for in a test.
+
+The roster is empty and the turn is 0 because nothing has been committed to this channel's stream.
+That is the OUT boundary working as written: joining and seeing the right `self` is this board's
+claim; a RESOLVED turn needs the spine, which hangs (`DFO-7`).
+
 | `FO-2` | **`phase0-reconcile-gate` reads only the citations BEFORE the first em-dash.** Authors who write `A - why A - B - why B` get `A` checked and `B` ignored, so *the more prior art a spec cites, the less of it is read*. Measured 2026-08-21: **7 of 25** fields use that shape, **15** citations sit past the first dash unread, and **1 is a genuine phantom** (`SEALED-SUBJECT` in the player-edge plan, now corrected). The gate's own header claims this class was fixed — that fix was for WRAPPED lines; reach has two dimensions and one was repaired. | **A parser widening was written and REVERTED, and that is the finding.** Once prose may contain the separators — which it does, correctly, in `2026-08-15-claim-rot.md` — a citation and a sentence are not distinguishable by punctuation: the widening caught the one real phantom and invented FIVE against a conforming field. A check that reds correct work is how a gate becomes noise someone silences. The fix is to the CONVENTION (refuse an interleaved field, as a closed-set arg refuses a free string), which means rewriting 7 fields across tracks this board does not own — gate #2, large/structural. The revert is documented in the gate beside the line, pointing here. |
 | `FO-1` | **`EchoRoom.onAuth` takes `options.userId ?? 'guest'` — from the CLIENT.** That id keys the per-user connection cap (`edge.connectionCap.atCap(authed.userId)`), so a client can evade the cap by picking a new id per connection. Found while auditing the identity path for `F1`; out of this board's boundary (different room, different purpose) and recorded rather than absorbed. | None yet. `F1`'s shape is the fix — an identity the SERVER supplies — but EchoRoom is the V0 echo validator and changing its contract is its own decision. |
 
@@ -124,8 +150,10 @@ is unmounted", and a mock deep enough to make it pass would be mocking the wirin
 
 | id | what |
 |---|---|
-
-*(empty at open)*
+| `FD-1` | **The mount passed its test and was unclickable.** `F3`'s scan proved `ChannelPanel` is imported and rendered with both props — all true, and the panel was still unusable: `PlayRoute` is a full-screen canvas with absolutely-positioned overlays, so a panel dropped into normal flow renders *underneath* them and `top-4 left-4` swallows every click. Playwright found it in one action (*"intercepts pointer events"*); no test in this repo would have. **The scan's honest limit, stated when I wrote it, is narrower than I then treated it as** — it proves the code is REACHABLE, and I read the green as "the panel works". Fixed with the positioned wrapper the sibling overlays all use. |
+| `FD-2` | **I nearly "fixed" a non-problem.** Before starting the image build I worried `COPY . .` would tar the 6.3 GB of `.claude/worktrees` into the context. `.dockerignore` already excludes `.claude` — line 36. Twenty seconds of measurement against a change to a file every service build depends on. Recorded because the near-miss is the good outcome, and the habit that produced it is the one worth keeping. |
+| `FD-3` | **Two gates caught this work and both were right.** `phase0-reconcile-gate` refused the commit for citing `SEALED-SUBJECT`, which has no index row — and chasing why the player-edge plan cites the same phantom and passes found `FO-2`. `actor-hub-figures-gate` refused it because a governed doc claims *"1 of 3 game-tier services in compose"* and `F2` made it 2 — the same doc that named `WS-COMPOSE` as the gap `F2` closed. Neither was noise, and neither was findable by reading. |
+| `FD-4` | **The first `LW_CHANNEL_REDIS_URL` pointed at a port nothing listens on.** I wrote `redis://127.0.0.1:6379` from habit; this stack maps Redis to **6399**. The room came up "healthy" anyway, because `/livez` does not touch Redis and the consumer loop fails asynchronously — so a wrong broker address reads as a healthy service until a join goes quiet. The same shape as `streamFor()`'s own comment: *"a consumer cannot quietly point at a stream nobody writes"*. |
 
 ---
 
