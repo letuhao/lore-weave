@@ -1125,6 +1125,67 @@ with its steps individually evidenced rather than being marked blocked.
 needing port operations, derived and ratcheted by `port-adoption-gate` since A14. None of that
 is downstream of the vector DDL.
 
+## 10 · T17 class (d) — the shape of the remainder
+
+### 10.1 The port does NOT grow to 106 methods — **DECIDED (T61, 2026-08-22)**
+
+**Measured before deciding** (rule 8), from the same classifier `port-adoption-gate` ratchets:
+
+```
+class (d)            34 modules
+distinct operations  85          the port has 21   ->  106 if all are added
+sessions in signature 83 of 85   they are repo functions, not domain calls
+by repo module       entities 32 · facts 11 · hierarchy 8 · events 8 · relations 4 ·
+                     provenance 4 · enrichment 4 · entity_status 3 · schema_usage 3 ·
+                     coref 2 · graph_views 2 · fact_for_check 1 · temporal 1 ·
+                     flywheel 1 · project_graph 1
+```
+
+**The option that was assumed, and why it is refused.** `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-
+CLASS-D-MOVES` said *"take class (d) in T35-shaped batches: grow the port operation, migrate
+its binders."* At 85 operations that is a **five-fold expansion** of `GraphStore`, each method
+costing a Neo4j implementation, an AGE implementation, a fake, and a conformance rule — and it
+would make the port a **mirror of `neo4j_repos` with a different import path**. The port's own
+docstring refuses exactly this: *"A port grows by demand, not by inventory… every method here
+has to be implemented twice plus faked."* A 106-method interface is not a boundary; it is the
+concrete layer with an `abstractmethod` decorator.
+
+**DECIDED — substitutability is achieved at TWO levels, not one.**
+
+1. **`GraphStore` stays the DOMAIN boundary** and keeps growing only by demand. It is what T43
+   shadow-compares (21 operations, 239/239 agreed, `cutover_permitted: True` — T60), and what
+   cross-cutting consumers use. It does **not** absorb the long tail.
+2. **The repo layer becomes ENGINE-AGNOSTIC** rather than being replaced. `neo4j_repos` is
+   Neo4j-shaped in its *name* and in its *dialect*, not in its *semantics* — its functions are
+   already domain-shaped (`find_entities_by_name`, `status_at_order`), which the sealed plan
+   observed on day one. What binds it to Neo4j is the Cypher dialect and the session type.
+
+**Why this is now the cheaper and better-evidenced path.** The 2026-08-11 construct probe
+priced the dialect gap: ~33 anchoring rewrites onto `coalesce` + pre-`MATCH`, 157
+`datetime()` → `timestamp()` renames, 14 `CALL {}` → `LATERAL`/CTE. T57–T60 then demonstrated
+the method on the three hardest cases in the codebase — `merge_event`, `update_event_fields`
+and `merge_fact` with `maintain_chain` — all three of which had been declared *"no APOC-free
+AGE equivalent"* and all three of which are now implemented and agreeing with Neo4j on real
+traffic. **A bounded, measured translation beats 85 unmeasured port methods.**
+
+**What this does NOT license.**
+
+* It does not retire `GraphStore`, weaken `INV-KAL`, or permit a consumer to reach a graph
+  driver directly. `knowledge-access-gate` and `graph-port-gate` stand unchanged.
+* It does not make `port-adoption-gate`'s ceiling meaningless: the ceiling still counts modules
+  bound to a **Neo4j-named** package, and that count must still fall as the layer is renamed
+  and its dialect neutralised.
+* It does not decide the ENGINE. X1 still chooses by measurement, and Kuzu's embedded
+  single-handle limit remains *"the single biggest input to the engine choice"*.
+
+**The measurable form of the decision.** Class (d) reaches zero either by a module migrating to
+`GraphStore` (as A4/A9/A10 did) **or** by the repo layer it binds becoming engine-agnostic.
+`port-adoption-gate` already prints class (d) every run; the second path needs its own ratchet,
+and building that ratchet is the next unit rather than another decision.
+
+**Retry/registration:** supersedes the *To unblock* row of
+`D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`, which named only path 1.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
