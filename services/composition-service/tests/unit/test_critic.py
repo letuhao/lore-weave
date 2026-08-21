@@ -241,3 +241,56 @@ def test_a_LABEL_MATCHING_fallback_is_NOT_added_because_it_re_opens_a_fixed_defe
         assert map_rule_tokens([{"rule_id": invented, "why": "x"}], active) == [], (
             f"{invented!r} was attributed — a verdict the judge could not key to a token must "
             "stay dropped; guessing re-opens D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE")
+
+
+def test_the_prompt_gives_out_of_rule_findings_a_CHANNEL_instead_of_a_rule_to_invent():
+    """🔴 QC-5 C12. Replaying the stored judge request (job 01a02149-…) reproduced the live
+    failure 3/3: `rule_id` "QUY UOC XUNG HO", whose `why` translates to "uses the pronoun 'anh'
+    as the narrative person instead of conventional pronouns". A REAL craft finding —
+    `voice_match` scored 2 in every arm — with nowhere to go but `violations[]`, which is keyed
+    to a listed rule. So the judge invented one and `map_rule_tokens` correctly dropped it.
+
+    Three runs per arm on that exact request:
+        control                    invented [2, 6, 6]  notes [0, 0, 0]
+        "do not invent a rule"     invented [0, 0, 0]  notes [0, 0, 0]
+        a craft_notes CHANNEL      invented [0, 0, 0]  notes [2, 2, 2]
+
+    Both stop the invention; only the channel keeps the finding. This pins the channel's
+    presence in the prompt AND its schema line, because a prompt that asks for a field the
+    response schema never mentions is a prompt asking for nothing.
+    """
+    system, _user = critic.build_critique_prompt(
+        "passage", [{"rule_id": "r1", "text": "X is the cousin of Y"}], [], NEUTRAL)
+    # ⚠️ Two assertions, deliberately, and the FIRST one is why. Asserting only
+    # `"craft_notes" in system` passes on the schema line alone, so deleting the whole prose
+    # instruction left this test green — bite 47 caught exactly that. The prose and the schema
+    # are separate failure modes and each needs its own assertion.
+    assert "never invent a rule id" in system, (
+        "the INSTRUCTION is gone: the judge has no channel for a finding no listed rule covers, "
+        "so it will invent a rule id to carry one — measured 2-6 invented ids per run")
+    assert "is NOT a violation" in " ".join(system.split()), (
+        "the clause no longer tells the judge that an out-of-rule finding is not a violation")
+    assert '"craft_notes":[{"note":str,"span":str}]' in system, (
+        "the channel is described in prose but missing from the JSON schema line — the judge "
+        "is being asked to fill a field the contract never declares")
+
+
+def test_craft_notes_SURVIVE_normalisation_or_the_channel_writes_to_nowhere():
+    """A judge told to write to a field the normaliser drops is a judge told nothing: the
+    finding would vanish exactly as it did when `map_rule_tokens` discarded the invented rule.
+    Bounded, because the note text is model output on an author-facing envelope.
+    """
+    out = critic.normalize_critique({
+        "coherence": 5, "voice_match": 2, "pacing": 4, "canon_consistency": 5,
+        "violations": [],
+        "craft_notes": [
+            {"note": "narrative pronoun breaks the work's convention", "span": "…anh…"},
+            {"note": "   ", "span": "dropped: no note text"},
+            {"note": "x" * 900, "span": "y" * 900},
+        ],
+    })
+    notes = out["craft_notes"]
+    assert len(notes) == 2, f"the blank note must be filtered, got {notes}"
+    assert notes[0]["note"].startswith("narrative pronoun")
+    assert len(notes[1]["note"]) == 400 and len(notes[1]["span"]) == 200, (
+        "model output on an author-facing envelope must be bounded")

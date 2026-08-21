@@ -101,6 +101,14 @@ def normalize_critique(parsed: dict[str, Any] | None) -> dict[str, Any]:
     parsed = parsed or {}
     crit: dict[str, Any] = {d: _coerce_score(parsed.get(d)) for d in _DIMENSIONS}
     crit["violations"] = _filter_violations(parsed.get("violations"))
+    # C12 — carried through because the prompt now asks for it. A judge told to write to a
+    # field the normaliser drops is a judge told nothing: the finding would vanish exactly as
+    # it did when `map_rule_tokens` discarded the invented rule.
+    crit["craft_notes"] = [
+        {"note": str(n.get("note", ""))[:400], "span": str(n.get("span", ""))[:200]}
+        for n in (parsed.get("craft_notes") or [])
+        if isinstance(n, dict) and str(n.get("note", "")).strip()
+    ][:10]
     return crit
 
 
@@ -179,9 +187,27 @@ def build_critique_prompt(
         "fact). Each active rule is labelled [R1], [R2] and so on. For each active rule the "
         "passage contradicts, add a violation whose rule_id is that rule's label exactly, "
         "with a short contradicting span, and a `why` that describes THAT rule — never "
-        "repeat another rule's reason. Return ONLY a JSON object "
+        "repeat another rule's reason. "
+        # 🔴 THE JUDGE NEEDS SOMEWHERE TO PUT A FINDING NO LISTED RULE COVERS, or it invents a
+        # rule to carry it. Measured by REPLAYING the stored request (C12, job 01a02149-…): the
+        # judge returned `rule_id` "QUY UOC XUNG HO" whose `why` translates to "uses the pronoun
+        # 'anh' as the narrative person instead of conventional pronouns" — a REAL craft finding
+        # (voice_match scored 2), not a hallucination. `map_rule_tokens` then correctly dropped
+        # it, so the author saw `violations: []` and lost the observation.
+        #
+        # Three runs per arm on the replayed request:
+        #     control (this prompt without the clause)  invented [2, 6, 6]  notes [0, 0, 0]
+        #     "do not invent a rule"                    invented [0, 0, 0]  notes [0, 0, 0]
+        #     THIS clause (a channel)                   invented [0, 0, 0]  notes [2, 2, 2]
+        #
+        # Both stop the invention; only this one KEEPS the finding. Telling a judge not to
+        # report something it can see does not make it stop seeing it — it makes it discard it.
+        "A craft or continuity problem that NONE of the listed rules covers is NOT a "
+        'violation: put it in "craft_notes" instead, and never invent a rule id for it. '
+        "Return ONLY a JSON object "
         '{"coherence":int,"voice_match":int,"pacing":int,"canon_consistency":int,'
-        '"violations":[{"rule_id":str,"violated":true,"span":str,"why":str}]}.'
+        '"violations":[{"rule_id":str,"violated":true,"span":str,"why":str}],'
+        '"craft_notes":[{"note":str,"span":str}]}.'
         + lang
     )
     # ⚠️ RULES ARE LABELLED R1..Rn, NOT BY THEIR UUID — and that is the fix, not a tidy-up.

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-5`'s two open threads are ONE PO decision, diagnosed 2026-08-21 (C10). C3/C6/C7 each RECORDED the same drop and none diagnosed it (rule 13). Read live: the judge returns `rule_id` = a naming-convention rule while the book's **6 active rules are all character facts** — it INVENTS a category, so the mapper drops it and is **correct** to. The cause written in the code (*"`active_rules` being empty is the CAUSE"*) is wrong for this workload and is corrected. ⚠️ The tempting fix — match on the label — would re-open `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` (fixed 2026-08-12) by attaching a fabricated rule to a real one; a test now pins the refusal. So clause 1 (*at least one attributed violation*) cannot pass while the judge invents ids — the same family as `D-QC5-ROLE-JUDGE-PRECISION`, already ruled **a spend question**. The plumbing is sound (C3 counter · C5 channel · C8 name-grounding truth side · C10 mapper). **What is left is the judge model — and C11 TESTED that framing instead of inheriting it:** the prose judge's prompt never states a closed set, so a closed-set constraint was measured A/B on the real rules and the real drafted passage. **The control never fails** (0 violations across three progressively more faithful fixtures), so no prompt change ships — a treatment beating a control that cannot fail proves nothing. Rule 8's third killed batch this session. ⛔ PO: **(1)** the model budget above · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
+**RESUME: `QC-5`'s blocker is NOT spend — C12 settled it from the workload. Replaying the STORED judge request (job `01a02149-…`) reproduces the invented rule id **3/3**, and the stored RESULT shows the judge was **right**: its `why` translates to *"uses the pronoun 'anh' as the narrative person instead of conventional pronouns"* — a real craft finding, `voice_match` 2 in every arm — with nowhere to go but `violations[]`, which is keyed to a listed rule. A **contract gap**, not a model gap; C10 inherited the spend framing by analogy (rule 13). Fixed with a `craft_notes` channel: 3 runs/arm gave invented **[2,6,6] → [0,0,0]** with the finding **preserved** (`craft_notes [2,2,2]`), where the obvious *"do not invent a rule"* also reaches 0 but **destroys** it. Live on rebuilt images: `raw 0 · dropped 0 · 0 warnings · craft_notes 2`. ⛔ Clause 1 still scores 0 — attributed violations are 0 in EVERY arm because the draft does not contradict the six canon rules (they are character facts). **That is a FIXTURE question**: QC-5's premise is a *misattributed betrayal*, so clause 1 needs a chapter where a violation is actually present. PO's call. Also owed: `recanon --apply` (1819 fork, T46b) · `OD-2` soak never ran (T25c) · `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 36 of 77 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 37 of 79 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/31) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (13/33) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6188,6 +6188,92 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### ✅ QC-5 C12 2026-08-21 — the judge was RIGHT and had nowhere to put it. Fixed, live-proven.
+
+  ```
+  composition unit 3626 -> 3628        BITE x2, each red on its own assertion
+  REPLAY of the stored request (job 01a02149-…), 3 runs per arm:
+     control (shipped prompt)   invented [2, 6, 6]   craft_notes [0, 0, 0]   canon [4,4,4]
+     "do not invent a rule"     invented [0, 0, 0]   craft_notes [0, 0, 0]   canon [5,5,5]
+     a craft_notes CHANNEL      invented [0, 0, 0]   craft_notes [2, 2, 2]   canon [5,5,5]
+  LIVE (rebuilt worker): raw_count 0 · dropped 0 · 0 drop warnings · craft_notes 2
+  ```
+
+  ### 🔴 C10 AND C11 BOTH HAD IT PARTLY WRONG, AND THE STORED REQUEST SETTLES IT
+
+  C11 could not reproduce the invented `rule_id` by RECONSTRUCTING the call — three fixtures and
+  then the correct **non-qat** critic model all returned 0 violations. **Reconstruction was the
+  wrong instrument.** `llm_jobs` stores the real request, so it was replayed verbatim: same
+  messages, same `max_tokens` 1536, same temperature, same model. It reproduces **3/3**.
+
+  🎯 **And the stored RESULT shows the judge was not hallucinating.** Its verdict carried
+  `rule_id` "QUY UOC XUNG HO" with a `why` that reads, translated: *"uses the pronoun 'anh' as
+  the narrative person instead of conventional pronouns like 'han' or 'y'"* — a **real craft
+  finding**, and `voice_match` scored **2** in every single arm. The judge saw a genuine
+  convention problem and the schema gave it exactly one place to report anything: `violations[]`,
+  which is keyed to a listed rule. **So it invented a rule to carry a true observation**, and
+  `map_rule_tokens` correctly dropped it, and the author saw `violations: []`.
+
+  📐 **That reclassifies the blocker for the third time, and this time from the workload.** C10
+  called it a judge-model defect and inherited `D-QC5-ROLE-JUDGE-PRECISION`'s **spend** framing by
+  analogy — rule 13's exact warning. It is not a model gap: it is a **contract gap**. The critic
+  had no channel for a finding no listed rule covers.
+
+  ### ⚠️ THE OBVIOUS FIX WORKS AND IS STILL THE WRONG ONE
+
+  Both treatments stop the invention. Only one keeps the finding:
+
+  | arm | invented | the pronoun finding |
+  |---|---|---|
+  | `"do not invent a rule"` | **0/0/0** | **destroyed** — `craft_notes [0,0,0]`, canon rises 4→5 |
+  | `craft_notes` channel | **0/0/0** | **preserved** — `craft_notes [2,2,2]` |
+
+  🎯 **Telling a judge not to report something it can see does not make it stop seeing it — it
+  makes it discard it.** The instruction arm buys a clean `violations[]` by throwing away a real
+  voice defect on a passage whose `voice_match` is 2. Shipped the channel.
+
+  ⚠️ **`temp=0` is NOT deterministic here, and a single run nearly misled me.** One early
+  single-run of the instruction arm showed **6** invented and the channel arm 0, which reads as a
+  clean win for the channel; three runs per arm show both at 0 and the real difference is where
+  the finding GOES. §2.1's own "three runs, majority rule" discipline applied to my own
+  experiment.
+
+  **BITE ×2:**
+
+  ```
+  47. remove the prose clause from the prompt   E "the INSTRUCTION is gone: the judge has no
+                                                   channel … so it will invent a rule id"
+  48. drop craft_notes from the normaliser      E test_craft_notes_SURVIVE_normalisation…
+  ```
+
+  ⚠️ **Bite 47 did NOT fire on the first attempt, and that is the finding about my own test.** It
+  asserted `"craft_notes" in system`, which the JSON **schema line** satisfies even with the whole
+  prose instruction deleted — so the test was green against the exact state C12 measured as
+  `[2,6,6]` invented. Split into two assertions, one per failure mode; a prompt that names a field
+  the schema omits and a schema that declares a field the prompt never explains are different bugs.
+
+  ### ⛔ WHAT THIS DOES NOT DO — QC-5's clause 1 still cannot pass on this chapter
+
+  Clause 1 wants *"at least one **attributed** violation"*. Attributed violations are **0** in
+  every arm, before and after, because the drafted chapter **does not contradict any of the six
+  canon rules** — they are character facts ("X is the cousin of Y") and the draft respects them.
+  The 9 findings C7 counted were all craft observations, which is why all 9 were dropped.
+
+  📐 **So C7's `0/0/0` is not only a pipeline result — it is partly a FIXTURE result.** QC-5's own
+  premise is *"`canon_consistency` scoring 5/5 on a **misattributed betrayal**"*: the test needs a
+  chapter where a canon violation is actually present. Measuring clause 1 on a chapter that
+  contains none can only ever score 0. **That is a question about the acceptance measurement, not
+  about the flow, and it is the PO's** — QC-5 stays `[~]`.
+
+  **QC (a) gates:** composition unit **3626 → 3628**; `plan-verify` PASS; `plan-row-honesty-gate`
+  OK; `doc-language-gate` OK (the judge's Vietnamese output is quoted in English).
+  **QC (b) the seam:** a full authoring run on **rebuilt, re-created** `composition-service` +
+  `composition-worker`, `report_ready` in ~60 s: `violations_raw_count 0`, `violations_dropped 0`,
+  **zero** drop warnings in the service log, and **2 `craft_notes`** carrying the pronoun finding
+  to the author for the first time.
+  **QC (c) real data:** the stored production request and response for job `01a02149-…`, the six
+  real canon rules, and a real re-draft of the acceptance book's chapter 5.
+
   ### 📊 QC-5 C11 2026-08-21 — the prompt fix was MEASURED and NOT BUILT: the control never fails
 
   ```
