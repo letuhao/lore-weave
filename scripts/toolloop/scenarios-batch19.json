@@ -133,7 +133,7 @@
    "tier": "A",
    "scope": "book",
    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+   "prompt": "Apply motif — bind my Throwaway Loop Binding motif to this book's opening arc.",
    "prompt_source": "meta.synonyms['apply motif'] + ['bind motif'], verbatim.",
    "needs_target": false,
    "approve": null,
@@ -143,7 +143,7 @@
      "args": {
       "op": "create",
       "code": "throwaway-loop-bind-b19",
-      "name": "Throwaway Loop Pattern",
+      "name": "Throwaway Loop Binding",
       "kind": "trope"
      }
     },
@@ -176,7 +176,8 @@
     "idempotency": "OWED — binding the same motif to the same node twice must not create two applications.",
     "tenancy": "OWED — book-scoped for the node AND account-scoped for the motif: two scopes on one call, and both must be checked."
    },
-   "defects": []
+   "defects": [],
+   "_fixture_fix": "🔴 MY FIXTURE COLLIDED WITH ITSELF. This motif was seeded with the name 'Throwaway Loop Pattern' — the SAME display name the composition-motif-edit scenario uses — so composition_motif_search(q='Throwaway Loop Pattern') returned TWO motifs and the turn died with 0 chars on the ambiguity. Measured after the `q` declaration landed: the search itself was finally correct ({\"q\": \"Throwaway Loop Pattern\", \"scope\": \"mine\"}, ok=True, count=2) and the ambiguity was mine, not the tool's. Renamed to 'Throwaway Loop Binding' so each scenario names exactly one motif. A fixture that failed is evidence about my fixture."
   },
   {
    "id": "composition-motif-adopt",
