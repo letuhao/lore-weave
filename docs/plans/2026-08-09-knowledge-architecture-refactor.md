@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T17` class (d) — read `docs/measurements/2026-08-11-age-construct-probe.md` first; it may already price the 34.**
+**RESUME: implement `AgeGraphStore.merge_event` + `.update_event_fields` — T57 refuted the blocker; 5 conformance skips become assertions.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 63 of 113 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 63 of 112 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2549,15 +2549,82 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
 
+  ### 🔴 T57 2026-08-22 — **`D-AGE-EVENT-WRITE-UNIMPLEMENTED` is REFUTED**, and the probe that refutes it was written eleven days ago
+
+  📐 **PO 2026-08-22:** *"i remember we already audit and seem like everything is stale and never
+  saved / there is a test that build new logic for AGE to test feasible (find alternative method
+  on the AGE that work same as neo4j logic)."* There is:
+  [`docs/measurements/2026-08-11-age-construct-probe.md`](../measurements/2026-08-11-age-construct-probe.md).
+  I was about to run a fresh measurement it had already made.
+
+  ```
+  min-wins event_order            CASE WHEN 300 < e.event_order …     500 -> 300          ✅
+  upgrade-not-overwrite summary   CASE WHEN e.summary = '' …          "" -> "a real …"    ✅
+  union-merged participants       SQL host + bound parameter          ["a","b"] ∪ ["b","c"]
+                                                                       = ["a","b","c"]    ✅
+  pre-edit `before` snapshot      two statements, ONE transaction     before/after both   ✅
+  ```
+
+  🎯 **The deferral's Blocker says *"AGE has no APOC-free equivalent of that CASE"*. All three
+  CASE semantics are plain AGE Cypher, and the list union — the one part its own *To unblock*
+  flagged as needing care — is four lines of SQL.** Measured on the product's own AGE 1.7.0
+  image, throwaway graph, iso store; dev untouched.
+
+  ⚠️ **AND IT IS THE SAME MISTAKE, MADE A THIRD TIME.** The 2026-08-09 audit eliminated AGE from
+  documentation. The 2026-08-11 probe replaced a version of *itself* that had tested **Neo4j
+  syntax against AGE** and read the syntax errors as missing capability — the PO caught that one:
+  *"why did you use your syntax for AGE? you must use its syntax."* Its conclusion was one
+  sentence: **AGE lives inside Postgres, so a Cypher construct's absence is not a capability gap
+  when SQL supplies it.** This deferral was written **2026-08-14, three days later**, and reasons
+  entirely inside Cypher. A measurement that corrects a mistake does not stop the mistake being
+  made again in the next document.
+
+  🔧 **The one real gotcha is a calling convention, not a limit.** The first attempt died on
+  `ERROR: third argument of cypher function must be a parameter` — `cypher()` will not take an
+  inline expression as its parameter map. That is a psql inconvenience and a non-issue for the
+  adapter, because **asyncpg binds parameters natively**; through `PREPARE`/`EXECUTE` the union
+  returns `["a","b","c"]`. Recorded because it looks exactly like a capability failure and is the
+  precise shape that produced the two earlier wrong verdicts.
+
+  📐 **The deferral's wording is also stricter than its requirement.** It says
+  *"same-statement pre-edit `before` snapshot"*; what OCC needs is **same-transaction**, and
+  2026-08-11 already proved the single-statement CTE is the WRONG form — Postgres does not
+  guarantee its evaluation order, and it returned `was_created=false` for an absent node.
+
+  ✅ **Its Mechanism was sound and did its job.** The refusal is asserted by
+  `test_age_REFUSES_the_event_writes_rather_than_answering_wrongly`, so implementing these two
+  methods will fail that test and force this row to be revisited — which is exactly what the
+  deferral said would happen, and why the gap never went quiet.
+
+  ⛔ **What this does NOT do.** It measures **expressibility**, not a shipped adapter. `T43`/`QC-7`
+  recorded that *"AGE cannot clear the conformance floor at all"* because it refuses two writes,
+  and that verdict rests on this deferral — it must be **re-derived** once the methods exist, not
+  reversed from this block. And it does not unblock `T17` class (d): those 34 modules need port
+  OPERATIONS, this is two adapter methods. What it establishes is the method that prices class
+  (d) honestly — **reach for the SQL host before concluding AGE cannot express something.**
+
+  **BITE — N/A, and the reason:** no code changed. This is rule 2 applied to a Blocker sentence,
+  and its criterion can fail: each of the four requirements either produced the required value or
+  it did not, and the third one FAILED on the first attempt and had to be re-run correctly rather
+  than being written up as a limitation. A probe that had stopped at the first error would have
+  produced the 2026-08-09 verdict for the third time.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate` unchanged at 54/19/2, class (d)
+  34/34 — nothing migrated.
+  **QC (b) the seam:** ✅ a real AGE 1.7.0 in the product's own Postgres image, graph created and
+  dropped in the run.
+  **QC (c) real data:** the four result sets above are pasted from the run, not described;
+  `["a","b","c"]` is the value the deferral said could not be produced without APOC.
+
   ### 🔻 DEFERRAL `D-AGE-EVENT-WRITE-UNIMPLEMENTED`
 
   | | |
   |---|---|
-  | **Blocker** | `AgeGraphStore.merge_event` and `.update_event_fields` raise `NotImplementedError`. The merge needs an ON MATCH branch with min-wins `event_order`, union-merged participants and upgrade-not-overwrite `summary`; AGE has no APOC-free equivalent of that CASE, and `update_event_fields` needs the same-statement pre-edit `before` snapshot the OCC correction event is written from. |
+  | **Blocker** | ~~`AgeGraphStore.merge_event` and `.update_event_fields` raise `NotImplementedError` … AGE has no APOC-free equivalent of that CASE~~ — 🔴 **REFUTED 2026-08-22 by T57** ([measurement](../measurements/2026-08-22-age-event-write-probe.md)). All three CASE semantics are plain AGE Cypher; the list union is four lines of SQL; the `before` snapshot needs the same TRANSACTION, not the same statement. The methods still raise — the work is unstarted, not impossible. |
   | **Evidence** | `63 passed, 7 skipped` on the conformance suite: five event-write rules skip for `age`, and `test_age_REFUSES_the_event_writes_rather_than_answering_wrongly` passes against a real AGE graph. Biting the refusal (`return None` ahead of the raise) reds it — `Failed: DID NOT RAISE <class 'NotImplementedError'>` — so the refusal is real and not a docstring. |
   | **Mechanism** | The refusal is ASSERTED by a test, not described in a comment. `_EVENT_WRITE_REFUSERS` would otherwise be a way to make the gap invisible — a suite reporting green for three adapters while one silently did nothing. If someone implements these, that test fails and forces this row to be revisited. |
   | **To unblock** | Implement the ON MATCH branch in openCypher against AGE (the min/coalesce arithmetic is expressible; it is the list union that needs care without APOC), and return the `before` map from the same statement so the OCC audit half survives. Then delete the two entries from `_EVENT_WRITE_REFUSERS` and watch five skips become five assertions. |
-  | **Retry when** | T42 designs the AGE adapter's WRITE path — this is the second half of the same question, and doing it here would have meant guessing a write contract T42 has not settled. |
+  | **Retry when** | ~~T42 designs the AGE adapter's WRITE path~~ — **NOW.** T42 shipped and T57 removed the capability doubt; what is left is writing the two methods and deleting their `_EVENT_WRITE_REFUSERS` entries. |
 
   ### ✅ A1 2026-08-13 — the three relation corrections, on the port and all three adapters
 
