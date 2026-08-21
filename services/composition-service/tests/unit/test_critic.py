@@ -294,3 +294,41 @@ def test_craft_notes_SURVIVE_normalisation_or_the_channel_writes_to_nowhere():
     assert notes[0]["note"].startswith("narrative pronoun")
     assert len(notes[1]["note"]) == 400 and len(notes[1]["span"]) == 200, (
         "model output on an author-facing envelope must be bounded")
+
+
+# ── D-QUALITY-REPORT-CANON-UNANCHORED (T46l) — the degrade shape must not drift ──────────
+#
+# `normalize_critique` gained `craft_notes` with the C11 channel fix; `quality_report`'s
+# `_empty_critic()` did not. A consumer reading `critic["craft_notes"]` therefore worked on a
+# healthy judge and raised KeyError the moment one degraded — precisely the case the degrade
+# path exists to survive. Comparing the two key SETS (rather than asserting the literal key)
+# is what stops the next added field repeating it.
+
+
+def test_the_degrade_critic_shape_carries_every_key_the_success_shape_does():
+    from app.engine.quality_report import _empty_critic
+
+    success = critic.normalize_critique(
+        {"coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5,
+         "violations": [], "craft_notes": [{"note": "n", "span": "s"}]}
+    )
+    degraded = _empty_critic()
+    missing = sorted(set(success) - set(degraded))
+    assert not missing, (
+        f"the degrade shape is missing {missing} — a consumer that reads those on a healthy "
+        f"judge raises KeyError the moment one degrades. Add them to `_empty_critic`."
+    )
+
+
+def test_the_degrade_shape_ALSO_marks_itself_as_an_error():
+    """The control. Making the shapes match by widening `_empty_critic` must not make a
+    degraded verdict indistinguishable from a real one — `error` is how a reader tells."""
+    from app.engine.quality_report import _empty_critic
+
+    degraded = _empty_critic()
+    assert degraded["error"], "a degraded critic must say so"
+    success = critic.normalize_critique(
+        {"coherence": 4, "voice_match": 4, "pacing": 4, "canon_consistency": 5,
+         "violations": [], "craft_notes": []}
+    )
+    assert "error" not in success, "a healthy verdict must not carry an error marker"

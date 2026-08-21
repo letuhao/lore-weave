@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 47 of 87 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 48 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/36) · `T46` (5/8) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/35) · `T46` (6/10) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7850,7 +7850,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   reds the label test; passing unmappable labels through reds the drop test) · gates green ·
   the live re-run above is the smoke, against an image rebuilt for it.
 
-  ### 🔻 DEFERRAL `D-QUALITY-REPORT-CANON-UNANCHORED` — a SECOND call site scored against nothing
+  ### ~~DEFERRAL~~ `D-QUALITY-REPORT-CANON-UNANCHORED` — **CLOSED 2026-08-21 (T46l) — its premise is outdated and the rule source was already decided; the one real remnant is fixed.**
 
   | | |
   |---|---|
@@ -14632,6 +14632,64 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a) gates:** plan gates green. **QC (b) the seam:** the real critic system prompt and the
   real six active rules through LM Studio, the same path the flow uses. **QC (c) real data:** the
   acceptance book's own six canon rules, and a planted passage built to break two of them.
+
+  ### ✅ T46l 2026-08-21 — **the quality report is anchored after all**, and the real defect was next door
+
+  ```
+  composition unit 3634 -> 3636        BITE x2 (73-74)
+  QC-5 span, OPEN deferral headings:   12 -> 5 -> 4
+  ```
+
+  `D-QUALITY-REPORT-CANON-UNANCHORED` said `build_quality_report` *"calls `judge_prose` with
+  `active_rules=[]` hardcoded"* so its `canon_consistency` is *"judged against nothing"*, and asked
+  whoever owns the report to **pick the rule source**. Reading the code rather than the note: the
+  source was picked, and `active_rules=[]` is deliberate.
+
+  🎯 **`canon_bible.py` is the one home, and it says so.** `CanonBible.as_present_facts()` reads:
+  *"A rendered bible is one multi-line established-fact block, **not a list of structured rules** —
+  the same shape `build_quality_report` already hands `judge_prose`, kept identical on purpose so
+  the two judges see canon the same way."* The report passes the rendered bible as `present_facts`;
+  the D5 critic passes the same thing from the same module. `canon_consistency` has grounding.
+
+  ✅ **And the other half — *"the verdict carried an INVENTED rule label, because no rule was ever
+  sent"* — is what C11's `craft_notes` channel fixed**: a true finding no listed rule covers now
+  leaves through its own channel, and the prompt forbids inventing an id for it. That was the
+  actual harm, and it is gone.
+
+  ### 🔴 BUT READING IT TURNED UP A REAL DEFECT NEXT DOOR — the degrade shape had drifted
+
+  ```
+  success  (normalize_critique)  dims + violations + craft_notes
+  degrade  (_empty_critic)       dims + violations + error        <- no craft_notes
+  ```
+
+  `craft_notes` was added to the success shape by C11 and **not** to the degrade shape. A consumer
+  reading `critic["craft_notes"]` therefore worked against a healthy judge and raised `KeyError`
+  the moment one degraded — the exact case a degrade path exists to survive, and invisible until
+  an LLM actually fails.
+
+  ✅ **Fixed, and pinned as an INVARIANT rather than a key.** The test compares the two key SETS,
+  so the next field added to the critic cannot drift the same way. Its control checks that
+  widening the degrade shape did not erase `error` — making the shapes match by deleting the
+  marker that distinguishes them would be a worse bug than the one being fixed.
+
+  **BITE ×2:**
+
+  ```
+  73. drop craft_notes from the degrade shape   E "the degrade shape is missing ['craft_notes']
+                                                   — a consumer that reads those on a healthy
+                                                   judge raises KeyError the moment one degrades"
+  74. match the shapes by emptying `error`      E "a degraded critic must say so"
+  ```
+
+  ⚠️ **Three of my own mistakes in this batch, all caught by running it.** A blanket
+  find-and-replace double-qualified three existing calls (`critic.critic.…`); my new tests passed
+  a second argument `normalize_critique` does not take; and the import style I assumed was wrong.
+  Each surfaced immediately because the tests were run rather than reasoned about.
+
+  **QC (a) gates:** composition unit **3634 → 3636**; plan gates green. **QC (b):** N/A because no
+  service seam changed. **QC (c) real data:** N/A — this is a shape invariant; the evidence is the
+  two key sets and the bites.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

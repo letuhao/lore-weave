@@ -46,7 +46,20 @@ _CRITIC_DIMS = ("coherence", "voice_match", "pacing", "canon_consistency")
 
 
 def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
-    return {**{d: None for d in _CRITIC_DIMS}, "violations": [], "error": err}
+    """The degrade shape, which must carry EVERY key the success shape does.
+
+    `craft_notes` was added to `normalize_critique` by the C11 channel fix and not here, so a
+    consumer reading `critic["craft_notes"]` worked on a healthy judge and raised `KeyError`
+    the moment one degraded — the failure mode a degrade path exists to prevent. The paired
+    test compares the two key sets rather than asserting this literal, so the next field added
+    to the critic cannot drift the same way.
+    """
+    return {
+        **{d: None for d in _CRITIC_DIMS},
+        "violations": [],
+        "craft_notes": [],
+        "error": err,
+    }
 
 
 def _empty_threads(err: str = "threads_error") -> dict[str, Any]:
