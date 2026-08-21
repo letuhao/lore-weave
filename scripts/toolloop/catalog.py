@@ -139,7 +139,16 @@ def _regression_report(lost: dict[str, list[str]]) -> str:
         "",
         "CHECK THE DEPLOYED IMAGE AGAINST SOURCE before doing anything else, e.g.",
         "  docker exec <svc> md5sum /app/app/mcp/server.py   # vs the file in git",
-        "If they differ, rebuild and --force-recreate, then refresh again.",
+        "",
+        "MEASURED CAUSE, twice on 2026-08-21 (knowledge-service, the same 26 tools both times):",
+        "a POISONED BUILD-CACHE LAYER. `docker compose build <svc>` reused a cached COPY layer",
+        "holding an eleven-commit-old tree, so the rebuilt IMAGE TAG was stale while every health",
+        "check stayed green. The second occurrence was triggered by `docker compose up -d",
+        "--force-recreate <OTHER-service>`, which implicitly rebuilt this one and reused the same",
+        "bad layer. `--no-cache` produced an image md5-matching source, and a normal cached build",
+        "then stayed correct. So:",
+        "  docker compose build --no-cache <svc> && docker compose up -d --force-recreate <svc>",
+        "and verify by CONTENT (md5 per file), never by the symbol you just added.",
         "If the loss is genuinely intended, re-run with --allow-regression.",
     ]
     return chr(10).join(lines)
