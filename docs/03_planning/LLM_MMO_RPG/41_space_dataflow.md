@@ -424,7 +424,7 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | **T4** | `layer_registry` — one row per `LayerDef` | **per-ruleset** (pinned per reality-epoch) | the whole layer model is new | every feature |
 | **T5** | `layer_<name>` — one sidecar per layer | per-reality | *"adding a layer is `CREATE`, never `ALTER`"* | every feature |
 | **T6** | `world_baseline` — content-addressed bytes | **shared by digest** across realities | [`WDS-A4`](37_world_data_storage.md) says copy `RulesetStore`; not built | S4 |
-| **T7** | `node_occupancy` — `(entity, node, local_pos)` | per-reality | `R-53`: membership is maintained **incrementally on crossing**, never by search | AOI, combat siting |
+| ~~**T7**~~ ⛔ **STRUCK §17.4** | ~~`node_occupancy` — `(entity, node, local_pos)`~~ — it is `EF_001`'s **`entity_binding`**, which is richer (a closed `InCell \| HeldBy \| InContainer \| Embedded`) and whose granularity was settled on 2026-06-20: **cell-granular BY DESIGN**, fine position realtime-owned and never per-tick in the log (`ILR-A2`/`RTM-A1`). `local_pos` would have contradicted that. `SDF-A34` | per-reality | **owned by `EF_001`, not absent** | AOI, combat siting |
 | **T8** | `frame_epoch` index | per-reality, **not persisted** | `R-49`: a cached world transform is `(Transform, frame_epoch_of_chain)` | moving frames |
 | **T9** | `encounter` (`R-6`) | per-reality | **`Arena` and `Encounter` are different things**; doc 36 has only the node | `SPG-D1` |
 
@@ -1626,3 +1626,107 @@ Measured, per reality: 4 369 authored nodes × 251.3 B = **1.10 MB**, against a 
 occupancy, the event log itself, and index bloat under churn — this table was populated by clean inserts
 and vacuumed, which is the **best** case. **Every unmeasured term pushes the same direction**, so 251 B
 is a floor and `SDF-F8` cannot improve from here without a design change.
+
+---
+
+## 17 — Round 2's remaining slices ALREADY HAVE OWNERS, and one of them corrects this doc
+
+Slice `2-4` was *"write the map hub contract"*. **Writing it would have been the encroachment the actor
+round exists to prevent**, because the work already has owners — and finding that out took reading three
+feature docs this track had never opened.
+
+### 17.1 — The consumer already stated its own prerequisites, and we own exactly one
+
+`crates/actor-hub/src/actor.rs:26-31` — a **measured** note, not a plan:
+
+> *"**No spawn, no archetype, no "what kind of thing is this".** `D-283` and `D-289` ruled these
+> **PREMATURE, not missing**: spawn needs **a place to spawn into, a template to spawn from, and a reason
+> to spawn**, and measured, none of the three exists — no `SpawnPoint` anywhere in `crates/` or
+> `services/`, `struct Place`/`struct Tile` only in `tilemap-service`, and the only `Archetype` type in
+> `world-gen`."*
+
+**That is a better scope seal for this round than the one §23.0 wrote**, because the consumer wrote it:
+of the three, the space tier owns **one** — *a place to spawn into*. A template is an archetype feature's;
+a reason is a play-loop feature's.
+
+### 17.2 — `PF_001` has owned "a place to spawn into" since April, and it is CANDIDATE-LOCK
+
+[`PF_001 Place Foundation`](features/00_place/PF_001_place_foundation.md), CANDIDATE-LOCK 2026-04-26,
+states in its own header that it **resolves the *"spawn-empty-place gap"*** and **defers spawn itself**:
+*"`PF_001` provides the semantic place context; **spawn-into-place is consumer responsibility**."*
+
+**Two tiers, two jobs, and they do not collide:**
+
+| | `PF_001` | `SPG`/`SDF` |
+|---|---|---|
+| owns | **semantic identity** — what counts as a meaningful in-fiction location; a closed `PlaceType`; structural state | **structure** — the closed `MapKind` set, the containment matrix, placement, the id space |
+| grain | **1:1 with a leaf-tier channel**; aggregation tiers carry **no** place row | every node at every kind |
+| answers | *"what place is this?"* | *"what may contain what, and where is it?"* |
+
+> **⚠ AND THE COLLISION THAT ISN'T ONE — checked, because it looked fatal.** `PF_001` §5 keys a place to
+> a **cell**, and `SDF-A31` says a **cell is not a row**. Reading the section settles it: `PF_001` means a
+> **cell-tier CHANNEL** (`cell:yen_vu_lau`), an authored node — not a Voronoi cell of the world mesh.
+> **`SPG-F4` already recorded that `cell` carries exactly these two meanings**, so this is that known
+> vocabulary defect surfacing in the doc that owns spawn. `SDF-A31` and `PF_001` §5 are **compatible**,
+> and the only real problem is the word.
+>
+> **What IS a genuine defect:** `PF_001` is written throughout in `continent / country / district / town /
+> cell` — **`ChannelTier`, retired by `SPG-R1` on 2026-07-30.** The doc that owns the spawn target speaks
+> only the retired vocabulary, which is the same rot the `2-x` board tracks at 73 code sites, reaching the
+> design layer.
+
+### 17.3 — The birth path is not missing. It is DESIGNED and unbuilt
+
+Slice `2-5` said *"nothing in production ever creates a place"*. **True of the code, and wrong about the
+design.** `PF_001` §5 ships a numbered **bootstrap order at `RealityManifest` ingestion**, with §9 as its
+manifest extension and §14.1 as its worked sequence:
+
+```
+1  DP creates the channel hierarchy from `root_channel_tree`
+2  PF_001 creates `place` rows from `places: Vec<PlaceDecl>`
+3  validation — every cell-tier channel has a place, else `place.missing_decl` REJECTS the bootstrap
+4  fixture seeds — EnvObjects instantiated with deterministic UUID v5 ids from `(place_id, seed_uid)`
+5  NPC + PC canonical seeds place actors at cells whose place rows are now valid
+```
+
+> **Step 5 IS the spawn**, and step 3 is a **refusing** validator rather than a warning — the shape
+> `SDF-A17` rule 4 asks for, designed four months earlier by another tier.
+
+**So `2-5` is not a design slice. It is a build slice with a reconciliation in front of it**, and the
+reconciliation is `SPG-R1`'s vocabulary.
+
+### 17.4 — ⛔ `T7` IS WRONG IN THIS DOC, and `EF_001` says so
+
+§5 specifies `T7 node_occupancy — (entity, node, local_pos)`. **The `local_pos` column must not exist.**
+
+`EF_001`'s `entity_binding` is `T7` under another name and is **richer**: a closed
+`LocationKind = InCell | HeldBy | InContainer | Embedded`, so an entity in a chest or embedded in a gate
+is expressible and `T7` could not express either. And a **2026-06-20 reconciliation already settled the
+granularity question `T7` silently re-opened**:
+
+> *"`EntityLocation::InCell(cell_id)` is the **coarse cell membership** — authoritative + durable,
+> **evented on the cell transition** — and is layer 1 of the three-layer position stack (`ILR-A2`). The
+> **fine, continuous within-cell position is NOT stored** in `entity_binding`; it is
+> **realtime-layer-owned ephemeral state** (`RTM-A1`), periodically checkpointed, **never per-tick in the
+> event log**. `entity_binding` thus stays cell-granular **BY DESIGN, NOT BY OMISSION**."*
+
+**`T7`'s `local_pos` would have put a per-tick continuous value into the event log** — the precise thing
+that reconciliation exists to forbid, and a `SDF-A4` determinism hazard on top, since a continuous
+position is exactly the float `SDF-R2` just removed from `Transform`.
+
+> **`SDF-A34` — occupancy is `EF_001`'s `entity_binding`, at CELL GRANULARITY, and this tier adds no
+> second position store.** `T7` is struck from §5: the table exists, it has an owner, and its shape is
+> already decided. Fine position is `RTM-A1`'s and is not persisted per tick.
+
+### 17.5 — What round 2 actually has left
+
+| slice | what it really is |
+|---|---|
+| `2-4` | **not a hub contract** — a **reconciliation**: `PF_001` re-stated in `MapKind` terms, which is `SPG-R9` + `SPG-R13` applied to the doc that owns spawn |
+| `2-5` | **not a design** — a **build** of `PF_001` §5's five steps, blocked behind that same reconciliation |
+| `2-6` | **closed by `SDF-A34`** — the relation exists, is richer than `T7`, and its granularity was settled in June |
+
+**Three slices, and none of them was the thing the board said.** The board was written from this tier's
+view of its own gaps; every gap turned out to have an owner one folder away. That is the fourth time in
+this run — after `SPG-Q6`, `SDF-Q16` and the eight retired-row citations — and the pattern is now the
+finding: **this project's most common defect is not a wrong design, it is a register that was never told.**

@@ -1663,9 +1663,9 @@ sealed. Anything the spawn demand does not require is round 3.
 | **2-1** | Measure the consumer demand before designing to it | **DONE** | doc 41 §14.1–14.3 · `M2-1..M2-6` above |
 | **2-2** | Close `SDF-Q18` — it blocks every node creation | **DONE** | doc 41 §14.4 — `SDF-A31`. **Authored node = a shipped `channels` row; generated cell = an index, never a row.** No new allocator, no new type |
 | **2-3** | `SDF-R2` (integer `Transform`) — **now blocking, not theoretical** | **DONE 2026-08-22** | **APPLIED to doc 36 `SPG-A17`** — `position: [i64;3]`, `rotation: [i32;4]`, `scale_exp: i8`; float survives only at the render boundary. **Applying it struck its own lead evidence** (`R-36`'s magnitude argument was already dissolved by `SPG-A17`'s coordinate roots); what carries it is determinism + round-trip — `R-37`, `R-13`, `WDS-A7`. Blast radius verified first: **docs only, two sites, zero `.rs`** |
-| **2-4** | The map hub contract, sealed by 23.0 | **not started** | mirror the actor hub: the node is the hub (identity · kind · parent · transform · existence), every feature is a layer |
-| **2-5** | The production birth path — *something* must create a place | **not started** | `M2-3`: today only fixtures do |
-| **2-6** | `T7` occupancy — the relation that sites an actor | **not started** | `(entity, node, cell_index, local_pos)`; `R-53` maintains it **on crossing**, never by search |
+| **2-4** | ~~The map hub contract~~ **REFRAMED 2026-08-22 — it is a RECONCILIATION, not a hub** | **scoped, doc 41 §17** | Writing a hub contract would have been the encroachment the actor round exists to prevent: `PF_001` (CANDIDATE-LOCK **2026-04-26**) already owns *semantic place identity* and says so — it *resolves the "spawn-empty-place gap"* and defers spawn as *"consumer responsibility"*. The real work is **`PF_001` re-stated in `MapKind` terms** = `SPG-R9` + `SPG-R13` applied to the doc that owns spawn, which today speaks only the **retired** `ChannelTier` vocabulary |
+| **2-5** | The production birth path | **DESIGNED ELSEWHERE, unbuilt** | `M2-3` was right about the code and wrong about the design. `PF_001` §5 ships a **numbered bootstrap order** at `RealityManifest` ingestion (§9 the manifest extension, §14.1 the worked sequence), and **step 5 IS the spawn**: *"NPC + PC canonical seeds place actors at cells whose place rows are now valid"*. Step 3 is a **refusing** validator (`place.missing_decl`), the shape `SDF-A17` rule 4 asks for — designed four months earlier by another tier. A build slice behind the 2-4 reconciliation |
+| **2-6** | ~~`T7` occupancy~~ | **✅ CLOSED — `SDF-A34`, and it CORRECTED this doc** | The relation is `EF_001`'s **`entity_binding`**, richer than `T7` (closed `InCell \| HeldBy \| InContainer \| Embedded`). **`T7`'s `local_pos` column was wrong**: a **2026-06-20** reconciliation already settled the granularity — `InCell` is coarse, durable, evented on transition, layer 1 of `ILR-A2`'s three-layer stack, while fine position is `RTM-A1` realtime-owned and **never per-tick in the log**. `local_pos` would have put a continuous per-tick value into the event log. **`T7` struck from doc 41 §5** |
 
 ### 23.2b · Question-clearing pass, 2026-08-22
 
@@ -1686,6 +1686,18 @@ sealed. Anything the spawn demand does not require is round 3.
 > already existed in this repo (a measurement, a refusal, another feature's ownership) and the register
 > had not been told. **An open question decays against its own project exactly like an unapplied
 > amendment**, and nothing checks a question the way check E now checks a row.
+
+### 23.2c · The pattern is now the finding
+
+**Four times in this run the gap had an owner one folder away**, and the space track had simply never
+opened the file: `SPG-Q6` (already measured, by us, three weeks earlier) · `SDF-Q16` (already generated,
+by `hierarchy.rs`) · the eight retired-row citations (already retired, with successors named) · and now
+all three remaining round-2 slices (`PF_001`, `PF_001`, `EF_001`).
+
+> **This project's most common defect is not a wrong design. It is a register that was never told.**
+> Every instance was cheap to fix and invisible until something forced a row-by-row account — the slice-7
+> table, check E, a falsification condition written in advance. **The mechanism that finds them is
+> obligation to enumerate, not care.**
 
 ### 23.3 · What round 2 is deliberately NOT doing
 
