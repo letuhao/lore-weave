@@ -1,7 +1,7 @@
 {
- "_note": "FROZEN BASELINE 2026-08-21. Every REQUIRED tool argument that ships with NO description in its advertised schema — the model has to guess what to put there. This list may only SHRINK: scripts/test_required_args_are_declared_gate.py fails if a tool not listed here gains an undeclared required argument, and fails if an entry here is stale (already fixed) so the baseline cannot rot upward.\nWHY IT EXISTS, measured: 502 of 1314 advertised properties (38%) carry no description at all, composition alone accounting for 451. Two defects in this loop trace straight to it — composition_generate's `model_ref` was filled with the placeholder 'default' on 5/5 runs, and composition_motif_search's `q` was invented as `name` on 10/10 runs across two scenarios, a retry loop that ended in a provider stream error and read as a flaky rig for two batches.\nThe prose in a TOOL description is not a declaration on the ARGUMENT, and the argument is what the model fills in.",
- "count_tools": 68,
- "count_args": 120,
+ "_note": "FROZEN BASELINE 2026-08-21. Every REQUIRED tool argument that ships with NO description in its advertised schema — the model has to guess what to put there. This list may only SHRINK: scripts/test_required_args_are_declared_gate.py fails if a tool not listed here gains an undeclared required argument, and fails if an entry here is stale (already fixed) so the baseline cannot rot upward.\nWHY IT EXISTS, measured: 502 of 1314 advertised properties (38%) carry no description at all, composition alone accounting for 451. Two defects in this loop trace straight to it — composition_generate's `model_ref` was filled with the placeholder 'default' on 5/5 runs, and composition_motif_search's `q` was invented as `name` on 10/10 runs across two scenarios, a retry loop that ended in a provider stream error and read as a flaky rig for two batches.\nThe prose in a TOOL description is not a declaration on the ARGUMENT, and the argument is what the model fills in. SHRUNK 2026-08-21 (pm): 68 tools / 120 args -> 56 tools / 105 args. The 15 `op` DISPATCH DISCRIMINATORS in composition-service were declared, each from the tool's OWN description — checked first, and all fifteen already enumerated every member of their enum, so the argument text quotes the tool rather than a guess about what an op does. That is why the pass stopped there: the remaining entries (project_id, book_id, run_id, node_id, expected_version and friends) need a declaration derived from something equally solid, and inventing text for an argument I have not read is the failure this baseline exists to avoid.",
+ "count_tools": 56,
+ "count_args": 105,
  "tools": {
   "composition_arc_apply": [
    "arc_template_id",
@@ -13,9 +13,6 @@
   ],
   "composition_arc_create": [
    "book_id"
-  ],
-  "composition_arc_edit": [
-   "op"
   ],
   "composition_arc_extract_template": [
    "code",
@@ -31,9 +28,6 @@
   "composition_arc_template_create": [
    "code",
    "name"
-  ],
-  "composition_arc_template_edit": [
-   "op"
   ],
   "composition_arc_template_update": [
    "arc_id"
@@ -73,8 +67,7 @@
    "book_id"
   ],
   "composition_authoring_run_manage": [
-   "book_id",
-   "op"
+   "book_id"
   ],
   "composition_authoring_run_pause": [
    "book_id",
@@ -95,7 +88,6 @@
   ],
   "composition_authoring_run_review": [
    "book_id",
-   "op",
    "run_id"
   ],
   "composition_authoring_run_start": [
@@ -105,9 +97,6 @@
   "composition_canon_rule_create": [
    "project_id",
    "text"
-  ],
-  "composition_canon_rule_edit": [
-   "op"
   ],
   "composition_canon_rule_update": [
    "expected_version",
@@ -122,7 +111,6 @@
    "project_id"
   ],
   "composition_derivative_edit": [
-   "op",
    "project_id"
   ],
   "composition_divergence_spec_update": [
@@ -136,9 +124,6 @@
    "override_id",
    "project_id"
   ],
-  "composition_entity_override_edit": [
-   "op"
-  ],
   "composition_entity_override_restore": [
    "override_id",
    "project_id"
@@ -147,15 +132,9 @@
    "override_id",
    "project_id"
   ],
-  "composition_error_block_edit": [
-   "op"
-  ],
   "composition_generate": [
    "model_source",
    "project_id"
-  ],
-  "composition_glossary_build": [
-   "op"
   ],
   "composition_library_translate": [
    "ids",
@@ -170,23 +149,14 @@
    "node_id",
    "project_id"
   ],
-  "composition_motif_bind_edit": [
-   "op"
-  ],
   "composition_motif_create": [
    "code",
    "name"
-  ],
-  "composition_motif_edit": [
-   "op"
   ],
   "composition_motif_link_create": [
    "from_motif_id",
    "kind",
    "to_motif_id"
-  ],
-  "composition_motif_link_edit": [
-   "op"
   ],
   "composition_motif_mine": [
    "scope"
@@ -197,9 +167,6 @@
   ],
   "composition_outline_node_create": [
    "kind"
-  ],
-  "composition_outline_node_edit": [
-   "op"
   ],
   "composition_outline_node_move": [
    "node_id",
@@ -219,9 +186,6 @@
    "project_id",
    "to_node_id"
   ],
-  "composition_scene_link_edit": [
-   "op"
-  ],
   "composition_structure_template_archive": [
    "template_id"
   ],
@@ -230,9 +194,6 @@
   ],
   "composition_structure_template_create": [
    "name"
-  ],
-  "composition_structure_template_edit": [
-   "op"
   ],
   "composition_structure_template_restore": [
    "template_id"
