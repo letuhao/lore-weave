@@ -3014,7 +3014,7 @@
   }
  },
  "composition_arc_template_archive": {
-  "description": "Soft-archive the caller's OWN arc template (status='archived'). A foreign/missing/system row is a uniform no-op (returns archived:true \u2014 no existence oracle).",
+  "description": "Soft-archive the caller's OWN arc template (status='archived'). Archiving one you have already archived is a success (the end state is what you asked for); an id that is not yours is refused with the same 'not found or not accessible' its sibling ops use.",
   "inputSchema": {
    "properties": {
     "arc_id": {
@@ -8250,6 +8250,7 @@
        "title": "Max Output Tokens"
       },
       "model_ref": {
+       "description": "The model's id (UUID). NOT a name, an alias, or 'default' \u2014 list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
        "title": "Model Ref",
        "type": "string"
       },
@@ -8343,6 +8344,7 @@
      "title": "Max Output Tokens"
     },
     "model_ref": {
+     "description": "The model's id (UUID). NOT a name, an alias, or 'default' \u2014 list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
      "title": "Model Ref",
      "type": "string"
     },
@@ -16198,7 +16200,13 @@
    "synonyms": [
     "this character appears in this chapter",
     "link an entity to a chapter",
-    "mark where this character shows up"
+    "mark where this character shows up",
+    "mark where",
+    "appears in this chapter",
+    "shows up in this chapter",
+    "link to this chapter",
+    "note that he appears",
+    "note that she appears"
    ],
    "tier": "A"
   }
@@ -16274,7 +16282,12 @@
     "add a quote supporting this",
     "attach evidence",
     "cite where this is stated",
-    "back this up with a passage"
+    "back this up with a passage",
+    "cite where",
+    "back up",
+    "quote the passage",
+    "attach a quote",
+    "source this from the text"
    ],
    "tier": "A"
   }
@@ -16476,7 +16489,12 @@
     "correct an entity's name",
     "rename character",
     "rename place",
-    "give an entity a new name"
+    "give an entity a new name",
+    "rename",
+    "i spelled",
+    "spelled it wrong",
+    "wrong spelling",
+    "change the name"
    ],
    "tier": "A"
   }
@@ -19414,7 +19432,12 @@
     "relationships between",
     "who knows who",
     "connections in this story",
-    "entity relationships"
+    "entity relationships",
+    "how are the characters connected",
+    "how are these connected",
+    "show me the relationships",
+    "who is connected to who",
+    "connected to each other"
    ],
    "tier": "R"
   }

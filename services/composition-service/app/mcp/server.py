@@ -2840,7 +2840,25 @@ class _GenerateArgs(ForbidExtra):
     # Literals mirror the engine's GenerateBody so a bad value is a clean refusal at
     # propose (not a pydantic 500 when the confirm effect rebuilds the engine body).
     model_source: Literal["user_model", "platform_model"]
-    model_ref: str
+    # 🔴 D-UNDECLARED-REF-BECOMES-A-PLACEHOLDER. This was a bare `str` with no description, so
+    # the model had nothing telling it what a model_ref IS. Measured 2026-08-14, K=5: it sent
+    # `model_ref="default"` on 5 of 5 runs, a Tier-A card was minted for every one, and the
+    # confirm effect does `UUID(str(model_ref_raw))` — so approving produced a bare 400
+    # `action_error`. Approve-then-fail, on the most expensive tool on the platform.
+    #
+    # Naming the UUID here is not decoration: it is the only declaration the runtime has. The
+    # chat-service argument guard reads exactly this text (no provider emits `format: uuid`), so
+    # stating it lets a placeholder be DROPPED before a card is minted, and naming the supplier
+    # tells the model where to get the real value instead of inventing one.
+    model_ref: Annotated[
+        str,
+        Field(description=(
+            "The model's id (UUID). NOT a name, an alias, or 'default' — list the caller's "
+            "models with settings_list_models and pass the `model_ref` from there. Which list "
+            "depends on model_source: user_model = the author's own models, platform_model = "
+            "the platform's."
+        )),
+    ]
     # The free-form prose op; defaults per target (draft_scene / draft_chapter).
     operation: str | None = None
     guide: str = ""

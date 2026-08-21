@@ -1406,8 +1406,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", '        if declared_supplier(contract, name) != "plan":',
          '        if (declared_supplier(contract, name) or "plan") != "plan":'),
     ],
+    # ANCHOR MOVED 2026-08-14: the loop head widened from `*_id` to `*_id or *_ref` when
+    # composition_generate was measured sending model_ref="default" on 5 of 5 runs. The
+    # falsifier still has to make the guard touch a NON-identifier argument, so it now
+    # neutralises the widened predicate rather than the old one.
     "test_a_NON_id_argument_is_never_touched": [
-        (f"{CS}/app/services/stream_service.py", '        if not name.endswith("_id"):', "        if False:"),
+        (f"{CS}/app/services/stream_service.py",
+         '        _identifierish = name.endswith("_id") or name.endswith("_ref")',
+         "        _identifierish = True"),
     ],
     # 🔴 The control the SUITE taught: including `context` deleted book_id="b1", a value the runtime
     # injects upstream and which is not guaranteed to be a UUID — 5 tests red on the first draft.

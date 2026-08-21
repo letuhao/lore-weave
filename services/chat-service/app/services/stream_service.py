@@ -2708,7 +2708,20 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         return []
     out: list[str] = []
     for name, value in args_obj.items():
-        if not name.endswith("_id"):
+        # 🔴 `*_ref` IS THE SAME CONVENTION, and leaving it out cost a measured approve-then-fail.
+        # composition_generate declares `model_ref` (a UUID at the confirm effect, which does
+        # UUID(str(...))) and the model sent "default" on 5 of 5 runs — a Tier-A card was minted
+        # every time and approving it produced a bare 400 `action_error`, on the most expensive
+        # tool on the platform. The name simply did not end in `_id`, so this loop never looked.
+        #
+        # ONLY the DECLARED-UUID arm widens. The whitespace arm stays `*_id`-only, because the
+        # other `*_ref` on this platform is `image_ref` — a MinIO object key, explicitly not a
+        # UUID (world_map_create: "optional MinIO object key of an already-uploaded base image").
+        # It declares no UUID, so the declared arm cannot touch it; widening the whitespace arm
+        # would have started dropping legitimate object keys. Measured across the catalogue: 21
+        # `*_ref` properties, 19 of them `model_ref`, and only 4 declare a UUID at all.
+        _identifierish = name.endswith("_id") or name.endswith("_ref")
+        if not _identifierish:
             continue
         # 🔴 THE NIL UUID PARSES, SO THE FORMAT TEST BELOW ACCEPTS IT — AND IT IS NEVER A ROW.
         # This function's rule is deliberately "a valid UUID is accepted even if it is wrong,
@@ -2761,7 +2774,10 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # and they are not guaranteed to be UUIDs. None of them contains whitespace either, so the
         # exemption costs nothing.
         if (
-            name not in _RUNTIME_CONTEXT_IDS
+            name.endswith("_id")  # `*_ref` is deliberately NOT here — see the loop head:
+                                  # image_ref is a MinIO object key, not an identifier this
+                                  # platform issues, so whitespace in one is not proof of a name.
+            and name not in _RUNTIME_CONTEXT_IDS
             and isinstance(value, str)
             and value.strip()
             and any(ch.isspace() for ch in value.strip())
