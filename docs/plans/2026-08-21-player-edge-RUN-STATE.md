@@ -10,8 +10,13 @@ its execution contract, and §0.6's hazards.
 (`PRR-20`), and this adds an OUTBOUND internal call from it, which the ACL must name · Language
 rule `I3` — TypeScript is gateway/realtime; the transport must not grow a Postgres client, and the
 whole shape of this phase follows from that · User Boundaries & Tenancy — the read here is
-**owner-scoped**, a different tier from `RA1`'s cross-user read · `SEALED-SUBJECT` — the client
-still never names its own subject, and `E3` must not become a way to.
+**owner-scoped**, a different tier from `RA1`'s cross-user read.
+
+`SEALED-SUBJECT` also governs this work and is NOT a row in the standards index, so it is stated
+here rather than cited: the client still never names its own subject, and `E3` must not become a way
+to. (It WAS cited above until 2026-08-21, and `phase0-reconcile-gate` did not catch it — the parser
+stops at the first em-dash, so every citation after one goes unread. Measured and tracked as `FO-2`
+on the demo-path board.)
 
 ---
 

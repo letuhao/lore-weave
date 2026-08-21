@@ -213,6 +213,28 @@ def check(spec: Path, rows: list[str]) -> list[str]:
     # which is the reason a gate is run against the tree before it is believed.
     # The separator is REQUIRED rather than inferred: a field that is half list
     # and half essay cannot be checked, and the rationale is the useful half.
+    #
+    # ⚠ THE INTERLEAVED SHAPE IS NOT CHECKED, and that is a KNOWN, MEASURED gap.
+    #
+    # Authors do not always write `A, B, C — prose`. Some write `A — why A · B —
+    # why B`, pairing each citation with its reason. Splitting once at the FIRST
+    # em-dash reads `A` and ignores `B`: **the more prior art such a spec cites,
+    # the less of it is read.** Measured 2026-08-21 across the tree — 7 of 25
+    # fields use that shape, 15 citations sit past the first dash unread, and one
+    # is a genuine phantom.
+    #
+    # A parser widening was WRITTEN AND REVERTED, and the reason it was reverted
+    # is the useful part: once prose is allowed to contain `·` and em-dashes —
+    # which it does, correctly, in `2026-08-15-claim-rot.md` — a citation and a
+    # sentence are not distinguishable by punctuation. The widening caught the
+    # one real phantom and invented FIVE against a field that follows the stated
+    # convention exactly. A check that reds correct work to catch one defect is
+    # not an improvement; it is how a gate becomes noise someone silences.
+    #
+    # The fix is therefore to the CONVENTION, not the parser — refuse a field
+    # that interleaves, the way a closed-set arg is refused a free string — and
+    # that means rewriting 7 fields across tracks this board does not own.
+    # Tracked as `FO-2` in `docs/plans/2026-08-21-demo-path-RUN-STATE.md`.
     names = re.split(r"\s+[-—]{1,2}\s+", value, maxsplit=1)[0]
 
     norm_rows = [_norm(r) for r in rows]
