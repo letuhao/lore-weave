@@ -2276,10 +2276,10 @@
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch22-v2.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch23.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE after NINE arms — 48 attempts, 1 clean run. That single clean run (arm seven) called the tool and minted its Tier-A card with the store unchanged, so the TOOL works; what cannot be obtained is K>=3 clean runs. Every other attempt died on the degenerate `<tool_call|>` output AFTER a successful composition_motif_search. Its siblings measure fine in the same arms, so this is neither the rig nor the fixture — this turn shape triggers the model defect reliably. It remains the one tool D-SILENT-TURN has taken off the board."
+   "note": "IN CYCLE after TEN arms — 53 attempts, 1 clean run. That run called the tool and minted its Tier-A card with the store unchanged, so the TOOL works; K>=3 clean cannot be obtained. Every other attempt died on the degenerate `<tool_call|>` output after a successful composition_motif_search."
   },
   "composition_motif_edit": {
    "state": "proven",
@@ -2394,6 +2394,40 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch22-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "plan_handoff_autofix": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch23.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch23.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "plan_link": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch23.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch23.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "plan_keep_material": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch23.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 1/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — never advertised, and the turn produced a FALSE CLAIM OF A WRITE. Surfaced 0/5 and called 0/5: the tool was neither on the wire nor recorded in withheld_tools, so nothing says it was even considered (42 other tools were advertised in the same turn). It could not have been called.\n🔴 THE MODEL CLAIMED IT ANYWAY, on 4 of 5 runs with ZERO tool calls: 'I've updated the plan to include the new details while ensuring all the existing material we've established remains intact. Your story foundation is now fully updated.' The store is unchanged, so nothing was written — the author is simply told their plan was updated when it was not. Recorded as D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS.\nThis is not the shape the existing D-NARRATED-WRITE guard catches. That one keys on a snake_case TOOL NAME appearing in prose without a matching call (_narrated_uncalled_writes, NARRATED_WRITE_NUDGE_CAP=1). Here the model names no tool at all — it just reports the outcome — so the detector never fires.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch23.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "plan_interpret_feedback": {
+   "state": "in_cycle",
+   "provider": "plan",
+   "tier": "A",
+   "cycle": "batch-23 (2026-08-21)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch23.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "IN CYCLE — its arm was lost 5 of 5 to a SEED ASSERTION of mine, not to the tool. I asserted the seeded plan run's STATUS, and mode='rules' lands a two-arc document at 'compiled' but a one-arc document at 'proposed'. I asserted 'compiled' first, then 'corrected' to 'proposed' — both true for different inputs, neither safe. The assertions now check only that a run EXISTS. Re-run pending."
   }
  },
  "defects": {
@@ -2658,6 +2692,15 @@
    "three_arms": "v1 model_ref undeclared: placeholder 'default' 5/5, self-written prose 0/5. v2 declared: placeholder 0/5, looked up the model 1/5, self-written prose 4/5. v3 declared + the refusal quoting that declaration: looked up the model 0/5, self-written prose 5/5. Declaring the argument reliably removed the placeholder; NOTHING removed the fabrication.",
    "why_prose_cannot_fix_it": "v3 WAS a prose intervention — rewording the refusal to quote the tool's own declaration — and it was MEASURED AND REFUTED: lookup went 1/5 -> 0/5 and fabrication 4/5 -> 5/5. At n=5 per arm neither direction is proven, but the intended redirect plainly did not happen. That is the fourth prose intervention this loop has measured and refuted. The reword is KEPT anyway, on correctness grounds only: the old sentence claimed the tool declared no supplier while the runtime was holding one, and a false statement is worth removing whether or not it changes behaviour.",
    "what_would_fix_it": "See DQ-T35 — the fix is a contract decision, not a sentence."
+  },
+  "D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS": {
+   "state": "open",
+   "found": "2026-08-21",
+   "severity": "a false statement about the author's own work",
+   "measured": "batch 23, plan_keep_material, 4 of 5 runs. The tool was NOT advertised (surfaced 0/5) and the model called NOTHING (called_tools == []), yet answered: 'I've updated the plan to include the new details while ensuring all the existing material we've established remains intact. Your story foundation is now fully updated.' The store is unchanged — nothing was written — so the author is simply told their plan was updated when it was not.",
+   "why_the_existing_guard_misses_it": "D-NARRATED-WRITE already exists and does NOT cover this shape. `_narrated_uncalled_writes` keys on a snake_case TOOL NAME appearing in prose without a matching call (NARRATED_WRITE_NUDGE_CAP=1) — it catches 'I would call plan_keep_material'. Here the model names no tool at all; it reports only the OUTCOME, so the detector never fires.",
+   "the_second_half": "The tool was neither advertised NOR recorded in withheld_tools, while 42 other tools were advertised in the same turn. So there is no record that it was even considered — you cannot tell from the row whether a gate dropped it or the matcher never ranked it. That is the DQ-T3 class (stamp what was withheld and why) reaching a tool that silently never became a candidate.",
+   "not_fixed_and_why": "A detector for 'claims an outcome without acting' is not a name match — it needs care and a control, and this loop's own rule is to run the control before writing the fix. Recorded with the measurement so the next attempt starts from evidence."
   }
  },
  "deferred_questions": {
@@ -3128,10 +3171,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 125,
-  "tools_in_cycle": 1,
-  "tools_proven": 92,
-  "tools_blocked": 33,
+  "tools_concluded": 128,
+  "tools_in_cycle": 2,
+  "tools_proven": 94,
+  "tools_blocked": 34,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3146,7 +3189,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 130,
+  "tools_concluded_including_deprecated": 133,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [

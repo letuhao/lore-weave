@@ -1,0 +1,91 @@
+{
+ "_note": "batch 23 re-run: interpret_feedback with a status-agnostic seed, plus the motif bind arm.",
+ "scenarios": [
+  {
+   "id": "plan-interpret-feedback",
+   "tool_under_test": "plan_interpret_feedback",
+   "expect_tool": "plan_interpret_feedback",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+   "prompt_source": "meta.synonyms['understand my note'] + ['plan feedback'], verbatim, followed by a real piece of free-text feedback because that is exactly what the tool's `user_message` argument is for.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "plan_propose_spec",
+     "args": {
+      "book_id": "{book_id}",
+      "mode": "rules",
+      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n\n## Arc II — The Drowned Court\n### Chapter 2 — The Drowned Court\nMira Solene counts the drowned banners.\n"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "ONE real run, and the source names TWO arcs so 'the second arc' in the prompt resolves to something real. This tool turns free text into a structured FeedbackInterpretation, so the interesting question is whether the interpretation points at the arc the author actually named. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
+    }
+   ],
+   "falsifier": "REFUTED IF: an interpretation is written with NO confirm card (Tier A), OR the model invents a run_id, OR the interpretation's focus points at Arc I when the author said the SECOND arc drags — a feedback tool that mis-targets is worse than one that refuses, because the author's note is then applied to the wrong part of their book.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a run_id that does not exist must be refused.",
+    "empty_case": "OWED — empty or meaningless feedback must be refused, not interpreted into a confident revision.",
+    "tenancy": "OWED — book-scoped."
+   },
+   "defects": []
+  },
+  {
+   "id": "composition-motif-bind-edit",
+   "tool_under_test": "composition_motif_bind_edit",
+   "expect_tool": "composition_motif_bind_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+   "prompt_source": "meta.synonyms['bind motif'], verbatim.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_motif_edit",
+     "args": {
+      "op": "create",
+      "code": "emberfall-braid-b23-{run_id}",
+      "name": "Emberfall Braid {run_id}",
+      "kind": "trope"
+     }
+    },
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Emberfall"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-braid-b23-{run_id}')",
+     "expect": "0",
+     "why": "ZERO bindings for THIS motif. TENTH ARM: 48 attempts have produced exactly 1 clean run, and that run called the tool and minted its Tier-A card with the store unchanged — so the tool works and what is missing is K>=3 CLEAN runs. Every other attempt died on the degenerate `<tool_call|>` output after a successful motif_search."
+    }
+   ],
+   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — a MODEL-output defect to be re-run, never read as 0/5.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+    "idempotency": "OWED — the same binding twice must not create two applications.",
+    "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+   },
+   "defects": []
+  }
+ ]
+}

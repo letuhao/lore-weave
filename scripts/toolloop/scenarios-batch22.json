@@ -64,9 +64,9 @@
    "seed_assert": [
     {
      "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='proposed'",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
      "expect": "1",
-     "why": "A real plan run at status='proposed', seeded deterministically through mode='rules' so no LLM tokens build the fixture. 🔴 CORRECTED: my first draft asserted status='compiled' and lost 5 of 5 runs to SEED ASSERTION FAILED. I had misread the smoke output — its JSON was truncated mid-object and I took a 'compiled' from elsewhere in the blob as the run's status. Verified against the store afterwards: mode='rules' lands the run at 'proposed'. The source document is deliberately thin — two chapters, no cast, no world rules — so the plan genuinely IS missing material."
+     "why": "A real plan run at status='proposed', seeded deterministically through mode='rules' so no LLM tokens build the fixture. 🔴 CORRECTED: my first draft asserted status='compiled' and lost 5 of 5 runs to SEED ASSERTION FAILED. I had misread the smoke output — its JSON was truncated mid-object and I took a 'compiled' from elsewhere in the blob as the run's status. Verified against the store afterwards: mode='rules' lands the run at 'proposed'. The source document is deliberately thin — two chapters, no cast, no world rules — so the plan genuinely IS missing material. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
     }
    ],
    "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material as `recovered` that is not in the seeded document — its description defines recovered as 'the plan already has this, from the read', so a recovered item the document does not contain is fabrication of the worst kind here, since the author would believe their plan is more complete than it is.",
@@ -202,5 +202,6 @@
    },
    "defects": []
   }
- ]
+ ],
+ "_fixture_note": "Plan seeds assert that a run EXISTS, never its status: mode='rules' compiles a two-arc document and leaves a one-arc document proposed. Asserting either cost a full arm."
 }
