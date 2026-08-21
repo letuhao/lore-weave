@@ -1667,6 +1667,26 @@ sealed. Anything the spawn demand does not require is round 3.
 | **2-5** | The production birth path — *something* must create a place | **not started** | `M2-3`: today only fixtures do |
 | **2-6** | `T7` occupancy — the relation that sites an actor | **not started** | `(entity, node, cell_index, local_pos)`; `R-53` maintains it **on crossing**, never by search |
 
+### 23.2b · Question-clearing pass, 2026-08-22
+
+**Five closed, one measured, two left — and three of the closures corrected something.**
+
+| row | outcome |
+|---|---|
+| `SPG-Q6` | **✅ was ALREADY ANSWERED and the register never noticed.** This project measured it on 2026-08-02 (`M-1`, 92.4×); doc 36 went on telling readers the cost was *"never measured"* for three weeks while doc 41 §2 printed the number. **A question can rot exactly like an amendment.** |
+| `SPG-Q5` | **✅ the three options were not three mechanisms.** Authored / player-steered / simulated collapse to one: a trajectory is a **declared function of time, evaluated, never integrated**. "Simulated" is the option `SPG-A9` already refused, and `SDF-R2` now makes it unrepresentable — an integrated trajectory has no bit-exact form in an integer `Transform`. |
+| `SPG-Q4` | **✅ closed by saying it is not ours.** `SPG-A10` already makes *N* actors per controller representable; turn order is `COMB_002`'s. Recorded as a seam, removed as an open row. |
+| `SDF-Q16` | **✅ and it FALSIFIED the lean this doc recorded.** `R-2`'s Paradox evidence does not transfer: Paradox regions are *authored groupings* with no geometry, ours are a **Voronoi partition of the same mesh** (`hierarchy.rs`). Adjacency is exact, contiguous by construction, and one pass over already-sorted `neighbors` away — bounded by a **shipped test** (`mesh.rs:450`, degree 4..=10) at 164 k tests for `Megaplanet`. |
+| **`M-2`** | **✅ MEASURED against real Postgres 18 and the real migration**, in a scratch database created and dropped for it. **251 B per node**, versus the **96 B** that had been computed by counting struct fields. **Indexes are 51.5 % of it** — the half an estimate structurally cannot see. |
+| `SDF-Q17` | **✅ `SDF-A30` holds — 92 % saved at 100 realities** — and the measurement showed **`SDF-A31` is what makes it hold**: had generated cells been rows, `Gigaplanet` would cost 126 MB per reality against a 14.9 MB baseline and `SDF-A30` would be false. Two axioms written the same morning turn out to be load-bearing for each other. |
+| `SDF-Q12` | **still open, and now measurably worse.** At 251 B a `Pocket` inner world is **5.4×** the per-player allowance, not 2×. Re-verified: `PROG_001` states **no** realm distribution. The space tier now knows its own number exactly and still cannot close the row. |
+| `SDF-Q15` | **still open**, and honestly so: it needs a space view to measure and `2-4`/`2-6` have not built one. |
+
+> **What the pass says about registers.** Three of the five closures were **not new work** — the answer
+> already existed in this repo (a measurement, a refusal, another feature's ownership) and the register
+> had not been told. **An open question decays against its own project exactly like an unapplied
+> amendment**, and nothing checks a question the way check E now checks a row.
+
 ### 23.3 · What round 2 is deliberately NOT doing
 
 Layers · portals · topology ops · the live set · budgets · projections. **All of it is designed (§4, §10,

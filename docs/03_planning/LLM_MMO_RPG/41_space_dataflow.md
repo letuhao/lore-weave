@@ -6,8 +6,9 @@
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
 > decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **one applied (`R2`), eight proposed** —
-> open `SDF-Q1..Q18`, of which **fourteen are resolved and four remain**, and every one of the four
-> now needs a **measurement** rather than an argument (§8.1)).
+> open `SDF-Q1..Q18`, of which **sixteen are resolved and TWO remain** — `Q12`, blocked on a `PROG_001`
+> parameter that does not exist and which this tier may not invent, and `Q15`, which needs a space
+> view to measure and that view is not built yet, §8.1).
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
@@ -534,16 +535,16 @@ is therefore *"add `PortalSet` **and say which relation a spatial read means**"*
 | ~~`SDF-Q5`~~ | ~~which clock~~ **✅ RESOLVED §13.1 — `SDF-A28`**: the **realm clock of the node's nearest realm-declaring ancestor**, never the reader's. Already shipped as a per-channel `time_flow_rate` (`TDIL`:644 — 天上一日人間一年). **`LayerDef` needs NO clock field** — a finding resolved by *deleting* the fix it seemed to demand. ~~ (`SDF-F1`) |
 | ~~`SDF-Q6`~~ | ~~border/adjacency has no index~~ **✅ RESOLVED §12.4 — `SDF-A25`**: there are **TWO adjacency relations** and only one was named. Geometric (the generated mesh's `neighbors`, immutable, **already sorted ascending**) vs Connective (the portal graph, mutable). A read must DECLARE which. The border query needs **no index and no cache** — one pass, ~6 000 tests, cheaper than the invalidation bookkeeping. ~~ — the shape every territory feature asks for. (`SDF-F2`) |
 | ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
-| `SDF-Q12` ⚠ **SCOPED, NOT CLOSED — §11.6 / `SDF-F8`** | The arithmetic does **not** close: a `Pocket` inner world (1 024) is DOUBLE a provisional 500-node-per-player allowance, so `SDF-A19`'s 16× is still insufficient **if inner worlds are common**. It closes only if 神境 is rare — **which is a `PROG_001` parameter neither doc names.** The spatial budget's viability depends on a progression decision, and a rebalance could multiply the map tier's storage with nobody noticing the coupling. Originally: **what are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
+| `SDF-Q12` ⚠ **STILL OPEN — and §16 made it MEASURABLY WORSE** | `M-2` is measured: a node costs **251 B**, not the computed 96 B, so 1 M nodes is **239 MiB** and the same envelope buys **~191 nodes per player**, not ~500. A `Pocket` inner world (1 024) is therefore **5.4× the allowance, not 2×**. The blocking half is unchanged and re-verified 2026-08-22: **`PROG_001` states no realm distribution** — searched for population, rarity, proportion and tier-reach language and found none. So the space tier now knows its own number exactly and still cannot close the row, which is `SDF-F8` stated with arithmetic instead of concern. (§11.6 · §16.3) |
 | ~~`SDF-Q13`~~ | ~~is a dematerialised subtree charged~~ **✅ RESOLVED §11.1 — `SDF-A18`**: YES, and the research only looked contradictory because *budget* meant three costs. The node budget is **storage** (charged always); the live set and object budget are **CPU/render** (charged while materialised). Containment compresses the latter two, never the first. ~~ `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
 | ~~`SDF-Q14`~~ | ~~Limbo's budget is unowned~~ **✅ RESOLVED §11.3 — `SDF-A20`**: Limbo is **not a parent, it is a QUEUE WITH A DEADLINE**, and the charge stays with the estate until resolved. EVE Asset Safety is the shipped model. ~~ — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
 | ~~`SDF-Q8`~~ | ~~history-derived layers~~ **✅ RESOLVED §13.2 — `SDF-A29`**: they are **PROJECTIONS, not layers**, and the tier already ships (`crates/projections`). A layer is read AND written by the sim; a projection is only read. Reads must be against a **pinned** projection version, or it is `SDF-A4` rule 5 in a new costume. ~~ — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
 | ~~`SDF-Q9`~~ | ~~space-side read contract~~ **✅ RESOLVED §12.5 — `SDF-A26`**: the projection is declared **per LAYER by its owner**, never per reader — otherwise the prompt is a function of which features are loaded, which is `SDF-A4` rule 2 reappearing where nobody would look. The reader picks a **budget**, never a set. ~~ — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
 | ~~`SDF-Q10`~~ | ~~volume-keyed layers~~ **✅ RESOLVED §12.3 — `SDF-A24`, by DELETING a storage class rather than adding one**: a shape is an authoring/command concept that resolves to a node-set at WRITE time and stores as `Sparse`. The only case that defeats it is a topology change under the shape — and `SDF-A16` already makes that an event, so the re-resolve is a **subscriber, not a scan**. ~~ (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
 | `SDF-Q15` | **Fan-out and occupant caps** for the space view — same shape as `SDF-Q12`: needs a measured prompt-assembly cost that does not exist. (§12.6) |
-| `SDF-Q16` | **Does `Adjacency::Geometric` exist above `Locale`?** The mesh gives cell neighbours inside a `World`; region-level adjacency is likely **authored or derived once at S4**, per `R-2`'s Paradox evidence that area→region→superregion are grouping *files*. (§12.6) |
+| ~~`SDF-Q16`~~ | ~~does `Adjacency::Geometric` exist above `Locale`~~ **✅ RESOLVED §15 — `SDF-A32`: YES, DERIVED ONCE AT S4 — and this FALSIFIES the lean recorded in §8.1.** `R-2`'s Paradox evidence said region adjacency is authored, because Paradox regions are **authored groupings** of provinces. **Ours are not.** `crates/world-gen/src/hierarchy.rs` builds L2 regions as a **great-circle Voronoi partition of the same mesh**, so region adjacency is exact, contiguous by construction, and one pass over `neighbors` away. Authoring it would be transcribing something the generator already knows. ~~ |
 | ~~`SDF-Q11`~~ | ~~reality scoping~~ **✅ RESOLVED §13.2 — `SDF-A30`**: **scope follows DERIVATION.** Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset. So a hundred realities forked from one book share ONE baseline (14.9 MB) and pay only for divergence — `WDS-A1` delivering its actual value. ~~
-| `SDF-Q17` | **The multi-reality tax has no measurement for space**, where the actor track ran an entire red-team round on it. (§13.2) | Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
+| ~~`SDF-Q17`~~ | ~~the multi-reality tax has no measurement for space~~ **✅ MEASURED §16 — `SDF-A33`: `SDF-A30` HOLDS, and `SDF-A31` is what makes it hold.** Per reality `T1` = **1.10 MB** measured against a **14.9 MB** shared baseline, so 100 realities forked from one book cost **125 MB instead of 1 490 MB — 92 % saved**. The counterfactual is the finding: had generated cells been rows, `Gigaplanet` would cost **126 MB per reality**, 8.5× the baseline, falsifying `SDF-A30` outright. ~~ |
 | ~~`SDF-Q18`~~ | ~~how is a `NodeId` allocated~~ **✅ RESOLVED §14.4 — `SDF-A31`**: the id space has **two halves and only authored nodes are rows.** An authored node is a `channels` row minted by the **shipped** `ChannelTree` — no new allocator, no new type, and emphatically no third `ChannelId`. A generated cell is **not a node**: it is an index `(owner_node, cell_index)` into its owner's baseline, derivable on every machine by *not allocating* rather than by hashing. `R-58`'s "two key spaces" turned out to be a **disclosed placeholder** awaiting a swap, not a competing design. ~~ Opened by the slice-7 adjudication; closed by the first consumer, which is the difference between the two passes |
 | ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
@@ -578,7 +579,7 @@ ecosystems is qualitative — if you need numbers, you will have to generate the
 > row names **what result would change the design, and to what.** A row that cannot name one does not
 > belong here.
 
-#### `M-2` — the shared prerequisite, and it is smaller than the rows that need it
+#### ~~`M-2`~~ — ✅ **MEASURED 2026-08-22, §16. Both falsification conditions fired.**
 
 **Both `SDF-Q12` and `SDF-Q17` are blocked on one number that does not exist: the measured size of a node
 row.** §11.6 used **96 B/node** and that figure is **computed, not measured** — it counts the fields in a
@@ -598,7 +599,7 @@ Postgres per-row overhead, every one of which is real storage that a node budget
 |---|---|---|---|
 | **`SDF-Q12`** budget numbers | nodes-per-principal, given `M-2` **and** a `PROG_001` statement of how many actors reach 神境 | whether `SDF-A19`'s `Pocket` bound (1 024) is affordable, or inner worlds need a scale **below** `Pocket` (a `GEO_001` band change) | the lean is *"genre makes 神境 rare, so it is fine."* It is falsified if `PROG_001`'s distribution puts inner worlds within reach of a **common** tier — at which point 16× is not enough and the band must move |
 | **`SDF-Q15`** view caps | prompt-assembly cost per included node (tokens **and** wall-clock) at the §12.5 producer mix | the fan-out and occupant caps in `ProjectionPolicy`, which are currently *declared* with no number behind them | the lean is that ancestors are already free (`≤16` by `DP-Ch1`) and only the portal ring and occupancy need caps. Falsified if **occupancy dominates** — a market square with 200 occupants would make the occupant cap, not the ring, the binding constraint |
-| **`SDF-Q16`** adjacency above `Locale` | how many features actually ask for `Region`-level adjacency, and what aggregating cell-neighbours into region-neighbours costs **once at S4** | whether `Adjacency::Geometric` is defined above `Locale` at all, or region adjacency is an **authored** relation | the lean is `R-2`'s Paradox evidence — area→region→superregion are authored *grouping files*, so adjacency is authored or derived once, never computed per query. Falsified if aggregation at S4 is cheap **and** more than a couple of features need it, in which case deriving it beats authoring it |
+| ~~**`SDF-Q16`**~~ **CLOSED — the falsification fired** | the count and the cost were both obtainable without a new harness | `Adjacency::Geometric` **is** defined above `Locale`, derived at S4 | **the lean was falsified exactly as written**: *"falsified if aggregation at S4 is cheap AND more than a couple of features need it."* Both held. §15 |
 | **`SDF-Q17`** the multi-reality tax | bytes and query cost added **per additional reality** forked from one book, at `M-2`'s row size | whether `SDF-A30`'s *"share the baseline, pay for divergence"* holds at N realities, or divergence dominates and the sharing is theoretical | the lean is that `T6` (14.9 MB) is the expensive artefact and divergence is small. Falsified if per-reality `T1`+`T5` growth **exceeds the shared baseline** at realistic N — the actor track ran a full red-team round on exactly this and space has run none |
 
 **Two things this table is careful not to claim.** `SDF-Q12` is **not** merely unmeasured — it is
@@ -1461,3 +1462,167 @@ exists is one the shipped tree already mints.**
   This is *known and disclosed* — `amendment-rot-gate.py` check D states in its own docstring that a
   retired identifier reappearing in `crates/`/`services/` is **not covered**. It becomes load-bearing here
   because the tilemap is the `Locale` surface an actor would spawn onto.
+
+---
+
+## 15 — `SDF-Q16` closed, and the answer falsifies the lean this doc recorded
+
+**§8.1 wrote down what would falsify the current lean, and then it fired.** The lean was `R-2`'s Paradox
+evidence: area → region → superregion ship as **authored grouping files**, and Paradox ships
+`adjacencies.csv` separately *precisely because* special adjacency is not derivable. So the expectation
+was that region adjacency is authored, or derived once at S4 at best.
+
+The falsification condition as written: *"falsified if aggregation at S4 is cheap **and** more than a
+couple of features need it, in which case deriving it beats authoring it."* **Both halves hold, and the
+reason the Paradox analogy fails is structural rather than a matter of degree.**
+
+### 15.1 — Why Paradox's evidence does not transfer
+
+| | Paradox | ours |
+|---|---|---|
+| what a region IS | an **authored grouping** of provinces, listed in a file | a **great-circle Voronoi partition** of the mesh — `hierarchy.rs`, L2, `region_subdivision` seeds by farthest-point sampling, each cell assigned by maximum dot product on the unit sphere |
+| is it contiguous? | only if the author kept it so | **by construction** — nearest-seed on a sphere cannot produce a disconnected part |
+| can adjacency be derived? | **no** — a grouping file has no geometry, hence `adjacencies.csv` | **yes, exactly** — the generator already holds `region_of[cell]` parallel to the mesh |
+
+**Authoring ours would be transcribing something the generator already knows**, and every transcription
+is a source of drift. That is `SDF-A30`'s rule arriving in another costume: *scope — and provenance —
+follows derivation.*
+
+### 15.2 — The cost, bounded by a shipped assertion rather than estimated
+
+```
+region_neighbours = { (region_of[a], region_of[b])
+                    : b ∈ neighbors[a], region_of[a] ≠ region_of[b], both ≠ NONE }
+```
+
+One pass over the cell neighbour lists. Two properties make it cheap and deterministic **without adding
+anything**: `neighbors[i]` is documented *"sorted ascending + deduped; symmetric"* (`mesh.rs:38`), so the
+output needs no sort — and cell degree is **asserted by a shipped test**, not merely assumed
+(`mesh.rs:450`, *"Fibonacci sphere: degree distribution is tight around 6… Allow 4..=10"*).
+
+| scale | cells | upper bound at degree 10 |
+|---|---:|---:|
+| `Megaplanet` | 16 384 | **164 thousand** membership tests |
+| `Gigaplanet` (test fixture) | 501 264 | **5.0 million** |
+
+**Both are negligible against what S4 already does in the same pass** — plate tectonics, erosion,
+hydrology, climate and settlement placement all run over the same mesh. The honest framing is not *"this
+is fast"* but *"this is invisible next to its neighbours in the same stage."*
+
+> **`SDF-A32` — `Adjacency::Geometric` IS defined above `Locale`. It is DERIVED ONCE AT S4 from
+> `region_of` and the mesh's `neighbors`, stored in the content-addressed baseline, and NEVER computed
+> per query.** It is immutable for the same reason the mesh is (`SDF-A25`), so it inherits the baseline's
+> sharing (`SDF-A30`: seed-derived ⇒ shared by digest) and costs nothing per reality.
+
+### 15.3 — What must change, and one thing that must not
+
+`crates/world-gen/src/world_map.rs:207` ships `Region { id, subcontinent, seed_cell, name }` — **no
+neighbour field.** The data is one pass from the inputs and is not in the output. That is the whole gap,
+and it is small.
+
+**What must NOT change:** `Adjacency::Connective` stays separate and mutable. `SDF-A25` exists because a
+road and a border are different relations, and deriving one from the other is the error Paradox avoids by
+shipping two files. **We now have two relations for two reasons — geometric because it is derivable,
+connective because it is authored and mutable — and a read still has to declare which it means.**
+
+**And what this does not settle:** whether `Continent` and `Subcontinent` also carry it. They are the same
+construction one level up, so the same pass yields them — but no feature in §9's census asks for
+continent-level adjacency, and building an index nothing reads is how `SDF-A1`'s defect started.
+
+---
+
+## 16 — `M-2` MEASURED, and both of its falsification conditions fired
+
+§8.1 said `SDF-Q12` and `SDF-Q17` were blocked on one number nobody had: **the size of a node row as
+stored.** §11.6 used **96 B**, computed by counting fields in a struct. It is now measured.
+
+### 16.1 — Harness
+
+**Postgres 18-alpine** (`infra-postgres-1`), a **scratch database created and dropped for this
+measurement** — no shared database was written. The schema is the **real migration**,
+`contracts/migrations/per_reality/0019_channels.up.sql`, applied unmodified: the table, its five
+indexes, and every `CHECK`. Under `SDF-A31` an authored node **is** a `channels` row, so this measures
+`T1` directly rather than by analogy.
+
+Populated with a realistic authored tree — 1 world → 16 regions → 256 locales → 4 096 domains =
+**4 369 nodes per reality**, at depths 0–3 — then a **second reality** of the same shape, to measure
+per-reality isolation and to let page overhead amortise. `VACUUM ANALYZE` before every read.
+
+### 16.2 — The numbers
+
+| | 4 369 rows (1 reality) | 8 738 rows (2 realities) |
+|---|---:|---:|
+| heap | 540 672 B | 1 024 000 B |
+| indexes | 622 592 B | 1 130 496 B |
+| **total** | **1 204 224 B** | **2 195 456 B** |
+| heap per row | 123.8 B | 117.2 B |
+| index per row | 142.5 B | 129.4 B |
+| **total per row** | **275.6 B** | **251.3 B** |
+
+Controls: the tuple alone is **111.7 B** with a `display_name` and **98.0 B** without, so the optional
+name costs ~13.7 B; and the per-row total **falls** from 275.6 to 251.3 as row count doubles, which is
+page and index overhead amortising exactly as it should. **Take 251 B as the figure at realistic scale.**
+
+> **⭐ THE FINDING INSIDE THE FINDING: INDEXES ARE 51.5 % OF THE COST.** More is spent making a node
+> findable than storing it. **A field-counting estimate cannot see this** — it is not a property of the
+> row, it is a property of the five indexes the migration ships. That is the whole reason `M-2` had to be
+> measured rather than refined.
+
+### 16.3 — Falsification 1: the node budget's unit under-charged by 2.6×
+
+§8.1's condition, written before the measurement: *"if the measured figure is **≥2× the computed 96 B**,
+`SDF-A17`'s per-principal budget is being denominated in a unit that under-charges by half, and every
+number in §11.6 moves."*
+
+**251 B ÷ 96 B = 2.6×. It fired.** And this is a **floor**, not the figure: `T5` layer sidecars and `T7`
+occupancy are not in it, because neither is built.
+
+**What moves in §11.6.** 1 M nodes is **239 MiB**, not 91.5 MiB. Read the other way — holding the same
+~91.5 MiB envelope — the budget buys **~382 000 nodes**, half reserved for authored content, over 1 000
+active players:
+
+| | §11.6 as written | measured |
+|---|---:|---:|
+| bytes per node | 96 B *(computed)* | **251 B** |
+| nodes per player | ~500 | **~191** |
+| a `Pocket` inner world | 1 024 — **2× the allowance** | 1 024 — **5.4× the allowance** |
+
+**`SDF-F8` is not merely still open. It is measurably worse**, and by a factor nobody could have argued
+their way to.
+
+### 16.4 — Falsification 2: `SDF-A30` HOLDS, and `SDF-A31` is what makes it hold
+
+§8.1's condition for `SDF-Q17`: *"falsified if per-reality `T1`+`T5` growth **exceeds the shared
+baseline** at realistic N."*
+
+Measured, per reality: 4 369 authored nodes × 251.3 B = **1.10 MB**, against a shared `T6` baseline of
+**14.9 MB** at `Megaplanet`.
+
+| realities forked from one book | baseline shared (`SDF-A30`) | baseline copied per reality |
+|---:|---:|---:|
+| 1 | 16.0 MB | 16.0 MB |
+| 10 | 25.9 MB | 160 MB |
+| **100** | **125 MB** | **1 490 MB** |
+
+**Sharing saves 92 % at N = 100**, and one baseline is worth about **13.5 realities' worth of `T1`**.
+`SDF-A30` is confirmed, not falsified.
+
+> **But it holds only because of `SDF-A31`, and the counterfactual is the point.** If generated cells
+> were rows — the design `SDF-A31` refused this morning — per-reality `T1` would be:
+>
+> | | cells | per-reality `T1` at 251 B | against a 14.9 MB baseline |
+> |---|---:|---:|---|
+> | `Megaplanet` | 16 384 | **4.1 MB** | still under, but 3.7× worse |
+> | `Gigaplanet` | 501 264 | **126 MB** | **8.5× OVER — `SDF-A30` falsified outright** |
+>
+> **So the two axioms written on the same day are load-bearing for each other**, and neither could have
+> been checked without the other. *An authored node is a row; a generated cell is an index* is what keeps
+> *share the baseline, pay for divergence* true.
+
+### 16.5 — What is measured and what is not
+
+**Measured:** `T1` as stored, including indexes, at two scales, with a control for the optional column.
+**Not measured, and each would only add:** `T5` layer sidecars (the layer model is not built), `T7`
+occupancy, the event log itself, and index bloat under churn — this table was populated by clean inserts
+and vacuumed, which is the **best** case. **Every unmeasured term pushes the same direction**, so 251 B
+is a floor and `SDF-F8` cannot improve from here without a design change.
