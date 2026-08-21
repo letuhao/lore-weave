@@ -520,12 +520,20 @@ wanted and review removed:
 
 ```rust
 /// Parent-relative placement of a node's frame inside its parent (SPG-A5).
-/// f64, not f32: precision must survive accumulation across DP-Ch1's <=16 levels.
+///
+/// INTEGER, not float (`SDF-R2`, applied 2026-08-22). Not for range -- the
+/// coordinate roots below already dissolve the range problem -- but because
+/// this simulation is EVENT-SOURCED AND REPLAYED, and float is not
+/// bit-reproducible across machines.
 pub struct Transform {
-    /// Origin of this node's frame, in the PARENT's units.
-    pub position: [f64; 3],
-    /// Orientation of this node's frame relative to the parent's.
-    pub rotation: [f64; 4],           // quaternion
+    /// Origin of this node's frame, in units of `2^scale_exp` metres,
+    /// expressed in the PARENT's frame.
+    pub position: [i64; 3],
+    /// Orientation relative to the parent: a quantised unit quaternion.
+    pub rotation: [i32; 4],
+    /// This node's own quantum: metres-per-unit = `2^scale_exp`.
+    /// Conversion between frames is an integer shift -- bit-exact everywhere.
+    pub scale_exp: i8,
 }
 
 /// Where accumulation STOPS.
@@ -537,6 +545,38 @@ pub enum FrameKind {
     Root,
 }
 ```
+
+> **⚠ AMENDED 2026-08-22 — `SDF-R2` APPLIED, and applying it corrected its own headline evidence.**
+>
+> `Transform` was `[f64; 3]` + `[f64; 4]`. [Doc 41](41_space_dataflow.md) `SDF-R2` proposed integers
+> citing **two** agents reaching the same conclusion from opposite directions, and **only one of the two
+> survives contact with this axiom.**
+>
+> **Struck: the magnitude argument.** `R-36` computed that `f64` holds 1 mm only to ≈60 AU and 1 m only
+> to ≈0.95 ly, so *"no single numeric type spans the `Universe → Domain` edge."* **That is true and it is
+> already answered — by this axiom.** `SPG-A17` says absolute position is undefined beyond the nearest
+> coordinate root, so no chain ever spans fifteen orders of magnitude and there is nothing for `f64` to
+> fail at. The amendment cited, as its lead evidence, a problem its own target had already dissolved.
+> **Reading the target before applying the row is what showed it** — the fourth time in this document's
+> history that habit has changed a finding (`SPG-R2`, `SPG-R7`, `REC-98`, now this).
+>
+> **Survives, and is sufficient on its own: DETERMINISM AND ROUND-TRIP.** `R-37`: floats are not
+> bit-reproducible across machines — x87 80-bit versus SSE 64-bit intermediates, FMA contraction, and
+> **transcendentals differing between AMD and Intel** (Battlezone 2 shipped that bug). `R-13`: a `Domain`
+> anchored at tile (137, 42) as a float **does not round-trip losslessly** under repeated
+> serialise/deserialise, and a house on a tile is *the* common `Locale → Domain` case. And
+> [`WDS-A7`](37_world_data_storage.md) already reached the identical conclusion one tier down — f32
+> determinism unproven cross-platform, therefore **bytes are the SSOT**. Three sources, one requirement,
+> and none of them is about range.
+>
+> **Why `scale_exp` belongs here rather than being the rejected field returning.** `SPG-Q3` rejected
+> `parent_units_per_local_unit: f64` because it was **composed down the chain** and a light-year→metre
+> edge ate the mantissa. `scale_exp` is **never composed**: it is one node's own quantum, and because it
+> is a power of two, converting between frames is an **integer shift** — exact on every platform, which
+> is the whole point. The rejected field was an accumulator; this one is a declaration.
+>
+> **Float survives at exactly one place: the render boundary.** Nothing that is persisted, replayed,
+> compared or hashed may hold one.
 
 **What was rejected, and why it matters.** The first draft added
 `parent_units_per_local_unit: f64` and composed it down the chain — the obvious reading of "make a

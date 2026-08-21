@@ -519,13 +519,13 @@ have four homes already:
 | **The author's WHEN seam** | `TrainingRuleDecl.source` — `Action{interaction_kind, target_match, instrument_match}` + `Time{DailyBoundary}` | `PROG-9` ✅ V1 |
 
 So PRD-F2 is a statement that the **author-declarable vocabulary is narrow**, not that the substrate is
-missing — and widening it already has an owner: [**WSA-R18**](31_world_simulation_architecture.md),
+missing — and widening it already has an owner: [**WSA-R18**](31_world_simulation_architecture.md) (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id),
 *"a closed `TriggerPoint` set with a depth budget, **generalising the ONE seam that exists**
 (`TrainingRuleDecl.source`) rather than adding a second dialect"*.
 
 > **QTY-D10 — this document does NOT design triggers, effects or generators, and no slice of §12 may.**
 > A trigger vocabulary bolted next to `TrainingRuleDecl.source` is the `combat.rs` failure mode
-> ([32 §146](32_locus_as_actor.md)). Nouns here; verbs at WSA-R18. The two tracks meet only at the
+> ([32 §146](32_locus_as_actor.md)). Nouns here; verbs at WSA-R18 (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id). The two tracks meet only at the
 > declared-quantity ordinal, which is the correct and only seam.
 
 ---
@@ -941,7 +941,7 @@ ground that it is the **cheapest** slice (one branch in `canon.rs`, one version 
 `ruleset.rs`) and it converts every later slice from a break into an epoch switch.
 
 **What is NOT in this build order, deliberately:** triggers, effects and generators. See §5.5 —
-`WSA-R18` owns the verb track, and a second dialect here would be the `combat.rs` failure mode.
+`WSA-R18` (retired 2026-07-30 -> [`XST-R9`](27_extensibility_stress_test.md), the same work under one id) owns the verb track, and a second dialect here would be the `combat.rs` failure mode.
 
 ---
 

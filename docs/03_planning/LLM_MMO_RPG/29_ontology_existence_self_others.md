@@ -112,7 +112,7 @@ Three consequences follow, and the first one is the load-bearing one:
 > accident**, exactly as [XST-F9](27_extensibility_stress_test.md) predicted people would start
 > overloading slots.
 >
-> This promotes [XST-R6](27_extensibility_stress_test.md) (ruleset-owned quantity set) from *"probably
+> This promotes [XST-R6](27_extensibility_stress_test.md) (retired 2026-07-28 -> [`QTY-D4`](35_quantity_architecture.md)) (ruleset-owned quantity set) from *"probably
 > right"* to *"required by the product"*, and it is the same conclusion [28 §9](28_product_definition.md)
 > reached from the loop. Two independent routes, one answer.
 
@@ -239,7 +239,7 @@ Applying the tests to the extension tiers already defined:
 
 | | ONT-T1 | ONT-T2 | ONT-T3 |
 |---|---|---|---|
-| **E2 · new quantities** ([XST-R6](27_extensibility_stress_test.md)/[R8](27_extensibility_stress_test.md)) | — | ✅ **directly** — new dimensions of self | enables (standing, obligation as quantities) |
+| **E2 · new quantities** ([XST-R6](27_extensibility_stress_test.md) (retired 2026-07-28 -> [`QTY-D4`](35_quantity_architecture.md))/[R8](27_extensibility_stress_test.md)) | — | ✅ **directly** — new dimensions of self | enables (standing, obligation as quantities) |
 | **E3 · new mechanics** ([XST-R9](27_extensibility_stress_test.md)/[R10](27_extensibility_stress_test.md)) | ✅ the world can act | — | ✅ triggers can write opinion during play |
 | Combat depth (COMB_002/003, ABL_001) | — | — | — |
 
@@ -263,7 +263,7 @@ The reasoning:
    opinion held by something that gets discarded on cell-leave is not held at all. Note the dependency
    runs this way and not the other way, which is why the stated order is inverted.
 3. **"Ta"'s new dimensions (E2) come third** — they are the largest piece of engine work
-   ([XST-R6](27_extensibility_stress_test.md) is a data-migration deadline, see
+   ([XST-R6](27_extensibility_stress_test.md) (retired 2026-07-28 -> [`QTY-D4`](35_quantity_architecture.md)) is a data-migration deadline, see
    [27 §11.6](27_extensibility_stress_test.md)), and both of the above sharpen what the dimensions
    need to be. Building the quantity system *before* knowing which quantities the social loop reads
    would be the same inversion [26](26_implementation_architecture.md) already warned about: building

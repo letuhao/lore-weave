@@ -5,7 +5,7 @@
      namespace, which is the opposite of what the catalog is for. -->
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
-> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **all PROPOSED, none applied** —
+> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **one applied (`R2`), eight proposed** —
 > open `SDF-Q1..Q18`, of which **fourteen are resolved and four remain**, and every one of the four
 > now needs a **measurement** rather than an argument (§8.1)).
 >
@@ -499,15 +499,16 @@ RUN-STATE §22):
 
 ## 7 — Amendments this doc raises against sealed docs 36 and 37
 
-**Status: all nine are PROPOSED and NONE is applied.** No sealed doc has been edited by this arc, and no
-doc claims otherwise — the mechanism is that this table is the only place they exist. `R1..R6` come from
+**Status: `SDF-R2` is APPLIED (2026-08-22); the other eight are PROPOSED.** Doc 36's `SPG-A17` now carries the integer `Transform`
+and an amendment note recording what applying it corrected; every other row is still only here, which is
+the mechanism. `R1..R6` come from
 the first pass; **`R7..R9` were raised by the deep dives in §11–§13** and two of them target doc 37, which
 is why the section title changed.
 
 | # | target | change | evidence |
 |---|---|---|---|
 | `SDF-R1` | `SPG-A12` | the existence ladder is an **INDEX**; `materialization` is a denormalisation; the tick may not scan residents | **measured, §2** |
-| `SDF-R2` | `SPG-A17` | `Transform` must be **integer + `scale_exp`**, not float | `R-36` (f64 covers ONE of 15 orders; 128 m ULP at EVE scale) + `R-13` (a house at tile 137,42 must round-trip) — **two agents, opposite directions** |
+| `SDF-R2` ✅ **APPLIED 2026-08-22** | `SPG-A17` | `Transform` is **integer + `scale_exp`**, not float | **APPLIED — and applying it struck its own lead evidence.** `R-36`'s magnitude argument (f64 covers one of fifteen orders) **was already dissolved by the target itself**: `SPG-A17`'s coordinate roots mean no chain ever spans those orders, so there was nothing for `f64` to fail at. What survives is **sufficient on its own and is not about range** — `R-37` (floats are not bit-reproducible across machines; transcendentals differ AMD vs Intel), `R-13` (a house at tile 137,42 must round-trip), and `WDS-A7`, which reached the identical conclusion one tier down. **`scale_exp` is not the field `SPG-Q3` rejected**: that one was COMPOSED down the chain, this one is never composed and is a power of two, so a frame conversion is an integer shift |
 | `SDF-R3` | doc 36 §3 | add **`PortalSet`** — containment ≠ connectivity; portals are first-class, bidirectional, and resident below their Domain's tier | `R-14` · `R-53` (Teller 1992) · `R-59` (one-sided door links are a classic Bethesda mod bug) |
 | `SDF-R4` | `SPG-D1` | in-place combat needs an **Encounter closure**; `Arena` and `Encounter` are different things | `R-6` · `R-7` |
 | `SDF-R5` | `SPG-A2` | layers bind to `MapKind`; `home_kinds` required, validated on write | `R-29` |

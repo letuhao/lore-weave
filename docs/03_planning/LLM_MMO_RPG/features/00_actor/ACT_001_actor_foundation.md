@@ -25,7 +25,7 @@
 
 
 > **⚠ L3 STRENGTHENING REQUIRED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md)
-> `SPG-A10` / `SPG-F5`, rows `SPG-R6` + `SPG-R7`:**
+> `SPG-A10` / `SPG-F5`, rows `SPG-R6` + `SPG-R7` (the latter retired 2026-07-30 as a mis-diagnosis; `SPG-R6` is what landed):**
 > **This doc has the right seam and the wrong shape for it.** The 3-layer model's insight is correct and
 > is reused unchanged: **L3 Control source is DYNAMIC**, not a property of actor kind — and
 > [`AGT-A3`](../../11_agent_decision_standard.md) already makes drivers *"assigned per actor/tier and
