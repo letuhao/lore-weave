@@ -631,20 +631,6 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
             "approval_mode": APPROVAL_MODE, "tools": tools}
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("scenarios")
-    ap.add_argument("--repeats", type=int, default=3)
-    ap.add_argument("--concurrency", type=int, default=4)
-    ap.add_argument("--out", default="")
-    ap.add_argument("--batch-out", default="", help="gate-ready evidence file")
-    ap.add_argument("--batch-id", default="batch")
-    ap.add_argument("--keep-fixtures", action="store_true",
-                    help="do not tear down (investigation); clean up with provision.py --sweep")
-    ap.add_argument("--approvals", default="none", choices=("none", "standing", "as-is"),
-                    help="standing tool approvals for this batch; 'none' clears and restores")
-    a = ap.parse_args()
-    scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
 def preflight_seed_asserts(scenarios) -> list[str]:
     """Run every seed_assert query ONCE, before the batch spends a turn.
 
@@ -678,6 +664,20 @@ def preflight_seed_asserts(scenarios) -> list[str]:
     return problems
 
 
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("scenarios")
+    ap.add_argument("--repeats", type=int, default=3)
+    ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument("--out", default="")
+    ap.add_argument("--batch-out", default="", help="gate-ready evidence file")
+    ap.add_argument("--batch-id", default="batch")
+    ap.add_argument("--keep-fixtures", action="store_true",
+                    help="do not tear down (investigation); clean up with provision.py --sweep")
+    ap.add_argument("--approvals", default="none", choices=("none", "standing", "as-is"),
+                    help="standing tool approvals for this batch; 'none' clears and restores")
+    a = ap.parse_args()
+    scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
     globals()["APPROVAL_MODE"] = a.approvals
     globals()["KEEP_FIXTURES"] = a.keep_fixtures
     bad = preflight_seed_asserts(scenarios)

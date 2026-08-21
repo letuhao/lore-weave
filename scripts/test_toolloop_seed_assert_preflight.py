@@ -100,3 +100,49 @@ class TestEveryCommittedScenarioPasses:
         if problems and any("could not" in p.lower() or "connect" in p.lower() for p in problems):
             pytest.skip("no database reachable")
         assert not problems, "\n".join(problems[:20])
+
+
+class TestTheRunnerItselfStillRuns:
+    """🔴 GUARD THE CALL SITE, NOT THE HELPER.
+
+    Adding the preflight spliced its body into the MIDDLE of `main()`, so everything after
+    `return problems` became dead code inside the helper and `main()` returned None
+    immediately. Syntactically valid, imports fine, and the helper's own tests all passed —
+    because they called `preflight_seed_asserts` directly. Meanwhile every fe_runner
+    invocation exited 0, printed nothing, wrote no evidence, and looked like a quiet success.
+    Two arms were lost to it before the silence was noticed.
+
+    So this exercises the CLI end to end rather than the function.
+    """
+
+    def test_the_cli_refuses_a_broken_assertion_end_to_end(self, tmp_path):
+        import subprocess  # noqa: PLC0415
+
+        scn = tmp_path / "scn.json"
+        scn.write_text(json.dumps({"scenarios": [{
+            "id": "synthetic-bad", "tool_under_test": "x", "expect_tool": "x",
+            "prompt": "p", "seed": [], "seed_assert": [{
+                "db": "loreweave_knowledge",
+                "query": "SELECT count(*)::text FROM knowledge_projects WHERE id='{project_id}'"}],
+            "falsifier": "n/a", "ship_audit": {}}]}), encoding="utf-8")
+
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "toolloop" / "fe_runner.py"), str(scn),
+             "--repeats", "1"],
+            capture_output=True, text=True, timeout=300, cwd=str(ROOT))
+
+        if "could not" in (r.stderr or "").lower() or "connect" in (r.stderr or "").lower():
+            pytest.skip("no database reachable")
+        assert r.returncode == 2, (
+            f"the CLI exited {r.returncode} on a broken seed assertion. Exit 0 with no output is "
+            f"how a dead main() looks.\nstdout={r.stdout[:400]}\nstderr={r.stderr[:400]}")
+        assert "REFUSING to run" in r.stderr
+
+    def test_main_is_not_a_no_op(self):
+        """The shape of the bug: main() must still contain the code that runs the batch."""
+        src = (ROOT / "scripts" / "toolloop" / "fe_runner.py").read_text(encoding="utf-8")
+        body = src[src.index("\ndef main("):]
+        for needed in ("ApprovalState", "main_async", "emit_batch"):
+            assert needed in body, (
+                f"main() no longer references {needed} — its body was swallowed by an edit and "
+                f"every run would exit 0 having done nothing")
