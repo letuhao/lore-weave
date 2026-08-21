@@ -819,7 +819,12 @@ async def test_the_browse_and_the_window_agree_about_which_events_match(store):
 # ── facts, and the ordinal chain (T17 A7) ────────────────────────────────────
 
 #: AGE refuses the fact WRITE (D-AGE-FACT-WRITE-UNIMPLEMENTED); the refusal is asserted below.
-_FACT_WRITE_REFUSERS = {"age"}
+# T59 (2026-08-22): EMPTY. `D-AGE-FACT-WRITE-UNIMPLEMENTED` said `maintain_chain` needed
+# "an ordered window over sibling facts in ONE statement". One STATEMENT was never the
+# requirement -- one TRANSACTION was, the same conflation T58 corrected for the event
+# writes. Kept as a set for the same reason as its event twin: it is how a future refusal
+# stays VISIBLE rather than becoming a silently-passing adapter.
+_FACT_WRITE_REFUSERS: set[str] = set()
 
 
 @pytest.mark.asyncio
@@ -881,13 +886,30 @@ async def test_merge_fact_ACCEPTS_maintain_chain_without_raising(store):
 
 
 @pytest.mark.asyncio
-async def test_age_REFUSES_the_fact_write_rather_than_answering_wrongly(store):
-    if _which(store) not in _FACT_WRITE_REFUSERS:
-        pytest.skip("only the refusing adapters are pinned here")
+async def test_the_fact_write_REFUSERS_SET_is_honest_in_BOTH_directions(store):
+    """Same shape as its event twin, and rewritten for the same reason (T58/T59).
+
+    `if not in refusers: skip` becomes a permanent skip on EVERY adapter the moment the set
+    empties, which is exactly what emptying it did. A test that skips on all four parameters
+    still prints as coverage.
+    """
     u, p, _ = _ids()
-    with pytest.raises(NotImplementedError, match="D-AGE-FACT-WRITE-UNIMPLEMENTED"):
-        await store.merge_fact(user_id=u, project_id=p, type="attribute", content="x",
-                               subject_id="e1", from_order=1, maintain_chain=True)
+    if _which(store) in _FACT_WRITE_REFUSERS:
+        with pytest.raises(NotImplementedError, match="D-AGE-FACT-WRITE-UNIMPLEMENTED"):
+            await store.merge_fact(user_id=u, project_id=p, type="attribute", content="x",
+                                   subject_id="e1", from_order=1, maintain_chain=True)
+        return
+    subject = await _a_subject(store, u, p)
+    try:
+        await store.merge_fact(
+            user_id=u, project_id=p, type="attribute", content="x",
+            subject_id=subject, from_order=1, maintain_chain=True)
+    except NotImplementedError as exc:
+        pytest.fail(
+            f"{_which(store)} is NOT in _FACT_WRITE_REFUSERS but still refuses the fact "
+            f"write ({exc}) — the chain rules are passing vacuously. Either implement it or "
+            f"put the adapter back in the set, where the skips are visible."
+        )
 
 
 # ── facts_for: the read that makes the merge checkable (T17 A8 / SPEC §1.1) ───
@@ -895,7 +917,9 @@ async def test_age_REFUSES_the_fact_write_rather_than_answering_wrongly(store):
 #: AGE refuses the fact WRITE but IMPLEMENTS the read (rule 9: raise only what you cannot
 #: honour). So its arm of these rules seeds with raw Cypher and reads back through the port
 #: — otherwise `AgeGraphStore.facts_for` would ship as code no rule can reach.
-_FACT_WRITE_REFUSERS_READ_OK = {"age"}
+# T59: EMPTY -- AGE now implements the fact WRITE too, so its read arm no longer has to
+# lean on the as_of rules for coverage. The two chain rules below run for `age`.
+_FACT_WRITE_REFUSERS_READ_OK: set[str] = set()
 
 
 async def _a_subject(store, u, p, name="Kai"):

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `merge_fact` on AGE — the last event/fact refusal. T58 shipped the event writes; the same SQL-host method applies.**
+**RESUME: re-derive `T43`/`QC-7` — AGE refuses nothing now (124/41 conformance), so the 'cannot clear the floor' verdict is stale.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2204,11 +2204,14 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `D-MAINTENANCE-IS-NINE-JANITORS`.** The two constants are class-(a) work (A4/A5/A6 shape).
 
   ✅ **`merge_fact` DID have demand** — four callers — and is now on the port, implemented in
-  Fake and Neo4j, **refused by AGE** (`D-AGE-FACT-WRITE-UNIMPLEMENTED`): the plain upsert is
+  Fake and Neo4j, ~~**refused by AGE** (`D-AGE-FACT-WRITE-UNIMPLEMENTED`): the plain upsert is
   expressible, but `maintain_chain` needs an ordered window over sibling facts in one
-  statement, which AGE has no APOC-free shape for. An accepted flag that closed no interval
-  leaves every fact open forever, and every as-of read then answers with the LATEST value at
-  every position — a book with no history, reported as a working timeline.
+  statement, which AGE has no APOC-free shape for.~~ 🎯 **DISCHARGED 2026-08-22 (T59) — AGE
+  implements it.** "One statement" was never the requirement; one TRANSACTION was. The rest of
+  this paragraph stands and is now a TEST rather than a warning (bite 22): an accepted flag
+  that closed no interval leaves every fact open forever, and every as-of read then answers
+  with the LATEST value at every position — a book with no history, reported as a working
+  timeline.
 
   `Fact` moved to `app/domain/graph_models.py` and is re-exported, for the reason the port
   already records: **a port that imports its own implementation is not a boundary.**
@@ -2548,6 +2551,85 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T59 2026-08-22 — **AGE refuses NOTHING.** The full conformance suite, no adapter carrying an exemption
+
+  ```
+  conformance:  102 passed / 59 skipped   (this morning)
+                116 passed / 49 skipped   (T58, the event writes)
+                124 passed / 41 skipped   <- now; every remaining skip is the `neo4j`
+                                             PARAMETER, which needs TEST_NEO4J_URI
+  age alone:     25 -> 36 -> 43 passed        knowledge unit 4296
+  ```
+
+  `merge_fact` is implemented, and `_FACT_WRITE_REFUSERS` and `_FACT_WRITE_REFUSERS_READ_OK`
+  are both empty. **No adapter in this suite now carries an exemption.**
+
+  🔴 **The Blocker was the same conflation, for the third time.**
+  `D-AGE-FACT-WRITE-UNIMPLEMENTED` said `maintain_chain` *"needs an ordered window over
+  sibling facts in ONE statement, which AGE has no APOC-free shape for."* One STATEMENT was
+  never the requirement — **one TRANSACTION** was. That is exactly what T58 corrected for
+  `update_event_fields`, and what the 2026-08-11 construct probe had already settled: on AGE
+  the single-statement form is the WRONG one, because Postgres does not guarantee evaluation
+  order inside a CTE. Three deferrals, one sentence, eleven days apart.
+
+  📐 **The chain is derived in Python from ONE read, inside the merge's own transaction**, and
+  mirrors `temporal.MAINTAIN_FACT_CHAIN_CYPHER` clause for clause:
+
+  * only OPEN, positioned instances participate;
+  * the next bound is the next **STRICTLY-GREATER** ordinal, never an equal one — two facts
+    sharing an ordinal (same-chapter ties carry no per-item offset) must not close each other
+    into a zero-width `[base, base)` interval that is invisible at every as-of read. **That was
+    the A2 bug**, and bite 21 reproduces it exactly;
+  * a `valid_to_pinned` instance is an authored input, not a derivation — skipped entirely,
+    `updated_at` included, so an operator is not told the chain rewrote what it did not touch.
+
+  ⚠️ **The merged fact is RE-READ after the chain runs.** The chain can close *this* fact's own
+  interval, and returning the pre-chain projection would hand the caller a `Fact` whose
+  `valid_to_ordinal` is null while the store says otherwise — a lie the caller would then
+  persist. Found by reading the chain's own output, not by a test.
+
+  **BITE ×2, both on the semantics that make the chain worth having:**
+
+  ```
+  21. strictly-greater becomes >=  (the A2 zero-width interval)
+        FAILED …ORDINAL_CHAIN_that_merge_fact_maintained[age]
+        FAILED …as_of_is_HALF_OPEN_at_the_boundary_chapter[age]
+  22. the chain never runs — the flag accepted, nothing closed
+        FAILED  the same two rules
+  ```
+
+  Bite 22 is the failure the deferral's own prose described: *"an accepted flag that closed no
+  interval leaves every fact open forever, and an as-of read then answers with the latest value
+  at every position — a book with no history, reported as a working timeline."* It is now a
+  test rather than a warning.
+
+  ⚠️ **Emptying the set made ITS guard unfailable too — the second time today.**
+  `test_age_REFUSES_the_fact_write` read `if not in refusers: skip`, so it skipped on all four
+  adapters the moment the set emptied. Rewritten both-directions as its event twin was
+  (T58): a listed adapter must really raise, an unlisted one must really work. **Emptying a
+  refusers set silently disarms the test that watches it** — worth naming as a pattern, since
+  it has now happened once per set.
+
+  🐞 **And the rewrite was wrong on its first run:** `_a_subject` returns an **id**, not an
+  entity, so `subject.id` raised `AttributeError`. Caught by the suite immediately, but it is
+  the third thing today that looked like a finding and was mine.
+
+  🎯 **What this changes for the engine choice.** `T43`/`QC-7` recorded that *"AGE cannot clear
+  the conformance floor at all"* because it refused two event writes and one fact write, and
+  that *"a candidate refusing a write makes the floor unmeetable for every read beneath it."*
+  **AGE now refuses nothing and passes 43 of 43 applicable rules.** That verdict must be
+  **RE-DERIVED** — it is not reversed by this row, because a shadow comparison measures
+  behaviour on real traffic and this measures conformance. What is gone is the reason it could
+  not be run at all.
+
+  **QC (a) gates:** knowledge unit **4296**; `port-adoption-gate` 54/19/2 and class (d) 34/34
+  unchanged — adapter work, not migration; `graph-port-gate` PASS (309 scanned); four plan
+  gates green.
+  **QC (b) the seam:** ✅ the whole suite against a **real AGE 1.7.0** on the product's own
+  Postgres image.
+  **QC (c) real data:** facts merged, re-merged, chained, tie-broken and read back as-of in a
+  real AGE graph; the two chain rules assert stored `valid_to_ordinal` values, not returns.
 
   ### ✅ T58 2026-08-22 — **AGE writes events.** `_EVENT_WRITE_REFUSERS` is EMPTY, and five skips became assertions
 

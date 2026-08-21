@@ -65,6 +65,8 @@ from app.db.neo4j_repos.canonical import canonicalize_text as _canonicalize_text
 # `event_id` is aliased because `update_event_fields` takes a PARAMETER of that name;
 # an unaliased import would be shadowed inside the method that needs it most.
 from app.db.neo4j_repos.events import Event, event_id as _event_id
+from app.db.neo4j_repos.facts import fact_id as _fact_id
+from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING as _ORDINAL_OPEN_CEILING
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.db.neo4j_repos.relations import Relation
@@ -796,15 +798,161 @@ class AgeGraphStore:
         object: str | None = None,
         maintain_chain: bool = False,
     ) -> Fact:
-        raise NotImplementedError(
-            "AgeGraphStore.merge_fact — see D-AGE-FACT-WRITE-UNIMPLEMENTED. The plain upsert is "
-            "expressible; `maintain_chain` is the problem: re-deriving the valid_to_ordinal "
-            "chain for a (subject, type) family needs an ordered window over sibling facts in "
-            "ONE statement, which AGE has no APOC-free shape for. Refusing rather than "
-            "half-writing: an accepted flag that closed no interval leaves every fact open "
-            "forever, and an as-of read then answers with the latest value at every position — "
-            "a book with no history, reported as a working timeline."
-        )
+        """Content-keyed upsert, plus the F3 story-time interval chain.
+
+        🔴 `D-AGE-FACT-WRITE-UNIMPLEMENTED` said `maintain_chain` *"needs an ordered window
+        over sibling facts in ONE statement, which AGE has no APOC-free shape for"*. **One
+        statement was never the requirement — one TRANSACTION was**, which is the same
+        conflation T58 corrected for `update_event_fields` and which the 2026-08-11 construct
+        probe had already settled: on AGE the single-statement form is the WRONG one, because
+        Postgres does not guarantee evaluation order inside a CTE.
+
+        So the chain is re-derived from the family read in the SAME transaction as the merge.
+        A concurrent writer cannot interleave: it would have to read the family too, and the
+        `MERGE` above has already taken the row locks its own write needs.
+        """
+        if not content:
+            raise ValueError("content must be a non-empty string")
+        if not source_type:
+            raise ValueError("source_type must be a non-empty string")
+        fid = _fact_id(user_id=user_id, project_id=project_id, type=type, content=content)
+        canonical_content = _canonicalize_text(content)
+        norm_chapter = source_chapter or None
+        norm_date = event_date_iso or None
+        # F3 — an explicit valid_from_ordinal wins, else the reading-axis `from_order`. They
+        # are the same ordinal; the two names exist because one is authored and one derived.
+        eff_from = valid_from_ordinal if valid_from_ordinal is not None else from_order
+        stamp = datetime.now(timezone.utc).isoformat()
+        ceil_ = _ORDINAL_OPEN_CEILING
+
+        # Tenancy in the MERGE KEY, not a trailing `WITH … WHERE` — on AGE 1.7.0 a `WITH`
+        # after `SET` SILENTLY DISCARDS THE WRITE (measured, T58). `fact_id` hashes user_id,
+        # so the pair cannot disagree.
+        merge = f"""
+        MERGE (f:Fact {{id: {_lit(fid)}, user_id: {_lit(user_id)}}})
+        SET f.project_id        = coalesce(f.project_id, {_lit(project_id)}),
+            f.type              = coalesce(f.type, {_lit(type)}),
+            f.content           = coalesce(f.content, {_lit(content)}),
+            f.canonical_content = coalesce(f.canonical_content, {_lit(canonical_content)}),
+            f.source_chapter    = coalesce(f.source_chapter, {_lit(norm_chapter)}),
+            f.evidence_count    = coalesce(f.evidence_count, 0),
+            f.created_at        = coalesce(f.created_at, {_lit(stamp)}),
+            f.valid_from        = coalesce(f.valid_from, {_lit(stamp)}),
+            f.from_order        = coalesce(f.from_order, {_lit(from_order)}),
+            f.valid_from_ordinal = coalesce(f.valid_from_ordinal, {_lit(eff_from)}),
+            f.valid_to_ordinal_eff = coalesce(f.valid_to_ordinal_eff, {_lit(ceil_)}),
+            f.predicate         = coalesce(f.predicate, {_lit(predicate)}),
+            f.object            = coalesce(f.object, {_lit(object)}),
+            f.event_date_iso = CASE
+                WHEN {_lit(norm_date)} IS NULL THEN f.event_date_iso
+                WHEN f.event_date_iso IS NULL THEN {_lit(norm_date)}
+                WHEN size({_lit(norm_date)}) > size(f.event_date_iso) THEN {_lit(norm_date)}
+                ELSE f.event_date_iso END,
+            f.source_types = CASE
+                WHEN f.source_types IS NULL THEN [{_lit(source_type)}]
+                WHEN {_lit(source_type)} IN f.source_types THEN f.source_types
+                ELSE f.source_types + [{_lit(source_type)}] END,
+            f.provenances = CASE
+                WHEN f.provenances IS NULL THEN [{_lit(provenance)}]
+                WHEN {_lit(provenance)} IN f.provenances THEN f.provenances
+                ELSE f.provenances + [{_lit(provenance)}] END,
+            f.confidence = CASE
+                WHEN f.confidence IS NULL THEN {_lit(confidence)}
+                WHEN {_lit(confidence)} > f.confidence THEN {_lit(confidence)}
+                ELSE f.confidence END,
+            f.pending_validation = CASE
+                WHEN f.confidence IS NULL THEN {_lit(pending_validation)}
+                WHEN {_lit(confidence)} > f.confidence THEN {_lit(pending_validation)}
+                ELSE f.pending_validation END,
+            f.updated_at = {_lit(stamp)}
+        RETURN f
+        """
+        link = f"""
+        MATCH (f:Fact {{id: {_lit(fid)}, user_id: {_lit(user_id)}}}),
+              (e:Entity {{id: {_lit(subject_id)}, user_id: {_lit(user_id)}}})
+        MERGE (f)-[:ABOUT]->(e)
+        RETURN f
+        """
+        # The chain family: every OPEN, POSITIONED fact of this (subject, type). Read
+        # ordered so the derivation below is a plain scan rather than a sort of its own.
+        family = f"""
+        MATCH (f:Fact)-[:ABOUT]->(e:Entity {{id: {_lit(subject_id)},
+                                            user_id: {_lit(user_id)}}})
+        WHERE f.user_id = {_lit(user_id)} AND f.type = {_lit(type)}
+              AND f.valid_from_ordinal IS NOT NULL
+        RETURN f
+        """
+
+        def _wrap(cy: str, cols: str = "v agtype") -> str:
+            tag = self._dollar_tag(cy)
+            return f"SELECT * FROM cypher('{self._graph}', ${tag}${cy}${tag}$) as ({cols})"
+
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                rows = await conn.fetch(_wrap(merge))
+                if not rows:
+                    raise RuntimeError(
+                        f"merge_fact: AGE returned no row for fact {fid} — the write did "
+                        f"not land"
+                    )
+                out = _props(rows[0]["v"])
+                if subject_id:
+                    await conn.fetch(_wrap(link))
+                    if maintain_chain and eff_from is not None:
+                        sibs = [_props(r["v"]) for r in await conn.fetch(_wrap(family))]
+                        for cy in self._chain_writes(sibs, user_id, stamp):
+                            await conn.fetch(_wrap(cy))
+                        # Re-read: the chain may have closed THIS fact's own interval, and
+                        # returning the pre-chain projection would hand the caller a fact
+                        # whose valid_to_ordinal is null when the store says otherwise.
+                        again = await conn.fetch(_wrap(f"""
+                        MATCH (f:Fact {{id: {_lit(fid)}, user_id: {_lit(user_id)}}})
+                        RETURN f
+                        """))
+                        if again:
+                            out = _props(again[0]["v"])
+        return _to_fact(out)
+
+    def _chain_writes(
+        self, sibs: list[dict], user_id: str, stamp: str
+    ) -> list[str]:
+        """F3 chain re-derivation — the Cypher writes, derived in Python from one read.
+
+        Mirrors `temporal.MAINTAIN_FACT_CHAIN_CYPHER` clause for clause:
+
+        * only OPEN instances participate (`valid_until IS NULL`);
+        * the next bound is the next **STRICTLY-GREATER** `valid_from_ordinal`, never an
+          equal one — two facts sharing an ordinal (same-chapter ties, which carry no
+          per-item offset) must not close each other into a zero-width `[base, base)`
+          interval that is invisible at every as-of read. That was the A2 bug, and it is
+          the reason this is not simply "close each fact at the next one's start";
+        * a `valid_to_pinned` instance is an AUTHORED input, not a derivation — skipped
+          entirely, timestamp included, so an operator reading `updated_at` is not told the
+          chain rewrote something it did not.
+        """
+        openish = [
+            s for s in sibs
+            if s.get("valid_until") in (None, "")
+            and s.get("valid_from_ordinal") is not None
+        ]
+        openish.sort(key=lambda s: (s["valid_from_ordinal"], s.get("created_at") or ""))
+        ordinals = sorted({s["valid_from_ordinal"] for s in openish})
+        writes: list[str] = []
+        for s in openish:
+            if s.get("valid_to_pinned"):
+                continue
+            cur = s["valid_from_ordinal"]
+            greaters = [o for o in ordinals if o > cur]
+            to_ord = greaters[0] if greaters else None
+            eff = greaters[0] if greaters else _ORDINAL_OPEN_CEILING
+            writes.append(f"""
+            MATCH (f:Fact {{id: {_lit(s.get("id"))}, user_id: {_lit(user_id)}}})
+            SET f.valid_to_ordinal = {_lit(to_ord)},
+                f.valid_to_ordinal_eff = {_lit(eff)},
+                f.updated_at = {_lit(stamp)}
+            RETURN f
+            """)
+        return writes
 
     async def facts_for(
         self,
