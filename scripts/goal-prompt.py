@@ -84,7 +84,11 @@ QUEUE: list[tuple[str, str, list[str]]] = [
     # and `KNOWLEDGE_GRAPH_BACKEND=age` still raises. A plan can close green having built
     # every precondition for a change it never made — which is why this lane sits ahead of
     # "D close", whose T48 refuses to certify while anything is open.
-    ("F goal", "§8", ["T54", "T55", "T56"]),
+    # T17 left QUEUE_EXCLUDED 2026-08-22. Its excuse — "§1.3 says its ceiling should not reach
+    # zero" — is still true and was never the whole picture: §1.3's class (d) is 28 binders that
+    # BLOCK the AGE default (T54b measured the split). Excusing the row excused the critical
+    # path with it, which is the thing QUEUE_EXCLUDED exists to prevent.
+    ("F goal", "§8", ["T17", "T54", "T55", "T56"]),
     ("D close", "§6.3/6.4", ["T44", "T45", "T46", "T47", "T48", "T49"]),
     # 🔴 QC-5 had NO LANE. It was open, listed as a ⏸ checkpoint, and named by no run — so a
     # long run following this queue would never have reached it. Found by the coverage check
@@ -108,9 +112,7 @@ STOP_KINDS = {"⏸": "a ⏸ POST-REVIEW checkpoint", "⛔": "a stop condition fi
 #: Open rows deliberately absent from QUEUE, each with the reason. Anything open and NOT here
 #: and NOT in a lane is an ORPHAN: a row a long run following this prompt never reaches. QC-5
 #: was exactly that — open, listed as a checkpoint, and in no lane.
-QUEUE_EXCLUDED = {
-    "T17": "§1.3 says its ceiling should not reach zero; it moves opportunistically",
-}
+QUEUE_EXCLUDED: dict[str, str] = {}
 
 RULES = """1 Measure DATA on the real stack (5555/7688); run CODE on lw-iso (base+20000).
 2 A number that reads as success is guilty until checked. RUN it, don't read it.
