@@ -355,6 +355,16 @@ class Settings(BaseSettings):
     # `vector_dual_write_total{outcome="secondary_failed"}` reads zero because nothing
     # reaches it, which is indistinguishable from zero because nothing failed.
     knowledge_vector_db_url: str = ""
+
+    #: T54 — the Postgres holding the AGE graph. Empty means "not configured", and with
+    #: `KNOWLEDGE_GRAPH_BACKEND=age` that is a startup-time refusal rather than a silent
+    #: fallback to Neo4j: an engine swap that quietly did not happen is the defect T54 exists
+    #: to fix (T42/T43 closed green while `age` raised `NotImplementedError`).
+    #:
+    #: Points at the SAME instance as `knowledge_vector_db_url` by design — `knowledge-pg`
+    #: runs `loreweave/postgres-knowledge:18`, which T42b built to carry BOTH `age` and
+    #: `vector` (measured on the running container: age 1.7.0, vector 0.8.6).
+    knowledge_age_db_url: str = ""
     # Fraction of searches that also query the secondary and report OVERLAP with the
     # primary (not recall — neither backend is ground truth). 0.0 = off. Sampled because
     # the comparison is inline: a fire-and-forget task would measure a load the request

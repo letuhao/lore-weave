@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -16,6 +17,7 @@ from app.clients.llm_client import close_llm_client, get_llm_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.neo4j import close_neo4j_driver, get_neo4j_driver, init_neo4j_driver
+from app.adapters.graph_store_provider import init_age_pool
 from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.db.seed_graph_schemas import seed_system_graph_schemas
@@ -165,6 +167,16 @@ async def lifespan(app: FastAPI):
         # Track 1 mode skips this entirely.
         if settings.neo4j_uri:
             await run_neo4j_schema(get_neo4j_driver())
+        # T54 — build the AGE pool when AGE is the selected backend, so a missing DSN fails
+        # HERE rather than on the first graph read. The provider refuses to fall back to
+        # Neo4j, and a backend that silently is not the one you selected is the defect this
+        # row exists to fix: T42/T43 closed green while `age` could not be selected at all.
+        if os.environ.get("KNOWLEDGE_GRAPH_BACKEND", "age").strip().lower() == "age":
+            if not await init_age_pool():
+                logger.warning(
+                    "KNOWLEDGE_GRAPH_BACKEND=age but KNOWLEDGE_AGE_DB_URL is unset — graph "
+                    "reads will refuse. Set the DSN or select neo4j explicitly."
+                )
         # T25c — publish whether the vector secondary is ARMED, from configuration.
         # `knowledge_vector_dual_write_total` is pre-seeded at import, so it reads 0.0 on
         # an unarmed service exactly as it does on an armed-but-unwritten one; without

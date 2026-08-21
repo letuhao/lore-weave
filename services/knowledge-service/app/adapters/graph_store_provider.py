@@ -35,15 +35,56 @@ from __future__ import annotations
 import logging
 import os
 
+from app.adapters.age_graph_store import AgeGraphStore
 from app.adapters.neo4j_graph_store import Neo4jGraphStore
+from app.db.age_bootstrap import graph_name_for
 from app.db.neo4j_helpers import CypherSession
 from app.ports.graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["get_graph_store"]
+__all__ = ["get_graph_store", "init_age_pool"]
 
 _BACKEND_ENV = "KNOWLEDGE_GRAPH_BACKEND"
+
+#: T54 (§8.1/§8.2, PO 2026-08-22) — **AGE is the default.** Neo4j stays selectable and is not
+#: retired: T43's shadow harness compares Neo4j↔AGE and the two backend benchmarks are the only
+#: things that can compare engines, so deleting it would remove the instrument that proves this
+#: adapter correct. `port-adoption-gate`'s floor of 2 exists for the same reason.
+_DEFAULT_BACKEND = "age"
+
+#: One pool per process, built on first use. Not at import: the DSN is configuration and a
+#: module that opens a connection at import time cannot be imported by a test, a script, or a
+#: worker that will never touch the graph.
+_POOL = None
+
+
+def _age_pool():
+    """The process AGE pool, or None when no DSN is configured."""
+    return _POOL
+
+
+async def init_age_pool() -> bool:
+    """Build the AGE pool from settings. Idempotent; returns True when a pool exists.
+
+    Called from the service lifespan beside `run_neo4j_schema`, so the refusal above fires at
+    STARTUP rather than on the first graph read — a misconfigured backend should fail where
+    someone is watching, not on a user request.
+    """
+    global _POOL
+    if _POOL is not None:
+        return True
+    from app.config import settings
+    dsn = (settings.knowledge_age_db_url or "").strip()
+    if not dsn:
+        return False
+    from app.db.age_bootstrap import create_age_pool, ensure_age_extension, ensure_graph
+    _POOL = await create_age_pool(dsn)
+    await ensure_age_extension(_POOL)
+    async with _POOL.acquire() as conn:
+        await ensure_graph(conn, None)          # the shared graph, created if absent
+    logger.info("AGE pool ready (graph=%s)", graph_name_for(None))
+    return True
 
 
 def get_graph_store(session: CypherSession) -> GraphStore:
@@ -61,17 +102,27 @@ def get_graph_store(session: CypherSession) -> GraphStore:
     silently returning Neo4j, because a shadow comparison that quietly compared Neo4j
     against Neo4j would agree perfectly and mean nothing.
     """
-    backend = os.environ.get(_BACKEND_ENV, "neo4j").strip().lower()
-    if backend in ("", "neo4j"):
+    backend = os.environ.get(_BACKEND_ENV, _DEFAULT_BACKEND).strip().lower()
+    if backend == "neo4j":
         return Neo4jGraphStore(session)
     if backend == "age":
-        raise NotImplementedError(
-            f"{_BACKEND_ENV}=age is not wired into this provider yet. The AGE adapter needs "
-            "an asyncpg pool + a per-project graph name, which T43's shadow harness owns "
-            "(D-T42D-GRAPHSTORE-HAS-NO-CALLERS). Raising rather than falling back to Neo4j: "
-            "a comparison that silently ran Neo4j against Neo4j would agree perfectly and "
-            "prove nothing."
-        )
+        pool = _age_pool()
+        if pool is None:
+            raise RuntimeError(
+                f"{_BACKEND_ENV}=age but KNOWLEDGE_AGE_DB_URL is not set. Refusing to fall "
+                "back to Neo4j: a backend that silently is not the one you selected is the "
+                "exact defect T54 was written to fix — T42/T43 closed green while `age` "
+                "could not be selected at all."
+            )
+        # The SHARED graph, which is not a compromise — it is the CURRENT topology. Neo4j
+        # holds every project in one database and scopes by `user_id`/`project_id`
+        # properties, so `g_shared` reproduces that exactly. Per-project graphs
+        # (`graph_name_for(project_id)`) stay available and are what T43's harness uses;
+        # adopting them HERE would smuggle an isolation-model change into an engine swap,
+        # and then a divergence could not be attributed to either one.
+        return AgeGraphStore(pool, graph_name_for(None))
+    if backend == "":
+        raise ValueError(f"{_BACKEND_ENV} is set but empty — name a backend (neo4j | age)")
     raise ValueError(
         f"{_BACKEND_ENV}={backend!r} is not a known graph backend (neo4j | age)"
     )

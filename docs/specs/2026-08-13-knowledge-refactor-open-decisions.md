@@ -1032,6 +1032,38 @@ in this plan**, generalised into a check — not a hypothetical:
 | **Measured on a config the product does not offer** | QC-5 passed with a critic supplied in the request body; the studio path resolved a different one | acceptance runs on the **shipped path** |
 | **Documents disagreeing with each other** | 29 supersession claims, 16 unstruck; one deferral in two opposite states; §4.3's title outliving its body | `superseded-deferral-gate` + the supersession ledger |
 
+### 8.5 How the flip lands — TIER, grant, and what happens to the old graph — **DECIDED (PO 2026-08-22)**
+
+**TIER (rule 4): code default + an env pin on dev.** `_DEFAULT_BACKEND = "age"` in
+`graph_store_provider`, so a deployment that sets nothing gets AGE; and
+`KNOWLEDGE_GRAPH_BACKEND=age` pinned in `infra/.env`, so the shared stack STATES its backend
+rather than inheriting it. Two places, deliberately: the code default is the claim, the pin is
+the operational fact.
+
+⚠️ **The blast radius is real and was measured, not guessed.** Flipping the code default turned
+**41 unit tests into 500s** — their doubles are Neo4j-session shaped. `tests/conftest.py` now
+`setdefault`s `KNOWLEDGE_GRAPH_BACKEND=neo4j`, so the suite says which backend it tests. That
+pin would otherwise make the real default unobservable, so `test_graph_backend_default.py`
+reads the provider CONSTANT rather than the environment.
+
+**GRANT: bootstrapping AGE on dev knowledge-pg is authorised** — `CREATE EXTENSION age` and
+`create_graph`. Rule 6 otherwise bars it; this is the exception, and it is narrow: schema
+objects on the knowledge Postgres, not data writes to Neo4j or the glossary.
+
+**The dev AGE graph starts EMPTY, by decision.** Neo4j keeps its 4 872 entities; nothing is
+migrated. Rebuild-on-demand re-projects entities from the glossary SSOT (~8 ms/entity).
+🔴 **Stated because it is a real loss, not a formality:** the rebuild restores IDENTITY only —
+extraction-derived relations are not rebuildable (`D-T41`, accepted), so dev's 1 144
+`RELATES_TO` and its 4 causal edges do not come back without re-extraction. Acceptable here
+*because there is no production* and the dev graph is acknowledged residue (§4.3); it would not
+be acceptable later.
+
+**The shared graph `g_shared`, not graph-per-project.** Neo4j holds every project in one
+database scoped by `user_id`/`project_id` properties, so `graph_name_for(None)` reproduces the
+CURRENT isolation model exactly. Per-project graphs remain available and are what T43's harness
+uses. Adopting them at the same moment as the engine swap would mean a later divergence could
+not be attributed to either change.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

@@ -132,8 +132,10 @@ MAX_CONCRETE_IMPORTERS = 54
 # that reason. Moving the models is a separate slice; the number stays honest until
 # then rather than being redefined to look better.
 # **18** — T17 A10: `jobs/stats_updater.py`.
-MIN_GRAPHSTORE_ADOPTERS = 18
-
+#: 18 -> 19 (2026-08-22, T54): `main.py` imports the provider to build the AGE pool at
+#: lifespan. The floor rising on a CUTOVER commit is the point of the floor — T42/T43 shipped
+#: an adapter nobody could select, and adoption is the number that would have shown it.
+MIN_GRAPHSTORE_ADOPTERS = 19
 _CONCRETE = "neo4j_repos"
 
 #: T25 (3)'s REAL precondition, and it is not a database operation.

@@ -1232,6 +1232,12 @@ services:
       #   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
       #   KNOWLEDGE_VECTOR_DB_URL=postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors
       KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+      # T54 — the AGE graph. SAME instance as the vector DSN above: knowledge-pg runs
+      # loreweave/postgres-knowledge:18, which T42b built to carry both `age` and `vector`.
+      KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-}
+      # §8.1 made AGE the code default; this pins it explicitly on the shared stack so the
+      # backend is STATED rather than inherited (§8.1: "code default + env pin on dev").
+      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-age}
       # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
       # DETECTS (see knowledge_glossary_mirror_missing); this decides whether it also
       # CLOSES what it finds by re-emitting through glossary-service's outbox.

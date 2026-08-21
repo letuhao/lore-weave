@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 58 of 104 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 59 of 105 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/1) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -15927,6 +15927,53 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
 - [~] **T54** — **Wire the AGE provider and flip the default** — the row this plan never had
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.1, §8.2. Unfinished, not undecided.
+  ---
+  ### ✅ T54a 2026-08-22 — **AGE is wired and IS the default. The provider no longer raises.**
+
+  ```
+  before   KNOWLEDGE_GRAPH_BACKEND=age  ->  NotImplementedError
+  after    default = "age"; iso log: "AGE pool ready (graph=g_shared)"
+  ```
+
+  **The blocker was never the adapter — it was the LIFECYCLE.** `get_graph_store(session)` takes
+  a Neo4j session; AGE needs an asyncpg pool and a graph name. Resolved without touching any of
+  the **16** call sites: the pool is built once at lifespan (`init_age_pool`) beside
+  `run_neo4j_schema`, and the AGE branch ignores the session it is handed.
+
+  📐 **`g_shared`, not graph-per-project — and that is faithfulness, not a shortcut.** Neo4j holds
+  every project in one database scoped by `user_id`/`project_id` properties, so
+  `graph_name_for(None)` reproduces the current isolation model exactly. Swapping the engine and
+  the isolation model in one step would leave any later divergence unattributable to either.
+
+  ✅ **LIVE on lw-iso — a real port round trip, not a pool that merely built:**
+
+  ```
+  adapter: AgeGraphStore
+  resolve_or_merge_entity -> id=033199f8-… name='Cutover Probe' canonical_name='cutover probe'
+  find_entities_by_name   -> 1 match(es)
+  ROUND TRIP THROUGH AGE: HOLDS
+  ag_catalog.ag_graph: g_shared      pg_extension: age
+  ```
+
+  🔴 **THE DEFAULT FLIP HAS A MEASURED BLAST RADIUS: 41 unit tests became 500s.** Their doubles
+  are Neo4j-session shaped, and they had been inheriting a default rather than stating one.
+  `tests/conftest.py` now `setdefault`s `neo4j` — **and that pin makes the real default
+  unobservable**, which is the defect shape this plan keeps finding. So
+  `test_graph_backend_default.py` asserts the provider CONSTANT, which the pin cannot reach.
+  Pinned suite: **4291 passed** (4288 + 3).
+
+  🦷 **BITE — `_DEFAULT_BACKEND = "age"` → `"neo4j"`** (the pre-T54 state):
+  *"AssertionError: the graph default is no longer AGE. T54 flipped it deliberately; if this
+  changed, say so in the plan rather than in a constant."* — **1 failed, 2 passed.** The two
+  survivors are the counterweights: Neo4j is still selectable, and `age` without a DSN REFUSES
+  rather than falling back. Restored.
+
+  ⚠️ **Refusing is the point.** Selecting `age` and quietly getting Neo4j is worse than T42/T43's
+  original defect: a cutover would report success while nothing moved.
+
+  ⬜ **STILL OWED on this row:** the dev bootstrap (granted, §8.5) and its evidence. iso proves
+  the wiring; dev is where "the default is AGE" becomes an operational fact.
+
   🔴 **FOUND BY THE 2026-08-22 AUDIT: nothing owned the graph cutover.** T18 built the port,
   T42 built two adapters, T42a the conformance suite, T43 the shadow comparison, T42d the
   adoption gate — and **QC-7 signed off `cutover_permitted: True`** on 9-of-9 agreement plus a
