@@ -1,0 +1,1387 @@
+{
+  "batch": "batch19-v3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_edit",
+      "scenario": "composition-motif-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a motif is archived with NO confirm card (Tier A), OR the model targets ANY motif other than the one named — the caller owns 151 and picking the wrong row is the worst outcome here — OR the op chosen is not `archive` when the user said archive (its enum spans create|patch|archive|restore). Store check: the row with code 'throwaway-loop-pattern-b19' is still status<>'archived' afterwards, and no OTHER motif changed status — scoped rather than a headcount, because the account's library is live and moving.",
+      "answer_expect": null,
+      "falsifier_sha": "27ad5c1df79d9066",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and the op enum includes archive.",
+        "absent_case": "OWED — archiving a motif id that does not exist must be refused.",
+        "idempotency": "OWED — archiving an already-archived motif must refuse or be a clear no-op, not report a second success. Checked deliberately: that is the exact shape of the arc_template defect found in batch 15.",
+        "tenancy": "OWED — ACCOUNT-scoped: a system/unlisted motif (84 of them, owner_user_id NULL — a stable number, unlike the caller's own) must not be archivable by a caller who does not own it."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02323-0693-7ecf-bc2e-943a6711baab",
+          "session_id": "01a02323-1b3f-7fe9-aa14-1394e9423555",
+          "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.29077+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.47701+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.469875+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.29077+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.47701+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:04:53.469875+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02323-557c-7bd5-8fbb-6aaf0e292791",
+          "session_id": "01a02323-6cea-7702-87ae-7cbed5bd1399",
+          "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.490383+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.687449+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.679785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.490383+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.687449+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:13.679785+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02323-ce02-7c23-97af-d9cd08c5904a",
+          "session_id": "01a02323-e509-70ea-a4d7-1c4510303260",
+          "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.340533+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.519537+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.513809+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.340533+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.519537+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:05:44.513809+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02329-8183-718c-b238-88200fd0bc8d",
+          "session_id": "01a02329-9b9e-7d46-806c-c5348990eb09",
+          "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:57.981206+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:58.190204+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:58.178838+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:57.981206+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:58.190204+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:11:58.178838+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02329-d3ba-756a-b0d6-de6fc05155c4",
+          "session_id": "01a02329-ec87-7624-9388-548a6de23aec",
+          "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.023677+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.201215+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.19423+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.023677+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.201215+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:19.19423+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_motif_link_edit",
+      "scenario": "composition-motif-link-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: an edge lands with NO confirm card, OR the model invents a from_motif_id/to_motif_id rather than resolving the two names, OR `kind` is not `precedes` when the user said 'coming before' (its enum spans composed_of|precedes|variant_of, and variant_of would assert the two motifs are versions of each other, which is a different claim), OR the DIRECTION is reversed — Alpha precedes Beta, not the other way round, and a reversed edge is a wrong fact quietly stored.",
+      "answer_expect": null,
+      "falsifier_sha": "64065a3dac9c365e",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a from/to motif id that does not exist must be refused.",
+        "tenancy": "OWED — both endpoints must be the caller's own; an edge into a system motif must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0232a-5007-7f00-9c3f-060601e66c4a",
+          "session_id": "01a0232a-6b0b-70cf-a00c-ee1e6f708078",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha as coming before Throwaway Loop Beta.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:50.847546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:51.031271+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:51.025035+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:50.847546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:51.031271+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:12:51.025035+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs. It looks like I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names to complete the link.\n\nCould you provide the IDs, or should I search for them first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0232a-e999-7565-a2ed-e1081b0c42a0",
+          "session_id": "01a0232b-0234-7dca-be9c-e499e3e60211",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha as coming before Throwaway Loop Beta.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.157076+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.338749+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.331383+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.157076+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.338749+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:30.331383+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs. It looks like I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names to complete the link.\n\nCould you provide the IDs, or should I search for them first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0232b-5088-7ce8-9e2e-bcad644cca93",
+          "session_id": "01a0232b-68e0-7713-a31d-579a96ef785c",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha as coming before Throwaway Loop Beta.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.520998+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.706027+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.699627+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.520998+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.706027+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:13:56.699627+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs. It looks like I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names to complete the link.\n\nCould you provide the IDs, or should I search for them first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0232b-bad3-7bc8-9df5-aa34ed712e7b",
+          "session_id": "01a0232b-d340-7bc2-a037-328aeb805e18",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha as coming before Throwaway Loop Beta.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.730272+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.934962+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.926788+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.730272+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.934962+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:23.926788+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs. It looks like I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names to complete the link.\n\nCould you provide the IDs, or should I search for them first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0232c-2278-7fee-b8bf-13b1063699a0",
+          "session_id": "01a0232c-3b23-794c-ab36-f96f61528a59",
+          "prompt": "Link motifs — mark Throwaway Loop Alpha as coming before Throwaway Loop Beta.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_link_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.270388+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.45577+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.449126+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.270388+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.45577+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:14:50.449126+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble linking those motifs. It looks like I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names to complete the link.\n\nCould you provide the IDs, or should I search for them first?"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_motif_bind_edit",
+      "scenario": "composition-motif-bind-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said apply/bind — its enum is bind|unbind and `unbind` on a request to APPLY would remove a binding the author never asked to remove — OR the model invents a node_id or motif_id rather than resolving 'this book's opening arc' and the motif's name.",
+      "answer_expect": null,
+      "falsifier_sha": "7e9a207002f94576",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — binding the same motif to the same node twice must not create two applications.",
+        "tenancy": "OWED — book-scoped for the node AND account-scoped for the motif: two scopes on one call, and both must be checked."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0232c-8985-7dc0-8cb9-1dc08cf23ecc",
+          "session_id": "01a0232c-a36c-7918-ad80-01fa45f3b1d6",
+          "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.633516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.814732+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:17.086414+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.808813+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.633516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.814732+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:17.086414+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:16.808813+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0232c-d7e5-77c8-9188-2df30b32a07e",
+          "session_id": "01a0232c-ed43-7740-8266-25b913f7952e",
+          "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.702931+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.883718+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:37.137784+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.878016+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.702931+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.883718+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:37.137784+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:15:36.878016+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02330-26bd-7453-a1f6-25636930cf79",
+          "session_id": "01a02330-3fe1-7c99-a569-8e3d50025526",
+          "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.49512+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.682763+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.942186+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.675459+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.49512+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.682763+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.942186+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:13.675459+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02330-9aa9-79f3-854a-f741857865fe",
+          "session_id": "01a02330-b39d-7b3e-8d36-636c8454ac47",
+          "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.174914+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.365848+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.670439+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.359257+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.174914+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.365848+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.670439+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:19:43.359257+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02331-0ed5-7ab1-b7ec-0bfd0a22aaa7",
+          "session_id": "01a02331-28db-75f2-82bc-6793fe843fba",
+          "prompt": "Apply motif — bind my Throwaway Loop Pattern motif to this book's opening arc.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:12.90516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.093644+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.391377+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.086523+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:12.90516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.093644+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.391377+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:13.086523+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_motif_adopt",
+      "scenario": "composition-motif-adopt",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "answer_expect": null,
+      "falsifier_sha": "bfe5bb854d24eb76",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02331-82ac-7a49-9ed1-d4cd6c03b922",
+          "session_id": "01a02331-9a5e-769c-9062-67d3d9bc8e22",
+          "prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.56487+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.747364+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.740729+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.56487+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.747364+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:20:42.740729+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've pulled a selection of built-in motifs from the system library. You can choose one of these to adopt and customize for your own story:\n\n### **Situations (Events or setups)**\n*   **A Thing From Before** (`survival.relic_of_before`): An object from a lost world surfaces; its value is measured by what people will sacrifice for it.\n*   **An Insult in a Public House** (`wuxia.tavern_provocation`): A public slight that tests restraint and spreads through reputation.\n*   **Auction-House Treasure** (`cultivation.auction_house_treasure`): A rare item surfaces; the protagonist wins it through unexpected means.\n*   **Blood-Debt Collection** (`revenge.blood_debt_collection`): An avenger confronts those who shared a past crime, one by one.\n*   **Face-Slap Reversal** (`cultivation.face_slap`): An arrogant party mocks the protagonist, only to be humiliated by the protagonist's hidden power.\n\n### **Sequences (Plot movements or arcs)**\n*   **A Grudge Older Than the Holder** (`wuxia.inherited_feud`): A generational feud forces an inheritor to choose between a cycle of killing and the truth.\n*   **Across the Line** (`romance.status_gap`): Attachment forms across social or political boundaries, requiring a heavy price to cross.\n*   **Answering for a Life Not Lived** (`rebirth.inherited_debts`): A character inherits the debts, reputation, or enemies of a previous life/identity.\n*   **Betrayal to Exile** (`revenge.betrayal_to_exile`): A trusted ally turns on the hero on the eve of triumph, leading to exile and a vow of return.\n*   **Closed-Door Breakthrough** (`cultivation.closed_door_breakthrough`): A character undergoes a dangerous, isolated trial to ascend to a new level of power.\n\n### **Hooks (Ways to grab attention)**\n*   **Betrayal Hinted** (`hook.betrayal_hinted`): A trusted figure shows a sudden crack of doubt.\n*   **Choice Forced** (`hook.choice_forced`): The POV is cornered into an irreversible decision.\n*   **Cliff Question** (`hook.cliff_question`): An unanswered danger a"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02332-030b-7bae-8093-45475c39bc71",
+          "session_id": "01a02332-1d77-7636-945d-a0f31277d8c7",
+          "prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.455773+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.639937+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.633132+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.455773+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.639937+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:15.633132+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've pulled a selection of built-in motifs from the system library. You can choose one to adopt into your own library, where you can then rename it, change its beats, or add your own custom rules.\n\nHere are a few to get you started:\n\n**Situations (Events or setups)**\n*   **\"A Thing From Before\"** (Survival/Apocalypse): An object from the old world surfaces—worthless to some, priceless to others.\n*   **\"An Insult in a Public House\"** (Wuxia/Martial): A public slight that tests restraint and spreads through reputation.\n*   **\"Auction-House Treasure\"** (Cultivation/Xianxia): A rare item surfaces at auction; the protagonist wins it through unexpected means.\n*   **\"Face-Slap Reversal\"** (Cultivation/Xianxia): An arrogant party mocks the protagonist, who then reveals hidden power to humiliate them.\n\n**Sequences (Plot patterns or arcs)**\n*   **\"A Grudge Older Than the Holder\"** (Wuxia/Feud): A generational feud forces an inheritor to choose between a cycle of killing and the truth.\n*   **\"Betrayal to Exile\"** (Revenge): On the eve of triumph, a close ally turns, casting the survivor out to swear revenge.\n*   **\"Closed-Door Breakthrough\"** (Cultivation/Progression): A cultivator enters seclusion to face an inner wall or heavenly trial to ascend.\n\n**Hooks (Ways to end a chapter or start a scene)**\n*   **\"Dialogue Bomb\"** (Connective): A single line of dialogue detonates, ending the chapter on a shock.\n*   **\"Countdown Started\"** (Connective): A deadline is set, framing the upcoming action as a race.\n\n**Which one would you like to adopt?** (Just tell me the name or the code, and I'll set it up for you.)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02332-59e8-78bb-bf7c-d4c90e7dab2c",
+          "session_id": "01a02332-7775-7b2b-9ca8-ad1ae195e5e5",
+          "prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.691579+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.883757+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.876766+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.691579+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.883757+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:21:37.876766+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've pulled a selection of built-in motifs from the system library. You can choose one of these to adopt into your own library for customization, or let me know if you're looking for a different genre.\n\n### Available Motifs\n\n**Situations (Scenes/Events)**\n*   **A Thing From Before** (`survival.relic_of_before`): An object from a lost world surfaces; its value is measured by what people will sacrifice for it.\n*   **An Insult in a Public House** (`wuxia.tavern_provocation`): A public slight that tests restraint and spreads through reputation.\n*   **Auction-House Treasure** (`cultivation.auction_house_treasure`): A rare item surfaces; the protagonist wins it through unexpected means.\n*   **Blood-Debt Collection** (`revenge.blood_debt_collection`): An avenger confronts those who shared a past crime, one by one.\n*   **Face-Slap Reversal** (`cultivation.face_slap`): An arrogant party mocks the protagonist, only to be humiliated by the protagonist's hidden power.\n\n**Sequences (Plot Arcs/Patterns)**\n*   **A Grudge Older Than the Holder** (`wuxia.inherited_feud`): A multi-generational feud forces an inheritor to choose between a cycle of killing and the truth.\n*   **Betrayal to Exile** (`revenge.betrayal_to_exile`): A close ally turns on the hero on the eve of triumph, leading to a vow of return.\n*   **Closed-Door Breakthrough** (`cultivation.closed_door_breakthrough`): A cultivator enters seclusion to face an inner wall or heavenly trial to ascend.\n*   **Dao-Heart Tempering** (`cultivation.dao_heart_temper`): An illusory trial forces the cultivator to confront their worst guilt to maintain their resolve.\n\n**Hooks (Chapter/Scene Endings)**\n*   **Betrayal Hinted** (`hook.betrayal_hinted`): A trusted figure shows a crack of doubt.\n*   **Choice Forced** (`hook.choice_forced`): The POV is cornered into an irreversible decision.\n*   **Cliff Question** (`hook.cliff_question`): An unanswered danger pulls the reader into the next chapter.\n*   **Dialogue Bomb** (`hook.dialogue_bomb`)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02332-bf4a-7f4f-8706-532532de3edd",
+          "session_id": "01a02332-de43-74f7-912b-0e8a67f7471e",
+          "prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.650306+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.855059+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.846886+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.650306+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.855059+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:03.846886+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several built-in motifs you can adopt. Here are a few examples from different genres:\n\n**Cultivation / Xianxia**\n*   **Face-Slap Reversal:** An arrogant party mocks the protagonist, who then reveals hidden power and turns the humiliation back on them.\n*   **Dao-Heart Tempering:** An inner demon surfaces in an illusory trial; the cultivator must refuse a comforting lie to hold their dao-heart.\n*   **Closed-Door Breakthrough:** Sealing oneself away to break a stagnant rank and endure a heavenly trial.\n\n**Survival / Apocalypse**\n*   **A Thing From Before:** An object from the old world (a photo, a radio) surfaces; its value is measured by what people are willing to trade for it.\n*   **Authority Made in an Afternoon:** In a crisis, someone makes a decisive statement that grants them retroactive authority.\n\n**Romance / Intrigue**\n*   **Across the Line:** Attachment forms across a boundary (rank, species, faction) that the world enforces.\n*   **Double-Agent Reveal:** A baited false secret is used to identify a mole.\n\n**Revenge / Wuxia**\n*   **A Grudge Older Than the Holder:** A feud handed down through generations that the current inheritor must investigate.\n*   **An Insult in a Public House:** A public slight that tests restraint and spreads through reputation.\n\n**Which one would you like to adopt?** (Or if you have a specific genre in mind, let me know and I'll find more.)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02333-1aa3-7c42-bde1-07c6fb2a5c82",
+          "session_id": "01a02333-39c5-769f-b51c-80954ea7003d",
+          "prompt": "Adopt motif — copy one of the built-in tropes into my library so I can customise it.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.034962+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.249013+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.241202+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.034962+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.249013+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-21 07:22:27.241202+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several built-in motifs you can adopt. Here are a few examples from different genres:\n\n**Cultivation / Xianxia**\n*   **Face-Slap Reversal:** An arrogant party mocks the protagonist, who then reveals hidden power and turns the humiliation back on them.\n*   **Dao-Heart Tempering:** An inner demon surfaces in an illusory trial; the cultivator must refuse a comforting lie to hold their dao-heart.\n*   **Closed-Door Breakthrough:** Sealing oneself away to break a stagnant rank and face a heavenly trial.\n\n**Survival / Apocalypse**\n*   **A Thing From Before:** An object from the old world (like a photograph or a radio) surfaces; its value is measured by what people are willing to sacrifice for it.\n*   **Authority Made in an Afternoon:** In a crisis where no one is in charge, someone makes a sudden decision that grants them retroactive authority.\n\n**Romance / Intrigue**\n*   **Across the Line:** Attachment forms across a boundary (rank, clan, species) that the world enforces, forcing lovers to price the crossing.\n*   **Double-Agent Reveal:** A leak too precise to be chance is used to bait a mole and turn them.\n\n**Revenge / Wuxia**\n*   **A Grudge Older Than the Holder:** A family feud handed down through generations that the inheritor must decide to continue or end.\n*   **An Insult in a Public House:** A public slight in a crowded room that forces a confrontation and spreads through reputation.\n\n**Which one would you like to adopt?** (Or if you have a specific genre in mind, let me know and I'll find more.)"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

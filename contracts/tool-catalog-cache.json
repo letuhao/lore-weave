@@ -11993,6 +11993,7 @@
         }
        ],
        "default": null,
+       "description": "Free-text query \u2014 THIS is how you search by NAME. An exact name or code match sorts first, then semantic similarity. There is no separate `name` argument. Unlike genre/kind/status (which SUBTRACT), q RANKS: it never removes a result.",
        "title": "Q"
       },
       "scope": {
@@ -12099,6 +12100,7 @@
       }
      ],
      "default": null,
+     "description": "Free-text query \u2014 THIS is how you search by NAME. An exact name or code match sorts first, then semantic similarity. There is no separate `name` argument. Unlike genre/kind/status (which SUBTRACT), q RANKS: it never removes a result.",
      "title": "Q"
     },
     "scope": {

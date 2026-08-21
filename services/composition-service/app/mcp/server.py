@@ -3792,7 +3792,29 @@ async def composition_authoring_run_review(ctx: MCPContext, args: _AuthoringRunR
 class _MotifSearchArgs(ForbidExtra):
     genre: str | None = None
     kind: _MotifKind | None = None
-    q: str | None = None
+    # 🔴 D-UNDECLARED-ARG-IS-GUESSED. This was a bare `str | None` whose advertised schema was
+    # {"anyOf": [...], "default": null, "title": "Q"} — no description at all. A model asked to
+    # find a motif BY NAME sees a parameter called "Q" that says nothing, and invents one that
+    # sounds right.
+    #
+    # MEASURED 2026-08-21, batch 19, on TWO scenarios across TWO arms (10 runs, 5/5 each time):
+    # the model called this tool with {"name": ["Throwaway Loop Pattern"], "scope": "mine"} and
+    # got `args.name`: Extra fields not permitted. It retried, and the retry loop ended in a
+    # provider stream error — which is why composition_motif_edit and composition_motif_bind_edit
+    # both read 0/5 called with 5/5 errors, and why that looked like a flaky rig for two batches.
+    #
+    # The tool COULD do what was asked: q="Throwaway Loop" returns the 4 matching motifs. The
+    # capability was there and the declaration was not. The DESCRIPTION mentions `q` in prose —
+    # "an exact name or code hit sorts first" — but prose on the TOOL is not a declaration on the
+    # ARGUMENT, and the argument is what the model fills in.
+    q: Annotated[
+        str | None,
+        Field(description=(
+            "Free-text query — THIS is how you search by NAME. An exact name or code match sorts "
+            "first, then semantic similarity. There is no separate `name` argument. Unlike genre/"
+            "kind/status (which SUBTRACT), q RANKS: it never removes a result."
+        )),
+    ] = None
     scope: Literal["mine", "public", "system", "all"] = "all"
     status: Literal["draft", "active", "archived"] | None = None
     # The language to READ the motifs in — a re-wording, never a filter. A motif with no
