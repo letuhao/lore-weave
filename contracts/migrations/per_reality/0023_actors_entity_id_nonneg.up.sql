@@ -35,5 +35,24 @@
 -- exists, this migration failing IS the right outcome: it says the invariant
 -- was already broken, which is the thing worth knowing.
 
-ALTER TABLE actors
-    ADD CONSTRAINT actors_entity_id_nonneg CHECK (entity_id >= 0);
+-- IDEMPOTENT, and the first version was not.
+--
+-- Re-provisioning a completed reality RE-APPLIES the migration set — that is
+-- the retry-safe behaviour `provisioner_reentry_live` exists to hold — and
+-- Postgres has no `ADD CONSTRAINT IF NOT EXISTS`, so a bare `ALTER TABLE ... ADD
+-- CONSTRAINT` fails the second time with *"constraint already exists"*. Every
+-- other file in this directory is idempotent by construction (`CREATE TABLE IF
+-- NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`); a constraint needs the guard
+-- written out. Caught by that suite on the first full run after this file
+-- landed, which is the whole reason it is a live suite.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'actors_entity_id_nonneg'
+          AND conrelid = 'actors'::regclass
+    ) THEN
+        ALTER TABLE actors
+            ADD CONSTRAINT actors_entity_id_nonneg CHECK (entity_id >= 0);
+    END IF;
+END $$;
