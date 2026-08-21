@@ -375,6 +375,15 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
         granularity=args.granularity,
         limit=args.limit,
         before_sort_order=before_sort_order,
+        # D-AUTHOR-SEARCH-READS-ONLY-CANON — see the long note at the memory_search call
+        # site. story_search is BLOCKED in the tool-deep-dive ledger on exactly this: it
+        # returned 0 hits with degraded.semantic='not_indexed' over a seeded chapter that
+        # literally contained the phrase, and the model relayed that as "it's possible it
+        # hasn't been written yet". I recorded the cause then as a fixture gap — "needs an
+        # INDEXED project" — and that diagnosis was WRONG. The lexical leg needs no
+        # embeddings at all; it was searching canon over an unpublished draft. Same
+        # owner-keyed project lookup, so the same boundary applies.
+        surface="all",
     )
     hits = result.hits[: args.limit]
     # L1/L2 reference-first (§6b): at detail="summary" drop the heavy passage
@@ -482,11 +491,34 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     ):
         from app.search.retriever import run_hybrid_search  # heavy deps — late import
 
+        # ── D-AUTHOR-SEARCH-READS-ONLY-CANON ──────────────────────────────────────
+        # `run_hybrid_search` defaults surface="canon" — PUBLISHED-revision text only —
+        # and this call site never passed one, so an author searching their own book was
+        # silently given the READER's answer. A chapter written and not yet published
+        # (editorial_status='draft', published_revision_id=null) is the normal state of a
+        # manuscript in progress, and it was invisible.
+        #
+        # MEASURED 2026-08-14, reproducible with no model in the loop: a throwaway book
+        # with one seeded chapter containing "The Obsidian Trench is only walkable during
+        # low tide", then memory_search for each of 'Obsidian Trench', 'low tide',
+        # 'Obsidian', 'waterline', 'Aldric Vane' — 0 hits, every one, while the tool's own
+        # description promises "lexical + semantic, so it finds an exact phrase even with
+        # nothing indexed yet". The lexical leg was working; it was searching canon, and
+        # canon was empty.
+        #
+        # THE BOUNDARY, because "just pass all" is wrong for half the call sites: drafts
+        # are OWNER-ONLY (raw_search.py states it — a non-owner asking surface=all is
+        # downgraded). These two tools resolve `project` through the OWNER-KEYED
+        # projects_repo.get(ctx.user_id, ...), so the caller IS the owner by construction.
+        # The reader-facing sites — reader_tools.py and wiki/context.py — keep the canon
+        # default deliberately, because there the published surface is the correct answer.
+        # The spoiler window (before_sort_order) is a separate control and still applies.
         result = await run_hybrid_search(
             user_id=ctx.user_id, book_id=project.book_id, query=args.query,
             project=project, book_client=ctx.book_client,
             embedding_client=ctx.embedding_client, reranker_client=ctx.reranker_client,
             mode="hybrid", granularity="block", limit=args.limit,
+            surface="all",
         )
         for h in result.hits[: args.limit]:
             snip = h.get("snippet") or ""
@@ -561,7 +593,20 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
     if degraded:
         out["degraded"] = degraded
     if not projected:
-        out["note"] = "this project has no indexed memory yet"
+        # 🔴 AND THE NOTE MUST NOT ASSERT AN INDEXING STATE IT NEVER CHECKED. This line
+        # fired whenever the result was empty, for ANY reason, so "I found nothing" was
+        # reported to the caller as "nothing is indexed". The model then relayed it to the
+        # author as "it hasn't been established in the story yet" — measured live, rep3 of
+        # 5 on 2026-08-14 — which is D-DEGRADED-READ-REPORTED-AS-ABSENCE arriving in the
+        # payload rather than being invented by the model. An empty result and an
+        # un-indexed project are different facts and now read differently.
+        out["note"] = (
+            "no stored knowledge matched this query"
+            + (" — note the semantic index is not built for this project yet, so this "
+               "search covered the manuscript text only"
+               if isinstance(degraded, dict) and degraded.get("semantic") == "not_indexed"
+               else "")
+        )
     return out
 
 

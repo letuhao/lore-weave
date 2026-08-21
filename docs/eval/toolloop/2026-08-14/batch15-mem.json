@@ -1,0 +1,362 @@
+{
+  "batch": "batch15-mem",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "memory_search",
+      "scenario": "memory-search-v2",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
+      "answer_expect": {
+        "all_of": [
+          "low tide"
+        ],
+        "none_of": [
+          "hasn't been written",
+          "has not been written",
+          "couldn't find any mention",
+          "could not find any mention"
+        ],
+        "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
+      },
+      "falsifier_sha": "97c89d181070104a",
+      "ship_audit": {
+        "empty_case": "OWED — a project with no matching knowledge must say so, and 'nothing matched' must be distinguishable from 'nothing is indexed', which is the distinction that broke here.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02158-ee5f-75cb-9ad5-30479e90a69f",
+          "session_id": "01a02159-0b5c-734d-be81-830862298657",
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "book_read",
+            "memory_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:44:31.994974+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:31.843547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:31.833663+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:44:31.994974+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:31.843547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:31.833663+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02159-4908-7c04-a6a8-8361f4e3da9e",
+          "session_id": "01a02159-6933-7e00-ad6c-7a31ff958fbd",
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "book_read",
+            "memory_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:44:55.1424+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:55.027059+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:55.016419+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:44:55.1424+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:55.027059+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:44:55.016419+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Based on the manuscript so far, the following has been established about the **Obsidian Trench**:\n\n*   **Tidal Accessibility:** It is only walkable during low tide.\n*   **Danger:** It is hazardous enough that Aldric Vane has nearly been taken by the sea while in it.\n*   **Physicality:** It features a \"waterline\" that marks the stone where the sea reaches during high tide."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02159-ac01-7c81-8d0f-9f1579208f8b",
+          "session_id": "01a02159-c816-72d5-8197-d2119d164a50",
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "book_read",
+            "memory_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:45:20.491203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:20.379837+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:20.37196+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:45:20.491203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:20.379837+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:20.37196+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Based on the manuscript so far, here is what has been established about the **Obsidian Trench**:\n\n*   **Accessibility:** It is only walkable during low tide.\n*   **Danger:** It is hazardous enough that Aldric Vane has nearly been taken by the sea while in it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0215a-0330-7b62-92fe-e29fc8bba97e",
+          "session_id": "01a0215a-1d70-70b3-a4a1-21d7b070db08",
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_read",
+            "composition_package_tree",
+            "memory_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:45:42.83815+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:42.710053+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:42.701196+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:45:42.83815+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:42.710053+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:45:42.701196+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't find any mention of the \"Obsidian Trench\" in the current manuscript, the project's memory, or the established story bible. \n\nIt hasn't been established in the story yet. If you'd like to introduce it, you can tell me about it now, and I can help you add it to your world's records!"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0215a-5ad0-7f5e-9e80-5933093cd335",
+          "session_id": "01a0215a-76b7-7cf1-8246-cc67b22fa2f1",
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "book_read",
+            "memory_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:46:05.229224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:46:05.119869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:46:05.112491+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 2,
+                "latest": "2026-08-20 22:46:05.229224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:46:05.119869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:46:05.112491+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

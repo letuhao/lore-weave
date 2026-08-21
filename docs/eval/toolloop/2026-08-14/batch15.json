@@ -1,0 +1,1603 @@
+{
+  "batch": "batch15",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "memory_search",
+      "scenario": "memory-search-v2",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
+      "answer_expect": {
+        "all_of": [
+          "low tide"
+        ],
+        "none_of": [
+          "hasn't been written",
+          "has not been written",
+          "couldn't find any mention",
+          "could not find any mention"
+        ],
+        "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
+      },
+      "falsifier_sha": "97c89d181070104a",
+      "ship_audit": {
+        "empty_case": "OWED — a project with no matching knowledge must say so, and 'nothing matched' must be distinguishable from 'nothing is indexed', which is the distinction that broke here.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8205/v1/books/01a0214a-a1cd-79e1-92bc-5b460d383960/chapters'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8205/v1/books/01a0214a-a57d-7d29-bd8a-94e9fe0e919a/chapters'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8205/v1/books/01a0214a-a786-712d-a525-17d37081d3e7/chapters'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8205/v1/books/01a0214a-a97b-70cc-bb51-7759ebd082a3/chapters'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "What has been established about the Obsidian Trench so far?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8205/v1/books/01a0214a-ab08-7491-8c0c-c3f56ba75220/chapters'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "jobs_list",
+      "scenario": "jobs-list-v3",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR a reply reports the page size as the total, OR any run produces NO text with no confirm card. THE SECOND CLAUSE IS THE REASON THIS IS HERE: at K=5 on 2026-08-14 four replies were correct and the fifth was silent, which is D-SILENT-TURN-NO-CARD-NO-PROSE. The recording of that case is fixed (it is stored `failed` now, not `completed`) but the silence itself is not, so this run is also the live reproduction attempt the defect is owed. CONTROL: this account has real jobs, so an answer of 'none' contradicts a known reading.",
+      "answer_expect": {
+        "none_of": [
+          "you have 10 background jobs",
+          "you currently have 10",
+          "there are 10 jobs"
+        ],
+        "why": "D-PAGE-READ-AS-A-TOTAL, pinned as a needle. The batch-7 conclusion rested on a reply that said 'You currently have 10 background jobs running' — the PAGE SIZE — against 31 actually active. The tool now returns page {returned, has_more} and a guidance line naming jobs_summary; these needles fail if the page size is reported as the total again."
+      },
+      "falsifier_sha": "ee8d538858c804b7",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so rather than describe what a job is.",
+        "tenancy": "OWED — owner-scoped, and its description claims only the caller's own jobs are ever returned."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0214a-a1da-785d-aa24-4dea911e5943",
+          "session_id": "01a0214a-bf5a-792c-bcc4-2dded72c299e",
+          "prompt": "Show me my background jobs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.627665+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.991974+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.953765+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.627665+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.991974+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.953765+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several completed translation jobs in your history. Here are the most recent ones:\n\n*   **Translation Job** (`...705`): Completed\n*   **Translation Job** (`...c0a`) : Completed\n*   **Translation Job** (`...5a9a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...5c00a0c`): Completed\n*   **Translation Job** (`...a9a8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n\nI got stuck deciding how to do that and stopped rather than loop. Could you tell me the exact change you want, or rephrase it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0214d-7a93-703a-9242-23000ec9188a",
+          "session_id": "01a0214d-967c-71f8-9e88-d30895ad27dc",
+          "prompt": "Show me my background jobs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.084181+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.347931+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.339244+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.084181+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.347931+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:01.339244+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several completed translation jobs in your history. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...5c00a0c`): Completed\n*   **Translation Job** (`...a5a9a8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...c00a0c`): Completed\n*   **Translation Job** (`...8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...c00a0c`): Completed\n*   **Translation Job** (`...a5a9a8c0a`): Completed\n*   **Translation Job** (`\n\nI got stuck deciding how to do that and stopped rather than loop. Could you tell me the exact change you want, or rephrase it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0214f-89d7-7c96-a146-f1958b6a0d0b",
+          "session_id": "01a0214f-a712-7ecf-8028-9c99934cb819",
+          "prompt": "Show me my background jobs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.052875+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.261766+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.251755+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.052875+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.261766+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:16.251755+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several completed translation jobs in your history. Here are the most recent ones:\n\n| Job ID | Service | Kind | Status | Cost (USD) |\n| :--- | :--- | :--- | :--- | :--- |\n| `01a020ee...` | translation | translation | completed | $0.0012 |\n| `01a020ee...` | translation | translation | completed | $0.0013 |\n| `01a020ed...` | translation | translation | completed | $0.0013 |\n| `01a020ed...` | translation | translation | completed | $0You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...c00a0c`): Completed\n*   **Translation Job** (`...a9a8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...5c00a0c`): Completed\n*   **Translation Job** (`...a5a9a8c0a`): Completed\n*   **Translation Job** (`\n\nI got stuck deciding how to do that and stopped rather than loop. Could you tell me the exact change you want, or rephrase it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02150-4487-7b6a-9b0a-2b30183d42e8",
+          "session_id": "01a02150-62a5-7668-a0f0-3cfeecdd2fe0",
+          "prompt": "Show me my background jobs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:03.866401+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:04.077825+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:04.06789+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:03.866401+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:04.077825+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:04.06789+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several completed translation jobs in your history. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...5c00a0c`): Completed\n*   **Translation Job** (`...a5a9a8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...5c00a0c`): Completed\n*   **Translation Job** (`...a9a8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n\nI got stuck deciding how to do that and stopped rather than loop. Could you tell me the exact change you want, or rephrase it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02151-0ee7-79fc-9adb-0d904c37cb4e",
+          "session_id": "01a02151-2d38-7df6-a7b2-a8f034d0c184",
+          "prompt": "Show me my background jobs.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.659008+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.865918+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.857821+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.659008+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.865918+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:55.857821+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several completed translation jobs in your history. Here are the most recent ones:\n\n| Job ID | Service | Kind | Status | Cost (USD) |\n| :--- | :--- | :--- | :--- | :--- |\n| `01a020ee...` | translation | translation | completed | $0.0012 |\n| `01a020ee...` | translation | translation | completed | $0.0013 |\n| `01a020ed...` | translation | translation | completed | $0.0013 |\n| `01a020ed...` | translation | translation | completed | $0You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation Job** (`...ba705`): Completed\n*   **Translation Job** (`...c00a0c`): Completed\n*   **Translation Job** (`...8c0a`): Completed\n*   **Translation Job** (`You have several completed translation jobs. Here are the most recent ones:\n\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ee...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n*   **Translation** (`01a020ed...`): Completed\n\nI got stuck deciding how to do that and stopped rather than loop. Could you tell me the exact change you want, or rephrase it?"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_arc_list",
+      "scenario": "composition-arc-list",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply names only one arc, OR it describes arc CONTENT (beats, tracks, cast) that title-only nodes do not have — this tool returns the spec tree, so any pacing or roster detail in the reply is fabricated.",
+      "answer_expect": {
+        "all_of": [
+          "Hollow Keep",
+          "Drowned Court"
+        ],
+        "why": "Both seeded arcs are the entire tree; naming both is the minimum evidence the list was read rather than described. Batch 11 measured the opposite failure on composition_conformance_status — inventing a verdict for a book that had never run one."
+      },
+      "falsifier_sha": "50e8162dfd3b62b8",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no arcs must be reported as having none, not as having a default structure.",
+        "tenancy": "OWED — book-scoped.",
+        "absent_case": "OWED — include_archived must actually change what comes back, or the flag is decoration."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0214a-a1de-7fe2-ad4d-11de0c35ec01",
+          "session_id": "01a0214a-c260-78b2-ba11-ba8cef76177d",
+          "prompt": "Show me the arc tree for this book — the whole story structure.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.621728+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.000222+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:28:55.404456+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.991081+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.621728+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.000222+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:28:55.404456+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.991081+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here is the current arc structure for your book:\n\n*   **Arc I — The Hollow Keep**\n*   **Arc II — The Drowned Court**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0214b-6653-7665-89e3-5477920d2900",
+          "session_id": "01a0214b-85c1-7cf9-a547-1a02925e21c4",
+          "prompt": "Show me the arc tree for this book — the whole story structure.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:44.848234+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:45.093551+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:29:45.414715+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:45.079275+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:44.848234+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:45.093551+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:29:45.414715+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:29:45.079275+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here is the current arc structure for your book:\n\n*   **Arc I — The Hollow Keep**\n*   **Arc II — The Drowned Court**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0214c-45d2-727f-a52d-a447bc940185",
+          "session_id": "01a0214c-67ac-78fe-9c99-5a7b4d692001",
+          "prompt": "Show me the arc tree for this book — the whole story structure.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.045823+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.253451+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:30:42.565085+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.245436+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.045823+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.253451+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:30:42.565085+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:30:42.245436+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here is the current story structure for your book:\n\n**Arc I — The Hollow Keep**\n**Arc II — The Drowned Court**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0214d-1e94-77f0-871a-800fc7ad6d14",
+          "session_id": "01a0214d-3e3e-7adb-9217-cfb5348f07e2",
+          "prompt": "Show me the arc tree for this book — the whole story structure.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.539231+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.791912+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:31:38.135893+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.774902+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.539231+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.791912+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:31:38.135893+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:37.774902+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here is the current arc structure for your book:\n\n*   **Arc I — The Hollow Keep**\n*   **Arc II — The Drowned Court**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0214d-e30f-7ee8-8174-a9f807071f06",
+          "session_id": "01a0214e-0183-7163-84aa-975d37b6301a",
+          "prompt": "Show me the arc tree for this book — the whole story structure.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:27.82918+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:28.045098+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:32:28.33657+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:28.03659+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:27.82918+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:28.045098+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-20 22:32:28.33657+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:32:28.03659+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here is the current arc structure for your book:\n\n*   **Arc I — The Hollow Keep**\n*   **Arc II — The Drowned Court**"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_arc_template_drift",
+      "scenario": "composition-arc-template-drift",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the tool returns a drift figure for an arc with no pinned template, OR the model invents a node_id/project_id rather than resolving them (both are REQUIRED and neither is ambient — project_id is the Work, not the book, which is itself a resolution step worth watching). A turn that cannot proceed is a PRECONDITION finding, not a tool defect, and must be recorded as such.",
+      "answer_expect": null,
+      "falsifier_sha": "7e259cc9f1d9718a",
+      "ship_audit": {
+        "absent_case": "This scenario IS the absent case — an arc with no template pin. The refusal is the evidence.",
+        "tenancy": "OWED — book-scoped, and project_id is a second scope that must be checked independently."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0214a-a1cf-7918-a306-d8ab9fc90fb1",
+          "session_id": "01a0214a-c14b-76f2-bf60-5d7fc1c71e1e",
+          "prompt": "How far from the template has this arc drifted?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_drift",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.630955+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.002117+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.208907+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.988721+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.630955+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.002117+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:55.208907+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:54.988721+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can check that for you, but I need to know which arc you are referring to. \n\nCurrently, I see one arc in your project: **\"Arc I — The Hollow Keep\"**. \n\nWould you like me to check the drift for that one?\n\nI cannot check the drift for \"Arc I — The Hollow Keep\" because it has not been compiled into a real structure yet (it is currently only an outline). Drift can only be measured once an arc has been compiled into a planning package."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0214c-aa18-7e6d-a23d-1d210d75e056",
+          "session_id": "01a0214c-c94e-772d-aae5-6a3ab1b2c721",
+          "prompt": "How far from the template has this arc drifted?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_drift",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.718625+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.937337+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:08.107429+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.927793+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.718625+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.937337+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:08.107429+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:31:07.927793+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can check that for you, but I need to know which arc you are referring to. \n\nCurrently, I see one arc in your project: **\"Arc I — The Hollow Keep\"**. \n\nWould you like me to check the drift for that one?\n\nI'm unable to check the drift for \"Arc I — The Hollow Keep\" because it hasn't been compiled into a real structure yet (it is currently just an outline). Drift can only be measured once an arc has been compiled from a plan into a sequence of scenes and chapters."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0214e-b9be-791c-bfec-e9ed54ccf443",
+          "session_id": "01a0214e-d7e8-720d-967f-f785e73f4ca0",
+          "prompt": "How far from the template has this arc drifted?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_drift",
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:22.833213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.069051+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.216598+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.060445+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:22.833213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.069051+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.216598+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:33:23.060445+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't check the drift for that arc just yet because a conformance run hasn't been performed for it. \n\nCurrently, \"Arc I — The Hollow Keep\" is marked as \"never run,\" which means the system hasn't compared the written prose against the original plan. Additionally, \"Chapter I — The Ember Codex\" is currently flagged as an unplanned chapter.\n\nIf you'd like me to check the drift, I'll first need to run a conformance check on the arc. Would you like me to do that?\n\nI cannot determine how far the arc has drifted because it has no template provenance; it appears to have been authored directly rather than being derived from a template."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0214f-afef-7148-af92-7977587c9f09",
+          "session_id": "01a0214f-cfea-71e3-839c-17b4d36aeff5",
+          "prompt": "How far from the template has this arc drifted?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_drift",
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:25.802909+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:26.004333+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:26.132063+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:25.996791+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:25.802909+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:26.004333+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:26.132063+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:34:25.996791+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't check the drift for you just yet because the conformance hasn't been run for this arc. \n\nCurrently, \"Arc I — The Hollow Keep\" is marked as **never run**, and \"Chapter I — The Ember Codex\" is flagged as an **unplanned chapter** (it's written, but doesn't have a corresponding place in a plan yet).\n\nIf you'd like me to check the drift, I'll first need to run a conformance check on the arc. Would you like me to do that?\n\nI cannot determine how far the arc has drifted because it has no template provenance; it was authored directly rather than being derived from a template."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02150-5c74-738b-b2cb-d09d032f6e9d",
+          "session_id": "01a02150-7ab7-7c5d-94a2-a74a73a20c24",
+          "prompt": "How far from the template has this arc drifted?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_drift",
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.015368+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.268697+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.425159+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.257563+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.015368+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.268697+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.425159+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:35:10.257563+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't check the drift for that arc just yet because a conformance run hasn't been performed for it. \n\nCurrently, \"Arc I — The Hollow Keep\" is marked as \"never run,\" which means the system hasn't compared the actual prose in your chapters against the arc's structure. Additionally, \"Chapter I — The Ember Codex\" is currently flagged as an unplanned chapter, meaning it hasn't been officially linked to the arc's structure in the plan.\n\nIf you'd like me to check the drift, I'll first need to run a conformance check on the arc. Would you like me to do that?\n\nI cannot determine how far the arc has drifted because it has no template provenance; it was authored directly rather than being generated from a template."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_arc_template_edit",
+      "scenario": "composition-arc-template-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a template is archived with NO confirm card (Tier W), OR the model targets ANY template other than the one named — the account holds several real ones and picking the wrong row is the worst outcome here — OR op is not `archive` when the user said archive (its enum spans create|update|archive|restore, so a destructive mis-pick is reachable). Store check: arc_template rows for this account are identical before and after, because the card is never approved.",
+      "answer_expect": null,
+      "falsifier_sha": "b401796307c97f35",
+      "ship_audit": {
+        "gate": "OWED — Tier W, and the op enum includes archive, which is the whole point of the card.",
+        "absent_case": "OWED — archiving a template code that does not exist must be refused.",
+        "idempotency": "OWED — archiving an already-archived template must be a clear no-op or refusal, not a second archive.",
+        "tenancy": "OWED — ACCOUNT-scoped, not book-scoped: another account's template must not be archivable, and this is the scope that matters most for this tool."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0214a-ad1b-723e-9ee5-5e9d242dd40b",
+          "session_id": "01a0214a-cc85-7bdd-87d2-d44404ebe677",
+          "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_archive",
+            "composition_arc_template_edit"
+          ],
+          "error": "ReadTimeout: ",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.413299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.633445+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.774517+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.625895+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.413299+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.633445+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.774517+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:28:57.625895+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02154-79ea-7eac-b5e2-760474de0de8",
+          "session_id": "01a02154-9828-7347-a18a-effe0ed26020",
+          "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_archive",
+            "composition_arc_template_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.658209+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.874993+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.99728+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.865263+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.658209+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.874993+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.99728+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:39:39.865263+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, but I'm having trouble archiving that specific template. It seems I need a unique identifier (ID) rather than the name to complete the action.\n\nCould you please provide the ID for the \"Throwaway Loop Skeleton\" template, or let me know if you'd like me to try searching for it first?\n\nI did not re-read the book or the templates, so my answer may be stale. To archive the \"Throwaway Loop Skeleton\" template, I need its specific ID. Would you like me to search for it first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02155-d7e8-71d7-b0c9-bda3a7d46ddb",
+          "session_id": "01a02155-f5c4-7ac5-8f2e-156beb10f285",
+          "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_archive",
+            "composition_arc_template_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.275939+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.466039+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.589227+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.458283+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.275939+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.466039+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.589227+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:09.458283+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble archiving that template because I need its unique ID to perform the action, and I can't find a template by the name \"Throwaway Loop Skeleton\" in your current book's list.\n\nCould you please let me know if it's under a different name, or if you'd like me to list all your current arc templates so you can identify it?\n\nI cannot archive the template because I do not have its unique ID, and I cannot find a template by the name \"Throwaway Loop Skeleton\" in your current book.\n\nI have not re-read your book's template list this turn, so any information I might have from earlier in our conversation may be stale. Would you like me to list your current arc templates so we can find the correct ID?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02156-5293-771f-adc4-8b8df8f804cf",
+          "session_id": "01a02156-6f18-7bd3-aaa8-8e6853869558",
+          "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_suggest",
+            "composition_arc_template_archive",
+            "composition_arc_template_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.664152+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.864686+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.996786+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.855133+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.664152+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.864686+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.996786+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:41:40.855133+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, I'm having trouble archiving that template. I need the specific ID for \"Throwaway Loop Skeleton\" to complete the request, rather than just the name.\n\nI'll look through your available templates now to find the correct ID. One moment.\n\nI'm having trouble finding an arc template with the name \"Throwaway Loop Skeleton\" in your current project. I can see a few other templates, but none match that name.\n\nCould you double-check the name, or perhaps provide the ID if you have it? Alternatively, if it's a different kind of item (like a chapter or a scene), let me know and I'll search for that instead."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02156-d1e0-7584-adcd-bfa25be08af8",
+          "session_id": "01a02156-edcf-7a32-a2ce-65dbe834f36e",
+          "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_template_archive",
+            "composition_arc_template_edit"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.260384+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.487859+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.631106+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.478189+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.260384+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.487859+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.631106+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 22:42:13.478189+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, I'm having trouble archiving that template. I need the specific ID for \"Throwaway Loop Skeleton\" to perform the archive action, and I can't find it by name alone.\n\nCould you please provide the ID, or would you like me to list your available arc templates so you can pick the right one?\n\nI cannot archive the template because I do not have its unique ID. I can only perform actions using specific IDs, and I cannot find \"Throwaway Loop Skeleton\" by its name alone.\n\nWould you like me to list your available arc templates so you can identify the correct one?"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

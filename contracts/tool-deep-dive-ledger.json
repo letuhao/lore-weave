@@ -1675,14 +1675,15 @@
    "note": "BLOCKED on a NAMED fixture gap. Surfaced 3/3, called 0/3: asked to record that two named characters know each other, the model called kg_project_create 3/3 and suspended on THAT card — it bootstrapped the graph instead of proposing the edge, which is not obviously wrong given the KG side was un-bootstrapped. Boundary probes are good: two unknown entity ids are refused with an actionable message naming both endpoints and the projection step needed; tenancy refused. The seed must create the KG project and project both entities as graph nodes so the edge is the only outstanding action."
   },
   "memory_search": {
-   "state": "in_cycle",
+   "state": "proven",
    "provider": "memory",
    "tier": "R",
-   "cycle": "batch-6",
+   "cycle": "batch-14 (2026-08-14)",
    "group": "C",
    "evidence_class": "gate-backed",
-   "counts_toward_release": false,
-   "note": "WITHDRAWN from proven 2026-08-14. The note claimed 'the answer carried the seeded chapter's fact (only walkable during low tide)'. Re-checked against the runs once the answer bar was repaired: 1 of 3 replies carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet' over a fixture that contains it. I generalised a conclusion from the one run I read. That is a FALSE ABSENCE over a seeded fixture — the same class as story_search's D-DEGRADED-READ-REPORTED-AS-ABSENCE — and it passed only because the gate read must_contain while the scenario declared all_of. PRIOR NOTE: Called 3/3 from 'What has been established about the Obsidian Trench so far?' — its OWN declared phrase, deliberately not 'who is', which belongs to memory_recall_entity and cost batch 4 a scenario. Store unchanged 3/3, and the answer carried the seeded chapter's fact ('only walkable during low tide') which is its ONLY source. SHIP: tenancy refused; empty case returns hits [] WITH a note saying wh"
+   "counts_toward_release": true,
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch15-mem-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch15-mem-v2.json"
   },
   "translation_start_extraction": {
    "state": "proven",
@@ -1755,14 +1756,14 @@
    "note": "Called 1/3, and the distribution is the finding. Rep 0 called tool_load and THEN the tool — the first measured use of the lazy tail in this loop, against D-LAZY-TAIL-UNUSED. Reps 1-2 called world_map_list and then world_map_add_REGION, the wrong tool of the pair for a request that says 'put a pin'. Its boundary is sound (tenancy and absent-map both refused). 1/3 does not meet the LIVE bar as a distribution, so it is blocked rather than concluded on one good run."
   },
   "story_search": {
-   "state": "blocked",
+   "state": "in_cycle",
    "provider": "knowledge",
    "tier": "R",
    "cycle": "batch-7",
    "group": "C",
    "evidence_class": "gate-backed",
-   "counts_toward_release": true,
-   "note": "Called 3/3 and the TOOL was exemplary: 0 hits with degraded.semantic='not_indexed' and a note naming the fix. The TURN was not: the model reported that as 'I couldn't find any mention ... it's possible it hasn't been written yet', while the seeded chapter literally contains the phrase. A degraded read became a false statement about the author's manuscript with the honest sentence sitting in the payload. BLOCKED on the fixture (story_search needs an INDEXED project, which a fresh book has not got) and on D-DEGRADED-READ-REPORTED-AS-ABSENCE."
+   "counts_toward_release": false,
+   "note": "UN-BLOCKED 2026-08-14 and returned to in_cycle, because the reason it was blocked on turned out to be MY WRONG DIAGNOSIS. I recorded it as 'BLOCKED on the fixture (story_search needs an INDEXED project, which a fresh book has not got)'. The real cause was D-AUTHOR-SEARCH-READS-ONLY-CANON: run_hybrid_search defaults surface='canon' (published revisions only) and this call site never passed one, so an unpublished draft — the normal state of a manuscript being written — was invisible. The lexical leg needs no embeddings at all; the un-indexed project was a red herring that happened to co-occur. Verified directly after the fix on a throwaway book: 'Obsidian Trench' and 'low tide' each return hits=1 while an absent control phrase returns 0. NOT concluded here — it needs its own live K>=3 run in RUNBOOK order, and a direct MCP probe is not the LIVE bar. PRIOR NOTE: Called 3/3 and the TOOL was exemplary: 0 hits with degraded.semantic='not_indexed' and a note naming the fix. The TURN was not: the model reported that as 'I couldn't find any mention ... it's possible it hasn't been written yet', while the seeded chapter literally contains the phrase. A degraded re"
   },
   "kg_add_nodes": {
    "state": "blocked",
@@ -2345,6 +2346,15 @@
    "control_that_shrank_it": "First measured as 113 of 347 turns (32%). The control refutes most of it: 92 of those 113 ended SUSPENDED ON A CONFIRM CARD, where the card is the output and prose is legitimately absent. Failing those would have wrongly withdrawn glossary_extract_entities_from_doc. The defect is the 21 that had no card either.",
    "why_it_was_invisible": "The gate's own 'DATA answer is true' bar skipped an empty reply with a bare `continue`, and separately read must_contain/must_not_contain while 39 of 45 declarations used all_of/none_of/any_of. Both are fixed at that one bar; an unknown key is now a hard failure so the vocabulary cannot drift again.",
    "live_status": "🔴 THE GUARD IS UNEXERCISED LIVE AND I CANNOT CLAIM IT WORKS. Re-running the arc_get scenario on the deployed build produced PROSE on 3 of 3 runs (1051/413/730 chars), so the silence did not reproduce and the new branch never ran. That is not evidence the guard is correct, and it is certainly not evidence my change stopped the silence — the guard only relabels an outcome, it never adds text. The silence is stochastic; catching it live needs a scenario that reproduces it on demand, which I do not yet have."
+  },
+  "D-AUTHOR-SEARCH-READS-ONLY-CANON": {
+   "state": "fixed",
+   "found": "2026-08-14",
+   "measured": "A throwaway book with one seeded chapter containing 'The Obsidian Trench is only walkable during low tide', then memory_search for each of 'Obsidian Trench', 'low tide', 'Obsidian', 'waterline', 'Aldric Vane': 0 hits on ALL FIVE, with no model in the loop. After the fix: 5 of 5 return the chapter, and a genuinely absent control phrase still returns 0.",
+   "root_cause": "run_hybrid_search(surface='canon') — PUBLISHED-revision text only — and the two AUTHOR-facing call sites never passed a surface. A chapter written and not yet published (editorial_status='draft', published_revision_id=null) was invisible to both, which is the normal state of a manuscript in progress and exactly when an author asks what has been established.",
+   "boundary": "Drafts are OWNER-ONLY. raw_search.py already enforced that by downgrading a non-owner's surface=all to canon. The two fixed tools resolve project through the OWNER-KEYED projects_repo.get(ctx.user_id, ...), so the caller IS the owner. The READER-facing sites (tools/reader_tools.py, wiki/context.py) keep the canon default deliberately and a test pins that, because flipping them would leak unpublished drafts to readers.",
+   "second_half": "The payload lied too: an empty result was reported as 'this project has no indexed memory yet' for ANY reason, so 'I found nothing' reached the model as 'nothing is indexed', and reached the author as 'it hasn't been established in the story yet'. Now: 'no stored knowledge matched this query', with the index caveat appended only when the semantic leg actually reported not_indexed.",
+   "live_result": "memory_search re-run K=5: 5 of 5 replies carry 'low tide', none states a false absence, no silent turns — against 1 of 3 correct before. story_search verified fixed by direct probe and returned to in_cycle for its own live run."
   }
  },
  "deferred_questions": {
@@ -2799,8 +2809,8 @@
   "tools_declared": 315,
   "tools_concluded": 95,
   "tools_in_cycle": 2,
-  "tools_proven": 75,
-  "tools_blocked": 20,
+  "tools_proven": 76,
+  "tools_blocked": 19,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
