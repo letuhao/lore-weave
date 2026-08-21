@@ -84,7 +84,10 @@ func TestMapGetIsOwnerScopedInTheQueryItself(t *testing.T) {
 	if !strings.Contains(fn, "FROM world_maps WHERE id=$1 AND owner_user_id=$2") {
 		t.Error("the map read is no longer owner-scoped in the query")
 	}
-	if !strings.Contains(fn, `errors.New("map not found")`) {
+	// The literal was replaced by a SHARED named error (errNoSuchMap), which makes the
+	// uniformity structural instead of a convention repeated at six call sites: there is now
+	// only one string, so a foreign map and a missing one cannot drift apart.
+	if !strings.Contains(fn, "errNoSuchMap") {
 		t.Error("a foreign or missing map must return the uniform not-found, never a distinguishable error")
 	}
 }

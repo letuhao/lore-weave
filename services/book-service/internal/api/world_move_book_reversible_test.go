@@ -86,7 +86,7 @@ func TestTheMoveGuardsSurvive(t *testing.T) {
 		{"b.is_bible=false", "a hidden world bible could be re-homed, breaking the single-bible invariant"},
 		{"b.kind<>'diary'", "a diary could be moved into a shareable world — a back-door share"},
 		{"b.lifecycle_state!='purge_pending'", "a book queued for purge could be moved"},
-		{`errors.New("world not found")`, "a foreign world would be distinguishable from a missing one"},
+		{"errNoSuchWorld", "a foreign world would be distinguishable from a missing one"},
 		{`errors.New("failed to resolve world")`, "a transient DB error would masquerade as a missing world"},
 		{`errors.New("book not found or not movable")`, "the uniform refusal is gone"},
 	} {

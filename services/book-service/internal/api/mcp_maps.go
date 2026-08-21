@@ -51,7 +51,7 @@ func (s *Server) requireMapOwner(ctx context.Context, mapID, callerID uuid.UUID)
 		return errors.New("failed to resolve map")
 	}
 	if !found || owner != callerID {
-		return errors.New("map not found")
+		return errNoSuchMap
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func (s *Server) toolWorldMapCreate(ctx context.Context, _ *mcp.CallToolRequest,
 		return nil, worldMapCreateOut{}, errors.New("failed to resolve world")
 	}
 	if !worldOK {
-		return nil, worldMapCreateOut{}, errors.New("world not found")
+		return nil, worldMapCreateOut{}, errNoSuchWorld
 	}
 	imageRef := strings.TrimSpace(in.ImageRef)
 	// K13 (2026-07-23) — idempotency guard against the agent double-firing this Tier-A
@@ -279,7 +279,7 @@ VALUES($1,$2,$3,$4) RETURNING id`,
 
 // ── world_map_get ────────────────────────────────────────────────────────────
 type mapGetIn struct {
-	MapID string `json:"map_id" jsonschema:"the map to fetch (UUID; you must own it)"`
+	MapID string `json:"map_id" jsonschema:"the map to fetch (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 }
 type markerOut struct {
 	MarkerID   string  `json:"marker_id"`
@@ -318,7 +318,7 @@ func (s *Server) toolWorldMapGet(ctx context.Context, _ *mcp.CallToolRequest, in
 SELECT id, world_id, name, image_object_key, version FROM world_maps WHERE id=$1 AND owner_user_id=$2`,
 		mapID, ownerID).Scan(&mapID, &worldID, &d.Name, &d.ImageObjectKey, &d.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, mapGetOut{}, errors.New("map not found") // owner-scoped, no oracle
+		return nil, mapGetOut{}, errNoSuchMap // owner-scoped, no oracle
 	}
 	if err != nil {
 		return nil, mapGetOut{}, errors.New("failed to get map")
@@ -389,7 +389,7 @@ SELECT id, world_id, name, image_object_key, version FROM world_maps WHERE id=$1
 
 // ── world_map_list ───────────────────────────────────────────────────────────
 type mapListIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world whose maps to list (UUID; you must own it)"`
+	WorldID string `json:"world_id" jsonschema:"the world whose maps to list (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 }
 type mapListOut struct {
 	Maps []worldMapDetail `json:"maps"`
@@ -419,7 +419,7 @@ func (s *Server) toolWorldMapList(ctx context.Context, _ *mcp.CallToolRequest, i
 		return nil, mapListOut{}, errors.New("failed to list maps")
 	}
 	if !exists {
-		return nil, mapListOut{}, errors.New("world not found")
+		return nil, mapListOut{}, errNoSuchWorld
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT id, world_id, name, image_object_key, version FROM world_maps
@@ -453,7 +453,7 @@ WHERE world_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC`, worldID, owner
 
 // ── world_map_delete ─────────────────────────────────────────────────────────
 type mapDeleteIn struct {
-	MapID string `json:"map_id" jsonschema:"the map to delete (UUID; you must own it). CASCADE-removes its markers + regions."`
+	MapID string `json:"map_id" jsonschema:"the map to delete (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id. CASCADE-removes its markers + regions."`
 }
 type mapDeleteOut struct {
 	Deleted bool `json:"deleted"`
@@ -473,7 +473,7 @@ func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	var imageKey *string
 	err = s.pool.QueryRow(ctx, `SELECT image_object_key FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID).Scan(&imageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, mapDeleteOut{}, errors.New("map not found")
+		return nil, mapDeleteOut{}, errNoSuchMap
 	}
 	if err != nil {
 		return nil, mapDeleteOut{}, errors.New("failed to resolve map")
@@ -704,7 +704,7 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 					*in.ExpectedVersion, curVersion)
 			}
 		}
-		return nil, mapUpdateOut{}, errors.New("map not found") // owner-scoped, no oracle
+		return nil, mapUpdateOut{}, errNoSuchMap // owner-scoped, no oracle
 	}
 	if err != nil {
 		return nil, mapUpdateOut{}, errors.New("failed to update map")

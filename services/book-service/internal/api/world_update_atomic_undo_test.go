@@ -45,7 +45,9 @@ func TestWorldUpdateRefusesEmptyCallsAndEmptyNames(t *testing.T) {
 	if !strings.Contains(fn, `errors.New("name cannot be empty")`) {
 		t.Error("a whitespace-only name would blank the world's name")
 	}
-	if !strings.Contains(fn, `errors.New("world not found")`) {
+	// Now a SHARED named error (errNoSuchWorld) — one string for every world tool, so the
+	// uniform refusal is structural rather than six copies that could drift.
+	if !strings.Contains(fn, "errNoSuchWorld") {
 		t.Error("a foreign or missing world must return the uniform not-found")
 	}
 }

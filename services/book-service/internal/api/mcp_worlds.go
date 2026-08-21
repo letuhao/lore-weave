@@ -24,6 +24,24 @@ import (
 	lwmcp "github.com/loreweave/loreweave_mcp"
 )
 
+// The world/map family is UUID-only: every tool here takes an id and none accepts a name.
+// The only suppliers are world_list (world_id) and world_map_list (map_id), and batch 29 of the
+// tool deep-dive measured what happens when a refusal does not say so: across 25 live runs the
+// model was asked about a world BY NAME, passed the name (or a token out of it) as the id, was
+// refused with a bare "world not found", and stopped. It never chained to the supplier once,
+// and it never invented a UUID either — it simply had nowhere to go.
+//
+// So these name the supplier, the way this service's best refusal already does:
+// book_chapter_update_meta answers "check the chapter_id (call book_list kind=chapters for
+// valid ids)". They stay owner-scoped and identical for "not yours" and "no such row", so
+// neither becomes an existence oracle. The leading "not found" is retained deliberately:
+// six existing tests assert that exact vocabulary as the uniform-refusal contract, and
+// naming the supplier is an ADDITION to that contract rather than a replacement for it.
+var (
+	errNoSuchWorld = errors.New("world not found — check the world_id (call world_list for valid ids)")
+	errNoSuchMap   = errors.New("map not found — check the map_id (call world_map_list for valid ids)")
+)
+
 // createWorldCore inserts the world + its hidden bible book + the sort_order-0
 // bible chapter inside an open tx, returning the three ids. Shared by the HTTP
 // createWorld handler and the world_create MCP tool so the substrate is provisioned
@@ -153,7 +171,7 @@ WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 }
 
 type worldGetIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world to fetch (UUID)"`
+	WorldID string `json:"world_id" jsonschema:"the world to fetch (UUID). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 }
 type worldGetOut struct {
 	World worldToolDetail `json:"world"`
@@ -171,7 +189,7 @@ func (s *Server) toolWorldGet(ctx context.Context, _ *mcp.CallToolRequest, in wo
 	d, err := scanWorldDetail(s.pool.QueryRow(ctx, worldSelectSQL+`
 WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, worldGetOut{}, errors.New("world not found") // owner-scoped: no existence oracle
+		return nil, worldGetOut{}, errNoSuchWorld // owner-scoped: no existence oracle
 	}
 	if err != nil {
 		return nil, worldGetOut{}, errors.New("failed to get world")
@@ -294,7 +312,7 @@ func (s *Server) toolWorldMoveBook(ctx context.Context, _ *mcp.CallToolRequest, 
 			return nil, worldMoveBookOut{}, errors.New("failed to resolve world")
 		}
 		if !exists {
-			return nil, worldMoveBookOut{}, errors.New("world not found")
+			return nil, worldMoveBookOut{}, errNoSuchWorld
 		}
 		target = worldID
 	}

@@ -24206,7 +24206,7 @@
    "additionalProperties": false,
    "properties": {
     "world_id": {
-     "description": "the world to delete (UUID; you must own it). Hard delete \u2014 NOT reversible. Refused while it still contains member books.",
+     "description": "the world to delete (UUID; you must own it). NOT a name \u2014 if you have the world's NAME, call world_list first and match it to get the id. Hard delete \u2014 NOT reversible. Refused while it still contains member books.",
      "type": "string"
     }
    },
@@ -24231,7 +24231,7 @@
    "additionalProperties": false,
    "properties": {
     "world_id": {
-     "description": "the world to fetch (UUID)",
+     "description": "the world to fetch (UUID). NOT a name \u2014 if you have the world's NAME, call world_list first and match it to get the id",
      "type": "string"
     }
    },
@@ -24415,7 +24415,7 @@
    "additionalProperties": false,
    "properties": {
     "map_id": {
-     "description": "the map to delete (UUID; you must own it). CASCADE-removes its markers + regions.",
+     "description": "the map to delete (UUID; you must own it). NOT a name \u2014 if you have the map's NAME, call world_map_list first and match it to get the id. CASCADE-removes its markers + regions.",
      "type": "string"
     }
    },
@@ -24439,7 +24439,7 @@
    "additionalProperties": false,
    "properties": {
     "map_id": {
-     "description": "the map to fetch (UUID; you must own it)",
+     "description": "the map to fetch (UUID; you must own it). NOT a name \u2014 if you have the map's NAME, call world_map_list first and match it to get the id",
      "type": "string"
     }
    },
@@ -24464,7 +24464,7 @@
    "additionalProperties": false,
    "properties": {
     "world_id": {
-     "description": "the world whose maps to list (UUID; you must own it)",
+     "description": "the world whose maps to list (UUID; you must own it). NOT a name \u2014 if you have the world's NAME, call world_list first and match it to get the id",
      "type": "string"
     }
    },

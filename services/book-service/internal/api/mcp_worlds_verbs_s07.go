@@ -87,7 +87,7 @@ func (s *Server) toolWorldUpdate(ctx context.Context, _ *mcp.CallToolRequest, in
 	var priorDesc *string
 	err = s.pool.QueryRow(ctx, query, args...).Scan(&priorName, &priorDesc)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, worldUpdateOut{}, errors.New("world not found") // owner-scoped, no oracle
+		return nil, worldUpdateOut{}, errNoSuchWorld // owner-scoped, no oracle
 	}
 	if err != nil {
 		return nil, worldUpdateOut{}, errors.New("failed to update world")
@@ -113,7 +113,7 @@ WHERE w.id=$1 AND w.owner_user_id=$2`, worldID, ownerID))
 
 // ── world_delete ──────────────────────────────────────────────────────────────
 type worldDeleteIn struct {
-	WorldID string `json:"world_id" jsonschema:"the world to delete (UUID; you must own it). Hard delete — NOT reversible. Refused while it still contains member books."`
+	WorldID string `json:"world_id" jsonschema:"the world to delete (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id. Hard delete — NOT reversible. Refused while it still contains member books."`
 }
 type worldDeleteOut struct {
 	Deleted bool `json:"deleted"`
@@ -164,7 +164,7 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false
 		return nil, worldDeleteOut{}, errors.New("failed to delete world")
 	}
 	if !deleted {
-		return nil, worldDeleteOut{}, errors.New("world not found") // owner-scoped, no oracle
+		return nil, worldDeleteOut{}, errNoSuchWorld // owner-scoped, no oracle
 	}
 	return nil, worldDeleteOut{Deleted: true}, nil
 }

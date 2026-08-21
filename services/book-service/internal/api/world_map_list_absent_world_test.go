@@ -57,9 +57,9 @@ func TestWorldMapListRefusesAWorldTheCallerDoesNotOwn(t *testing.T) {
 			"reads as 'your world has no maps yet', the false-absence shape the siblings refuse",
 			len(out.Maps))
 	}
-	if got := err.Error(); got != "world not found" {
+	if got := err.Error(); got != errNoSuchWorld.Error() {
 		t.Fatalf("refusal = %q, want %q (the wording its four siblings already use)",
-			got, "world not found")
+			got, errNoSuchWorld.Error())
 	}
 }
 
@@ -73,9 +73,9 @@ func TestWorldMapListRefusesAWorldThatExistsNowhere(t *testing.T) {
 	if err == nil {
 		t.Fatal("a world_id that exists nowhere must be refused, not answered with an empty list")
 	}
-	if got := err.Error(); got != "world not found" {
+	if got := err.Error(); got != errNoSuchWorld.Error() {
 		t.Fatalf("refusal = %q, want %q — it must not differ from the not-yours wording", got,
-			"world not found")
+			errNoSuchWorld.Error())
 	}
 }
 
