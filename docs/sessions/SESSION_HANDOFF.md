@@ -1,16 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `d41461f08` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+**HEAD:** `1c4f35c00` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
 
-## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 109 of 198 shippable tools concluded
+## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 153 of 198 shippable tools concluded
 
 **Where it stands, derived not typed** — `python scripts/toolloop/work_remaining.py`:
 
 ```
-198 shippable (315 federated − 117 deprecated) | 109 concluded | 89 remaining | 0 in flight
+198 shippable (315 federated − 117 deprecated) | 153 concluded | 45 remaining | 0 in flight
 ```
 
-81 proven, 28 blocked, batches 1–18 closed, 71 commits. The `/goal` directive that drove it was
+113 proven, 40 blocked, batches 1–29 closed. The `/goal` directive that drove it was
 CLEARED on 2026-08-21; [`../plans/2026-08-13-tool-deep-dive-GOAL.md`](../plans/2026-08-13-tool-deep-dive-GOAL.md)
 is the prompt to paste back to resume, and
 [`../plans/2026-08-13-tool-deep-dive-RUNBOOK.md`](../plans/2026-08-13-tool-deep-dive-RUNBOOK.md)
@@ -45,6 +45,20 @@ defect, the owning suite green, and the image verified BY CONTENT (md5 per file,
   the account tier has no `composer` capability, so a default means spending through `chat`.
 * `D-SILENT-TURN-NO-CARD-NO-PROSE` — recording is fixed (stored `failed`, not `completed`); the
   silence itself is not.
+
+**🔴 `gate.py audit` is RED, deliberately.** Three tools — `world_get`, `world_map_list`,
+`world_map_get` — have evidence on disk and NO ledger row, because their replies are a FALSE
+ABSENCE: they tell the author a world they own does not exist, and one run offered to rebuild it.
+The answer bar refuses to let a dishonest answer be concluded around, which is what it is for.
+Fixing it is a retrieval-layer decision — **DQ-T36**. Do not clear the audit by concluding them.
+
+**Three things this stretch measured that are worth carrying forward:**
+
+| what | measured |
+|---|---|
+| a whole provider silently stopped declaring itself | 26 knowledge tools (kg=20, memory=5, story=1) lost their synonyms when an image built from a stale context was deployed. The container was healthy, all 315 tools federated, every gate green. **Two fixes this loop had already proven were not running.** `catalog.py --refresh` now REFUSES to cache a surface that declares less than the one it replaces |
+| a degraded surface changed an UNRELATED tool's behaviour | `book_steering_delete` went 0/5 → 5/5 on the identical scenario once the knowledge provider was restored. A degraded surface is not a weaker measurement — it is a measurement of a different platform |
+| declaring a supplier changed the model's WORDS, not its behaviour | the world family: "I'll list your worlds now to find it" — then the turn ends without the call. Fix kept on correctness grounds, recorded as REFUTED |
 
 **🔴 The one thing to distrust in your own work here.** Four of my causal hypotheses died to
 controls in the last two batches alone, and one shipped fix was measured and REFUTED (rewording a

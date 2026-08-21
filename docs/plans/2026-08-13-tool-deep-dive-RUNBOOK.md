@@ -136,12 +136,12 @@ Re-derived against the live catalogue. **This block is a DATED SNAPSHOT, not a s
 section below says never to read a total out of this file, and that applies here too.
 
 ```
-                       2026-08-14   2026-08-21
-315  federated total        315          315
-117  deprecated             117          117
-198  SHIPPABLE                                  <- the denominator
-     concluded within it     30          109
-     remaining              168           89
+                       2026-08-14   2026-08-21   2026-08-21(pm)
+315  federated total        315          315          315
+117  deprecated             117          117          117
+198  SHIPPABLE                                                     <- the denominator
+     concluded within it     30          109          153
+     remaining              168           89           45
 ```
 
 Re-derive both halves with:
