@@ -1,0 +1,1364 @@
+{
+ "batch": "batch16-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "story_search",
+   "scenario": "story-search-v2",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript, OR the reply names Chapter I (which does not contain it) as the location. K=5 because the failure was distributional. CONTROL, and the reason this is worth re-running rather than assuming: the surface fix was verified by DIRECT probe (hits=1 for 'Obsidian Trench' and 'low tide', 0 for an absent control), and a direct probe is not the LIVE bar — the model still has to ask the right question and report what came back.",
+   "answer_expect": {
+    "all_of": [
+     "Waterline"
+    ],
+    "none_of": [
+     "hasn't been written",
+     "has not been written",
+     "couldn't find any mention",
+     "could not find any mention",
+     "no mention of"
+    ],
+    "why": "Only Chapter II — The Waterline contains the phrase. THIS IS THE WITHDRAWAL RE-ARMED: the batch-7 run returned 0 hits with degraded.semantic='not_indexed' and the model relayed it as 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written yet' over a chapter that literally contains it. The none_of needles are those exact sentences."
+   },
+   "falsifier_sha": "999f5fc775c165f3",
+   "ship_audit": {
+    "empty_case": "EXERCISED and it is now the distinction this tool was BLOCKED on. A real project with a genuinely absent phrase returns hits=0 with note 'no matches, and semantic search did not run: this project...' — it separates 'nothing matched' from 'nothing is indexed' instead of collapsing both into an absence the model relays as 'it hasn't been written yet'.",
+    "tenancy": "EXERCISED — a project_id this account does not own is refused 'project not found'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02224-1294-7f14-9f27-e01d4b34fe65",
+     "session_id": "01a02224-3272-7c35-94d3-eabf85aa9059",
+     "prompt": "Which chapter mentions the Obsidian Trench?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "story_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:26:25.389836+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.176109+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.163225+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:26:25.389836+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.176109+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.163225+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "The Obsidian Trench is mentioned in **Chapter II — The Waterline**."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02224-b778-71cb-bf39-f30f19ea820f",
+     "session_id": "01a02224-d2d1-7511-b9b6-d0ff7fb4ecd2",
+     "prompt": "Which chapter mentions the Obsidian Trench?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "story_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:27:07.252513+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:07.118166+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:07.109759+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:27:07.252513+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:07.118166+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:07.109759+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "The Obsidian Trench is mentioned in **Chapter II — The Waterline**."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02225-2d78-748b-a6f6-355293922a56",
+     "session_id": "01a02225-4952-7fc5-b03d-e27d98f4c753",
+     "prompt": "Which chapter mentions the Obsidian Trench?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "story_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:27:37.501959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:37.369094+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:37.360002+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:27:37.501959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:37.369094+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:37.360002+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "The Obsidian Trench is mentioned in **Chapter II — The Waterline**."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02225-d682-7ef7-9967-bb13fd9a5939",
+     "session_id": "01a02225-f409-7693-b569-6717753ecca2",
+     "prompt": "Which chapter mentions the Obsidian Trench?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "story_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:28:20.756399+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:20.630972+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:20.620152+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:28:20.756399+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:20.630972+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:20.620152+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "The Obsidian Trench is mentioned in **Chapter II — The Waterline**."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02226-49e2-7398-9e14-604703d0af66",
+     "session_id": "01a02226-692e-7bda-92f5-f604cab8affd",
+     "prompt": "Which chapter mentions the Obsidian Trench?",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "story_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:28:50.351906+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:50.204784+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:50.195899+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 2,
+        "latest": "2026-08-21 02:28:50.351906+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:50.204784+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:50.195899+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "The Obsidian Trench is mentioned in **Chapter II — The Waterline**."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "composition_arc_template_list",
+   "scenario": "composition-arc-template-list",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists templates the account does not own and are not system-seeded — its description is explicit that scope=all means 'yours + system; NOT other users' public'. CONTROL: this account genuinely holds arc templates (measured directly this cycle: 27 active, 26 archived across the table), so 'you have none' contradicts a known reading. Watch also for the ARCHIVED rows leaking into a default listing — status is a real filter and roughly half the table is archived.",
+   "answer_expect": null,
+   "falsifier_sha": "7bbd1d0a9ef8f3a5",
+   "ship_audit": {
+    "empty_case": "EXERCISED via a scope that is genuinely empty rather than by a contrived book: scope=system returns {arc_templates: [], returned: 0, guidance: 'complete — all 0 matching t...'}, so an empty library reports as empty WITH the completeness signal. (Worth recording separately: the SYSTEM library is empty on this deployment. That is a seeding fact, not a tool defect.)",
+    "tenancy": "EXERCISED — scope=mine returns only rows whose owner_user_id is the caller, and the description's promise that scope=all means 'yours + system, NOT other users' public' holds: scope=all returned the same owner rows plus the (empty) system set. status=archived is a real filter, proven by returning archived rows that the default listing does not show — which matters because roughly half the table is archived."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02224-1298-7be4-ad66-a4700449511a",
+     "session_id": "01a02224-30a0-7acf-83c8-6e27b0a8f766",
+     "prompt": "Show me my arc templates — the arc skeleton library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.782775+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.166933+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.12686+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.782775+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.166933+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.12686+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Here are your arc templates from your personal library:\n\n### **Custom & Reusable Structures**\n*   **My Reusable Act Structure** (Multiple versions)\n*   **Deep Smoke Arc** (2-chapter span: *Auction House Treasure* $\\rightarrow$ *Betrayal Hinted*)\n*   **E2E Hero Journey** (Several versions)\n*   **Apply Smoke**\n*   **Throwaway Loop Skeleton**\n*   **TLE Arc Template**\n*   **i146 Portable** (2-chapter span: *Duel* $\\rightarrow$ *Meet*)\n*   **i146 Round Trip** (2-chapter span: *Duel* $\\rightarrow$ *Meet*)\n\n### **Other Templates**\n*   **Loop B15 Probe** (Multiple versions)\n*   **Probe3**\n*   **Shared Live**\n*   **Empty Tmpl** / **Live Tmpl**\n*   **i155 legacy renamed**\n\nWould you like to use one of these for a new story plan, or should I help you create a new one?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02224-f63c-73d9-b284-a814fb31e56d",
+     "session_id": "01a02225-0daa-71cc-a17f-19d9905812c2",
+     "prompt": "Show me my arc templates — the arc skeleton library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.01688+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.260786+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.251345+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.01688+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.260786+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:23.251345+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Here are your arc templates (the skeleton library):\n\n### **Custom & Authored Templates**\n*   **Deep Smoke Arc** (Code: `deep-smoke-arc-1782705398`)\n    *   *Structure:* 2-chapter span.\n    *   *Layout:* Includes motifs like `cultivation.auction_house_treasure` and `hook.betrayal_hinted`.\n*   **i146 Portable** (Code: `i146.portable`)\n    *   *Structure:* 2-chapter span.\n    *   *Layout:* Combines `combat` (duel) and `romance` (meet) threads.\n*   **i146 Round Trip** (Code: `i146.roundtrip`)\n    *   *Structure:* 2-chapter span.\n    *   *Layout:* Combines `combat` (duel) and `romance` (meet) threads.\n*   **Throwaway Loop Skeleton** (Code: `throwaway-loop-skeleton-b15`)\n*   **My Reusable Act Structure** (Multiple versions)\n*   **E2E Hero Journey** (Multiple versions)\n*   **TLE Arc Template** (Code: `tle_arc_tmpl`)\n*   **Loop B15 Probe** (Multiple versions)\n*   **Apply Smoke** (Code: `smoke-apply-20198`)\n\n### **Shared Templates**\n*   **E2E Shared Arc** (Multiple versions)\n*   **Shared Live** (Code: `bs-14655`)\n\nWould you like to use one of these for a new arc, or should we look at the details of a specific one?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02226-323d-709e-8e07-025ad325ca64",
+     "session_id": "01a02226-508d-758a-9afc-93d3521a5ec7",
+     "prompt": "Show me my arc templates — the arc skeleton library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:43.890626+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:44.148482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:44.139905+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:43.890626+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:44.148482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:44.139905+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Here are your arc templates (the skeleton library):\n\n### **Custom & Authored Templates**\n*   **Deep Smoke Arc** (Code: `deep-smoke-arc-1782705398`)\n    *   *A 2-chapter span featuring a \"Main\" thread with motifs: Auction House Treasure and Betrayal Hinted.*\n*   **i146 Portable** (Code: `i146.portable`)\n    *   *A 2-chapter span with \"Combat\" (Duel) and \"Romance\" (Meet) threads.*\n*   **i146 Round Trip** (Code: `i146.roundtrip`)\n    *   *A 2-chapter span with \"Combat\" (Duel) and \"Romance\" (Meet) threads.*\n*   **My Reusable Act Structure** (Multiple versions)\n*   **Throwaway Loop Skeleton** (Code: `throwaway-loop-skeleton-b15`)\n*   **TLE Arc Template** (Code: `tle_arc_tmpl`)\n*   **E2E Hero Journey** (Multiple versions)\n*   **Apply Smoke** (Code: `smoke-apply-20198`)\n*   **Probe3** (Code: `loop-b15-probe3`)\n*   **i155 legacy renamed** (Code: `i155.t`)\n\n### **Shared Templates**\n*   **E2E Shared Arc** (Multiple versions)\n*   **Shared Live** (Code: `bs-14655`)\n\nWould you like to use one of these for a new arc, or should I help you create a new template?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02226-f1b7-75bd-81f8-b88031996a11",
+     "session_id": "01a02227-0851-72e2-b9f0-944d8a3b6e5c",
+     "prompt": "Show me my arc templates — the arc skeleton library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:32.894412+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:33.082555+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:33.075161+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:32.894412+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:33.082555+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:33.075161+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Here are your arc templates (the skeleton library). I've listed them below, categorized by their type:\n\n### **Custom & Reusable Structures**\nThese are your personal templates, often used for specific story beats or structural patterns.\n*   **Deep Smoke Arc** (2-chapter span, includes motifs like *Auction House Treasure* and *Betrayal Hinted*)\n*   **My Reusable Act Structure** (Multiple versions)\n*   **E2E Hero Journey** (Multiple versions)\n*   **Throwaway Loop Skeleton**\n*   **i146 Portable / Round Trip** (2-chapter span, includes *Duel* and *Meet* motifs)\n*   **TLE Arc Template**\n*   **Apply Smoke**\n\n### **Shared & Collaborative Templates**\nThese are templates that have been shared with or linked to other books.\n*   **E2E Shared Arc** (Multiple versions)\n*   **Shared Live**\n\n### **System & Test Templates**\n*   **Empty Tmpl**\n*   **Live Tmpl**\n*   **Probe3 / Loop B15 Probes**\n\nIf you'd like to use one of these to build a new arc for your current book, just let me know which one!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02227-4549-716a-a548-34854a7e032e",
+     "session_id": "01a02227-60ec-7eef-aaa7-1a8421ff5ba3",
+     "prompt": "Show me my arc templates — the arc skeleton library.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.283899+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.491201+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.481355+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.283899+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.491201+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:54.481355+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "Here are your custom arc templates:\n\n### **Active Templates**\n*   **Apply Smoke** (`smoke-apply-20198`)\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`) — *Includes layout for \"Auction House Treasure\" and \"Betrayal Hinted\"*\n*   **E2E Hero Journey** (Multiple versions)\n*   **E2E Shared Arc** (Multiple versions)\n*   **My Reusable Act Structure** (Multiple versions)\n*   **Throwaway Loop Skeleton** (`throwaway-loop-skeleton-b15`)\n*   **TLE Arc Template** (`tle_arc_tmpl`)\n*   **i146 Portable** (`i146.portable`) — *Includes layout for \"Duel\" and \"Meet\"*\n*   **i146 Round Trip** (`i146.roundtrip`)\n*   **i155 legacy renamed** (`i155.t`)\n\n### **Other Templates**\n*   **BB Arc** (Two versions)\n*   **Empty Tmpl**\n*   **Live Tmpl**\n*   **Loop B15 Probe** (Three versions)\n*   **Probe3**\n\nWould you like to use one of these for a new story, or should we look at the details of a specific one?"
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "composition_authoring_run_list",
+   "scenario": "composition-authoring-run-list",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports runs, spend, or budget for a book that has never had a run. The honest answer is that Agent Mode has never run here.",
+   "answer_expect": null,
+   "falsifier_sha": "dde8bea939ddcad1",
+   "ship_audit": {
+    "empty_case": "This scenario IS the empty case and it PASSED the shape that caught composition_conformance_status in batch 11. A fresh book returns {items: [], has_more: false} and the model said 'There are currently no active or completed autonomous authoring runs (Agent Mode) for this book. Mission control is clear.' on 5 of 5 — no invented spend, no invented budget, no describing what Mission Control WOULD show.",
+    "tenancy": "EXERCISED — a book_id the caller cannot reach is refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02224-1294-75c0-be74-5f7cd08a7a59",
+     "session_id": "01a02224-3117-778a-8416-9a883dc2a304",
+     "prompt": "Show me the agent mode runs for this book — mission control.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.777369+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.144423+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.123763+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.777369+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.144423+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.123763+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no active or completed autonomous authoring runs (Agent Mode) for this book. Mission control is clear."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02224-d364-735f-9fc0-53c8a6a39e36",
+     "session_id": "01a02224-eeee-7459-9589-8c50698073d3",
+     "prompt": "Show me the agent mode runs for this book — mission control.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.080152+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.290668+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.282102+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.080152+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.290668+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:14.282102+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no active or completed autonomous authoring runs (Agent Mode) for this book. Mission control is clear."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02225-5a48-7b83-8662-42c6a8fbf01d",
+     "session_id": "01a02225-7766-73f7-bcca-183a6bc74023",
+     "prompt": "Show me the agent mode runs for this book — mission control.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.594491+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.791284+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.784274+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.594491+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.791284+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:48.784274+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no active or completed autonomous authoring runs (Agent Mode) for this book. Mission control is clear."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02226-0f38-7a83-a7cd-1b44844bd9f8",
+     "session_id": "01a02226-289a-7545-8fdd-248b26f008b4",
+     "prompt": "Show me the agent mode runs for this book — mission control.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:34.904778+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:35.097251+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:35.090416+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:34.904778+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:35.097251+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:35.090416+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no active or past autonomous authoring runs (Agent Mode) for this book. Mission control is clear."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02226-6869-790e-a455-42abf683f1c4",
+     "session_id": "01a02226-8205-7ad2-8bfa-5128ea663a80",
+     "prompt": "Show me the agent mode runs for this book — mission control.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.742122+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.967869+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.957495+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.742122+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.967869+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:57.957495+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "There are currently no active or past autonomous authoring runs (Agent Mode) for this book. Mission control is clear."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0
+  },
+  {
+   "tool": "composition_authoring_run_manage",
+   "scenario": "composition-authoring-run-manage",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a run is created or started with NO confirm card (Tier W and it spends), OR the op chosen is not create/start when the user said start — its enum spans create|start|resume|gate|revert_all and revert_all on a create request would be the worst outcome reachable here — OR the model invents a plan_run_id (op=create REQUIRES one and this fresh book has no plan run, so inventing it is the D-DECLARED-UUID class), OR it invents a budget_usd the author never named, which is a number with money attached. CONTROL: the fixture has no plan_run, so the honest outcome may well be a refusal naming what is missing, and that is a PRECONDITION finding rather than a tool defect. Store check: authoring_runs stays 0.",
+   "answer_expect": null,
+   "falsifier_sha": "9c8e873f1acf275e",
+   "ship_audit": {
+    "gate": "EXERCISED, but by DIRECT PROBE ONLY — never through the model. op=create returns a confirm_token with descriptor composition.authoring_run_create, a title stating the level, budget and chapter count, and a `requires` line naming the real consequence ('the run holds the book's active-run slot until closed'). Nothing is written at propose time: authoring_runs stayed 0 for the book across a token mint and five refusal probes.",
+    "absent_case": "EXERCISED — op=start, op=resume and op=revert_all with a run_id that does not exist are each refused 'not found or not accessible'. op=create with a NONEXISTENT plan_run_id does NOT refuse — it mints the token — and I checked whether that is a defect before calling it one: it is not. _execute_authoring_run_create documents that 'create is deliberately permissive — the start-gate at gate() is the real enforcement point', the run is created in `draft`, and the confirm-gate at create is about the active-run slot and the budget declaration, not about the plan being valid.",
+    "idempotency": "🔴 DELIBERATELY NOT EXERCISED, and this is a refusal to probe rather than an oversight. Proving that op=start on an already-started run does not start a second one requires actually creating AND starting a run — which spends real money through the provider layer and takes the book's one active-run slot. No throwaway book makes autonomous drafting free. Recorded as owed rather than run.",
+    "tenancy": "EXERCISED — op=create against a book_id the caller cannot reach is refused before any token is minted, so the book scope IS enforced at propose time even though the plan is not."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02224-1292-7ecf-bb43-0762832526b0",
+     "session_id": "01a02224-3195-7352-aaee-636b015bb323",
+     "prompt": "Start an authoring run for this book — begin autopilot.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_manage",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.772717+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.166072+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.131251+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:24.772717+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.166072+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:26:25.131251+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly help you start an authoring run to begin drafting your story.\n\nHowever, before I can launch the autopilot, I need to establish a **story plan** (an outline of your arcs and chapters) to give the engine a roadmap to follow. Currently, your book has a manuscript but no structured plan or arcs have been defined in the system.\n\nTo get this moving, we should follow these steps:\n\n1.  **Define your story plan:** Tell me your story idea, the main characters, the world, or any notes you have. I will then use those to propose a structured chapter-by-chapter plan.\n2.  **Approve the plan:** Once you've reviewed and approved the plan, it becomes the \"map\" for the authoring run.\n3.  **Launch the run:** Once the map is ready, I will set up the authoring run, where you can decide on a budget and how much you want me to write before checking back in with you.\n\n**Would you like to start by telling me your story idea or pasting some notes so I can build your plan?**"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02225-03d8-7b2c-a4c5-15a04450fa4f",
+     "session_id": "01a02225-221d-75b1-9e8c-7e2c05bd1233",
+     "prompt": "Start an authoring run for this book — begin autopilot.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_manage",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.457237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.645547+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.638872+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.457237+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.645547+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:27:26.638872+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly help you start an authoring run to begin drafting your story.\n\nTo set this up, I need a few details from you first:\n\n1.  **A Story Plan:** I need a `plan_run_id` to anchor the writing to. If you have already used the **The planner** tool to create a structured story plan (an outline with arcs and beats), please let me know. If you haven't done that yet, we should start there so the autopilot knows where the story is going.\n2.  **Budget:** How much would you like to allocate for this run (in USD)? This covers the LLM tokens used during the drafting process.\n3.  **Pacing:** Would you like me to pause after each chapter is drafted so you can review it, or should I keep going through the plan automatically?\n\n**If you don't have a plan yet:**\nTell me a bit about your story idea, and I can help you build a plan first. Once we have a plan, we can move straight into the authoring run."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02226-4f3b-75df-9a33-a8acb414f238",
+     "session_id": "01a02226-6d67-728e-97c4-44f237e7fcb0",
+     "prompt": "Start an authoring run for this book — begin autopilot.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_manage",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.30495+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.519043+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.511133+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.30495+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.519043+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:28:51.511133+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've started setting up the authoring run for your book. \n\nTo proceed with the autopilot, I need to know a few things to finalize the setup:\n\n1.  **A Story Plan:** I can only start an authoring run if there is a structured story plan (an \"Arc Plan\") for the system to follow. Currently, your book has no arcs or chapters planned in the system. Would you like to **build a book plan** first?\n2.  **Budget:** How much would you like to allocate for this run (in USD)?\n3.  **Pacing:** Would you like me to pause after each chapter so you can review the progress, or should I run through the whole plan continuously?\n\n**Once we have a plan and your budget, I will create the run and present you with a confirmation card to officially start the autopilot.**I've checked the current state of your book. Before we can start the autopilot, we need to establish a foundation for the system to follow.\n\nCurrently, the book has no **story plan (arcs)**. An authoring run needs a structured plan to know which chapters and scenes to draft next.\n\n**To get started, I recommend we follow these steps:**\n\n1.  **Build a Book Plan:** If you have a story idea or notes, tell me about them. I will then use the **The planner** process to turn your ideas into a structured chapter-by-chapter plan.\n2.  **Set a Budget:** Once the plan is ready, you'll need to decide on a budget (in USD) for the AI to use during the drafting process.\n3.  **Choose Pacing:** Let me know if you want me to pause after every chapter so you can review the prose, or if you'd prefer I run through the entire plan automatically.\n\n**Would you like to start by telling me your story idea so we can build the plan?**"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02227-1f8c-77bb-9b25-3f5188dec34e",
+     "session_id": "01a02227-3a4a-72d6-9afa-2bd5255e26aa",
+     "prompt": "Start an authoring run for this book — begin autopilot.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_manage",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.652276+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.882536+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.87403+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.652276+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.882536+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:29:44.87403+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly help you start an authoring run to begin drafting your book.\n\nTo set this up, I need a few details from you first:\n\n1.  **A Story Plan:** I need a `plan_run_id` to anchor the writing to. This comes from a completed story plan (the structured outline we create using the planning tools). Do you already have a plan you'd like me to use, or should we start by building one from your ideas?\n2.  **Budget:** How much would you like to allocate for this specific drafting run (in USD)?\n3.  **Pacing:** Would you like me to pause after each chapter is drafted so you can review it, or should I keep going through the whole plan automatically?\n\n**If you don't have a plan yet, just tell me your story idea, and we can start by building your world and your story plan first.**"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02227-7e5c-72d0-afd0-1faa1ddf35d2",
+     "session_id": "01a02227-a080-735c-9f1c-9aeeda377fe2",
+     "prompt": "Start an authoring run for this book — begin autopilot.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_manage",
+      "composition_package_tree",
+      "plan_propose_spec"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:08.906766+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:09.131222+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:09.123075+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:08.906766+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:09.131222+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 02:30:09.123075+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 1,
+   "blocked_reason": "BLOCKED because its OWN confirm card never minted through the model, across 10 live runs in two arms. Called 5/5 on the clean arm, and on 9 of those 10 the model correctly refused to proceed — 'before I can launch the autopilot, I need to establish a story plan' — because op=create REQUIRES a plan_run_id and this fixture has none. That is the right answer and no plan_run_id or budget_usd was ever invented, which for a cost-bearing tool is the outcome that matters most. The one suspended run is NOT this tool's card: its called_tools are ['composition_authoring_run_manage', 'composition_package_tree', 'plan_propose_spec'] and the card belongs to plan_propose_spec — the model went to BUILD the missing plan. So the Tier-W gate leg has been seen only by direct probe. Combined with idempotency being unprovable without real spend, a cost-bearing tool cannot be called proven on this evidence. Reaching it needs a fixture with a real plan_run — a PRECONDITION CHAIN, not a tool defect."
+  }
+ ]
+}
