@@ -5423,6 +5423,52 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   the reference corpus this row's own *To unblock* records as **retracted over-engineering**. So
   T33's live bite needs either that write authorised, or the event-shape question settled first.
 
+  ### 📊 T33e 2026-08-21 — **the acyclicity half of T33's own bite, and what the 4 edges actually are**
+
+  <!-- doc-language-gate: ok -- the event TITLES below are the measurement: the
+       finding is that two of them differ by one word, which translation destroys -->
+
+  T33's bite reads *"run over the corpus → edge count non-zero **and** the graph acyclic"*.
+  T33d took the first half. The second had never been taken either.
+
+  ```
+  self-loops (e)-[:CAUSES|PRECEDES]->(e)                  0
+  two-cycles (a)->(b)->(a)                                0
+  events reachable from THEMSELVES in 1..10 hops          0
+  ```
+
+  ✅ **Acyclic.** With T33d's non-zero edge count, **T33's bite is satisfied as written.**
+
+  ⚠️ **And "as written" is doing a lot of work — so here is what the four edges ARE.**
+  Rule 2: a number that reads as success is guilty until checked.
+
+  ```
+  CAUSES    "Hỗn loạn tại cấm địa"        -> "Lâm Trạch cứu Lâm Uyên"
+  CAUSES    "Lâm Trạch cứu Lâm Uyên"      -> "Lâm Trạch cứu giúp Lâm Uyên"
+  PRECEDES  "Lâm Trạch cứu Lâm Uyên"      -> "Lâm Trạch cứu giúp Lâm Uyên"
+  PRECEDES  "Lâm Trạch cứu giúp Lâm Uyên" -> "Lâm Trạch và Lâm Uyên thề huynh đệ"
+  ```
+
+  🔴 **Two of the four connect a pair that may be ONE event recorded twice.**
+  `Lâm Trạch cứu Lâm Uyên` and `Lâm Trạch cứu giúp Lâm Uyên` carry the **same two participants**
+  (ordered differently: `["Lâm Trạch","Lâm Uyên"]` vs `["Lâm Uyên","Lâm Trạch"]`) and titles that
+  differ by one word — *cứu* against *cứu giúp*. The writer then emitted **both** `CAUSES` and
+  `PRECEDES` between them, which reads as *"X saving Y caused X saving Y"*.
+
+  **What can and cannot be concluded, stated separately on purpose.** Whether that is a duplicate
+  or two distinct rescues **cannot be settled here** — it needs ground truth, and the PO ruled
+  the reference corpus out. So this is NOT filed as a duplication defect. What IS established is
+  narrower and enough: the causal layer's entire evidence base is **four edges, two of them
+  between an ambiguous pair**, so *"edge count non-zero"* is a very thin bite and T33d's 9.38 %
+  should be read knowing what sits underneath it.
+
+  📐 Also measured, and recorded as context rather than as a finding: **all 32 events are
+  unanchored** (`chapter_index` NULL for every one). That matches the two-population design —
+  `:Event` is the extraction timeline keyed by title + participants, while `Entity{kind:'event'}`
+  is the glossary-mirrored, anchored lore noun. It is noted because a reader measuring "world
+  order" will look for a chapter position and find none, and should know that is the design.
+
+  <!-- doc-language-gate: end -->
   ### 📊 T33d 2026-08-21 — **causal coverage, finally measured — and QC-6 was ticked without taking it**
 
   Found by the supersession audit, not by looking: §4.3 is titled *"Causal coverage is measured
