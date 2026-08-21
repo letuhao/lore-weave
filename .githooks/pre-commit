@@ -98,6 +98,14 @@ command -v python >/dev/null 2>&1 || PY=python3
 # produce identical numbers. The live arms need a stack and local models; only the selftest
 # runs here.
 "$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --selftest
+# A deferral whose HEADING says open while its own `Retry when` says closed. Found by hand
+# five times on 2026-08-21 and it cost real confusion: `plan-final-verification` refuses a
+# `[x]` QC row whose section "records a deferral" and decides that on the heading, so four
+# finished blocks were half of everything holding QC-5 open. On its FIRST run this gate found
+# three more, in rows nobody had been reading. Only the selftest runs here; the scan needs the
+# plan files, which the repo always has, so the scan runs too.
+"$PY" "$ROOT/scripts/stale-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/stale-deferral-gate.py"
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call neo4j_repos with no Cypher of its own, pass that gate, and still break on an engine

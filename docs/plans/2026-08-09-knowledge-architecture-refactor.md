@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 50 of 90 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 51 of 91 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (8/13) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -5831,7 +5831,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   is reporting a glossary problem accurately. Full write-up:
   `docs/measurements/2026-08-11-t35-identity-damage.md`.
 
-  ### 🔻 DEFERRAL `D-T35-COLLISION-GROUPS-ARE-GLOSSARY-DEBT`
+  ### ~~DEFERRAL~~ `D-T35-COLLISION-GROUPS-ARE-GLOSSARY-DEBT` — **SUPERSEDED — its own `Retry when` reads *"~~The PO approves running the dedup remediation.~~ **Superseded — the dedup remediation is the wrong tool**"*. Marker fixed 2026-08-21 (T46o), found by `stale-deferral-gate`.**
 
   | | |
   |---|---|
@@ -12568,7 +12568,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   T43's comparison. Caught by `test_implementations_match_the_port_signatures`, which now
   parameterises over AGE too. **A Protocol is not a contract.**
 
-  ### 🔻 DEFERRAL `D-T42-AGE-EVENT-SURFACE` — two methods raise, deliberately
+  ### ~~DEFERRAL~~ `D-T42-AGE-EVENT-SURFACE` — **CLOSED 2026-08-12 by its own `Retry when`. Marker fixed 2026-08-21 (T46o), found by `stale-deferral-gate`.**
 
   | | |
   |---|---|
@@ -13204,7 +13204,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   The whole design in one assertion: an operation the secondary **cannot answer** must never
   help satisfy a floor that exists to prove it *was* answered.
 
-  ### 🔻 DEFERRAL `D-T43-ID-KEYED-OPS-NEED-A-MAPPING` — 6 of 9 operations are unshadowable
+  ### ~~DEFERRAL~~ `D-T43-ID-KEYED-OPS-NEED-A-MAPPING` — **CLOSED 2026-08-12 by its own `Retry when` (*"same session — see below"*). Marker fixed 2026-08-21 (T46o), found by `stale-deferral-gate`.**
 
   | | |
   |---|---|
@@ -14782,6 +14782,56 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   plan gates green. **QC (b):** N/A because no service seam changed — `audit_names` is in-process
   and its callers are unchanged. **QC (c) real data:** the fixture cast is the acceptance book's
   own three names, which is why the recurring-syllable collision is real rather than contrived.
+
+  ### ✅ T46o 2026-08-21 — **the stale-marker finding becomes a gate, and it immediately found three more**
+
+  ```
+  stale-deferral-gate --selftest   10/10        gate-wiring 106 -> 107
+  first live run: 3 NEW findings, in rows nobody had been reading
+    D-T35-COLLISION-GROUPS-ARE-GLOSSARY-DEBT   "Superseded — the dedup remediation is the wrong tool"
+    D-T42-AGE-EVENT-SURFACE                    "CLOSED 2026-08-12"
+    D-T43-ID-KEYED-OPS-NEED-A-MAPPING          "CLOSED 2026-08-12, same session"
+  after striking: 457 plan(s) scanned, 0 findings          BITE x2 (78-79)
+  ```
+
+  Five closed-but-marked-open deferrals were found BY HAND today (T46h ×4, T46m ×1). Finding
+  them that way is slow and measurably unreliable — T46h's keyword heuristic flagged three,
+  missed the fourth, and would have swept in a block that genuinely disagrees with itself. This
+  plan's answer to a rule that has to be remembered is a gate, so here is one.
+
+  🎯 **The rule is deliberately narrow: a deferral is STALE when its heading is UNSTRUCK and its
+  `Retry when` OPENS with a closure statement.** Only that field is consulted. `Blocker` and
+  `To unblock` routinely carry struck-through history, and reading them is precisely what made
+  the heuristic produce a false positive. Anchoring at the START is what separates *"n/a —
+  closed"* from *"retry immediately — unlike `D-Y`, which is closed"*; both fixtures are in the
+  selftest.
+
+  ✅ **Validated on cases it was NOT derived from (rule 3), and it earned that immediately.** The
+  five hand-found blocks are struck, so they cannot be what makes it pass. Its first live run
+  found **three more**, in T35/T42/T43 — rows outside QC-5's span that nobody had re-read. Each
+  was verified against its own `Retry when` before striking, not bulk-matched.
+
+  ### ⚠️ AND BITE 78 DID NOT FIRE — THREE TIMES — WHICH IS THE MORE USEFUL FINDING
+
+  The struck-heading exclusion turned out to be **three** guards deep, each redundant with the
+  others, so mutating any one was a no-op:
+
+  ```
+  attempt 1  a separate `_STRUCK_HEADING` branch     -> no-op: DEAD CODE. Deleted.
+  attempt 2  the `(?!~~)` lookahead                  -> no-op: the trailing form still excluded
+  attempt 3  `DEFERRAL\s+` (rejects `DEFERRAL~~ `)   -> no-op: the lookahead still excluded
+  both       lookahead AND trailing form together    -> 2 selftest checks red, 7 live findings
+  ```
+
+  A guard that cannot be shown to fire is the defect class this gate exists to find, one level
+  up — and the first attempt was literally dead code in a brand-new gate. The dead branch is
+  gone; the remaining redundancy is documented **in the regex's own comment**, because the next
+  reader will otherwise mutate one, see nothing happen, and conclude the guard is decorative.
+
+  **QC (a) gates:** `stale-deferral-gate --selftest` **10/10**, wired into pre-commit (selftest
+  AND scan); `gate-wiring-gate` **106 → 107**; plan gates green. **QC (b):** N/A because no
+  service seam changed. **QC (c) real data:** 457 plan files scanned; three real stale markers
+  found and struck on the first run.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
