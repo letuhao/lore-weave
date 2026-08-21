@@ -110,7 +110,7 @@ RULES = """1 Measure DATA on the real stack (5555/7688); run CODE on lw-iso (bas
 3 A criterion that cannot fail is not a criterion; validate a detector on a case it was NOT derived from, else it is green by construction.
 4 A switch has a TIER before a name: deploy ceiling, per-book work.settings, or run param.
 5 A gate's number moves in the SAME COMMIT as the code that moved it. So does a scope list.
-6 Anything that WRITES goes to a throwaway DB. Dev Postgres and Neo4j are READ-ONLY — a count is a read, a MERGE is not.
+6 Anything that WRITES goes to a throwaway DB. Dev Postgres and Neo4j are READ-ONLY — a count is a read, a MERGE is not. EXCEPT the GRANTS below, which are authorised.
 7 Glossary migrations are an append-only ledger: new step, never edit.
 8 MEASURE THE BATCH BEFORE BUILDING IT. Three times this week it killed the batch; that was the result.
 9 An adapter that cannot honour an operation RAISES, naming its spec section. Never empty, never half-written, never silently truncated.
@@ -127,12 +127,23 @@ DISCIPLINE = """NO "BLOCKED", NO "DEFERRED". A task may be unfinished; it may no
 No prose-only cycles. Editing the plan is step 5 of a cycle, never a cycle of its own.
 Commit and push every cycle. Keep the four plan gates green (verify, row-honesty, progress-block --check, acceptance --floor)."""
 
+#: What the PO authorised on 2026-08-21, verbatim enough to act on. This block exists because a
+#: goal prompt whose STOP list re-blocks work that was just approved sends a whole session back
+#: to the same four questions — which is exactly what fifteen consecutive stop-hook firings were.
+GRANTS = """GRANTS (PO 2026-08-21) — authorised; rule 6 and the ⏸ rows do not bar these:
+· SOAK: `docker compose up -d knowledge-service` from infra/. Config is right (infra/.env:12);
+  the CONTAINER is stale. Arms dual-write. Verify with soak-armed-gate.
+· RECANON: `recanon_honorifics --apply` on the dev graph. Dry (1819/1/6) → apply → dry (0).
+· QC-3 SIGNED OFF: adopt halfvec_hnsw; MED-2 → migration ticket, MED-3 accept-and-document.
+· QC-5 CLAUSE 1 → 1a planted violation attributed (C14 3/3) + 1b re-drafts canon-consistent
+  (C15 9/9). Spec in §2.1, re-run."""
+
 STOP_BLOCK = """STOP — these five, nothing else:
 · a stop condition fires: {stops}
-· a ⏸ POST-REVIEW checkpoint: {pauses}
+· a ⏸ POST-REVIEW checkpoint GRANTS does not already decide: {pauses}
 · a sealed decision proves wrong
-· a PO decision is owed: OD-1, OD-2, OD-3
-· a write would touch a non-throwaway database
+· a PO decision is owed that GRANTS does not cover
+· a write to a non-throwaway DB that GRANTS does not authorise
 NOT reasons: a row finishing, a green suite, a commit landing, a bug you didn't write, or wanting to check in."""
 
 ROW_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9.\-]+)\*\*", re.MULTILINE)
@@ -240,8 +251,7 @@ def build(plan: str) -> str:
             lines.append(f"{name} {spec}  " + " → ".join(live))
     lines += [
         "",
-        "T17 is NOT the head of the queue, ever again (§1.3: its ceiling should not reach zero; "
-        "A10 priced the rest at 1 module per operation). Its FLOOR is what matters.",
+        "T17 is NOT the head of the queue, ever again (§1.3). Its FLOOR is what matters.",
         "",
         CYCLE,
         "",
@@ -249,6 +259,8 @@ def build(plan: str) -> str:
         RULES,
         "",
         DISCIPLINE,
+        "",
+        GRANTS,
         "",
         STOP_BLOCK.format(
             stops=", ".join(r for r, k in stops.items() if "⛔" in k) or "none open",
