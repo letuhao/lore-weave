@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: QC-3 ✅ · QC-6 ✅. ⛔ `T33` live bite needs a PO call (T33b: only dev has `:Event`, `causal-edges` WRITES). `T46` still has NO live evidence — my repro was retracted (T46e). Then `T25` ③ → `T48` → `T49` ⛔.**
+**RESUME: QC-3 ✅ · QC-6 ✅ · `T33` bite RUNS and PASSES on iso (T33c — no dev write needed). `T46` still has NO live evidence (T46e retraction). Then `T25` ③ → `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 42 of 84 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 43 of 85 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -5331,6 +5331,57 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
   asserted.
 
+
+  ### ✅ T33c 2026-08-21 — **the bite RUNS and PASSES**, and no dev write was needed after all
+
+  ```
+  iso extraction ch3-4   "Pass 2 write complete: entities=9, relations=4, events=3, facts=13"
+  :Event for the acceptance user   0 -> 3      (created by the REAL pipeline)
+  POST /internal/extraction/causal-edges (iso, tagged_only=false)
+        -> {"edges_written": 2, "events_considered": 3}
+  PRECEDES 2 · causes_cycles 0 · precedes_cycles 0 · event->event edges 2 (non-vacuous)
+  ```
+
+  T33b stopped here saying the bite needed a write to the dev graph, because lw-iso had **0**
+  `:Event` nodes for this user. That was true and the conclusion drawn from it was wrong.
+
+  🎯 **The two "event" populations are DIFFERENT CONCEPTS SHARING A WORD, and measuring settled
+  it in one query.** T33b flagged that the acceptance user had 0 `:Event` and 33
+  `Entity {kind:'event'}`, disjoint, and refused to guess which writer produced which. Measured:
+
+  ```
+  Entity{kind:'event'}   33 of 33 GLOSSARY-ANCHORED      -> mirrored lore nouns, glossary kind
+  :Event                 104, title+participants, 0 anchored -> extraction timeline events
+  ```
+
+  `pass2_writer.py:850` calls `merge_event`, so the current pipeline writes `:Event` — and it
+  does: chapters 3-4 produced **3**. The earlier zero was **chapter content**, not a shape
+  mismatch: the chapter-5 run's own log says `events=0`. There is no writer disagreement and
+  there was never a defect here.
+
+  ✅ **So T33's stated bite ran on the isolated stack**: *"run over the corpus -> edge count
+  non-zero **and** the graph acyclic"*. 2 edges over 3 events, zero cycles on either relation,
+  and the acyclicity check is non-vacuous — there are 2 real `(:Event)->(:Event)` edges for it to
+  traverse, which is the difference between "no cycles" and "nothing to look at".
+
+  📐 **What it wrote is the row's own design decision, observed.** The pass emitted **`PRECEDES`,
+  not `CAUSES`** — the judge declined to assert causation and asserted ordering instead. That is
+  exactly what this row widened the writer for (*"`causes | precedes`"*) and exactly the
+  behaviour its `unknown` clause asks for: *"a wrong order is worse than an absent one for a
+  canon check"*. A run that had confidently written `CAUSES` over three events would have been
+  the worse result.
+
+  ⛔ **Coverage is measured and it is LOW — that is a finding, not a blocker for this row.** Dev
+  sits at **4 / 1186 = 0.34 %** (re-measured in T33b, unmoved). The bite asks whether the writer
+  produces a non-zero, acyclic partial order; it does. Whether the corpus is richly covered is
+  `D-T33-CAUSAL-COVERAGE-UNMEASURED`'s subject, and its own *Retry when* ties it to T42's engine
+  choice before Phase 7 — not to this bite.
+
+  **QC (a) gates:** plan gates green; no code changed — this is the row's acceptance run.
+  **QC (b) the seam:** a real dispatched extraction and then the real `causal-edges` pass, both
+  through `lw-iso` knowledge-service -> provider-registry -> LM Studio.
+  **QC (c) real data:** 3 real events extracted from two real chapters, 2 real edges, and a
+  cycle check with something in it.
 
   ### 📊 T33b 2026-08-21 — the unblock condition IS met, and the run it points at considers **zero** events
 
