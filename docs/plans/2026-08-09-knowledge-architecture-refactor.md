@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 55 of 98 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 55 of 99 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (21/41) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7254,6 +7254,64 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### 🔴 QC-5 C26 2026-08-21 — **the prose judge investigated: 3 of 4 attributed verdicts are FALSE, and the 4th is why QC-5 still stands**
+
+  <!-- doc-language-gate: ok -- the rule texts and quoted spans ARE the adjudication; the finding
+       is that a verdict contradicts the span it cites, which does not survive translation -->
+
+  PO 2026-08-21: *investigate before deciding*. Every attributed verdict this plan has on record
+  was adjudicated **by hand against the rule text and the quoted span**. The six active rules:
+
+  ```
+  [R1] Lâm Trạch là người anh em họ của Lâm Uyên, và chính Lâm Trạch là kẻ phản bội…
+  [R3] Tô Thanh Dao là thành viên của Tô gia; Lâm gia và Tô gia có hôn ước.
+  [R5] Lâm Uyên điều khiển L-Field.
+  ```
+
+  **① C24 / ch12 — `[R1]`: FALSE.** The verdict says the draft *"states Lâm Trạch is NOT Lâm
+  Uyên's cousin, but a hunter"*. The draft says:
+
+  > *"Gương mặt **kẻ em họ**… nay đã hoàn toàn biến mất, thay vào đó là sự rạng rỡ của **một kẻ
+  > thợ săn** vừa thấy con mồi rơi vào bẫy."*
+
+  — "the face of **the cousin**… replaced by the radiance of **a hunter** who has seen prey fall
+  into the trap". *Hunter* is a **simile for his expression**, and the same sentence calls him
+  the cousin. The judge read a metaphor as a factual assertion and contradicted the clause it was
+  quoting. The passage also shows him springing the trap, which **conforms** to R1.
+
+  **② C24 / ch12 — `[R3]`: FALSE.** The verdict says Tô Thanh Dao using `linh năng` *"contradicts
+  the Tô and Lâm families having a marriage engagement"*. R3 is about family membership and an
+  engagement. Spiritual energy has no bearing on either. The reasoning is a non-sequitur
+  independent of what the draft says.
+
+  **③ C21 / corrected arm — `[R1]`: FALSE.** Already on record: flagged under R1 while the span
+  it quoted showed R1 being obeyed.
+
+  **④ C25 flow_control / ch13 — `[R5]`: SOUND.** *"Lâm Uyên là người điều khiển L-Field, không
+  phải bị nó chèn ép"*, against the span *"cố gắng chống lại sự chèn ép của L-Field"* — the draft
+  has him **resisting** a field R5 says he **controls**. A real contradiction, correctly
+  attributed, and the breaker paused the run on it.
+
+  ```
+  adjudicated by hand : 4 verdicts
+  sound               : 1   (R5, in the flow_control)
+  false               : 3   (R1 simile-as-fact, R3 non-sequitur, R1 span-agrees-with-rule)
+  ```
+
+  ✅ **C25 IS NOT RETRACTED, and this was checked before anything else.** Clause 2 rests entirely
+  on the flow_control, and the flow_control's verdict is the sound one. Had ④ been false, C25's
+  PASS would have been resting on an invented violation.
+
+  🎯 **The failure mode is now named: it is PRECISION, not capability.** The judge finds real
+  contradictions (④) and also manufactures them (①②③), and the manufactured ones share a shape —
+  **the stated reason contradicts the span it cites or the rule it names**. That is checkable
+  without ground truth, which matters: it means the defect is detectable in principle.
+
+  ⚠️ **AND IT REFRAMES C24's SURVEY.** That survey found *"5 of 6 candidate passages already
+  flagged — unusable as a 1a control"* and read it as a dirty corpus. On this evidence the
+  corpus is not dirty; **the judge is noisy**. 1a was vacuous on ch12 not because the draft was
+  bad but because the judge false-positives on it — which is a worse finding and the right one.
+
   ### ✅ QC-5 C25 2026-08-21 — **the acceptance gate PASSES, on a HARDER gate than the one it failed**
 
   Four arms, 17 runs, all on lw-iso, all under §7.3's five-run rule and C24's mandatory control:
@@ -7610,7 +7668,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Why §7.2 does not cover it** | §7.2 accepted the measured precision as the ceiling for `judge_role_attribution`, and the reason that is affordable is that **that judge is off by default**, so its false positives cannot reach an author. This is `judge_prose`, which is **on**. The acceptance and the exposure are different judges and the reasoning does not transfer — recording that rather than letting one decision quietly cover two. |
   | **Mechanism** | The per-rule verdict channel is what made this visible at all: the four dimension scores are identical across the two arms, so anything keyed on the score alone reads them as the same passage. §2.3's *"`violations[]` keyed by `rule_id` is the enforceable output"* is why the difference is inspectable. |
   | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
-  | **Retry when** | The PO decides which of those two it is. Not effort — the measurement is already in hand. |
+  | **Retry when** | ⚠️ **INVESTIGATED 2026-08-21 (C26), per the PO's *investigate before deciding*.** Four attributed verdicts adjudicated by hand against the rule texts and quoted spans: **3 false, 1 sound**. The false ones share one shape — *the stated reason contradicts the span it cites or the rule it names* (a simile read as a factual claim; a non-sequitur; a span that obeys the rule it is flagged under). The sound one is the `flow_control` R5 verdict, which is what C25's clause 2 rests on — checked first, so C25 stands. **The decision is now informed and still owed:** accept this as the local ceiling knowing this judge is ON by default, or spend on precision. n=4 is small and self-selected (they are the verdicts already in evidence), which the PO should weigh. |
 
   ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**
 
