@@ -72,11 +72,77 @@ def load(refresh: bool = False) -> dict:
     return data
 
 
-def _refresh_now() -> dict:
+class SurfaceRegressed(RuntimeError):
+    """The live catalogue declares LESS than the cache it is about to replace."""
+
+
+def surface_regressions(old: dict, new: dict) -> dict[str, list[str]]:
+    """{tool: what it lost}. Only ever reports losses — a tool GAINING synonyms is progress.
+
+    A tool that vanishes entirely is deliberately NOT reported here: providers legitimately
+    retire tools, and the deprecation sweep already owns that number. What this catches is a
+    tool that is still advertised while having QUIETLY stopped declaring how to reach it.
+    """
+    lost: dict[str, list[str]] = {}
+    for name, was in old.items():
+        now = new.get(name)
+        if now is None:
+            continue
+        gone = []
+        if synonyms(name, old) and not synonyms(name, new):
+            gone.append("synonyms")
+        if (was.get("description") or "").strip() and not (now.get("description") or "").strip():
+            gone.append("description")
+        was_req = set(((was.get("inputSchema") or {}).get("properties") or {}))
+        now_req = set(((now.get("inputSchema") or {}).get("properties") or {}))
+        if was_req and not now_req:
+            gone.append("inputSchema.properties")
+        if gone:
+            lost[name] = gone
+    return lost
+
+
+def _refresh_now(allow_regression: bool = False) -> dict:
     data = asyncio.run(_fetch())
+    if CACHE.exists() and not allow_regression:
+        try:
+            previous = json.loads(CACHE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            previous = {}
+        lost = surface_regressions(previous, data)
+        if lost:
+            raise SurfaceRegressed(_regression_report(lost))
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
     return data
+
+
+def _regression_report(lost: dict[str, list[str]]) -> str:
+    by_provider: dict[str, int] = {}
+    for name in lost:
+        by_provider[name.split("_")[0]] = by_provider.get(name.split("_")[0], 0) + 1
+    lines = [
+        f"REFUSING to cache: {len(lost)} tool(s) declare LESS than the cached surface.",
+        "",
+        "A whole provider losing its synonyms at once is a DEPLOYMENT regression, not a code",
+        "change — an image built from a stale context, serving tools whose declarations were",
+        "committed weeks ago. Caching it would make the degraded surface this loop's ground",
+        "truth, and every batch measured afterwards would be measuring the wrong platform.",
+        "",
+        "by provider prefix: " + ", ".join(f"{k}={v}" for k, v in sorted(by_provider.items())),
+        "",
+    ]
+    lines += [f"  {n}: lost {', '.join(w)}" for n, w in sorted(lost.items())[:30]]
+    if len(lost) > 30:
+        lines.append(f"  ... and {len(lost) - 30} more")
+    lines += [
+        "",
+        "CHECK THE DEPLOYED IMAGE AGAINST SOURCE before doing anything else, e.g.",
+        "  docker exec <svc> md5sum /app/app/mcp/server.py   # vs the file in git",
+        "If they differ, rebuild and --force-recreate, then refresh again.",
+        "If the loss is genuinely intended, re-run with --allow-regression.",
+    ]
+    return chr(10).join(lines)
 
 
 def required_args(name: str, cat: dict | None = None) -> list[str]:
@@ -107,15 +173,23 @@ def synonyms(name: str, cat: dict | None = None) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--allow-regression", action="store_true",
+                    help="cache even if tools lost synonyms/description (see the refusal text)")
     ap.add_argument("--show")
     ap.add_argument("--synonyms")
     ap.add_argument("--audit-synonyms", action="store_true",
                     help="how many tools declare synonyms, and where they keep them")
     a = ap.parse_args()
 
-    cat = load(refresh=a.refresh)
     if a.refresh:
+        try:
+            cat = _refresh_now(allow_regression=a.allow_regression)
+        except SurfaceRegressed as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         print(f"cached {len(cat)} tools -> {CACHE}")
+    else:
+        cat = load()
     if a.show:
         print(json.dumps(cat.get(a.show, {"__missing__": a.show}), indent=1))
     if a.synonyms:

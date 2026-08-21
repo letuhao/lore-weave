@@ -1157,7 +1157,7 @@
   }
  },
  "book_structure_edit": {
-  "description": "Reorganize the manuscript STRUCTURE. `op` selects the operation: create_part (title) \u00b7 rename_part (part_id, title) \u00b7 reorder_parts (ordered_part_ids \u2014 the full active set, each once) \u00b7 home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) \u00b7 reorder_chapters (chapter_ids \u2014 the complete new order for one language track). Every op is reversible (Undo). To DELETE a part, use this same tool's archive op \u2014 there is no separate delete tool.",
+  "description": "Reorganize the manuscript STRUCTURE. `op` selects the operation: create_part (title) \u00b7 rename_part (part_id, title) \u00b7 reorder_parts (ordered_part_ids \u2014 the full active set, each once) \u00b7 home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) \u00b7 reorder_chapters (chapter_ids \u2014 the complete new order for one language track). Every op is reversible (Undo). To DELETE a part, call the SEPARATE tool book_structure_part_archive (soft-delete to trash, restorable \u2014 its chapters keep their text and fall to Unassigned). This tool has no archive op.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
