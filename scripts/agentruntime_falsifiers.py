@@ -1606,10 +1606,17 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     # A call-site guard, so it must be reddened by removing what it READS: put the sentence back
     # inline, which is precisely the shape that shipped the defect.
+    # ANCHOR MOVED 2026-08-14: the call now threads the tool's own property descriptions in, so
+    # the refusal can quote what the tool DECLARES instead of claiming nothing is declared. The
+    # falsifier still has to replace the helper with a hand-written sentence at the call site.
+    # ANCHOR MOVED 2026-08-14: the call now threads the tool's own property descriptions in,
+    # so the refusal can quote what the tool DECLARES instead of claiming nothing is
+    # declared. Anchored on the ARGUMENT line (single-line, unique) rather than the wrapped
+    # call head — a multi-line anchor is a newline-escape trap in this file.
     "test_the_CALL_SITE_uses_the_helper_not_its_own_sentence": [
         (f"{CS}/app/services/stream_service.py",
-         '                        _ma_msg = _missing_args_message(c["name"], _missing_args, _c_block)',
-         '                        _ma_msg = "These carry the actual CONTENT (not ids)"'),
+         '                            c["name"], _missing_args, _c_block, _ma_props)',
+         '                            "These carry the actual CONTENT (not ids)")'),
     ],
     "test_A_MODEL_SUPPLIED_ARGUMENT_KEEPS_THE_ORIGINAL_MESSAGE": [
         # Report the model's own content as runtime-owed — the same error pointed the other way.

@@ -2805,7 +2805,8 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
     return sorted(out)
 
 
-def _missing_args_message(tool: str, missing: list[str], contract: dict | None) -> str:
+def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
+                          tool_def_props: dict | None = None) -> str:
     """The refusal for a call still missing required args — keyed off who DECLARES each one.
 
     CP-5.4 split this into two arms, `context|plan` ("not yours to invent") and everything else
@@ -2852,8 +2853,38 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None) 
             f"active plan, and has none right now. {_how} Do NOT guess a value."
         )
     if any(declared_supplier(block, a) is None for a in missing):
-        # Undeclared: say so, and give the id move FIRST — that is the class this arm was
-        # measured failing on. Never guess a value on the model's behalf.
+        # 🔴 "DOES NOT DECLARE" WAS CHECKING THE WRONG SOURCE, and it went from merely unhelpful to
+        # FALSE the moment a declaration existed. Only 12 of the 315 federated tools carry a
+        # contract, so `declared_supplier` is None for almost everything — but the tool's own
+        # PROPERTY DESCRIPTION is a declaration too, and on this platform it is usually the ONLY
+        # one (219 `*_id` properties state UUID in prose; zero emit `format: uuid`).
+        #
+        # MEASURED 2026-08-14: composition_generate's `model_ref` was given a description naming
+        # its supplier — "list the caller's models with settings_list_models and pass the
+        # `model_ref` from there" — and the refusal STILL told the model "this tool does not
+        # declare which side supplies them — so do NOT guess a value". The runtime held the answer
+        # and said it had none. On 4 of 5 runs the model then abandoned the grounded tool and
+        # proposed book_chapter_save_draft with prose it wrote itself; on the 1 run that did call
+        # settings_list_models and come back with a real id, it got there in spite of this
+        # sentence, not because of it.
+        #
+        # Quoting the tool's own words asserts nothing the runtime cannot know — it is the same
+        # move as reading `tier` or `synonyms` rather than inferring from a name.
+        _declared = [
+            (a, str((tool_def_props or {}).get(a, {}).get("description") or "").strip())
+            for a in missing
+        ]
+        _declared = [(a, d) for a, d in _declared if d]
+        if _declared:
+            _lines = "; ".join(f"{a}: {d}" for a, d in _declared)
+            return (
+                f"'{tool}' is missing required argument(s): {missing}. The tool DOES declare what "
+                f"{'these are' if len(_declared) > 1 else 'this is'} — {_lines} — so use that to "
+                "obtain the real value and call again. Do NOT guess a value and do NOT substitute "
+                "a placeholder like 'default'."
+            )
+        # Genuinely undeclared: say so, and give the id move FIRST — that is the class this arm
+        # was measured failing on. Never guess a value on the model's behalf.
         return (
             f"'{tool}' is missing required argument(s): {missing}, and this tool does not "
             "declare which side supplies them — so do NOT guess a value. If one of them names "
@@ -6037,7 +6068,17 @@ async def _stream_with_tools(
                                 _tool_contract_registry())
                         except Exception:
                             _c_block = {}
-                        _ma_msg = _missing_args_message(c["name"], _missing_args, _c_block)
+                        # Bound to a local rather than repeating the lookup: an anchored
+                        # falsifier counts occurrences of that expression, and a second copy
+                        # made it stale. One lookup, one anchor.
+                        _ma_props = (
+                            (_c_def.get("function", {}).get("parameters", {}) or {})
+                            .get("properties") or {}
+                        ) if isinstance(_c_def := (
+                            cat_index.get(c["name"]) or plain_index.get(c["name"]) or {}
+                        ), dict) else {}
+                        _ma_msg = _missing_args_message(
+                            c["name"], _missing_args, _c_block, _ma_props)
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": "missing_required_args", "message": _ma_msg}),
