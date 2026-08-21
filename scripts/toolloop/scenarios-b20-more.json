@@ -20,7 +20,7 @@
      "args": {
       "op": "create",
       "code": "emberfall-reversal-b20-{run_id}",
-      "name": "Emberfall Reversal",
+      "name": "Emberfall Reversal {run_id}",
       "kind": "trope"
      }
     }
@@ -66,7 +66,7 @@
      "args": {
       "op": "create",
       "code": "emberfall-ascent-b20-{run_id}",
-      "name": "Emberfall Ascent",
+      "name": "Emberfall Ascent {run_id}",
       "kind": "trope"
      }
     },
@@ -75,7 +75,7 @@
      "args": {
       "op": "create",
       "code": "emberfall-descent-b20-{run_id}",
-      "name": "Emberfall Descent",
+      "name": "Emberfall Descent {run_id}",
       "kind": "trope"
      }
     },
@@ -112,5 +112,6 @@
    "defects": [],
    "_fixture_fix": "ACCOUNT-SCOPED SEED MADE PER-RUN UNIQUE. A motif code is unique PER OWNER, so a fixed code creates the row on rep 0 and fails every rep after it — measured here as 'seed step 0 returned no id' on 4 of 5 runs, which then read as 0/5 called. The new `{run_id}` placeholder (provision.py) suffixes the code with the run's nonce. The display NAME is deliberately left stable so the prompt can still name the motif in plain prose, and no two scenarios in this batch share a name."
   }
- ]
+ ],
+ "_fixture_note": "SEED NAMES CARRY THE NONCE TOO. The {run_id} suffix on the CODE stopped the per-owner uniqueness collision, but every run still seeded the same display NAME — so identically-named motifs piled up in the account's real library and composition_motif_search honestly reported '9 entries', then 14, 15, 17, 19 for the same name across runs. The tool was right; the fixture was polluting. 54 leftover motifs were archived afterwards through composition_motif_edit op=archive (the platform's own path, no DML). The PROMPT still names the human-readable stem, so an exact-name hit still sorts first via `q`."
 }

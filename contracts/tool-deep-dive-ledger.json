@@ -2276,10 +2276,10 @@
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v6.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch20-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE, and the gate refused BOTH terminal states — correctly. 0 clean runs in 23 attempts across four arms (5+5+5+8): every one died on the degenerate `<tool_call|>` output after a SUCCESSFUL composition_motif_search. `proven` is refused because nothing was measured; `blocked` is refused because blocked means the tool could not be EXERCISED, and what could not be exercised is the TURN. Its own boundaries are clean by direct probe and nothing was written on any arm.\n🔴 THIS IS THE FIRST TOOL THE MODEL DEFECT HAS TAKEN OFF THE BOARD. Its near-identical sibling composition_motif_edit got 3 clean runs out of 13 and is PROVEN, so the scenario is workable — this one just triggers D-SILENT-TURN reliably. That makes fixing D-SILENT-TURN a denominator problem, not only a quality one: no amount of re-running concludes this tool."
+   "note": "IN CYCLE after a SECOND batch. 0 clean runs in 33 attempts across five arms (5+5+5+8+5+5), every one lost to the upstream no-message error. Its four batch-20 siblings all reached clean runs in the same arms — motif_mine 5/5, suggest_for_chapter 5/5, link_list 5 clean, motif_search 5 clean — so this is not the rig and not the fixture: the provisioning flaw that hurt link_list was fixed with the {run_id} nonce and PROVISION errors went to zero, and this tool still gets nothing. Something about this turn shape triggers the model's degenerate output reliably. The tool's own boundaries are clean by direct probe and nothing has ever been written. The gate refuses both terminal states and is right to."
   },
   "composition_motif_edit": {
    "state": "proven",
@@ -2320,6 +2320,14 @@
    "cycle": "batch-17 (2026-08-14)",
    "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch20-link-list-clean.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch20-link-list-clean.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_motif_search": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch20-motif-search-clean.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch20-motif-search-clean.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   }
@@ -3056,9 +3064,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 116,
+  "tools_concluded": 117,
   "tools_in_cycle": 1,
-  "tools_proven": 86,
+  "tools_proven": 87,
   "tools_blocked": 30,
   "defects_proven": 23,
   "defects_open": 0,
@@ -3074,7 +3082,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 121,
+  "tools_concluded_including_deprecated": 122,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
@@ -3112,6 +3120,13 @@
    "found": "2026-08-21",
    "occurrences": [
     "Batch 19's fourth arm failed with PROVISION errors ('failed to initialize quota', 'not found or not accessible') and a store snapshot that returned `__error__:psql: ... FATAL: sorry, too many clients`. max_connections is 300; measured after the run it was back to 91, so the exhaustion is a TRANSIENT SPIKE under sustained loop load, not a leak.\nIT IS THE HARNESS, NOT THE SERVICES: chat-service and composition-service logged ZERO connection errors in the same window (grepped for 'too many clients', 'TooManyConnections', 'PoolTimeout'). The harness opens a fresh psql per snapshot per database via docker exec, on top of every throwaway book's provisioning across services, and those compete with the service pools.\nWHY IT MATTERS BEYOND THIS BATCH: it corrupts a run in a way that reads as a TOOL result. '0/5 called' and 'surfaced 1/5' in that arm are artefacts of provisioning failing, not evidence about the tools."
+   ]
+  },
+  {
+   "id": "OBS-FIXTURE-DEBRIS-IN-AN-ACCOUNT-SCOPED-LIBRARY",
+   "found": "2026-08-21",
+   "occurrences": [
+    "Batch 20 left 54 unarchived motifs in the caller's REAL library — 20 named 'Emberfall Reversal', 12 'Emberfall Ascent', 12 'Emberfall Descent', 6 'Emberfall Binding'. The {run_id} nonce added mid-batch made each seeded CODE unique (fixing a per-owner collision that was costing 4 of 5 runs) but every run still seeded the same display NAME.\nIT SHOWED UP IN THE EVIDENCE AS A CLIMBING NUMBER: composition_motif_search answered '9 entries', then 14, 15, 17, 19 for the same name across successive runs. The tool was right every time; the fixture was growing under it. A reader of that evidence later, without this note, would reasonably read it as a duplicate-detection defect.\nCLEANED UP through the platform's own path (composition_motif_edit op=archive, 54 of 54, no DML), and the seed NAMES now carry the nonce as well as the codes. The general rule: a book-scoped fixture is torn down with its throwaway book; an ACCOUNT-scoped one is not, so it must be unique per run AND cleaned up."
    ]
   }
  ]
