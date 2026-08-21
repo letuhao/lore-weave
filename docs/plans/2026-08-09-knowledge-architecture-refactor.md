@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: rewrite the 16 per-property `ON CREATE SET` branches onto `coalesce`; §10.3's whole-map one is its own unit.**
+**RESUME: the next `ON CREATE SET` branches — `hierarchy` (4) and `entity_status` (1); 15 of the 16 remain.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,65 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T68 2026-08-22 — **the first `ON CREATE SET` translation, and it closes a latent tenancy hole**
+
+  ```
+  provenance::_UPSERT_SOURCE_CYPHER      dialect 121 -> 116
+  knowledge unit 4302 · DB integration 600 passed / 0 failed (fresh Neo4j + live AGE)
+  ```
+
+  §10.3 split the 17 `ON CREATE SET` branches into 16 per-property and 1 whole-map. This is the
+  first of the 16, chosen as the smallest with both branches so the pattern is checkable by eye
+  before `_MERGE_ENTITY_CYPHER`'s 21 properties:
+
+  ```
+    ON CREATE SET s.project_id = $project_id, … s.created_at = datetime(),
+                  s.updated_at = datetime()
+    ON MATCH SET  s.updated_at = datetime()
+    WITH s WHERE s.user_id = $user_id
+  ->
+    MERGE (s:ExtractionSource {id: $id, user_id: $user_id})
+    SET s.project_id = coalesce(s.project_id, $project_id), …
+        s.created_at = coalesce(s.created_at, {NOW}),
+        s.updated_at = {NOW}
+  ```
+
+  `updated_at` was in **both** branches, so unconditional is exactly what it already was.
+  Everything else is create-only and takes `coalesce`. Nothing about the Neo4j semantics moves.
+
+  🔴 **Except one thing, and it was a latent tenancy bug.** The old form carried
+  `WITH s WHERE s.user_id = $user_id` **after** the `SET`. On Neo4j that means a node whose `id`
+  collided across tenants would be **MATCHed, MUTATED (`ON MATCH SET s.updated_at`), and then
+  filtered out of the result** — a write to another tenant's node reported as nothing found. It
+  is not reachable today because `extraction_source_id` hashes `user_id` into the id, so the
+  pair cannot disagree; keying the MERGE on both makes that structural rather than incidental.
+
+  📐 **And it is the same trailing-filter shape T58 measured on AGE**, where it is worse: a
+  `WITH … WHERE` after `SET` **silently discards the write entirely**. One rewrite fixes the
+  Neo4j latency and removes the AGE hazard, which is the argument for translating rather than
+  wrapping.
+
+  **BITE — N/A by the rules, and this is the honest version:** the translation changes Cypher
+  text, and the thing that can go wrong is *behavioural on a live engine*, which a unit bite
+  cannot see — the unit suite does not move (4302 → 4302) because nothing asserts this query's
+  text. So the control here is QC (b): the DB integration suite against a **fresh** Neo4j, which
+  is what exercises `upsert_extraction_source` for real. That is the same reasoning T66 used and
+  the same suite that caught T65.
+
+  ⚠️ **One unexplained failure, recorded because it is not diagnosed.**
+  `test_loader_writes_tagged_passages_to_neo4j` failed **once**, under one of `pytest-randomly`'s
+  orderings. It passed alone, and passed in **three** subsequent full runs including two with
+  the identical configuration. It does not reference `ExtractionSource`, `provenance`, or
+  anything this row touched — checked, not assumed. **A divergence RECORDED is not a divergence
+  DIAGNOSED (rule 13), so this is recorded as an order-dependent flake with no cause, not as
+  "fine".** If it recurs, the seed is the thing to capture.
+
+  **QC (a) gates:** unit **4302**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **121 → 116** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ 600 passed / 0 failed against a fresh throwaway Neo4j with AGE live.
+  **QC (c) real data:** extraction sources upserted and re-upserted in a real Neo4j through the
+  rewritten query.
 
   ### 📊 T67 2026-08-22 — **16 of 17 `ON CREATE SET` branches take the recipe; the 17th cannot**
 

@@ -40,6 +40,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.entities import delete_entities_with_zero_evidence
 from app.db.neo4j_repos.entity_status import (
@@ -152,18 +153,25 @@ def _node_to_source(node: Any) -> ExtractionSource:
 
 
 _UPSERT_SOURCE_CYPHER = """
-MERGE (s:ExtractionSource {id: $id})
-ON CREATE SET
-  s.user_id = $user_id,
-  s.project_id = $project_id,
-  s.source_type = $source_type,
-  s.source_id = $source_id,
-  s.created_at = datetime(),
-  s.updated_at = datetime()
-ON MATCH SET
-  s.updated_at = datetime()
-WITH s
-WHERE s.user_id = $user_id
+// §10.1/§10.2 — engine-neutral. AGE has no ON CREATE / ON MATCH, so each assignment is
+// ONE expression that degenerates correctly on create: `coalesce` for create-only fields,
+// unconditional for the ones both branches set. `updated_at` was in BOTH branches, so it is
+// simply unconditional and nothing about it changed.
+//
+// ⚠️ `user_id` moved into the MERGE KEY and the trailing `WITH s WHERE s.user_id` is gone.
+// Two reasons, and the second is a latent bug this fixes:
+//   1. On AGE a `WITH … WHERE` after `SET` SILENTLY DISCARDS the write (measured, T58).
+//   2. On NEO4J the old form MATCHED a colliding node, mutated its `updated_at`, and then
+//      filtered it out of the result — so a cross-tenant id collision would have written to
+//      another tenant's node and reported nothing. `extraction_source_id` hashes `user_id`,
+//      so the pair cannot disagree and no collision is reachable today; keying on it makes
+//      that structural instead of incidental.
+MERGE (s:ExtractionSource {id: $id, user_id: $user_id})
+SET s.project_id  = coalesce(s.project_id, $project_id),
+    s.source_type = coalesce(s.source_type, $source_type),
+    s.source_id   = coalesce(s.source_id, $source_id),
+    s.created_at  = coalesce(s.created_at, {NOW}),
+    s.updated_at  = {NOW}
 RETURN s
 """
 
@@ -191,7 +199,7 @@ async def upsert_extraction_source(
     )
     result = await run_write(
         session,
-        _UPSERT_SOURCE_CYPHER,
+        render(_UPSERT_SOURCE_CYPHER, "neo4j"),
         user_id=user_id,
         id=sid,
         project_id=project_id,
