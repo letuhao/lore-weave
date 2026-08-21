@@ -93,6 +93,7 @@ func (s *Server) withImageURL(d *worldMapDetail) {
 		d.ImageURL = &u
 	}
 }
+
 type worldMapCreateOut struct {
 	Map worldMapDetail `json:"map"`
 }
@@ -402,6 +403,23 @@ func (s *Server) toolWorldMapList(ctx context.Context, _ *mcp.CallToolRequest, i
 	worldID, err := uuid.Parse(in.WorldID)
 	if err != nil {
 		return nil, mapListOut{}, errors.New("world_id must be a UUID")
+	}
+	// The listing query below is owner-scoped, so no map can cross a tenant boundary --
+	// but WITHOUT this check a world the caller does not own answered `{"maps": []}`,
+	// which is the same sentence as "your world has no maps yet". That is the
+	// false-absence class this service already refuses by name four times over
+	// (world_get, world_map_get, world_map_delete, world_delete all answer "not
+	// found"), and it is worse through an agent than through the UI: the model
+	// relays "that world has no maps" to an author whose world is full of them.
+	// Owner-scoped existence check, so it is still no oracle for another account.
+	var exists bool
+	if err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM worlds WHERE id=$1 AND owner_user_id=$2)`,
+		worldID, ownerID).Scan(&exists); err != nil {
+		return nil, mapListOut{}, errors.New("failed to list maps")
+	}
+	if !exists {
+		return nil, mapListOut{}, errors.New("world not found")
 	}
 	rows, err := s.pool.Query(ctx, `
 SELECT id, world_id, name, image_object_key, version FROM world_maps
