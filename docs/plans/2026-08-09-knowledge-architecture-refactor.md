@@ -35,9 +35,9 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T17` class (d) — 28 binders, unblocked when T35 closed. `T54` is iso-proven but splits the graph until they move.**
+**RESUME: `T17` — the 10 binders A14 found free (7 constants, 3 already-deleted names). Class (d) is 34 and owes a shape decision.**
 
-⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
+⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -10668,7 +10668,120 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ```
 
 
-  ### 📊 A13 2026-08-14 — every remaining binder classified: **9 permanently out, 45 gated, 0 available**
+  ### 📊 A14 2026-08-22 — class (d) becomes DERIVED, and A13's hand count was wrong **in both directions**
+
+  ```
+  [port-adoption-gate] class (d) 34/34 — modules needing a port operation that does not
+                       exist; AGE cannot be the only engine until 0
+
+    34  (d) needs port operations                              <- A13 said 28
+     7  (a) constants and types only — a MOVE, not port growth  <- A13 said 0 available
+     3  (b) deleted by §3.1, or already ported/moved
+     7  (c) one-shot / benchmark — out of port scope (§1.3c)
+     3  (§1.2) engine-specific janitors — out forever           <- A13 said 5
+    ── 54, which is what the ceiling reports
+  ```
+
+  🔴 **THE NUMBER THE CUTOVER TURNS ON WAS PROSE, AND IT DRIFTED.** `D-AGE-DEFAULT-SPLITS-THE-
+  GRAPH-UNTIL-CLASS-D-MOVES` blocks the engine swap on "the 28 in class (d)", the RESUME line
+  quoted 28, and §1.3's A13 paragraph is where the 28 came from — hand-classified 2026-08-14 and
+  never re-derived. It is **34**, and they demand **78 distinct operations against a port of 21**.
+
+  ⚠️ **A13's own check could not fail, which is why nobody caught it.** Its stated bite was
+  *"the classes SUM to the gate's number — 28 + 17 + 5 + 4 = 54"*. Any partition of 54 sums to
+  54. Arithmetic was never the risk; the ASSIGNMENT was, and the sum is blind to it. This is
+  rule 3 on the plan's own artifact rather than on a detector: a criterion that cannot fail is
+  not a criterion.
+
+  **Both halves of the error are the same mistake — a module filed under the class of ONE of
+  its imports while its other imports still bound it.** The gate's own ceiling note records the
+  correction at 57 (*"three call sites became zero and the ceiling fell by only one"*); A13
+  reintroduced it one level up:
+
+  | A13 | derived | why the hand count moved |
+  |---|---|---|
+  | 17 vector-layer | **3** | only 3 modules are §3.1-ONLY. The rest import a §3.1 name **and** an unported operation, and a module leaves the population when its LAST binding goes. |
+  | 5 §1.2 janitors | **3** | `internal_admin` and `public/extraction` call a janitor **and** ten other unported operations between them. |
+  | 28 class (d) | **34** | the 16 above, minus the 10 that turn out to need nothing. |
+  | 0 available | **10** | ⬇ |
+
+  🎯 **AND THE CLAIM THAT SENT T17 TO THE BACK OF THE QUEUE IS FALSE.** A13 concluded
+  *"**Nothing in the 54 is available to pick up**"*, and that sentence is why §1.3's ceiling was
+  written off as a derived number and the row parked. Derived: **10 modules need no port growth
+  at all** — 7 whose last repo import is a CONSTANT (`SUPPORTED_PASSAGE_DIMS` ×5,
+  `SUPPORTED_VECTOR_DIMS`, `KNOWN_SOURCE_TYPES`) and 3 whose remaining names §3.1 already
+  deletes. A6 measured class (a) as *"moving ZERO"* in August because every importer then kept
+  other repo names; eleven batches later seven of them do not, and no one re-measured. That is
+  the same discharged-dependency shape as T35 → class (d) itself.
+
+  📐 **§3.1's boundary is a MODULE, not a list of names, and that is what made the derivation
+  honest.** The first cut hand-listed thirteen vector symbols and still missed
+  `recent_passage_texts`, `count_passages_by_source_type` and `find_passages_by_fulltext` —
+  a name only looks like the vector layer once you already know it is. All three live in
+  `passages.py`. A13 refused `get_chapter_index_for_source` for exactly this reason, by hand,
+  one symbol at a time; the rule is now `passages.py` + `vector_indexes.py`.
+
+  📐 **A submodule import resolves to the attributes actually called.** Five modules reach the
+  graph as `from neo4j_repos import maintenance`, which binds nine functions — of which §1.2
+  sends five to the port's exclusion list forever and two became port operations. Scoring the
+  bare name `maintenance` files all five callers as work that spec text says will never be
+  done. `maintenance.delete_orphan_extraction_sources` is checkable against §1.2 by name;
+  `maintenance` is not. A submodule bound and never dereferenced still counts — what the
+  classifier cannot read is work, not the absence of work.
+
+  **BITE ×6, and the fifth is the one worth reading:**
+
+  ```
+  1. a repo FUNCTION stops counting as an operation
+       selftest FAIL: "a module importing a constant AND an operation scored (a)…,
+                       not class (d); that is the exact error the stale hand count made"
+       live: class (d) IMPROVED to 8            <- the ratchet tracks the classification
+  2. `_repo_symbols` stops checking WHERE a name came from
+       selftest FAIL: "a same-named import from a NON-repo module was scored as a repo symbol"
+  3. a real module migrates (`context/modes/full.py`, op import -> a constant import)
+       live: class (d) IMPROVED to 41 but the ceiling still says 42
+  4. the janitor exclusion swallows the WHOLE submodule (A13's error, mechanised)
+       selftest FAIL: "a NON-janitor function reached through `maintenance` was excused;
+                       the submodule is not the unit of the decision, the function is"
+  5. submodule attributes stop being resolved
+       live: class (d) GREW to 37       selftest: **PASS**   <- ⚠️ THE HOLE
+  6. §3.1's module boundary drops
+       selftest FAIL: "a symbol §3.1 DELETES was counted as needing a port operation"
+       live: class (d) GREW to 41
+  ```
+
+  ⚠️ **Bite 5 caught this batch's own selftest being green by construction.** Every check above
+  it hands `classify()` an already-resolved symbol set, so not one of them ever ran the
+  resolution step — the mutation moved the live number by 3 and the selftest never noticed.
+  That is *detector-fitted-to-its-motivating-examples* in a suite written the same hour to
+  prevent it. Closed by a case that parses SOURCE through `_repo_symbols` and asserts the bare
+  submodule name is REPLACED, not merely joined; bite 5 re-run now fails two checks by name.
+
+  **QC (a) gates:** `port-adoption-gate` PASS at 54/19/2 unchanged, class (d) 34 added and
+  ratcheted in this commit (rule 5); `--selftest` PASS and proven red by four of the six bites.
+  `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-progress-block --check` OK ·
+  `plan-acceptance --floor` OK · `graph-port-gate` PASS (309 scanned) ·
+  `knowledge-access-gate` PASS · `gate-wiring-gate` OK (108, 6 exempt) · `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A — one gate script changed; no service code, no wire contract, no
+  seam crossed.
+  **QC (c) real data:** the import graph IS the data — 54 modules and 415 `neo4j_repos` symbols
+  read from disk by AST on every run, never from a list. A stale figure now fails the build
+  instead of being quoted.
+
+  ⚠️ **One lone LF in this file silently shifted every line index past byte 8672** (a leftover
+  from an earlier session's edit to `MIN_GRAPHSTORE_ADOPTERS`). Bites 1 and 2 mutated the line
+  *after* the one intended and went red with a `NameError`, which reads exactly like a real
+  failure. Normalised in this commit. **A bite that goes red for the wrong reason is a bite that
+  proved nothing** — the recorded CRLF class, on the harness rather than on the target.
+
+  ### 📊 A13 2026-08-14 — ~~every remaining binder classified: **9 permanently out, 45 gated, 0 available**~~
+
+  🔴 **SUPERSEDED BY A14 (2026-08-22) — every number below is wrong, and the classification
+  METHOD is why.** Derived from the AST: class (d) is **34** not 28, the janitors are **3**
+  not 5, the vector-layer count is **3** not 17, and **10 modules are available to pick up**
+  rather than none. A13's check was that the classes sum to 54, which any partition does.
+  Kept unstruck below rather than rewritten: the reasoning it records — why the janitors and
+  the one-shot scripts are out forever — is still right, and it is the COUNTS that drifted.
 
   ```
   port-adoption-gate   ceiling 54   floor 18
@@ -15934,10 +16047,10 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   |---|---|
   | **Blocker** | Flipping the graph default to AGE splits one conceptual graph across two stores: the **19** `GraphStore` adopters read AGE while the **54** `neo4j_repos` binders read Neo4j. Measured live on dev 2026-08-22 — both engines initialised in the same service, seconds apart, with AGE empty. Extraction and context assembly are on the port side, so they would have read an empty graph without erroring. |
   | **Evidence** | T54b. `19 import GraphStore` / `54 bind neo4j_repos` from `port-adoption-gate`; startup log shows `Neo4j schema applied` at 18:39:50 and `AGE pool ready` at 18:39:51. Dev reverted to `neo4j`; the code default stays `age` and iso stays on AGE with a proven round trip. |
-  | **What must move, and it is NOT all 54** | §1.3's A13 classification: **17** vector-layer (deleted by §3.1, never ported), ~9 one-shot migration scripts (out of port scope), and **28 needing port operations whose shape §1.3 deferred to T35**. Only the 28 block the engine swap. |
+  | **What must move, and it is NOT all 54** | ~~§1.3's A13 classification: 17 vector-layer, ~9 one-shot scripts, 28 needing port operations~~ — **A13's hand count was wrong; A14 derives it.** `port-adoption-gate` now prints it every run: **34** class (d) block the engine swap · 7 one-shot/benchmark and 3 §1.2 janitors are out forever · 7 need a CONSTANT moved and 3 need nothing, which is **10 available today with no port growth**. |
   | **Why it is open rather than blocked** | 🎯 **T35 is CLOSED.** The 28 were waiting on a decision that has since been made, and nobody restarted them. This is not a missing decision — it is unstarted work with a discharged dependency, the same shape T33a caught in `T33→T32`, `T46→T45` and `T48→T47`. |
   | **Mechanism** | `port-adoption-gate` prints both numbers every run, so the gap between 19 and 54 is visible on every commit rather than needing an audit to rediscover. |
-  | **To unblock** | Take class (d) in T35-shaped batches: grow the port operation, migrate its binders, lower the ceiling in the same commit (rule 5). The engine swap lands when class (d) reaches zero — not when the ceiling does, which §1.3 correctly says it never will. |
+  | **To unblock** | ⚠️ **Priced by A14 and it is not T35-shaped:** the 34 demand **78 distinct operations against a port of 21**, each costing a Neo4j impl, an AGE impl, a fake and a conformance case. Growing the port to ~100 methods makes it a mirror of `neo4j_repos` rather than a boundary, so the SHAPE of the remainder is a decision this deferral now owes — see the next cycle. Meanwhile the **10 available** modules (7 constants + 3 already-free) move with no port growth and are the batch to take first. The swap lands when class (d) reaches zero, not when the ceiling does. |
   | **Retry when** | Immediately — it is T17 class (d), unblocked since T35 closed. |
 
   ### 🔴 T54b 2026-08-22 — **the dev flip SPLIT the graph across two engines, and that is the real blocker**

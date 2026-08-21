@@ -202,11 +202,56 @@ def _imported_symbols(tree: ast.AST) -> set[str]:
     return out
 
 
-def scan() -> tuple[list[str], list[str], list[str], list[str]]:
+def _repo_symbols(tree: ast.AST) -> set[str]:
+    """Names this file pulls specifically out of `neo4j_repos` — the class-(d) input.
+
+    Narrower than `_imported_symbols`, deliberately: that one returns every `from X import`
+    name in the file, so a module importing `merge_entity` from a SERVICE layer would be
+    scored as needing a port operation it does not need.
+
+    ⚠️ A SUBMODULE import is resolved to the attributes actually USED, and that correction is
+    worth more than it looks. `from app.db.neo4j_repos import maintenance` binds nine
+    functions; §1.2 decided five of them stay engine-specific forever and two became port
+    operations. Scoring the bare name `maintenance` puts all five janitor callers in class (d)
+    — work that spec text says will never be done — which is one of the two errors in the
+    hand count this replaces. `maintenance.delete_orphan_extraction_sources` is checkable
+    against §1.2 by name; `maintenance` is not.
+
+    A submodule imported and never dereferenced yields the bare name, which stays class (d).
+    That is the conservative direction: an unresolvable import counts as work remaining.
+    """
+    out: set[str] = set()
+    subs: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and _CONCRETE in node.module:
+            for al in node.names:
+                out.add(al.name)
+                subs[al.asname or al.name] = al.name
+        elif isinstance(node, ast.Import):
+            for al in node.names:
+                if _CONCRETE in al.name:
+                    leaf = al.name.rsplit(".", 1)[-1]
+                    out.add(leaf)
+                    subs[al.asname or leaf] = leaf
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
+                and node.value.id in subs:
+            real = subs[node.value.id]
+            if real in out:
+                out.discard(real)
+            out.add(f"{real}.{node.attr}")
+    return out
+
+
+def scan() -> tuple[list[str], list[str], list[str], list[str], dict[str, set[str]]]:
     concrete: list[str] = []
     ported: list[str] = []
     graphstore: list[str] = []
     vbypass: list[str] = []
+    # ⚠️ ONE walk, ONE population. The class-(d) split below reads these symbols rather
+    # than re-scanning: a second scanner is how one concept acquires two readers that
+    # disagree, and the number it produces decides whether the engine swap is reachable.
+    csyms: dict[str, set[str]] = {}
     for base, subdirs, files in os.walk(SCAN_ROOT):
         subdirs[:] = [s for s in subdirs if s != "__pycache__"]
         rel_dir = os.path.relpath(base, SCAN_ROOT)
@@ -224,6 +269,7 @@ def scan() -> tuple[list[str], list[str], list[str], list[str]]:
             mods = _imports(tree)
             if any(_CONCRETE in m for m in mods):
                 concrete.append(rel)
+                csyms[rel.replace(os.sep, "/")] = _repo_symbols(tree)
             if any(m == "app.ports" or ".ports." in m or m.endswith(".ports") for m in mods):
                 ported.append(rel)
             # Adoption is "reaches the graph through the port BOUNDARY", which includes the
@@ -239,7 +285,7 @@ def scan() -> tuple[list[str], list[str], list[str], list[str]]:
             if (rel.replace(os.sep, "/") not in _VECTOR_EXEMPT
                     and _imported_symbols(tree) & _VECTOR_SYMS):
                 vbypass.append(rel.replace(os.sep, "/"))
-    return sorted(concrete), sorted(ported), sorted(graphstore), sorted(vbypass)
+    return sorted(concrete), sorted(ported), sorted(graphstore), sorted(vbypass), csyms
 
 
 def selftest() -> int:
@@ -286,14 +332,310 @@ def selftest() -> int:
         print("  FAIL — prose mentioning a vector reader was counted as a bypass")
         ok = False
 
+    # ── the class-(d) split ──────────────────────────────────────────────────────────
+    # The distinction this gate now rests on is OPERATION vs CONSTANT, and getting it wrong
+    # is not hypothetical: the hand classification it replaces filed whole modules under
+    # "vector-layer" because they imported one vector name, and under-reported the blocking
+    # population by 14. So the cases below are the MIXED ones, not the clean ones — a module
+    # is class (d) if ANY imported name is an unported operation, however much else it takes.
+    #
+    # Deliberately NOT the symbols this classifier was written against: `link_to_glossary`
+    # (a real repo function) and `STATUS_VALUES` (a real repo constant) come from modules the
+    # design never looked at, so a pass here is not a pass by construction.
+    mixed = classify({"svc/x.py": {"STATUS_VALUES", "link_to_glossary"}})["svc/x.py"]
+    if mixed[0] != CLASS_D or "link_to_glossary" not in mixed[1]:
+        print(f"  FAIL — a module importing a constant AND an operation scored {mixed[0]}, "
+              f"not class (d); that is the exact error the stale hand count made")
+        ok = False
+
+    const_only = classify({"svc/x.py": {"STATUS_VALUES"}})["svc/x.py"]
+    if const_only[0] == CLASS_D:
+        print("  FAIL — a CONSTANT-only importer was scored as needing a port operation; "
+              "moving a constant is not growing a port")
+        ok = False
+
+    # And the other direction: dropping the operation must move the module OUT. A classifier
+    # that only ever adds is a ratchet that can never record progress.
+    if const_only[0] == mixed[0]:
+        print("  FAIL — removing the operation import did not change the class")
+        ok = False
+
+    covered = classify({"svc/x.py": {"relations_for"}})["svc/x.py"]
+    if covered[0] == CLASS_D:
+        print("  FAIL — an operation the port ALREADY has was counted as missing")
+        ok = False
+
+    oneshot = classify({"db/migrations/backfill_x.py": {"link_to_glossary"}})
+    if oneshot["db/migrations/backfill_x.py"][0] != CLASS_C:
+        print("  FAIL — a one-shot migration script was not classed (c); §1.3 settled that "
+              "a script running once against a known engine is not a port caller")
+        ok = False
+
+    # `_repo_symbols` must not score a name imported from somewhere ELSE. A service layer
+    # with its own `merge_entity` would otherwise inflate class (d) with modules that are
+    # not bound to the engine at all.
+    foreign = ast.parse("from app.services.entities import merge_entity" + chr(10))
+    if _repo_symbols(foreign):
+        print("  FAIL — a same-named import from a NON-repo module was scored as a repo symbol")
+        ok = False
+    submod = ast.parse("from app.db.neo4j_repos import maintenance" + chr(10))
+    if "maintenance" not in _repo_symbols(submod):
+        print("  FAIL — a whole-SUBMODULE import was missed; it binds every operation in it")
+        ok = False
+
+    # ── the two corrections that moved the number ────────────────────────────────────
+    # Both are about a module being filed under ONE of its imports. The cases below use
+    # symbols the classifier was NOT designed against — `clear_embedding_model_tag` rather
+    # than the orphan-source janitor, `find_passages_by_fulltext` rather than the vector
+    # readers — so a pass here is not a pass by construction.
+    janitor = classify({"jobs/j.py": {"maintenance.clear_embedding_model_tag"}})["jobs/j.py"]
+    if janitor[0] != CLASS_OUT:
+        print(f"  FAIL — a §1.2 janitor caller scored {janitor[0]}; the spec says destructive "
+              f"janitors stay engine-specific FOREVER, so it is not work remaining")
+        ok = False
+
+    # The negative that makes the check mean something: a NON-janitor function reached through
+    # the same submodule must still count. §1.2 kept `count_nodes_by_label` in `neo4j_repos`
+    # as a Neo4j-internal helper — a caller of it is bound to the engine.
+    helper = classify({"jobs/j.py": {"maintenance.count_nodes_by_label"}})["jobs/j.py"]
+    if helper[0] != CLASS_D:
+        print("  FAIL — a NON-janitor function reached through `maintenance` was excused; the "
+              "submodule is not the unit of the decision, the function is")
+        ok = False
+
+    # An unresolved submodule import (bound, never dereferenced) must stay class (d). The
+    # conservative direction: what the classifier cannot read is work, not absence of work.
+    opaque = classify({"jobs/j.py": {"maintenance"}})["jobs/j.py"]
+    if opaque[0] != CLASS_D:
+        print("  FAIL — a submodule bound but never dereferenced was excused rather than "
+              "counted; an unreadable import is not a migrated one")
+        ok = False
+
+    deleted = classify({"svc/x.py": {"find_passages_by_fulltext"}})["svc/x.py"]
+    if deleted[0] == CLASS_D:
+        print("  FAIL — a symbol §3.1 DELETES was counted as needing a port operation; "
+              "building it would be building the obsolete (A13 refused this by hand)")
+        ok = False
+
+    # ⚠️ This case exists because BITE 5 found the hole. Removing the bare-name discard in
+    # `_repo_symbols` moved the LIVE count 34 -> 37 while every check above stayed GREEN: they
+    # hand `classify` an already-resolved symbol set, so none of them ever ran the resolution.
+    # A selftest that cannot see the step it is meant to protect is the "detector validated on
+    # the cases that motivated it" shape, and it was green by construction until this line.
+    src = ("from app.db.neo4j_repos import maintenance" + chr(10) +
+           "async def run(s):" + chr(10) +
+           "    await maintenance.clear_embedding_model_tag(s)" + chr(10))
+    resolved = _repo_symbols(ast.parse(src))
+    if "maintenance" in resolved:
+        print("  FAIL — the bare submodule name survived alongside its resolved attribute; "
+              "the caller then counts as needing every operation in the module")
+        ok = False
+    if "maintenance.clear_embedding_model_tag" not in resolved:
+        print("  FAIL — the dereferenced attribute was not resolved out of the submodule")
+        ok = False
+    if classify({"jobs/j.py": resolved})["jobs/j.py"][0] != CLASS_OUT:
+        print("  FAIL — a janitor-only caller parsed FROM SOURCE did not reach class (§1.2); "
+              "the resolution and the classification disagree end to end")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring and a comment, in both directions (non-vacuous)")
     return 0 if ok else 1
 
 
+# ── CLASS (d): THE POPULATION THAT ACTUALLY BLOCKS THE ENGINE SWAP ──────────────────────
+#
+# `MAX_CONCRETE_IMPORTERS` counts every module importing `neo4j_repos`, and §1.3 is right that
+# it never reaches zero: the benchmarks bind the Neo4j backend ON PURPOSE, the one-shot
+# migration scripts ran once against a known engine, and §1.2 keeps the destructive janitors
+# engine-specific forever. So the ceiling cannot be the cutover criterion. The number that CAN
+# be — the modules needing a port OPERATION that does not exist — is derived here.
+#
+# 🔴 It was carried in PROSE ("28", A13, hand-classified 2026-08-14) and it went stale. A13's
+# own check was that the four classes SUM to 54, which is a criterion that cannot fail: any
+# partition of 54 sums to 54. Arithmetic was never the risk; the assignment was. Re-derived
+# from the AST on 2026-08-22 it is **34**, and those 34 demand ~78 distinct operations against
+# a port of 21.
+#
+# Both halves of the error ran the same way — a module was filed under the class of ONE of its
+# imports while other imports still bound it:
+#
+#   *  A13 counted 17 "vector-layer". Only 5 modules are vector-ONLY; the rest import a §3.1
+#      name AND an unported operation, and a module leaves this population when its LAST
+#      binding goes, not its first. This gate's own ceiling note records the same correction
+#      at 57 — "three call sites became zero and the ceiling fell by only one".
+#   *  A13 counted 5 §1.2 janitors. Only 3 are janitor-only; `internal_admin` and
+#      `public/extraction` call a janitor AND ten other unported operations between them.
+#
+# Neither number was checkable by reading, which is the argument for deriving it. A figure that
+# decides whether a cutover is reachable does not belong in a sentence.
+_REPO_DIR = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
+_PORT_FILE = os.path.join(SCAN_ROOT, "ports", "graph_store.py")
+_DOMAIN_FILES = ("graph_models.py", "graph_labels.py")
+
+#: §3.1 moves the passage/vector layer to Postgres — these repo modules are DELETED, not
+#: ported. Stated as MODULES rather than as a list of names on purpose: the first cut of this
+#: classifier hand-listed thirteen symbols and still missed `recent_passage_texts`,
+#: `count_passages_by_source_type` and `find_passages_by_fulltext`, because a name only looks
+#: like the vector layer once you already know it is. Every one of them lives in `passages.py`.
+#: A13 refused `get_chapter_index_for_source` for exactly this reason, by hand, one symbol at a
+#: time — "it is passage-layer, and §3.1 moves those to Postgres".
+_DELETED_MODULES = ("passages", "vector_indexes")
+#: The entity-vector reads §3.1 also moves, which live in `entities.py`/`graph_state.py` beside
+#: operations that stay. Module scope cannot separate these, so they are named.
+_ENTITY_VECTOR = {
+    "find_entities_by_vector", "find_entities_needing_embedding",
+    "project_has_embedded_passages",
+}
+#: §1.2, verbatim: "Destructive janitors stay ENGINE-SPECIFIC and out of the port." A promise
+#: to delete orphan nodes in ANY graph engine is a promise about housekeeping, and no cutover
+#: measurement depends on who collects the garbage. Reached as `maintenance.<name>`.
+_JANITORS = {
+    "delete_orphan_extraction_sources", "invalidate_stale_quarantined_facts",
+    "reconcile_evidence_count_for_label", "clear_embedding_model_tag",
+    "delete_project_nodes_by_label",
+}
+#: Runs once, against a known engine, at a known version. §1.3(c) declared these out of port
+#: scope: substitutability for code that will never be substituted buys nothing.
+_ONE_SHOT_PREFIXES = ("benchmark/", "db/migrations/")
+
+CLASS_D = "(d) needs port operations"
+CLASS_C = "(c) one-shot / benchmark — out of port scope (1.3c)"
+CLASS_B = "(b) deleted by 3.1, or already ported/moved"
+CLASS_A = "(a) constants and types only — a MOVE, not port growth"
+CLASS_OUT = "(1.2) engine-specific janitors — out forever"
+
+#: A shrink-only ratchet, same contract as the ceiling above. This is the first DERIVED value;
+#: every earlier figure for this population was hand-written prose, and it drifted.
+MAX_CLASS_D = 34
+
+
+def _symbol_home(path: str) -> dict[str, tuple[str, str]]:
+    """Every top-level name `neo4j_repos` exports, as (kind, defining module).
+
+    The KIND separates "move a constant" from "grow an operation and write it twice"; the
+    MODULE is what §3.1 deletes. Conflating either with the other produced the stale count.
+    """
+    homes: dict[str, tuple[str, str]] = {}
+    if not os.path.isdir(path):
+        return homes
+    for fname in sorted(os.listdir(path)):
+        if not fname.endswith(".py"):
+            continue
+        mod = fname[:-3]
+        try:
+            tree = ast.parse(open(os.path.join(path, fname), encoding="utf-8",
+                                  errors="replace").read())
+        except (OSError, SyntaxError):
+            continue
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                homes.setdefault(node.name, ("func", mod))
+            elif isinstance(node, ast.ClassDef):
+                homes.setdefault(node.name, ("class", mod))
+            elif isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        homes.setdefault(tgt.id, ("const", mod))
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                homes.setdefault(node.target.id, ("const", mod))
+        if mod != "__init__":
+            homes.setdefault(mod, ("submodule", mod))
+    return homes
+
+
+def _names_in(path: str) -> set[str]:
+    out: set[str] = set()
+    try:
+        tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
+    except (OSError, SyntaxError):
+        return out
+    for node in tree.body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name):
+                    out.add(tgt.id)
+    return out
+
+
+def _port_operations() -> set[str]:
+    ops: set[str] = set()
+    try:
+        tree = ast.parse(open(_PORT_FILE, encoding="utf-8", errors="replace").read())
+    except (OSError, SyntaxError):
+        return ops
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
+                not node.name.startswith("_"):
+            ops.add(node.name)
+    return ops
+
+
+def _domain_symbols() -> set[str]:
+    """Models and label vocabularies already MOVED out of the engine layer (T17, §1.2).
+
+    `neo4j_repos` re-exports them preserving class identity, so importing one is a stale import
+    PATH, not a binding to Neo4j. Counting these as engine bindings overstates the work.
+    """
+    out: set[str] = set()
+    for fname in _DOMAIN_FILES:
+        out |= _names_in(os.path.join(SCAN_ROOT, "domain", fname))
+    return out
+
+
+def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list[str], list[str]]]:
+    """Split the concrete binders into the classes §1.2 and §1.3 decided, by IMPORTED SYMBOL.
+
+    A module is class (d) if ANY name it still takes from `neo4j_repos` is an operation the
+    port does not have and no decision retires. One is enough — that is the whole correction
+    over the hand count, which filed modules under their most memorable import.
+    """
+    homes = _symbol_home(_REPO_DIR)
+    port_ops = _port_operations()
+    domain = _domain_symbols()
+    out: dict[str, tuple[str, list[str], list[str]]] = {}
+    for rel, syms in concrete_symbols.items():
+        slash = rel.replace(os.sep, "/")
+        ops: set[str] = set()
+        types: set[str] = set()
+        for sym in syms:
+            sub, _, leaf = sym.partition(".")
+            bare = leaf or sub
+            kind, home = homes.get(bare, ("unknown", ""))
+            if leaf:
+                home = sub          # a dotted name's home is the submodule it came through
+            if bare in domain or bare in port_ops:
+                continue            # already moved, or the port already answers it
+            if home in _DELETED_MODULES or bare in _ENTITY_VECTOR:
+                continue            # §3.1 deletes it; porting it would be building the obsolete
+            if bare in _JANITORS:
+                types.add("1.2:" + bare)    # recorded, never a reason to grow the port
+                continue
+            if kind in ("func", "submodule"):
+                ops.add(sym)
+            else:
+                types.add(sym)
+        if slash.startswith(_ONE_SHOT_PREFIXES):
+            cls = CLASS_C
+        elif ops:
+            cls = CLASS_D
+        elif types and all(x.startswith("1.2:") for x in types):
+            cls = CLASS_OUT
+        elif types:
+            cls = CLASS_A
+        else:
+            cls = CLASS_B
+        out[slash] = (cls, sorted(ops), sorted(types))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true", help="show the modules")
+    ap.add_argument("--classify", action="store_true",
+                    help="split the concrete binders into the four classes of §1.3")
     ap.add_argument("--selftest", action="store_true", help="prove this gate can go red")
     args = ap.parse_args()
 
@@ -303,7 +645,7 @@ def main() -> int:
         print(f"[port-adoption-gate] SKIP — {SCAN_ROOT} not present")
         return 0
 
-    concrete, ported, graphstore, vbypass = scan()
+    concrete, ported, graphstore, vbypass, csyms = scan()
 
     if args.list:
         print(f"[port-adoption-gate] {len(concrete)} import {_CONCRETE}, "
@@ -314,6 +656,38 @@ def main() -> int:
             print(f"  port        {p}")
         for p in graphstore:
             print(f"  graphstore  {p}")
+        return 0
+
+    classes = classify(csyms)
+    class_d = sorted(k for k, v in classes.items() if v[0] == CLASS_D)
+
+    if args.classify:
+        demand: dict[str, int] = {}
+        buckets: dict[str, list[str]] = {}
+        for rel, (cls, ops, types) in sorted(classes.items()):
+            buckets.setdefault(cls, []).append(rel)
+        for cls in (CLASS_D, CLASS_A, CLASS_B, CLASS_C, CLASS_OUT):
+            print(f"  {len(buckets.get(cls, [])):3d}  {cls}")
+        print()
+        for cls in (CLASS_D, CLASS_A, CLASS_B, CLASS_C, CLASS_OUT):
+            print(f"===== {cls} ({len(buckets.get(cls, []))}) =====")
+            for rel in buckets.get(cls, []):
+                _, ops, types = classes[rel]
+                print(f"  {rel}")
+                if ops:
+                    print(f"        ops:   {chr(44).join(ops)}")
+                    if cls == CLASS_D:
+                        for o in ops:
+                            demand[o] = demand.get(o, 0) + 1
+                if types:
+                    print(f"        types: {chr(44).join(types)}")
+            print()
+        port_ops = _port_operations()
+        print(f"  class (d) demands {len(demand)} distinct operations; the port has "
+              f"{len(port_ops)}. Every one costs a Neo4j impl, an AGE impl, a fake and")
+        print("  a conformance case, so this is the number that prices the cutover.")
+        for op, n in sorted(demand.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"    {n:3d}  {op}")
         return 0
 
     print(f"[port-adoption-gate] {len(concrete)} module(s) bind `{_CONCRETE}` directly "
@@ -390,6 +764,26 @@ def main() -> int:
           f"(floor {MIN_VECTOR_BYPASS})"
           + (f" — {len(live)} LIVE reader(s) still block T25 (3): {live}" if live
              else " — no LIVE reader left; the remainder is the benchmark floor"))
+    # Two explicit branches, never `MIN < n < MAX`. The vector bypass carried the
+    # two-sided form and went SILENT at exactly the count that mattered — see the note
+    # above it. A ratchet that prints nothing on success cannot be trusted on failure.
+    if len(class_d) > MAX_CLASS_D:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — class (d) GREW to {len(class_d)} "
+              f"(ceiling {MAX_CLASS_D}).{chr(10)}")
+        print("  A module now needs a port operation that does not exist. This is the")
+        print("  population that blocks AGE-as-the-only-engine: while it is non-empty the")
+        print("  graph is split across two stores inside one service — measured on dev")
+        print("  2026-08-22, 19 adopters reading an EMPTY AGE while 54 binders read a")
+        print("  populated Neo4j. Run --classify to see which module and which operation.")
+        return 1
+    if len(class_d) < MAX_CLASS_D:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — class (d) IMPROVED to {len(class_d)} "
+              f"but the ceiling still says {MAX_CLASS_D}.{chr(10)}")
+        print("  Lower it in the same commit (rule 5). This number is the cutover")
+        print("  criterion and the last one to be carried in prose went stale by 14.")
+        return 1
+    print(f"[port-adoption-gate] class (d) {len(class_d)}/{MAX_CLASS_D} — modules needing "
+          f"a port operation that does not exist; AGE cannot be the only engine until 0")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 

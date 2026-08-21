@@ -119,7 +119,15 @@ is a known false match.** File count was never the cost; operation count is.
 floor is the number that measures this work; the ceiling measures how much is left that *could*
 move. A gate whose target is zero would be lying about (b) and (c).
 
-📊 **MEASURED 2026-08-14 (A13) — the prediction now has its number.** All 54 remaining binders
+🔴 **CORRECTED 2026-08-22 (A14) — the paragraph below is superseded and its method is why.**
+The classes are now DERIVED by `port-adoption-gate --classify` and ratcheted (`class (d) 34/34`):
+**34** need a port operation · **7** need only a CONSTANT moved · **3** have only §3.1-deleted names
+left · **7** one-shot/benchmark · **3** §1.2 janitors. A13's check was that the four classes sum to
+54, which any partition of 54 does; the assignment was never checked. Its conclusion *"nothing in
+the 54 is available to pick up"* is **false** — 10 modules move with no port growth at all. The
+reasoning kept below (why janitors and one-shot scripts are out forever) still holds.
+
+📊 ~~**MEASURED 2026-08-14 (A13) — the prediction now has its number.**~~ All 54 remaining binders
 classified: **28** need a port operation whose shape (d) leaves to T35 · **17** are passage/vector
 layer that (b) deletes rather than migrates · **5** are (§1.2) janitors · **4** are (c) one-shot
 scripts. So the floor these decisions permit is **9** — the janitors and the scripts, out
