@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 51 of 89 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 51 of 91 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (17/34) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14387,6 +14387,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (FAILING) and dev `:8216` (DISARMED, then ARMED_IDLE after re-arming).
   **QC (c) real data:** 18 real secondary failures on lw-iso and a real unplanned container
   recreate on dev, with its config-hash as the fingerprint.
+
+  ### 🔴 T25h 2026-08-21 — **③ IS NOT A DATABASE OPERATION.** The grant was given, and it cannot be spent as written
+
+  The PO granted the drop (§7.1). Measuring before executing it (rule 8) killed the framing.
+
+  🔴 **A graph-only `DROP INDEX` is COSMETIC.** `app/db/neo4j_schema.cypher` declares every one
+  of these indexes with `CREATE VECTOR INDEX … IF NOT EXISTS`, and `app/main.py:167` runs the
+  schema on lifespan startup. **Proven live on lw-iso, not read from the source:**
+
+  ```
+  DROP INDEX entity_embeddings_384;         -> SHOW INDEXES ... returns nothing
+  docker restart lw-iso-knowledge-service-1
+  poll #2 (~4s)                             -> "RECREATED — the drop did NOT survive the restart"
+  ```
+
+  So retiring an index means **deleting its DDL**, and that cannot land while production still
+  queries it. Measured by IMPORTED SYMBOL — the module-level `neo4j_repos` count (54) cannot
+  tell a vector reader from any other caller, which is exactly how these stayed invisible:
+
+  ```
+  adapters/neo4j_vector_store.py     sanctioned — it IS the port's Neo4j implementation
+  benchmark/flat_knn_rawsearch.py    floor — benchmarks the Neo4j backend on purpose
+  benchmark/vector_backend_bench.py  floor — comparing backends is the point
+  routers/public/entities.py:584     🔴 LIVE — public semantic entity search
+  tools/executor.py:494              🔴 LIVE — the memory-search tool's semantic leg
+  ```
+
+  ⚠️ **§3.1 named three readers to migrate and missed both of these.** Its list was
+  `context/selectors/passages.py`, `routers/public/drawers.py`, `search/retriever.py`. Two more
+  existed the whole time, and one of them is a public endpoint.
+
+  ⛔ **AND THE EIGHT ZERO-ROW INDEXES ARE NOT DEAD EITHER.** Only dim 1024 is populated (dev:
+  25 entities, 1051 passages; every other dim is 0), so dropping the 384/1536/2560/3072 pairs
+  looks free. It is not: the index name is `f"entity_embeddings_{dim}"` from
+  `project.embedding_dimension`, so those eight are **provisioned capacity for a dimension a
+  project can still select**. Removing them removes support, and it would revert on restart
+  anyway. There is no safe subset — which is why **nothing was dropped on the dev graph**.
+
+  🦷 **BITE — the live path.** Added a real fifth bypass
+  (`from app.db.neo4j_repos.entities import find_entities_by_vector` at `context/anchors.py:1`)
+  and ran the gate against the real tree:
+
+  ```
+  [port-adoption-gate] FAIL — vector-search bypass GREW to 5 (ceiling 4):
+      [benchmark/flat_knn_rawsearch.py, benchmark/vector_backend_bench.py,
+       context/anchors.py, routers/public/entities.py, tools/executor.py]     rc=1
+  ```
+
+  Restored; `git diff --stat` clean. The gate also reds when the count FALLS without the ceiling
+  moving with it (rule 5), and holds a floor of 2 so a future reader does not "finish the job"
+  by deleting the only two modules that can compare the backends.
+
+  ⚠️ **THE DEV SOAK WAS DISARMED AGAIN — the fourth time, and this one was worse.**
+  `soak-armed-gate` read **DISARMED**, and not for the usual reason: *"neither the armed gauge
+  nor the `knowledge_vector_dual_write_total` family is exposed — this service predates the
+  dual-write entirely."* `infra/.env:12` still sets `KNOWLEDGE_VECTOR_DB_URL`; the running
+  **image** had gone backwards. Rebuilt and recreated under the SOAK grant → **ARMED_IDLE**,
+  with the 25 entity rows intact as the durable evidence. Recorded as a pattern rather than a
+  one-off: in this shared checkout the dev soak does not stay armed on its own, and any future
+  reading of it must start with the gate, never with the counter.
+
+  **③ is therefore unfinished, not undecided.** The grant stands and is UNSPENT. The precondition
+  is now a NUMBER rather than prose — `port-adoption-gate` pins the bypass at 4/4 (floor 2) and
+  prints the two LIVE readers in its own output every run — and the residue has its own row.
+
+  ### 🔻 DEFERRAL `D-T25-INDEX-RETIREMENT-BLOCKED-BY-TWO-LIVE-READERS`
+
+  | | |
+  |---|---|
+  | **Blocker** | T25 ③ retires the Neo4j vector indexes. Retiring one means deleting its DDL from `neo4j_schema.cypher` — a graph `DROP` is recreated at the next service start (T25h, proven live on lw-iso in 4s). Deleting the DDL breaks `routers/public/entities.py:584` (public semantic entity search) and `tools/executor.py:494` (the memory-search tool's semantic leg), which query those indexes directly instead of through `VectorStore`. |
+  | **Evidence** | `port-adoption-gate`: `vector bypass 4/4 — 2 LIVE reader(s) still block T25 (3)`. Neither appears in §3.1's reader list, which named three others. Bitten: a fifth bypass reds the gate at rc=1 with all five named. |
+  | **Why it is not just "migrate them"** | The port cannot serve one of them yet. Dev `passage_vectors_1024` holds **0** rows against Neo4j's **1051** — correct behaviour (the content-hash skip-gate refuses to re-embed unchanged text), but it means moving `tools/executor.py` onto the port today turns a 1051-passage memory search into a 0-passage one that still returns `200`. A silent empty result is worse than an unmigrated caller. §3.1 already measured that the port could not serve ANY of its first three readers unextended; these two are the same shape. |
+  | **Mechanism** | The bypass count is pinned at **4, floor 2**, and the gate prints the two LIVE modules by name on every run. It reds if a fifth appears AND if the count falls without the ceiling moving in the same commit — so this cannot be quietly half-finished, and the floor stops a future reader from "completing" it by deleting the two benchmarks that are the only way to compare the backends. |
+  | **To unblock** | (a) land a dev passage write so the PG secondary is non-empty for the passage scope — needs NEW chapter text, not another backfill; (b) extend the port to serve `routers/public/entities.py` (it needs `weighted_score`, kind/status post-filtering and `include_archived`); (c) migrate both callers, lower the ceiling to 2 in the same commit; (d) then delete the DDL and drop. |
+  | **Retry when** | (a) lands. It is the only element of the four that is not effort, and it is blocked on content rather than on a decision — no PO call is owed here. |
 
   ### ✅ T25g 2026-08-21 — **the passage scope soaks for the first time**, and the thing blocking it was one line of compose
 

@@ -880,6 +880,56 @@ node properties, so the embeddings survive and the index is recreatable by re-in
 cutover is ever reverted. Rule 6 otherwise bars this write; this section is the exception that
 names it.
 
+⚠️ **THE GRANT CANNOT BE SPENT AS WRITTEN — measured the same day it was given, and the reason
+matters more than the grant.** A graph-only `DROP INDEX` is **cosmetic**:
+`app/db/neo4j_schema.cypher` declares every one of these indexes with
+`CREATE VECTOR INDEX … IF NOT EXISTS`, and `app/main.py:167` runs that schema on lifespan
+startup. **Proven on lw-iso rather than read from the source**: dropped
+`entity_embeddings_384`, restarted `lw-iso-knowledge-service-1`, and the index was `ONLINE`
+again within four seconds.
+
+So **T25 ③ is a CODE change, not a database operation** — retiring an index means deleting its
+DDL. And that cannot land while production still queries it. Measured by imported symbol,
+because the module-level `neo4j_repos` count (54) cannot separate a vector reader from any
+other caller, which is how these two stayed invisible:
+
+| module | status |
+|---|---|
+| `adapters/neo4j_vector_store.py` | sanctioned — it **is** the port's Neo4j implementation |
+| `benchmark/flat_knn_rawsearch.py` | **floor** — benchmarks the Neo4j backend on purpose |
+| `benchmark/vector_backend_bench.py` | **floor** — comparing the two backends is the point |
+| `routers/public/entities.py:584` | 🔴 **LIVE** — public semantic entity search |
+| `tools/executor.py:494` | 🔴 **LIVE** — the memory-search tool's semantic leg |
+
+**§3.1 named three readers to migrate and missed both of these.** Its list was
+`context/selectors/passages.py`, `routers/public/drawers.py`, `search/retriever.py`.
+
+And the data is not ready either. Dev secondary vs primary, counted with `count(*)` and not
+`n_live_tup`:
+
+```
+DEV   entity   Neo4j    25   pg entity_vectors_1024    25   ✅ parity
+DEV   passage  Neo4j  1051   pg passage_vectors_1024    0   ✗ never landed (skip-gate)
+ISO   passage  Neo4j    12   pg passage_vectors_1024   12   ✅ parity (T25g)
+```
+
+The passage scope **works** — T25g proved it on lw-iso with exact `count(*)` parity. What has
+never happened is a passage write on **dev**, and the reason is correct behaviour: the
+content-hash skip-gate refuses to re-embed unchanged text, so no backfill can produce one
+without new chapter content.
+
+Migrating `tools/executor.py` onto the port **today** would turn a 1051-passage memory search
+into a 0-passage one, silently — the search would still return `200` with an empty semantic
+leg. That is worse than not migrating.
+
+**Decided, so this is unfinished rather than undecided:** the grant stands and is **unspent**.
+Nothing was dropped on the dev graph, because there is no subset whose drop both survives a
+restart and removes no live capability — the eight zero-row indexes are not dead, they are
+provisioned capacity for dimensions a project can still select. The precondition is now
+tracked by a number rather than by prose: `scripts/port-adoption-gate.py` pins the vector
+bypass at **4/4 with a floor of 2**, names the two LIVE readers in its own output, and reds
+when a fifth appears or when the count falls without the ceiling moving with it.
+
 ### 7.2 The role-attribution judge stays LOCAL, and its precision is documented — **DECIDED**
 *Closes `D-QC5-ROLE-JUDGE-PRECISION`, which §2.3 cited loosely — §2.3 is about verdict SHAPE, a
 different question.* No paid judge is bought. The measured precision of the local judge is

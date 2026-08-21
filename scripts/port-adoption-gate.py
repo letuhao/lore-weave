@@ -135,6 +135,35 @@ MAX_CONCRETE_IMPORTERS = 54
 MIN_GRAPHSTORE_ADOPTERS = 18
 
 _CONCRETE = "neo4j_repos"
+
+#: T25 (3)'s REAL precondition, and it is not a database operation.
+#:
+#: The grant (PO 2026-08-21, §7.1) authorised dropping the Neo4j vector indexes. Measured the
+#: same day: a graph-only DROP is COSMETIC. `neo4j_schema.cypher` declares all of them with
+#: `CREATE VECTOR INDEX ... IF NOT EXISTS` and `main.py:167` runs the schema at lifespan start,
+#: so the index comes back. PROVEN on lw-iso, not read: dropped `entity_embeddings_384`,
+#: restarted the service, and it was ONLINE again within four seconds.
+#:
+#: So retiring the indexes means deleting their DDL, and that cannot land while production
+#: still queries them. These are the modules that do -- by IMPORTED SYMBOL, because the
+#: module-level `neo4j_repos` count above cannot separate a vector reader from any other
+#: caller, and it was the count everyone was watching.
+#:
+#:   benchmark/flat_knn_rawsearch.py    FLOOR -- benchmarks the Neo4j backend ON PURPOSE
+#:   benchmark/vector_backend_bench.py  FLOOR -- same; comparing backends is the point
+#:   routers/public/entities.py:584     LIVE  -- public semantic entity search
+#:   tools/executor.py:494              LIVE  -- the memory-search tool's semantic leg
+#:
+#: The two LIVE ones must reach zero before the DDL can go. Neither was in §3.1's reader
+#: list, which named three and missed these two.
+_VECTOR_SYMS = {"find_entities_by_vector", "find_passages_by_vector"}
+#: the adapter is the sanctioned caller -- it IS the port's Neo4j implementation
+_VECTOR_EXEMPT = {"adapters/neo4j_vector_store.py"}
+MAX_VECTOR_BYPASS = 4
+#: benchmarks stay; a floor of 2 says so out loud rather than leaving a future reader to
+#: "finish the job" by deleting the only thing that can compare the two backends.
+MIN_VECTOR_BYPASS = 2
+
 _PORTS = "ports"
 
 
@@ -154,10 +183,21 @@ def _imports(tree: ast.AST) -> set[str]:
     return found
 
 
-def scan() -> tuple[list[str], list[str], list[str]]:
+def _imported_symbols(tree: ast.AST) -> set[str]:
+    """NAMES pulled in by `from X import name`. The module-level scan cannot see these, and
+    a vector reader is invisible inside a 54-module `neo4j_repos` count."""
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            out.update(al.name for al in node.names)
+    return out
+
+
+def scan() -> tuple[list[str], list[str], list[str], list[str]]:
     concrete: list[str] = []
     ported: list[str] = []
     graphstore: list[str] = []
+    vbypass: list[str] = []
     for base, subdirs, files in os.walk(SCAN_ROOT):
         subdirs[:] = [s for s in subdirs if s != "__pycache__"]
         rel_dir = os.path.relpath(base, SCAN_ROOT)
@@ -187,7 +227,10 @@ def scan() -> tuple[list[str], list[str], list[str]]:
             # bypassing the composition root, which is worse than what it measures.
             if any("ports.graph_store" in m or "graph_store_provider" in m for m in mods):
                 graphstore.append(rel)
-    return sorted(concrete), sorted(ported), sorted(graphstore)
+            if (rel.replace(os.sep, "/") not in _VECTOR_EXEMPT
+                    and _imported_symbols(tree) & _VECTOR_SYMS):
+                vbypass.append(rel.replace(os.sep, "/"))
+    return sorted(concrete), sorted(ported), sorted(graphstore), sorted(vbypass)
 
 
 def selftest() -> int:
@@ -220,6 +263,20 @@ def selftest() -> int:
         print("  FAIL — a port import was not detected")
         ok = False
 
+    # The symbol-level detector, same non-vacuity bar. A docstring that DISCUSSES the
+    # migration must not count: `extraction/entity_embedder.py` and `ports/vector_store.py`
+    # both name `find_entities_by_vector` in prose and neither is a bypass. Counting prose
+    # would report 6 instead of 4 and bury the two real ones in noise.
+    vreal = ast.parse("from app.db.neo4j_repos.entities import find_entities_by_vector" + chr(10))
+    if not (_imported_symbols(vreal) & _VECTOR_SYMS):
+        print("  FAIL — a real vector-search import was not detected")
+        ok = False
+    vprose = ast.parse(chr(34)*3 + "the mui#4 read path (find_entities_by_vector)." + chr(34)*3)
+    vcomment = ast.parse("# find_passages_by_vector moved onto the port" + chr(10) + "x = 1")
+    if (_imported_symbols(vprose) | _imported_symbols(vcomment)) & _VECTOR_SYMS:
+        print("  FAIL — prose mentioning a vector reader was counted as a bypass")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring and a comment, in both directions (non-vacuous)")
     return 0 if ok else 1
@@ -237,7 +294,7 @@ def main() -> int:
         print(f"[port-adoption-gate] SKIP — {SCAN_ROOT} not present")
         return 0
 
-    concrete, ported, graphstore = scan()
+    concrete, ported, graphstore, vbypass = scan()
 
     if args.list:
         print(f"[port-adoption-gate] {len(concrete)} import {_CONCRETE}, "
@@ -291,6 +348,33 @@ def main() -> int:
         print("  is the failure this gate exists to prevent.")
         return 1
 
+    if len(vbypass) > MAX_VECTOR_BYPASS:
+        print(f"[port-adoption-gate] FAIL — vector-search bypass GREW to {len(vbypass)} "
+              f"(ceiling {MAX_VECTOR_BYPASS}): {vbypass}")
+        print("  These query the Neo4j vector indexes directly. T25 (3) retires those indexes,")
+        print("  and a graph DROP is cosmetic — neo4j_schema.cypher recreates them at startup")
+        print("  (proven on lw-iso: dropped, restarted, ONLINE in 4s). Retiring them means")
+        print("  deleting the DDL, which breaks every module on this list. Use the port.")
+        return 1
+    if len(vbypass) < MIN_VECTOR_BYPASS:
+        print(f"[port-adoption-gate] FAIL — vector bypass fell to {len(vbypass)}, below the "
+              f"floor {MIN_VECTOR_BYPASS}.")
+        print("  The floor is the two BENCHMARKS, which call the Neo4j backend deliberately —")
+        print("  deleting them removes the only thing that can compare the two backends, which")
+        print("  is how a cutover stops being measurable. Lower the floor deliberately or")
+        print("  restore the caller.")
+        return 1
+    if MIN_VECTOR_BYPASS < len(vbypass) < MAX_VECTOR_BYPASS:
+        print(f"[port-adoption-gate] FAIL — vector bypass IMPROVED to {len(vbypass)} but the "
+              f"ceiling still says {MAX_VECTOR_BYPASS}.")
+        print("  Lower it in the same commit. That is T25 (3) progress and recording it is the")
+        print("  point — a stale ceiling leaves headroom a NEW bypass can occupy unnoticed,")
+        print("  which is exactly how these two got past the module-level count.")
+        return 1
+    if len(vbypass) > MIN_VECTOR_BYPASS:
+        live = [v for v in vbypass if not v.startswith("benchmark/")]
+        print(f"[port-adoption-gate] vector bypass {len(vbypass)}/{MAX_VECTOR_BYPASS} — "
+              f"{len(live)} LIVE reader(s) still block T25 (3): {live}")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 
