@@ -1699,6 +1699,14 @@ all three remaining round-2 slices (`PF_001`, `PF_001`, `EF_001`).
 > table, check E, a falsification condition written in advance. **The mechanism that finds them is
 > obligation to enumerate, not care.**
 
+### 23.4 · RESUME
+
+**RESUME: 2-5 continues — siting, then a place row, then a bootstrap that writes both. `0024_map_layout` gives a node a KIND; nothing yet says where anything IS. Build `EF_001`'s `entity_binding` at `Domain` granularity (`SDF-A34` — no second position store, no `local_pos`), then `PF_001`'s `place`, then the §5 five-step bootstrap whose step 5 is the spawn. Verify each against a throwaway database the way `0024` was: apply, re-apply, bite every constraint, down, round-trip, drop.**
+
+**Open after that, in order:** `SDF-R3` PortalSet — it blocks the `connections` column deliberately left out of `0024` · `SDF-R5`·`R7`·`R8`·`R9` and inherited `SPG-R5`·`R11`·`R12`·`R13`, `WSA-R19..R24` · the `ChannelTier` sweep at **73 code sites / 22 files**, which needs `SPG-R14`'s mapping and now has it · `SDF-Q15` once a space view exists.
+
+**Not queued, and why:** `SDF-Q12` is blocked on a `PROG_001` realm distribution that does not exist and this tier may not invent (`SDF-F8`); it is not a row anyone here can finish.
+
 ### 23.3 · What round 2 is deliberately NOT doing
 
 Layers · portals · topology ops · the live set · budgets · projections. **All of it is designed (§4, §10,
