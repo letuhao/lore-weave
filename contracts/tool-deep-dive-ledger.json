@@ -2264,40 +2264,40 @@
    "counts_toward_release": true
   },
   "composition_motif_adopt": {
-   "state": "in_cycle",
+   "state": "blocked",
    "provider": "composition",
-   "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "cycle": "batch-17 (2026-08-14)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
    "evidence_class": "gate-backed",
-   "counts_toward_release": false,
-   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+   "counts_toward_release": true,
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch19-v5.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and the model was RIGHT — the same shape as composition_arc_apply in batch 14. Called 0/5 with 0 errors across 5 clean runs. The prompt asked to 'copy one of the built-in tropes' without naming one, so the model called composition_motif_search, listed the system library back to the author grouped by kind, and asked which to adopt. For a tool whose own description says adopting 'crosses the tenancy boundary and counts against your library quota', asking beats picking. The tool's own propose path IS proven by direct probe (a real system motif mints a confirm_token, an absent id is refused, and the library is unchanged) — but that is not the LIVE bar, and a prompt that names a specific built-in motif would be a different scenario, not this one."
   },
   "composition_motif_bind_edit": {
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+   "note": "IN CYCLE — blocked on D-SILENT-TURN-NO-CARD-NO-PROSE, whose ROOT CAUSE was found this session: the model emits a stray `<tool_call|>` delimiter as the whole turn, so there is neither prose nor a parseable call. 5 of 5 died on the degenerate `<tool_call|>` output, each after a SUCCESSFUL composition_motif_search. No clean run yet. This is a MODEL-output defect standing between the harness and a clean measurement, not a verdict about the tool."
   },
   "composition_motif_edit": {
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+   "note": "IN CYCLE — blocked on D-SILENT-TURN-NO-CARD-NO-PROSE, whose ROOT CAUSE was found this session: the model emits a stray `<tool_call|>` delimiter as the whole turn, so there is neither prose nor a parseable call. 2 of 5 clean runs BOTH called it and minted its Tier-A card, store unchanged — the tool works. 3 runs died on the degenerate `<tool_call|>` output. Needs K>=3 clean. This is a MODEL-output defect standing between the harness and a clean measurement, not a verdict about the tool."
   },
   "composition_motif_link_edit": {
-   "state": "in_cycle",
+   "state": "blocked",
    "provider": "composition",
-   "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v2.json",
+   "cycle": "batch-17 (2026-08-14)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
    "evidence_class": "gate-backed",
-   "counts_toward_release": false,
-   "note": "IN CYCLE — batch 19. Its first two arms are VOID on the RIG, not on the tool: the provider lost 21 of 25 runs at --concurrency 4 and 14 of 25 at 2, every one 'upstream sent error with no error message'. Recording 0/5 called from those would blame the tool for a provider stall. Re-running at --concurrency 1; evidence will be docs/eval/toolloop/2026-08-14/batch19-v3.json. Direct boundary probes are already clean for this family: an absent id is refused on archive/restore/patch/link-delete/bind-unbind, and a bogus archive creates no row (the arc_template class sweep came back negative)."
+   "counts_toward_release": true,
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch19-v5.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on NAME->id resolution — the same shape as composition_arc_template_edit in batch 15, and this time the supplier had just been FIXED. Called 5/5 with 0 errors, so this is clean evidence. The model passed the two motif NAMES, the tool refused, and it then told the author: 'I need the specific IDs for \"Throwaway Loop Alpha\" and \"Throwaway Loop Beta\" rather than just their names'. Declining beats guessing and the store is untouched — but it never called composition_motif_search AT ALL, even though that tool is on the same wire and its `q` argument now says outright 'THIS is how you search by NAME'. So declaring the supplier's argument fixed the call SHAPE (measured: q used correctly elsewhere in this same batch) and did NOT make the model reach for the supplier. Another instance of OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID, and a Tier-A tool whose card never mints in 5 clean runs is not shippable evidence."
   }
  },
  "defects": {
@@ -3031,10 +3031,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 110,
-  "tools_in_cycle": 4,
+  "tools_concluded": 112,
+  "tools_in_cycle": 2,
   "tools_proven": 82,
-  "tools_blocked": 28,
+  "tools_blocked": 30,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3049,7 +3049,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 115,
+  "tools_concluded_including_deprecated": 117,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
@@ -3063,7 +3063,8 @@
    "id": "OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID",
    "occurrences": [
     "2026-08-14, batch 15, composition_arc_template_edit, 5 of 5 runs on a clean K=5. Asked to archive a template BY NAME ('Throwaway Loop Skeleton') that the seed had really created, the model declined every time — 'I can't archive that template by its name alone. I need its unique ID' — and asked the author for it. DECLINING BEATS GUESSING and the store was untouched, so this is not a defect in the tool. What makes it an observation is that the supplier EXISTS and works: composition_arc_template_list returns the account's templates with their ids, one call away, and I verified it directly. The model asked the human for a UUID it could have looked up. Same shape as the earlier instances, now on a Tier-W tool where the consequence is that the confirm card never mints at all — 0 of 5 runs raised one, so the gate leg cannot be exercised through the model.",
-    "2026-08-14, batch 17, composition_authoring_run_review, 2 of 5 — and this instance is WORSE than the others, because the model did not ask, it FABRICATED. It minted a Tier-A card carrying run_id=01a02244-3a86-… for a book that had ZERO authoring runs, while composition_authoring_run_list — proven in batch 16 to answer 'there are none' — sat unused on the same wire. The id is structurally valid and was created in the same second as the book, so it is a real-but-wrong id (most likely the project or a chapter) rather than a random one, which is exactly why neither the nil-UUID nor the whitespace guard can see it. The other 3 of 5 asked the author for the id, which is the right answer. The author was asked to approve pausing a run that does not exist."
+    "2026-08-14, batch 17, composition_authoring_run_review, 2 of 5 — and this instance is WORSE than the others, because the model did not ask, it FABRICATED. It minted a Tier-A card carrying run_id=01a02244-3a86-… for a book that had ZERO authoring runs, while composition_authoring_run_list — proven in batch 16 to answer 'there are none' — sat unused on the same wire. The id is structurally valid and was created in the same second as the book, so it is a real-but-wrong id (most likely the project or a chapter) rather than a random one, which is exactly why neither the nil-UUID nor the whitespace guard can see it. The other 3 of 5 asked the author for the id, which is the right answer. The author was asked to approve pausing a run that does not exist.",
+    "2026-08-21, batch 19, composition_motif_link_edit, 5 of 5 CLEAN runs — and this is the sharpest instance yet, because the supplier had just been fixed. The model passed two motif NAMES, the tool refused, and it asked the author for 'the specific IDs ... rather than just their names'. It never called composition_motif_search at all, although that tool was on the same wire and its `q` argument now reads 'Free-text query — THIS is how you search by NAME'. In the SAME batch the model used `q` correctly when it chose to search. So declaring the supplier's argument fixed the call SHAPE and did not make the model reach for the supplier: two different problems, and only the first is a declaration problem."
    ]
   },
   {
