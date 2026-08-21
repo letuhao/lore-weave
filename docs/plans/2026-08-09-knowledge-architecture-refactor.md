@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ step 2 — flip `knowledge_vector_read_primary=postgres` on iso. Step 1 done: SOAKING, 533 writes (T25l).**
+**RESUME: `T25` ③ step 5 — the two benchmarks must self-provision their Neo4j index before any DDL is deleted (T25m).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 60 of 110 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 61 of 111 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (7/14) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (8/15) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3577,6 +3577,74 @@ vectors and validity intervals live in different stores.
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### ✅ T25m 2026-08-22 — **the read cutover works and is SCOPE-CORRECT**, proven on both stores at once
+
+  ```
+  KNOWLEDGE_VECTOR_READ_PRIMARY=postgres        (lw-iso, throwaway)
+
+    store               = DualWriteVectorStore
+    primary_read_scopes = ['passage']
+    passage  SERVED BY PgVectorStore       shadow=Neo4jVectorStore   -> 3 hit(s)  0.4534 …
+    entity   SERVED BY Neo4jVectorStore    shadow=PgVectorStore      -> 3 hit(s)  0.7241 …
+  ```
+
+  §3.3's whole point is that this is **not one decision**: passages cut over, entity reads stay
+  on Neo4j because `PgVectorStore` omits `anchor_score` by design
+  (`D-T25B-PG-ANCHOR-SCORE`) and entity reads RANK by it. Measured rather than asserted — both
+  scopes queried against the real Neo4j and the real `knowledge-pg` in the same process, each
+  returning real hits from the store the switch selected.
+
+  🔧 **THE SWITCH HAD NO DEPLOYMENT SURFACE, which is why ③ could not proceed.**
+  `knowledge_vector_read_primary` existed in `config.py` and in the provider, and appeared in
+  **no compose file** — so the only way to reach it was to edit Python. Added to
+  `infra/docker-compose.yml` as a **deploy ceiling** (rule 4): one migration state for one
+  deployment, because per-book would make two books' results incomparable and
+  `vector_shadow_read_overlap` meaningless, and a run param would let one request cut over and
+  the next one back.
+
+  ⚠️ **`:-neo4j`, not `:-`, and the reason is three lines further down that same file.** The
+  provider validates against `("neo4j", "postgres")` and RAISES on anything else, so the
+  empty-string passthrough idiom `KNOWLEDGE_VECTOR_DB_URL` uses would take knowledge-service
+  down on the next restart — the exact failure the `KNOWLEDGE_MIRROR_AUTO_REPAIR` comment
+  records, in a field that cannot absorb it. Defaulting to the **pre-cutover** value also means
+  adding the line changes no behaviour, which is the property T25c wanted and did not have:
+  that variable defaulted to empty, a container was recreated without it two days later, and
+  the soak stopped without a sound.
+
+  **BITE 10 — the same container, the same probe, the switch back:**
+
+  ```
+  postgres ->  passage PgVectorStore     entity Neo4jVectorStore
+  neo4j    ->  passage Neo4jVectorStore  entity Neo4jVectorStore
+  ```
+
+  The switch is **causal**: flipping it back moves the passage scope and leaves entity where it
+  was. A probe that only ran in the cutover state could not tell routing from coincidence.
+
+  ⚠️ **The entity leg returned 0 hits first, and that was the CORPUS, not the routing.** The two
+  scopes' corpora live in different iso projects — 545 passages in `019fefde`, 43 entity
+  embeddings in `019f9f41`. Querying one project for both reads exactly like a broken cutover.
+  Checked before concluding, the same way T25j's *"first smoke returned 0 and said BROKEN"* was
+  checked rather than explained away.
+
+  ↩️ **iso reverted to the compose default afterwards, and that is T25c's lesson applied.** The
+  flip lived in a shell environment; leaving the stack in a state no file records is precisely
+  how the 2026-08-12 soak setting evaporated. The switch now has a home, so the next flip is a
+  variable rather than an edit. Verified back: both scopes on Neo4j.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate` unchanged at 54/19/2, class (d)
+  34/34; `docker compose config` resolves the new key to `neo4j` on both stacks.
+  **QC (b) the seam:** ✅ this IS the seam — one process, two backends, both queried live on a
+  recreated iso container.
+  **QC (c) real data:** 545 real passages and 43 real entity embeddings; scores and record ids
+  pasted above rather than described. No unit test could produce this: the claim is about which
+  of two live stores answered.
+
+  ⛔ **Steps 3–5 remain, and step 3 is now the only one with a hard precondition left.** The
+  passage DDL can go once a deployment actually runs `postgres` — proven possible, not yet
+  chosen for dev. Entity/event DDL stays per §3.3. The two benchmarks still need to
+  self-provision before any DDL is deleted (T25j's unit, T25k's step 5).
 
   ### ✅ T25l 2026-08-22 — **the passage soak is SOAKING**, on real writes, with the durable count agreeing
 

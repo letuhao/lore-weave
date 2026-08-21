@@ -1232,6 +1232,23 @@ services:
       #   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
       #   KNOWLEDGE_VECTOR_DB_URL=postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors
       KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+      # T25 ③ step 2 — the vector READ cutover, a DEPLOY CEILING (rule 4). One migration
+      # state for one deployment: per-book would make two books' results incomparable and
+      # `vector_shadow_read_overlap` meaningless, and a run param would let one request cut
+      # over and the next one back.
+      #
+      # `postgres` moves the PASSAGE scope only. Entity reads stay on Neo4j because
+      # `PgVectorStore` omits `anchor_score` by design (D-T25B-PG-ANCHOR-SCORE) and entity
+      # reads RANK by it — see vector_store_provider.py, where the scope set is built.
+      #
+      # ⚠️ `:-neo4j`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. The provider validates this
+      # against ("neo4j", "postgres") and RAISES on anything else, so the empty-string idiom
+      # would take knowledge-service down on the next restart — the failure the
+      # KNOWLEDGE_MIRROR_AUTO_REPAIR comment below records, in a field that cannot absorb it.
+      # Defaulting to the pre-cutover value also means adding this line changes no behaviour,
+      # which is the property T25c wanted and did not have: that variable defaulted to empty,
+      # a container was recreated without it two days later, and the soak stopped silently.
+      KNOWLEDGE_VECTOR_READ_PRIMARY: ${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}
       # T54 — the AGE graph. SAME instance as the vector DSN above: knowledge-pg runs
       # loreweave/postgres-knowledge:18, which T42b built to carry both `age` and `vector`.
       KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-}
