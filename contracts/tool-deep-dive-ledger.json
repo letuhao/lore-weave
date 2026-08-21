@@ -2985,9 +2985,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 114,
+  "tools_concluded": 109,
   "tools_in_cycle": 0,
-  "tools_proven": 86,
+  "tools_proven": 81,
   "tools_blocked": 28,
   "defects_proven": 23,
   "defects_open": 0,
@@ -3002,7 +3002,9 @@
   "concluded_in_release_surface": 40,
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
-  "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it."
+  "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
+  "tools_concluded_including_deprecated": 114,
+  "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
   {

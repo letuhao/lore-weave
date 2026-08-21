@@ -132,15 +132,30 @@ A tool is DEPRECATED when it carries `visibility=legacy` or `_meta.superseded_by
 own machine-readable statement that it has been migrated away from. A deprecated tool is abandoned
 after its migration; its successor carries the traffic, so it is not part of what ships.
 
-Re-derived against the live catalogue on 2026-08-14:
+Re-derived against the live catalogue. **This block is a DATED SNAPSHOT, not a source** — the
+section below says never to read a total out of this file, and that applies here too.
 
 ```
-315  federated total
-117  deprecated (visibility=legacy ∪ superseded_by)
-198  SHIPPABLE — the denominator
- 30  concluded within it
-168  remaining
+                       2026-08-14   2026-08-21
+315  federated total        315          315
+117  deprecated             117          117
+198  SHIPPABLE                                  <- the denominator
+     concluded within it     30          109
+     remaining              168           89
 ```
+
+Re-derive both halves with:
+
+```bash
+python -c "import sys,json;sys.path.insert(0,'scripts/toolloop');import catalog;c=catalog.load();L=json.load(open('contracts/tool-deep-dive-ledger.json',encoding='utf-8'));dep={n for n,t in c.items() if (t.get('meta') or {}).get('visibility')=='legacy' or (t.get('meta') or {}).get('superseded_by')};ok=lambda v: v.get('counts_toward_release') is not False;d=sum(1 for v in L['tools'].values() if v.get('state') in ('proven','blocked') and ok(v));print(len(c)-len(dep),'shippable |',d,'concluded |',len(c)-len(dep)-d,'remaining')"
+```
+
+**The numerator obeys the same rule as the denominator**, and it did not always. `gate.py`
+counted every terminal row regardless of `counts_toward_release`, so from the batch where
+`conclude` started writing the ledger until 2026-08-21 the progress block read **114** when the
+true figure against the shippable set was **109** — the five rows below were in the numerator and
+not the denominator. Corrected, and `tools_concluded_including_deprecated` now carries the total
+work done so the two can never be confused again.
 
 That correction alone cut the remaining work from 280 to 168, and it moved five already-concluded
 rows out of the count (`book_get`, `book_get_chapter`, `book_list_chapters`,

@@ -1,5 +1,16 @@
 # THE GOAL PROMPT — tool deep-dive loop
 
+> **STATUS 2026-08-21: the `/goal` directive was CLEARED by the owner.** The loop is not
+> abandoned and this file is not history — it is the prompt to paste back if the loop resumes.
+> State at clearing, derived not typed: **109 of 198 shippable concluded** (81 proven, 28
+> blocked, 0 in flight), **89 remaining**, batches 1–18 closed. Two defects open
+> (`D-SILENT-TURN-NO-CARD-NO-PROSE`, `D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE`) and
+> 12 deferred questions, all in `contracts/tool-deep-dive-ledger.json`.
+>
+> The ORDER OF WORK line in the prompt below is the one part that HAS gone stale: it names
+> batch 4 and "the 158 remaining", both true when written on 2026-08-14. Re-derive before
+> reusing it — `python scripts/toolloop/work_remaining.py`.
+
 Paste the block below as the session's `/goal`. Nothing else.
 
 It is sized for `/goal`'s ~4000-character limit (currently **3609**). It carries **only** what a
@@ -93,7 +104,10 @@ batch from the 158 remaining. Do not return control while executable work remain
 
 ## RUNSTATE POINTERS — derived, never typed
 
-* Progress: `contracts/tool-deep-dive-ledger.json` (`tools` rows, `state` ∈ {`proven`,`blocked`}).
+* Progress: `contracts/tool-deep-dive-ledger.json` — `tools` rows with `state` ∈
+  {`proven`,`blocked`} **AND `counts_toward_release` != false**. The flag is not optional: five
+  proven rows are deprecated tools the denominator excludes, so counting state alone reads five
+  too high (measured 2026-08-21 — `gate.py` had been reporting 114 against a true 109).
 * Remaining: `python scripts/toolloop/work_remaining.py` — counts against the release surface.
 * Next batch: `scripts/toolloop/derive-tool-order.py`, then `scengen.next_from_ledger()`.
 * Conclusion authority: `python scripts/toolloop/gate.py check`.

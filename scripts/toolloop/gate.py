@@ -359,13 +359,34 @@ def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
     tools[a.tool] = {**prev, "state": a.state, "cycle": ledger.get("progress", {}).get("last_batch"),
                      "note": note, "evidence_file": path.as_posix(),
                      "evidence_class": "gate-backed", "counts_toward_release": True}
+    # 🔴 THE NUMERATOR MUST OBEY THE SAME RULE AS THE DENOMINATOR. The RUNBOOK is explicit that a
+    # DEPRECATED tool (visibility=legacy ∪ superseded_by) is not part of what ships, and that the
+    # five already-concluded rows it moved out are "kept with their evidence, marked
+    # counts_toward_release: false, because the work happened and is still true about those
+    # tools". The rows carry the flag correctly. This counter ignored it, so every batch since
+    # `_record` landed reported 114/198 when the true figure against the shippable set was
+    # 109/198 — book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links and
+    # glossary_web_search are all `proven` and all deprecated.
+    #
+    # Over-counting by five is the same class this loop already named for the DENOMINATOR: a
+    # progress number that is not derived from the SSOT drifts toward "done". Here it was the
+    # numerator, and it drifted the same way.
+    def _counts(v: dict) -> bool:
+        return v.get("counts_toward_release") is not False
+
     pr = ledger["progress"]
     pr.update({
         "tools_concluded": sum(1 for v in tools.values()
-                               if v.get("state") in ("proven", "blocked")),
+                               if v.get("state") in ("proven", "blocked") and _counts(v)),
         "tools_in_cycle": sum(1 for v in tools.values() if v.get("state") == "in_cycle"),
-        "tools_proven": sum(1 for v in tools.values() if v.get("state") == "proven"),
-        "tools_blocked": sum(1 for v in tools.values() if v.get("state") == "blocked"),
+        "tools_proven": sum(1 for v in tools.values()
+                            if v.get("state") == "proven" and _counts(v)),
+        "tools_blocked": sum(1 for v in tools.values()
+                             if v.get("state") == "blocked" and _counts(v)),
+        # Kept alongside so the two are never confused again: the total work done, including the
+        # rows the denominator correction moved out.
+        "tools_concluded_including_deprecated": sum(
+            1 for v in tools.values() if v.get("state") in ("proven", "blocked")),
     })
     LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10), encoding="utf-8")
 

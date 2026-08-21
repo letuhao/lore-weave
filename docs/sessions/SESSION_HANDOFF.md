@@ -1,6 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `d497ebf7a` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-03
+**HEAD:** `d41461f08` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+
+## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 109 of 198 shippable tools concluded
+
+**Where it stands, derived not typed** — `python scripts/toolloop/work_remaining.py`:
+
+```
+198 shippable (315 federated − 117 deprecated) | 109 concluded | 89 remaining | 0 in flight
+```
+
+81 proven, 28 blocked, batches 1–18 closed, 71 commits. The `/goal` directive that drove it was
+CLEARED on 2026-08-21; [`../plans/2026-08-13-tool-deep-dive-GOAL.md`](../plans/2026-08-13-tool-deep-dive-GOAL.md)
+is the prompt to paste back to resume, and
+[`../plans/2026-08-13-tool-deep-dive-RUNBOOK.md`](../plans/2026-08-13-tool-deep-dive-RUNBOOK.md)
+remains the source of truth for phases, denominator, bar and stop condition. Every conclusion and
+defect is in `contracts/tool-deep-dive-ledger.json`; `python scripts/toolloop/gate.py audit`
+refuses if any evidence file lacks a ledger row.
+
+**The method, because the numbers are worthless without it.** A tool is only concluded on a LIVE
+run through the real chat path — plain prose, K≥3 as a distribution, and *if I type a tool
+argument the tool is not proven*. Every fix ships with a falsifier proven RED on the ORIGINAL
+defect, the owning suite green, and the image verified BY CONTENT (md5 per file, not "it built").
+
+**The defects that were worth the loop** — each measured, not reasoned:
+
+| what | measured |
+|---|---|
+| the author's own search read only PUBLISHED text | 0 hits on all 5 verbatim phrases → 5/5 after; `story_search` un-blocked, `memory_search` 1/3 → 5/5 |
+| a superseded tool competed with its replacement | 5 of 54 advertised tools were legacy predecessors of the tool under test; model called them 3/5. After: `canon_rule_edit` 0/5 → 5/5, `authoring_run_review` 0/5 → 5/5 |
+| the gate's own answer bar was vacuous for twelve batches | read `must_contain` while 39 of 45 scenarios declared `all_of`; withdrew two tools that had passed on it |
+| `conclude` printed "may be recorded" and wrote nothing | batch 14 was silently lost and re-derived as batch 15 |
+| a turn that says nothing recorded as `completed` | 21 runs across 8 tools — after a control shrank it 4× from 113 (92 had suspended on a card, where the card IS the output) |
+| archiving a row that does not exist reported success | `{"archived": true}` over 0 rows, with an undo hint |
+| a page read as a total; a card minted for zero work | `jobs_list`, `composition_decompile_arcs` |
+
+**Two defects remain OPEN and both are model-behaviour, not code:**
+
+* `D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE` — asked to draft with the cowrite ENGINE,
+  the model wrote prose itself and proposed `book_chapter_save_draft` with it, about characters
+  that do not exist in that book. Declaring `model_ref` removed the placeholder (`"default"` 5/5
+  → 0/5) but not the fabrication. **See DQ-T35**: making `model_ref` optional-with-default is the
+  candidate fix and is an owner call — 16 of its 19 siblings already declare that convention, but
+  the account tier has no `composer` capability, so a default means spending through `chat`.
+* `D-SILENT-TURN-NO-CARD-NO-PROSE` — recording is fixed (stored `failed`, not `completed`); the
+  silence itself is not.
+
+**🔴 The one thing to distrust in your own work here.** Four of my causal hypotheses died to
+controls in the last two batches alone, and one shipped fix was measured and REFUTED (rewording a
+refusal made lookup 1/5 → 0/5). Prose is not the lever. Run the control that would refute you
+*before* writing the fix — it cost minutes each time and saved a cross-service contract change
+built on a guess.
+
 
 ## 📕 2026-08-03 — the dogfood run: a novel was planned and drafted through the real frontend
 

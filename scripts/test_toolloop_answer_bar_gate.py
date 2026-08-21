@@ -93,3 +93,42 @@ class TestAnEmptyReplyDependsOnWhetherThereWasACard:
     def test_an_empty_reply_with_no_expectation_declared_is_not_invented_into_a_failure(self):
         """The bar only judges what a scenario declared; it is not a general prose check."""
         assert not _bar({}, ["", "", ""])
+
+
+class TestTheProgressNumeratorObeysTheDenominatorRule:
+    """🔴 The numerator drifted the same way the denominator once did.
+
+    The RUNBOOK is explicit that a DEPRECATED tool (visibility=legacy ∪ superseded_by) is not part
+    of what ships, and that the five already-concluded rows it moved out are "kept with their
+    evidence, marked counts_toward_release: false, because the work happened and is still true
+    about those tools". The rows carry the flag correctly — `gate.py` ignored it.
+
+    MEASURED 2026-08-21: every batch since `_record` landed reported 114/198 when the true figure
+    against the shippable set was 109/198. book_get, book_get_chapter, book_list_chapters,
+    glossary_list_chapter_links and glossary_web_search are all `proven` and all deprecated, so
+    they sat in the numerator and not the denominator.
+    """
+
+    def test_the_recorder_filters_on_the_flag(self):
+        src = pathlib.Path(gate.__file__).read_text(encoding="utf-8")
+        i = src.index('"tools_concluded":')
+        assert "_counts(v)" in src[i:i + 200], (
+            "tools_concluded counts every terminal row again — a deprecated tool would re-enter "
+            "the numerator while the denominator excludes it")
+
+    def test_a_deprecated_row_is_excluded(self):
+        rows = {
+            "kept": {"state": "proven", "counts_toward_release": True},
+            "deprecated": {"state": "proven", "counts_toward_release": False},
+            "unflagged": {"state": "proven"},
+        }
+        def counts(v):
+            return v.get("counts_toward_release") is not False
+        assert sum(1 for v in rows.values() if v["state"] == "proven" and counts(v)) == 2, (
+            "an explicit False must be excluded; a MISSING flag must still count, so the rule "
+            "cannot silently drop rows that simply predate it")
+
+    def test_the_total_work_is_still_reported(self):
+        """Excluding them from the release count must not erase them: the work happened."""
+        src = pathlib.Path(gate.__file__).read_text(encoding="utf-8")
+        assert '"tools_concluded_including_deprecated"' in src
