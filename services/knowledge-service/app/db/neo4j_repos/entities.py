@@ -864,6 +864,44 @@ RETURN e
 """
 
 
+#: T25 (3) — the batch read that lets `routers/public/entities.py` leave the Neo4j VECTOR
+#: INDEX behind. The port returns ranked ids plus `attributes`, and those attributes carry
+#: what a RANKER needs (name, kind, anchor_score) — deliberately, per the port's own design
+#: note — not what the public `EntitiesListResponse` returns. So the semantic route now does
+#: search-then-fetch: the port ranks, this loads the rows.
+#:
+#: One round trip, not N. An `id`-per-call loop over an oversampled page is up to 100 reads
+#: for one request, which would trade an index dependency for a latency defect.
+_GET_ENTITIES_BY_IDS_CYPHER = """
+MATCH (e:Entity)
+WHERE e.id IN $ids AND e.user_id = $user_id
+  AND ($include_archived OR e.archived_at IS NULL)
+RETURN e
+"""
+
+
+async def get_entities_by_ids(
+    session: CypherSession,
+    *,
+    user_id: str,
+    ids: list[str],
+    include_archived: bool = False,
+) -> list[Entity]:
+    """Load entities by id, owner-scoped. Order is NOT preserved — the caller ranked them
+    and must re-apply that order; a graph MATCH has no reason to return `$ids` order and
+    relying on it would work in dev and silently reshuffle a real page."""
+    if not ids:
+        return []
+    result = await run_read(
+        session,
+        _GET_ENTITIES_BY_IDS_CYPHER,
+        user_id=user_id,
+        ids=list(ids),
+        include_archived=include_archived,
+    )
+    return [_node_to_entity(r["e"]) async for r in result]
+
+
 async def get_entity_by_id_any_owner(
     session: CypherSession,
     canonical_id: str,

@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 56 of 100 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 57 of 101 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (5/11) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14901,6 +14901,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (FAILING) and dev `:8216` (DISARMED, then ARMED_IDLE after re-arming).
   **QC (c) real data:** 18 real secondary failures on lw-iso and a real unplanned container
   recreate on dev, with its config-hash as the fingerprint.
+
+  ### ✅ T25j 2026-08-21 — **no production module reads the Neo4j vector indexes any more**
+
+  <!-- doc-language-gate: ok -- the entity names are live smoke output from the dogfood book -->
+
+  The second reader. `routers/public/entities.py` is **search-then-fetch**, not a straight swap:
+  the port returns ranked ids plus `attributes`, and the port's own design note says those
+  attributes carry what a RANKER needs — not this endpoint's response model, which returns full
+  `Entity` rows with a computed `status`. So the port ranks and a new
+  `get_entities_by_ids` loads, in **one** round trip rather than N.
+
+  **The weighting moved to the caller, which is the port's stated design.** The repo re-ranked by
+  `raw * anchor_score` internally; the port returns the raw score and the anchor because *"a
+  backend that had to reproduce a scoring formula to be swappable would not be swappable"*.
+
+  ⚠️ **MY OWN FIXTURE WAS VACUOUS FIRST, and it is the same defect as C24's.** The migrated test
+  used anchor scores where the raw order and the weighted order AGREE — so it would have passed
+  just as happily against `key=lambda h: h.score`, asserting nothing about the weighting it
+  exists to pin. Rebuilt so the two orders are **opposite**:
+
+  ```
+  Black Tortoise  raw 0.91 x anchor 0.50 = 0.455   <- wins on RAW
+  Zhang Ruochen   raw 0.77 x anchor 1.00 = 0.770   <- wins on WEIGHTED   (expected first)
+  ```
+
+  🦷 **BITE — `entities.py:614`, the anchor factor dropped** (`h.score * anchor` → `h.score`):
+  `AssertionError: assert ['Black Torto...hang Ruochen'] == ['Zhang Ruoch...ack Tortoise']`.
+  Against the first fixture that bite was a NO-OP. Restored; **4288 passed**.
+
+  ✅ **QC (b) — LIVE SMOKE, rebuilt iso image, through the public HTTP route:**
+
+  ```
+  GET /v1/knowledge/entities?project_id=…&semantic_query=…&limit=5   total: 25
+    Thư phòng                    kind=location   status=canonical
+    Lục Vô Tội                   kind=character  status=canonical
+    Tô Thanh Dao                 kind=character  status=canonical
+  CONTRACT — full Entity rows via search-then-fetch: HOLDS
+  ```
+
+  ⚠️ The first smoke returned **0 and said BROKEN** — and that was the corpus, not the code:
+  **zero** iso entities had embeddings (`44 nodes, 0 embedded`). Checked rather than explained
+  away, then fixed by backfilling 43 embeddings **on the throwaway stack** (rule 6). The route
+  had been correctly returning an empty list.
+
+  📐 **Ceiling 3 → 2 in the same commit, and the gate is now at its floor:**
+  *"vector bypass 2/2 (floor 2) — no LIVE reader left; the remainder is the benchmark floor"*.
+
+  🔴 **AND THE GATE HAD A SILENT HOLE, found by finishing the work it was watching.** Its
+  stale-ceiling check was `MIN < len < MAX`. At `MAX=3, MIN=2` a count of **2 matched no branch
+  at all** — the gate printed *nothing* about the bypass and returned 0. It went quiet exactly
+  when the migration succeeded, and a regression back to 3 would have been equally invisible.
+  Now `len < MAX` (so reaching the floor demands the ceiling move) and the count is printed
+  unconditionally. A gate that goes silent on success is the same defect as a verdict that goes
+  silent on failure.
+
+  ⛔ **What ③ still needs, and it is ONE thing with a named consequence.** The precondition is
+  met — no production reader — so the DDL in `neo4j_schema.cypher` can now be deleted. But
+  `benchmark/flat_knn_rawsearch.py` and `benchmark/vector_backend_bench.py` **do not provision
+  their own index**; they rely on that DDL, and they are the only things that can compare the
+  two backends. Deleting it silently would retire the comparison that justified the cutover.
+  **Decided:** the benchmarks must ensure their own index before the shared DDL goes, so both
+  survive — that is the next unit, not another decision.
 
   ### ✅ T25i 2026-08-21 — **one of the two live readers is off the Neo4j vector indexes**
 

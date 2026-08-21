@@ -23,6 +23,8 @@ from fastapi import status as status_codes  # C8: alias — the list_entities ro
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
@@ -38,7 +40,7 @@ from app.db.neo4j_repos.entities import (
     EntityDetail,
     MergeEntitiesError,
     user_archive_entity,
-    find_entities_by_vector,
+    get_entities_by_ids,
     find_gap_candidates,
     get_entity,
     get_entity_with_relations,
@@ -580,20 +582,50 @@ async def _semantic_search_entities(
     query_vector = embed_result.embeddings[0]
 
     try:
+        # T25 (3) — through the PORT, and it is SEARCH-THEN-FETCH rather than a straight swap.
+        # The port returns ranked ids plus `attributes`, and the port's own design note says
+        # those attributes carry what a RANKER needs, not a caller's response model: this
+        # endpoint returns full `Entity` rows with a computed `status`, which `attributes`
+        # deliberately does not carry. So the port ranks and `get_entities_by_ids` loads.
+        #
+        # THE WEIGHTING MOVED HERE ON PURPOSE. `find_entities_by_vector` re-ranked by
+        # `score * anchor_score` inside the repo; the port returns `score` and the anchor in
+        # `attributes` because *"a backend that had to reproduce a scoring formula to be
+        # swappable would not be swappable"*. Same ordering, computed by the caller that owns
+        # the policy.
         async with neo4j_session() as session:
-            hits = await find_entities_by_vector(
-                session,
+            store = await get_vector_store(session)
+            # Oversample so post-filtering by kind/status doesn't starve the page: ask for
+            # limit*N candidates, then trim after the Python-side filters.
+            vhits = await store.search(
+                scope="entity",
                 user_id=str(user_id),
-                project_id=str(project_id),
-                query_vector=query_vector,
+                embedding=query_vector,
                 dim=project.embedding_dimension,
-                embedding_model=project.embedding_model,
-                # Oversample so post-filtering by kind/status doesn't
-                # starve the page: ask for limit*N candidates, then
-                # trim after the Python-side filters.
-                limit=limit * 5,
-                include_archived=(status == "archived"),
+                k=limit * 5,
+                filter=VectorFilter(
+                    project_id=str(project_id),
+                    embedding_model=project.embedding_model,
+                    include_archived=(status == "archived"),
+                ),
             )
+            ranked = sorted(
+                vhits,
+                key=lambda h: h.score * (h.attributes.get("anchor_score") or 1.0),
+                reverse=True,
+            )
+            by_id = {
+                e.id: e
+                for e in await get_entities_by_ids(
+                    session,
+                    user_id=str(user_id),
+                    ids=[h.record_id for h in ranked],
+                    include_archived=(status == "archived"),
+                )
+            }
+            # Re-apply the ranking the fetch does not preserve, and drop ids the fetch did
+            # not return (archived//deleted between the two reads) rather than emitting None.
+            hits = [by_id[h.record_id] for h in ranked if h.record_id in by_id]
     except ValueError as exc:
         logger.warning(
             "C8: semantic entity search dim mismatch project=%s stored=%s live=%s",
@@ -607,7 +639,7 @@ async def _semantic_search_entities(
             },
         )
 
-    rows = [h.entity for h in hits]
+    rows = list(hits)
     # Post-filter by kind + derived status (the vector index is global;
     # these dimensions aren't expressible in the Cypher vector call). Use
     # the model's own `status` computed field rather than re-deriving — one

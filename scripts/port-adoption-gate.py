@@ -163,7 +163,10 @@ _VECTOR_EXEMPT = {"adapters/neo4j_vector_store.py"}
 #: moved with it -- from stubbing `find_passages_by_vector` to stubbing `get_vector_store`,
 #: because a double shaped like the OLD return keeps passing while production calls something
 #: else. `routers/public/entities.py` is the one LIVE reader left.
-MAX_VECTOR_BYPASS = 3
+#: 3 -> 2 (2026-08-21, T25 (3)): `routers/public/entities.py` migrated. The bypass is now the
+#: BENCHMARK FLOOR and nothing else -- **no production module reads the Neo4j vector indexes**,
+#: which is the precondition for deleting their DDL from `neo4j_schema.cypher`.
+MAX_VECTOR_BYPASS = 2
 #: benchmarks stay; a floor of 2 says so out loud rather than leaving a future reader to
 #: "finish the job" by deleting the only thing that can compare the two backends.
 MIN_VECTOR_BYPASS = 2
@@ -368,17 +371,23 @@ def main() -> int:
         print("  is how a cutover stops being measurable. Lower the floor deliberately or")
         print("  restore the caller.")
         return 1
-    if MIN_VECTOR_BYPASS < len(vbypass) < MAX_VECTOR_BYPASS:
+    # `< MAX`, NOT `MIN < len < MAX`. The two-sided form left a hole the size of the whole
+    # point: with MAX=3 and MIN=2, a count of 2 matched no branch at all and the gate printed
+    # NOTHING and returned 0 -- it went silent exactly when the migration finished, and a
+    # regression back to 3 would also have matched no branch. Found 2026-08-21 the moment the
+    # second reader landed and the bypass line vanished from the output.
+    if len(vbypass) < MAX_VECTOR_BYPASS:
         print(f"[port-adoption-gate] FAIL — vector bypass IMPROVED to {len(vbypass)} but the "
               f"ceiling still says {MAX_VECTOR_BYPASS}.")
         print("  Lower it in the same commit. That is T25 (3) progress and recording it is the")
         print("  point — a stale ceiling leaves headroom a NEW bypass can occupy unnoticed,")
         print("  which is exactly how these two got past the module-level count.")
         return 1
-    if len(vbypass) > MIN_VECTOR_BYPASS:
-        live = [v for v in vbypass if not v.startswith("benchmark/")]
-        print(f"[port-adoption-gate] vector bypass {len(vbypass)}/{MAX_VECTOR_BYPASS} — "
-              f"{len(live)} LIVE reader(s) still block T25 (3): {live}")
+    live = [v for v in vbypass if not v.startswith("benchmark/")]
+    print(f"[port-adoption-gate] vector bypass {len(vbypass)}/{MAX_VECTOR_BYPASS} "
+          f"(floor {MIN_VECTOR_BYPASS})"
+          + (f" — {len(live)} LIVE reader(s) still block T25 (3): {live}" if live
+             else " — no LIVE reader left; the remainder is the benchmark floor"))
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 

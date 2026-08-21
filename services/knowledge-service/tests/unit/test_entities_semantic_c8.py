@@ -22,11 +22,38 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity, VectorSearchHit
+from app.db.neo4j_repos.entities import Entity
+from app.ports.vector_store import VectorHit
 
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()
+
+
+def _wire_vector(entities_with_scores):
+    """T25 (3) — patch the PORT and the batch fetch, the two seams the route now uses.
+
+    `entities_with_scores` is [(Entity, score, anchor_score)]. The doubles moved with the
+    code on purpose: a stub shaped like `find_entities_by_vector`'s `VectorSearchHit` would
+    have kept these tests green against a function the route no longer calls — the fake
+    agreeing with deleted code, which is the failure this suite exists to catch elsewhere.
+
+    Returns (patch_store, patch_fetch); the caller enters both.
+    """
+    hits = [
+        VectorHit(record_id=e.id, score=s, scope="entity",
+                  attributes={"name": e.name, "kind": e.kind, "anchor_score": a})
+        for e, s, a in entities_with_scores
+    ]
+    store = AsyncMock()
+    store.search = AsyncMock(return_value=hits)
+    rows = [e for e, _s, _a in entities_with_scores]
+    return (
+        patch("app.routers.public.entities.get_vector_store",
+              new=AsyncMock(return_value=store)),
+        patch("app.routers.public.entities.get_entities_by_ids",
+              new=AsyncMock(return_value=rows)),
+    )
 
 
 def _entity(
@@ -216,15 +243,25 @@ def _patch_semantic_deps(projects_repo, embed_client):
     )
 
 
-@patch("app.routers.public.entities.find_entities_by_vector", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_semantic_query_returns_vector_ranked_results(mock_vec):
+def test_semantic_query_returns_vector_ranked_results():
     """The happy path: project has an embedding model → query is embedded
     via the BYOK provider-registry model_ref → vector hits returned."""
-    mock_vec.return_value = [
-        VectorSearchHit(entity=_entity(name="Zhang Ruochen"), raw_score=0.91, weighted_score=0.91),
-        VectorSearchHit(entity=_entity(name="Black Tortoise"), raw_score=0.77, weighted_score=0.62),
-    ]
+    # THE RAW ORDER IS DELIBERATELY THE OPPOSITE OF THE EXPECTED ORDER.
+    #
+    # `find_entities_by_vector` re-ranked by `raw * anchor` inside the repo; the port returns
+    # the raw score and the anchor and leaves the policy to the caller, so the route now does
+    # that multiply. A fixture where raw and weighted agree cannot tell whether the route
+    # still does it — it would pass just as happily against `key=lambda h: h.score`. So:
+    #
+    #   Black Tortoise  raw 0.91 x anchor 0.50 = 0.455   <- wins on RAW
+    #   Zhang Ruochen   raw 0.77 x anchor 1.00 = 0.770   <- wins on WEIGHTED
+    #
+    # asserting Zhang first is therefore an assertion about the weighting, not about sorting.
+    pv, pf = _wire_vector([
+        (_entity(name="Zhang Ruochen"), 0.77, 1.0),
+        (_entity(name="Black Tortoise"), 0.91, 0.50),
+    ])
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=_project_stub())
     embed_client = AsyncMock()
@@ -232,7 +269,7 @@ def test_semantic_query_returns_vector_ranked_results(mock_vec):
 
     p1, p2 = _patch_semantic_deps(projects_repo, embed_client)
     client = _make_client()
-    with p1, p2:
+    with p1, p2, pv, pf:
         resp = client.get(
             f"/v1/knowledge/entities?project_id={_PROJECT_ID}&semantic_query=神器"
         )
@@ -266,25 +303,27 @@ def test_semantic_query_mutually_exclusive_with_search():
 def test_semantic_query_project_not_found_404():
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=None)
+    pv, pf = _wire_vector([])
     p1, p2 = _patch_semantic_deps(projects_repo, AsyncMock())
     client = _make_client()
-    with p1, p2:
+    with p1, p2, pv, pf:
         resp = client.get(
             f"/v1/knowledge/entities?project_id={_PROJECT_ID}&semantic_query=神器"
         )
     assert resp.status_code == 404
 
 
-@patch("app.routers.public.entities.find_entities_by_vector", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_semantic_query_not_indexed_returns_empty(mock_vec):
+def test_semantic_query_not_indexed_returns_empty():
     """Project with no embedding model → empty + null model (FE shows
     'not indexed yet'), and no vector call is made."""
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=_project_stub(embedding_model=None, embedding_dimension=None))
+    get_store = AsyncMock()
+    pv = patch("app.routers.public.entities.get_vector_store", new=get_store)
     p1, p2 = _patch_semantic_deps(projects_repo, AsyncMock())
     client = _make_client()
-    with p1, p2:
+    with p1, p2, pv:
         resp = client.get(
             f"/v1/knowledge/entities?project_id={_PROJECT_ID}&semantic_query=神器"
         )
@@ -292,27 +331,27 @@ def test_semantic_query_not_indexed_returns_empty(mock_vec):
     body = resp.json()
     assert body["entities"] == []
     assert body["embedding_model"] is None
-    mock_vec.assert_not_awaited()
+    # the STORE must not be reached at all — an unindexed project short-circuits before it
+    get_store.assert_not_awaited()
 
 
-@patch("app.routers.public.entities.find_entities_by_vector", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_semantic_query_status_filter_applied_post_vector(mock_vec):
+def test_semantic_query_status_filter_applied_post_vector():
     """status filter narrows the vector result set by derived status."""
     from app.main import app
     from app.deps import get_projects_repo, get_embedding_client
 
-    mock_vec.return_value = [
-        VectorSearchHit(entity=_entity(name="Canon", glossary_entity_id="g-1"), raw_score=0.9, weighted_score=0.9),
-        VectorSearchHit(entity=_entity(name="Disc"), raw_score=0.8, weighted_score=0.4),
-    ]
+    pv, pf = _wire_vector([
+        (_entity(name="Canon", glossary_entity_id="g-1"), 0.9, 1.0),
+        (_entity(name="Disc"), 0.8, 0.5),
+    ])
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=_project_stub())
     embed_client = AsyncMock()
     embed_client.embed = AsyncMock(return_value=_embed_result())
     p1, p2 = _patch_semantic_deps(projects_repo, embed_client)
     client = _make_client()
-    with p1, p2:
+    with p1, p2, pv, pf:
         resp = client.get(
             f"/v1/knowledge/entities?project_id={_PROJECT_ID}"
             f"&semantic_query=神器&status=canonical"
