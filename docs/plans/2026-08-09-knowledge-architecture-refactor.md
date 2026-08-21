@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: QC-3 ✅ · QC-6 ✅ · QC-5 acceptance PASSES (row `[~]` on open deferrals). Next `T46` — pin-aware supersession now has a LIVE repro (QC-6b). Then `T25` ③ → `T48` → `T49` ⛔.**
+**RESUME: QC-3 ✅ · QC-6 ✅. ⛔ STOPPED — `T33`'s live bite needs a PO call (see T33b): the only stack with `:Event` nodes is dev and `causal-edges` WRITES. Then `T46` (live repro in QC-6b) → `T25` ③ → `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -5330,6 +5330,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `causal_edges` tests were updated to the new triple shape rather than deleted — the filtering
   they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
   asserted.
+
+
+  ### 📊 T33b 2026-08-21 — the unblock condition IS met, and the run it points at considers **zero** events
+
+  ```
+  QC-6 closed today (QC-6b), which is what this row's To-unblock names.
+  So the owed thing was the measurement. Taken on both stacks:
+
+  DEV   :Event 1186   (575 for the acceptance user)   CAUSES 2 · PRECEDES 2   -> 4/1186 = 0.34 %
+  ISO   :Event 0 for the acceptance user              CAUSES 0 · PRECEDES 0
+  POST /internal/extraction/causal-edges (iso, tagged_only=false)
+        -> {"edges_written": 0, "events_considered": 0}
+  ```
+
+  **0.34 % is confirmed, not inherited** — the figure this row's *Retry when* argues from is now
+  re-measured rather than quoted, and it has not moved. What did NOT happen is more interesting:
+  the endpoint considered **zero** events, so T33's own bite (*"run over the corpus -> edge count
+  non-zero and the graph acyclic"*) could not even be attempted on the isolated stack.
+
+  ⚠️ **I nearly recorded the wrong cause, and checking it is the only reason this is right.**
+  `:Event` nodes carry **no `book_id`** (0 of 1186 on dev) and the endpoint takes `book_id`, which
+  looks like a scope key that cannot match. It is not: the handler resolves book -> projects via
+  `_list_user_book_projects` and `list_events_in_order` scopes on `user_id` + `project_id`. The
+  `book_id` observation is real and irrelevant — rule 13, caught before it was written down.
+
+  🎯 **The actual measurement, and it stops short of a diagnosis on purpose.** The reader matches
+  the **`:Event` label**. The acceptance user on lw-iso has **0** of those and **33**
+  `Entity {kind:'event'}`, and the two sets are **disjoint** — `0 of 33` carry both. That is why
+  `events_considered` is 0 there. On dev BOTH populations exist (`Entity{kind:'event'}` 435,
+  `:Event` 1186), which is what two writers, or two eras of one writer, would look like.
+
+  ⛔ **What this does NOT establish**, stated so the next reader does not inherit a guess: the 33
+  iso nodes date from **2026-08-12/13**, and today's real chapter-5 extraction added **neither**
+  shape. So this session did not observe which shape the CURRENT extraction writer produces, and
+  that is the first thing to check — not to assume from the counts above.
+
+  ⛔ **And the live bite cannot be run without a decision.** The only stack with `:Event` nodes for
+  this user is **dev** (575), and `causal-edges` MERGEs edges — a write to a non-throwaway graph
+  that the 2026-08-21 GRANTS do not cover. Seeding events onto lw-iso instead would be building
+  the reference corpus this row's own *To unblock* records as **retracted over-engineering**. So
+  T33's live bite needs either that write authorised, or the event-shape question settled first.
 
   ### 🔻 DEFERRAL `D-T33-CAUSAL-COVERAGE-UNMEASURED` — the bite is one book, the graph is eight projects
 
