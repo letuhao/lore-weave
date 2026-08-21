@@ -32,7 +32,10 @@ from configuration at startup:
     INDETERMINATE  the family is exposed but the arming gauge is ABSENT -> a service too
                    old to publish arming, whose pre-seeded zeros are identical either
                    way. Unreadable, and NOT a pass.
-    ARMED_IDLE     armed, but no write has reached it. Still not evidence.
+    ARMED_IDLE     armed, but no write has reached it SINCE THE LAST RESTART. The counter
+                   is process-local: rebuilding the image reverted a SOAKING verdict to this
+                   one on 2026-08-21 while 25 rows sat in the secondary. Not evidence either
+                   way on its own — read the secondary's row counts alongside it.
     SOAKING        armed, writes have landed, `secondary_failed` is 0. The only pass.
     FAILING        `secondary_failed` is non-zero. Exits non-zero on its own.
 
@@ -155,7 +158,11 @@ def classify(
     if total < min_writes:
         return ARMED_IDLE, (
             f"the store is wired but only {total:g} write(s) have reached it "
-            f"(need >= {min_writes}). `secondary_failed = 0` is vacuous until writes flow."
+            f"(need >= {min_writes}). `secondary_failed = 0` is vacuous until writes flow. "
+            "NOTE: this counter is PROCESS-LOCAL — a service restart resets it to 0, so this "
+            "verdict means 'no writes since the last restart', NOT 'no writes ever'. The "
+            "durable evidence is row counts in the secondary; check those before concluding "
+            "the soak never ran."
         )
     return SOAKING, f"{total:g} write(s) landed, secondary_failed = 0"
 
