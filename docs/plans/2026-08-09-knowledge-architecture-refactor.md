@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 53 of 93 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 53 of 94 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (19/36) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (19/37) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7167,6 +7167,63 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### 📊 QC-5 C21 2026-08-21 — **the judge has ZERO variance at temperature 0, and it flags conforming prose**
+
+  <!-- doc-language-gate: ok -- the Vietnamese spans below ARE the measurement; translating them
+       would destroy the evidence that the judge quoted a span agreeing with the rule it cited -->
+
+  §7.3's five runs, on lw-iso (rule 1; rule 6 — a critique call writes an LLM job row).
+  Temperature 0 on the judge, **UNSEEDED** — there is no seed plumbing in the critic path, and
+  §7.3's own caveat says a run that cannot seed reports five samples and says so.
+
+  The control is DERIVED in code, never read from a file. ⚠️ The scratchpad's `arm_canon.txt`
+  *looks* like the control and is not one — it still carries the invented name once of three,
+  so a run against it would compare a misattributed passage with a **partly** misattributed one
+  and call the difference discrimination. (The original C14 harness derived it too, so no
+  earlier evidence is affected — the file is a stale dump, not the control that was used.)
+
+  ```
+  planted    canon [4,4,4,4,4]  attributed [2,2,2,2,2]  raw [2,2,2,2,2]   sd=0.00  STABLE
+  corrected  canon [4,4,4,4,4]  attributed [2,2,2,2,2]  raw [2,2,2,2,2]   sd=0.00  STABLE
+  ```
+
+  🎯 **THE JUDGE IS DETERMINISTIC. 10 of 10 calls byte-identical.** So QC-5's recorded spread
+  (ch12 `1/SEVERE` vs `2/warn` on unchanged inputs) is **drafter variance, not judge variance**
+  — which is exactly what splitting clause 1 into a fixed-draft arm and a re-drafting arm was
+  built to separate, now measured instead of assumed. Five runs of a deterministic judge on a
+  fixed passage is five copies of one sample; the sample size that matters is on arm 1b.
+
+  🔴 **AND THE SCORE DOES NOT DISCRIMINATE — ONLY THE REASON DOES.** Both arms scored `canon=4`
+  with two attributed violations. Reading the verdicts instead of the numbers:
+
+  ```
+  PLANTED    [R1] "Lâm Trạch là người phản bội Lâm Uyên, chứ không phải Lục Vô Tội."
+             -> catches the misattribution exactly, and names the canon antagonist.
+
+  CORRECTED  [R1] "...Lâm Trạch lại đứng im lặng như một pho tượng đá..."
+             span: "Chính Lâm Trạch là kẻ đã bày ra cạm bẫy này tại Lâm gia"
+             -> the quoted span AGREES with R1. It is flagging conforming prose,
+                with reasoning that contradicts its own citation.
+  ```
+
+  This is `D-QC5-ROLE-JUDGE-PRECISION`'s defect — *"the check fires on correct prose"* — in the
+  **prose** judge. That matters because §7.2 accepted the measured precision as the ceiling for
+  the **role-attribution** judge, and justified it by that judge being **off by default**. This
+  one is on. The acceptance and the exposure are not the same judge, and the ⚠️ is that the
+  §7.2 reasoning does not transfer.
+
+  ✅ **It also vindicates §2.3.** An acceptance rule keyed on the four-dimension score cannot see
+  a difference the per-rule verdicts show plainly. *"`violations[]` keyed by `rule_id` is the
+  enforceable output; the four dimension scores are advisory"* is the right shape, and this is
+  the first measurement that would have been misread without it.
+
+  ⛔ **THIS IS NOT C17's RE-SCORE, and must not be filed as one.** It measures the **critique**
+  seam (`POST /jobs/{id}/critique`), which passes `active_rules` but **`present_facts=[]`**
+  (`routers/engine.py:2067`). C17 measured the **authoring-run** seam, which passes
+  `bible.as_present_facts()`. Different inputs, so the numbers are not comparable and the
+  five-run re-score of C17 is still owed. `rules=None` on every row here for the same reason:
+  the iso image predates today's `active_rule_count` stamp.
+
   ### ✅ QC-5 C20 2026-08-21 — **§7.3's number moves in the gate, and it makes C17 unscorable on purpose**
 
   Rule 5: a gate's number moves in the SAME COMMIT as the decision that moved it.
@@ -7250,6 +7307,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   pins the DIFFERENCE, so if `judge_prose` ever stops stamping keys the new comparison cannot
   quietly collapse back into the old weaker one and pass for the old wrong reason.
 
+  ### 🔻 DEFERRAL `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`
+
+  <!-- doc-language-gate: ok -- the span below IS the evidence -->
+
+  | | |
+  |---|---|
+  | **Blocker** | The **prose** judge flags prose that conforms, citing a rule the quoted span agrees with. Measured C21: the corrected arm — the planted passage with the invented betrayer replaced by the canon antagonist, one string different — was flagged under `[R1]` with the span *"Chính Lâm Trạch là kẻ đã bày ra cạm bẫy này tại Lâm gia"*, which is R1 being **obeyed**. |
+  | **Evidence** | Five runs per arm, temperature 0, deterministic: both arms `canon=4`, `attributed=2`, `raw=2`, `sd=0.00`. The planted arm's reason is correct (*"Lâm Trạch là người phản bội Lâm Uyên, chứ không phải Lục Vô Tội"*); the corrected arm's reason contradicts its own citation. Same score, opposite correctness. |
+  | **Why §7.2 does not cover it** | §7.2 accepted the measured precision as the ceiling for `judge_role_attribution`, and the reason that is affordable is that **that judge is off by default**, so its false positives cannot reach an author. This is `judge_prose`, which is **on**. The acceptance and the exposure are different judges and the reasoning does not transfer — recording that rather than letting one decision quietly cover two. |
+  | **Mechanism** | The per-rule verdict channel is what made this visible at all: the four dimension scores are identical across the two arms, so anything keyed on the score alone reads them as the same passage. §2.3's *"`violations[]` keyed by `rule_id` is the enforceable output"* is why the difference is inspectable. |
+  | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
+  | **Retry when** | The PO decides which of those two it is. Not effort — the measurement is already in hand. |
+
   ### 🔻 DEFERRAL `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`
 
   | | |
@@ -7257,7 +7327,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Blocker** | QC-5 has never been measured under the rule that now governs it. Its PASS (C17) was taken under §2.1's **three runs, majority**; PO §7.3 (2026-08-21) replaced that with **five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION**. A verdict measured under a retired rule is not wrong — it is unrescored, and saying otherwise would be the green-by-construction move this plan keeps catching. |
   | **Evidence** | The spread that motivated the new rule is on the record: chapter 12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. Three runs produced that disagreement, so three is the sample size that failed to settle it. |
   | **Also here** | `engine/quality_report.py:138` passes `active_rules=[]` — a SECOND seam, deliberate per its own docstring (*"no structured rules here"*), but it emits no `active_rule_count`, so from the report a deliberate choice and the C3 failure look identical. The authoring-run seam solved exactly this by reporting the count; this one has not. ✅ **DONE 2026-08-21 — and it was stamped in `judge_prose` rather than at the call site, so it cannot be omitted by the next seam either. Both degrade exits carry it too.** |
-  | **To unblock** | Re-run QC-5's clause-1 arms five times at temperature 0, seeded, and report the distribution rather than a number. Add `active_rule_count` to the quality report so the second seam declares itself. |
+  | **To unblock** | Re-run QC-5's clause-1 arms five times at temperature 0, seeded, and report the distribution rather than a number. Add `active_rule_count` to the quality report so the second seam declares itself. ⚠️ **NARROWED 2026-08-21 (C21).** The judge has **zero** variance at temperature 0 — 10 of 10 fixed-passage calls byte-identical — so five runs of arm 1a is five copies of one sample and the sample size that matters is arm **1b**, which re-drafts. And the re-score must run on the **authoring-run** seam: C21 used the critique endpoint, which passes `present_facts=[]`, so its numbers are not comparable to C17's. |
   | **Retry when** | Immediately — both are runs and one small edit, not decisions. This row exists so the re-score is owed explicitly instead of C17's three-run PASS quietly standing in for a five-run one. |
 
   ⏸ **POST-REVIEW CHECKPOINT — evidence presented, execution HELD.** QC-5 is one of the three
