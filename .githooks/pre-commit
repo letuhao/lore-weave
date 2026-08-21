@@ -89,6 +89,15 @@ command -v python >/dev/null 2>&1 || PY=python3
 # live check needs a running stack, so only the selftest runs here; what it pins is that
 # DISARMED and ARMED_IDLE never collapse into SOAKING.
 "$PY" "$ROOT/scripts/soak-armed-gate.py" --selftest
+# QC-5 acceptance (PO sign-off 2026-08-21). §2.1 clause 1 was UNSATISFIABLE -- it needed the
+# DRAFTER to violate canon, which it did not in six runs across two chapters, so the row read
+# as a critic failure while the critic was fine (a planted violation attributes 3/3). Split
+# into 1a critic-capability + 1b drafter-compliance, and the offline selftest pins the part
+# that cannot be re-derived by reading it: 1b and clause 2 are BOTH unreadable unless the
+# same measurement proves the critic live, because "found nothing" and "nothing to find"
+# produce identical numbers. The live arms need a stack and local models; only the selftest
+# runs here.
+"$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --selftest
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call neo4j_repos with no Cypher of its own, pass that gate, and still break on an engine

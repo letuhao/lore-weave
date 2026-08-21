@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**58 of 66 rows done · 8 open · 42 of 86 evidence blocks closed inside them.**
+**58 of 66 rows done · 8 open · 43 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (16/40) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -13919,6 +13919,85 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `Index Scan using entity_vectors_1024_emb_hv` with `Order By: ((embedding)::halfvec(1024) <=>
   ...)`, so the planner agrees the expression matches — a textual assertion alone would not have
   shown that.
+
+  ### ✅ QC-5 C16 2026-08-21 — **clause 1 is split and the criterion is now EXECUTABLE.** And clause 2 had the same hole.
+
+  ```
+  1a re-run (planted, fresh)   run 1/2/3   canon=1  attributed=[R1]  invented=[]   -> 3/3
+  1b flow      (POST-R7, recovered)        canon=5  raw=0  dropped=0  attributed=0
+  flow_control (PRE-R7,  recovered)        canon=5  raw=3 / 6 / 2
+  qc5-acceptance-gate --selftest 11/11     BITE x5 (61-65)
+  [qc5-acceptance] 1a PASS · 1b PASS · 2 PASS  =>  QC-5 PASS
+  ```
+
+  Grant 4. Clause 1 required *">=2 runs with `canon<=3` and at least one attributed violation"*,
+  which only happens when the **drafter** violates canon — it did not, in six runs across two
+  chapters, so the row read as a critic failure while the critic was fine. Split into **1a**
+  (critic capability, planted) and **1b** (drafter compliance, flow), specced in
+  [§2.1](../specs/2026-08-13-knowledge-refactor-open-decisions.md).
+
+  🎯 **1a re-ran fresh and reproduces C14 exactly**: 3/3, `canon=1`, attributed to `R1`, zero
+  invented ids, through the real system prompt with the real six rules.
+
+  🔴 **1b ALONE IS A CRITERION THAT CANNOT FAIL**, which is why this shipped as a gate rather
+  than a paragraph. *"Zero attributed violations"* is exactly what a canon-clean drafter and a
+  critic that attributes **nothing** both produce — so read alone, 1b would have scored a PASS
+  through the very weeks the critic was inventing rule ids and discarding everything
+  (`dropped=2 of 2`; `9 discarded across three runs`). 1b with no planted arm is **UNSCORABLE**,
+  never a pass.
+
+  ### 🔴 AND CLAUSE 2 HAD THE SAME HOLE POINTING THE OTHER WAY — only the re-run found it
+
+  Scored as written, the real measurement came back **FAIL**:
+
+  ```
+  [qc5-acceptance] 2  no vacuous 5/5   FAIL   3 run(s) produced 5/5 with zero raw findings
+  ```
+
+  Those three runs are C15's success — the author added `R7`, the drafter complied, and the
+  critic correctly found nothing. **Byte-identical to the defect signature clause 2 exists to
+  catch.** The architecture working reads as the architecture broken, because *"found nothing"*
+  and *"nothing to find"* produce the same numbers.
+
+  ✅ **Fixed by requiring TWO independent proofs before a 5/5-with-nothing-found is believable:**
+  1a passes, **and** a `flow_control` run found something. The second is not redundant — 1a
+  drives the judge directly with no drafter, so it stays green for a flow that **never calls the
+  critic at all**, in which every run reports `raw=0` and reads as a perfectly canon-clean book.
+  The control is the PRE-R7 runs on the same chapter and flow at raw **3 / 6 / 2**. Without
+  both, clause 2 keeps exactly the teeth it had.
+
+  ⚠️ **BITE 61 DID NOT FIRE THE FIRST TIME, and that was the batch's own defect class.** The
+  selftest checked only the OVERALL verdict — and with no planted arm 1a is already
+  `UNSCORABLE`, which drags the overall answer there whatever 1b said. So a 1b that had stopped
+  consulting 1a entirely still produced the expected answer and the gate stayed green. The check
+  now asserts the **1b clause row**, and the bite fires: `reads PASS/PASS`.
+
+  **BITE ×5, each red on its own assertion:**
+
+  ```
+  61. 1b stops consulting 1a          E "the 1b CLAUSE itself reads PASS/PASS with/without
+                                         a planted arm"   (after the check was fixed)
+  62. 1b ignores raw > attributed     E "flow runs that discard what they found fail 1b"
+  63. clause 2 drops the raw==0 test  E "clause 2 fires on a vacuous 5/5"
+  64. clause 2 licenses on 1a alone   E 2 red: no-control case and empty-control case
+  65. control need not have FOUND any E "a flow_control that itself found NOTHING does not
+                                         license the 5/5"
+  ```
+
+  ⛔ **QC-5 STAYS `[~]`, and the reason is the one §2.1 already names about itself.** The verdict
+  is PASS, but the flow and control arms are the runs that **motivated** the clause-2 regate, so
+  this scores a rule partly against its own examples — *"it validates the PIPELINE, and only
+  because the rule fitted to these runs still fails on them"*. The RULE is independently
+  validated by 11 synthetic selftest cases and five bites; the VERDICT is not yet independent.
+  **What closes it: three flow runs on a chapter that did not motivate the split**, scored
+  through the gate with a `flow_control` arm. That is a measurement, not a decision.
+
+  **QC (a) gates:** `qc5-acceptance-gate --selftest` **11/11**, wired into pre-commit;
+  `gate-wiring-gate` **105 → 106**; plan gates green.
+  **QC (b) the seam:** 1a ran live against the real critic model through LM Studio; the 1b and
+  control arms are the persisted `critic_verdict` rows recovered from the lw-iso composition
+  database, not numbers retyped from a report.
+  **QC (c) real data:** nine real runs — three fresh planted, three POST-R7, three PRE-R7.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

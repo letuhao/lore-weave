@@ -188,6 +188,45 @@ one, and it has been reporting the second as the first.
 (accepting a fixed-draft arm alongside the end-to-end one), or restate clause 1 against what the
 flow does produce. Either changes the acceptance criterion. What is no longer in question is
 whether the critic can attribute a violation: it can, 3/3.
+
+✅ **CLAUSE 1 IS SPLIT — PO sign-off 2026-08-21, re-run and scored (QC-5 C16).** The choice
+above was taken: restate the criterion against what the flow actually produces, in two arms
+that are measured separately and read together.
+
+* **1a — critic capability.** Three runs of a PLANTED violation through the real system
+  prompt with the real active rules. Passes when >=2 attribute it with `canon<=3`.
+  Re-run 2026-08-21: **3/3, `canon=1`, attributed to `R1`, zero invented ids.**
+* **1b — drafter compliance.** Three runs of the flow. Passes when no run produces an
+  attributed canon violation **and** no run discards a finding it could not attribute
+  (`raw > attributed` is the C10 defect, not a clean draft).
+
+🔴 **1b IS SCORED ONLY WHEN 1a PASSES, and this is the whole point of splitting rather than
+relaxing.** "Zero attributed violations" is precisely what a canon-clean drafter and a critic
+that attributes NOTHING both produce. Read alone, 1b would have scored a PASS through the very
+weeks the critic was inventing rule ids and discarding every finding (`dropped=2 of 2`; `9
+discarded across three runs`). A 1b verdict with no planted arm is **UNSCORABLE**, never a pass.
+
+⚠️ **CLAUSE 2 HAD THE SAME HOLE, POINTING THE OTHER WAY, and only the re-run exposed it.**
+After the author added `R7` the drafter complied and three flow runs scored **`canon=5,
+raw=0`** — byte-identical to the *"clean 5/5 with nothing found"* this clause was written to
+catch. Scored as written, the architecture's own success reads as its defect signature. So a
+5/5-with-nothing-found is believable only when the measurement shows BOTH:
+
+1. **1a passes** — the critic can attribute a violation that is there; and
+2. **a `flow_control` run found something** — the critic is live IN THE FLOW, not merely below
+   the seam. This is not redundant with 1a: 1a drives the judge directly with no drafter, so
+   it stays green for a flow that never calls the critic at all, in which every run reports
+   `raw=0` and reads as a perfectly canon-clean book. In the real measurement the control is
+   the PRE-R7 runs on the same chapter and flow, at raw **3 / 6 / 2**.
+
+Without both, clause 2 keeps exactly the teeth it had.
+
+📐 **The criterion is now executable, not prose:** [`scripts/qc5-acceptance-gate.py`](../../scripts/qc5-acceptance-gate.py),
+wired into pre-commit by its offline `--selftest` (11 checks) and bitten five ways. Its
+load-bearing selftest asserts the 1b **clause row**, not the overall verdict — checking only
+the overall answer left the 1a-gating unpinned, and a bite that removed it stayed green.
+
+**Scored on the 2026-08-21 re-run: `1a PASS · 1b PASS · 2 PASS` -> QC-5 PASS.**
 ✅ **DELIVERED 2026-08-21 (QC-5 C7) — chapter 5, and the verdict is still DOES NOT PASS.** Three
 runs, same models, same chapter, on lw-iso against local models for $0.18: canon **4 / 5 / 4**,
 raw findings **3 / 5 / 1**, attributed **0 / 0 / 0**. Clause 1 scores **0 of 3**; clause 2 holds,
