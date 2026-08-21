@@ -23,17 +23,87 @@ test('onAuth FAILS CLOSED when no ticket store and no dev opt-in', async () => {
   if (prevDev) process.env.LW_WS_DEV_ALLOW_STATIC = prevDev;
 });
 
+const DEV_USER = 'dddddddd-1111-4111-8111-dddddddddddd';
+
+const ctx = () => ({ headers: new Map(), ip: '1.2.3.4' }) as never;
+
 test('onAuth rejects a wrong dev token even with the opt-in set', async () => {
   process.env.LW_WS_DEV_ALLOW_STATIC = '1';
   process.env.LOREWEAVE_INTERNAL_TOKEN = 'right';
+  process.env.LW_WS_DEV_USER_REF_ID = DEV_USER;
   const room = new ChannelRoom();
   await assert.rejects(
-    () => room.onAuth({} as never, { jwt: 'wrong' }, { headers: new Map(), ip: '1.2.3.4' } as never),
+    () => room.onAuth({} as never, { jwt: 'wrong' }, ctx()),
     /invalid token/,
   );
-  const ok = await room.onAuth({} as never, { jwt: 'right' }, { headers: new Map(), ip: '1.2.3.4' } as never);
-  assert.ok(ok.userId, 'a valid dev token yields a userId');
+  const ok = await room.onAuth({} as never, { jwt: 'right' }, ctx());
+  assert.equal(ok.userId, DEV_USER, 'a valid dev token yields the SUPPLIED identity');
   delete process.env.LW_WS_DEV_ALLOW_STATIC;
+  delete process.env.LW_WS_DEV_USER_REF_ID;
+});
+
+// `F1` — the dev identity is supplied, never invented.
+//
+// It used to be `` `dev:${jwt.slice(0, 4)}` ``: fabricated from four characters
+// of a SHARED token, so every session on a box was the same "user" — and after
+// `E3` it was not a user at all, since `dev:dev_` fails `isUserRefId` and the
+// subject lookup refuses it. The demo path was dead and nothing reported it,
+// because the only view that would have shown the refusal is mounted nowhere.
+
+test('F1 — dev auth FAILS CLOSED when no identity is supplied', async () => {
+  const prev = process.env.LW_WS_DEV_USER_REF_ID;
+  process.env.LW_WS_DEV_ALLOW_STATIC = '1';
+  process.env.LOREWEAVE_INTERNAL_TOKEN = 'right';
+  delete process.env.LW_WS_DEV_USER_REF_ID;
+
+  const room = new ChannelRoom();
+  await assert.rejects(
+    () => room.onAuth({} as never, { jwt: 'right' }, ctx()),
+    /LW_WS_DEV_USER_REF_ID/,
+    'an absent identity must refuse, not fabricate one from the token',
+  );
+
+  // A value that is not a `user_ref_id` is refused for the same reason: it
+  // would reach world-service and come back as a validation error naming the
+  // wrong cause, which is the failure `isUserRefId` exists to keep local.
+  for (const bad of ['dev:abcd', 'alice', '   ', 'not-a-uuid']) {
+    process.env.LW_WS_DEV_USER_REF_ID = bad;
+    await assert.rejects(
+      () => room.onAuth({} as never, { jwt: 'right' }, ctx()),
+      /LW_WS_DEV_USER_REF_ID/,
+      `a non-uuid dev identity must be refused: ${JSON.stringify(bad)}`,
+    );
+  }
+
+  delete process.env.LW_WS_DEV_ALLOW_STATIC;
+  if (prev === undefined) delete process.env.LW_WS_DEV_USER_REF_ID;
+  else process.env.LW_WS_DEV_USER_REF_ID = prev;
+});
+
+test('F1 — the CLIENT cannot choose the dev identity', async () => {
+  process.env.LW_WS_DEV_ALLOW_STATIC = '1';
+  process.env.LOREWEAVE_INTERNAL_TOKEN = 'right';
+  process.env.LW_WS_DEV_USER_REF_ID = DEV_USER;
+
+  const room = new ChannelRoom();
+  // Every plausible spelling a client might try to smuggle an identity through.
+  // A client that could name its own `user_ref_id` would be choosing whose
+  // bindings to inherit — `SEALED-SUBJECT` with the lock moved one door out.
+  const attacker = '99999999-9999-4999-8999-999999999999';
+  const got = await room.onAuth(
+    {} as never,
+    {
+      jwt: 'right',
+      userId: attacker,
+      user_ref_id: attacker,
+      userRefId: attacker,
+    } as never,
+    ctx(),
+  );
+  assert.equal(got.userId, DEV_USER, 'the server env decides, never the join options');
+
+  delete process.env.LW_WS_DEV_ALLOW_STATIC;
+  delete process.env.LW_WS_DEV_USER_REF_ID;
 });
 
 test('stream keys are derived, never client-supplied', () => {

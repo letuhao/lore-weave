@@ -160,6 +160,54 @@ services:
       ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
     restart: unless-stopped
 
+  # ── `F2` (2026-08-21) — world-service's HTTP surface.
+  #
+  # It was absent from this file entirely, which meant the one service that
+  # answers "which actor does this user drive" could not be reached by anything
+  # in the stack: `game-server` had nowhere to send the lookup, and both of the
+  # player-edge phase's live proofs started world-service from source. A
+  # control-plane route nothing in the stack can call is reachable only by
+  # whoever remembers the incantation.
+  #
+  # Same profiles as game-server, because that is its only caller here.
+  world-service:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile
+      labels: *build-labels
+    environment:
+      WORLD_HTTP_BIND: "0.0.0.0:7120"
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      PROVISION_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      PROVISION_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      PROVISION_BRIDGE_URL: http://meta-bridge:8090
+      PROVISION_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Where the per-reality databases actually live. NOT `db_host` from
+      # `reality_registry` — that column is a LOGICAL shard name pinned by a
+      # CHECK to `pg-shard-N.internal`, and `open_reality_pool` builds its
+      # connection from this value instead. Measured during E5, by putting a
+      # real hostname in that column and watching the constraint refuse it.
+      PROVISION_SHARD_HOSTPORT: postgres:5432
+      PROVISION_PG_USER: loreweave
+      PROVISION_PG_PASSWORD: loreweave_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7120/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure:5
+    ports:
+      - "7120:7120"
+    profiles:
+      - game
+      - full
+
   meta-bridge:
     restart: unless-stopped
     build:
@@ -2157,6 +2205,24 @@ services:
       # origin :5176 (was :5174 until it collided with the main `frontend`).
       LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
+      # ── `F2`/`F1` — what ChannelRoom needs to serve a real subject ────────
+      #
+      # Until now this block configured EchoRoom only, and ChannelRoom was
+      # registered but unreachable: `onCreate` throws without a reality id, so a
+      # `channel` join failed before auth. That is why deleting the env actor
+      # map in `E4` broke nothing here — there was nothing to break.
+      LW_WORLD_SERVICE_URL: http://world-service:7120
+      LW_CHANNEL_REDIS_URL: redis://redis:6379
+      LW_CHANNEL_REALITY_ID: ${LW_CHANNEL_REALITY_ID:-}
+      LW_CHANNEL_ID: ${LW_CHANNEL_ID:-1}
+      # The dev identity, and it has NO default on purpose (`F1`). It used to be
+      # invented from four characters of the shared token, so every session on
+      # the box was one "user" — and after E3 it was not a `user_ref_id` at all,
+      # so the subject lookup refused it. Supply a real one, or dev auth fails
+      # closed; the binding still comes from the control plane, so a dev user
+      # with no grant drives nobody.
+      LW_WS_DEV_ALLOW_STATIC: ${LW_WS_DEV_ALLOW_STATIC:-}
+      LW_WS_DEV_USER_REF_ID: ${LW_WS_DEV_USER_REF_ID:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
       interval: 10s

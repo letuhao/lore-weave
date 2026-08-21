@@ -5,11 +5,13 @@ import { Modal } from '@/components/modal/Modal';
 import { RotatePrompt } from '@/components/mobile/RotatePrompt';
 import { VirtualGamepad } from '@/components/mobile/VirtualGamepad';
 import { EchoPanel } from '@/components/echo/EchoPanel';
+import { ChannelPanel } from '@/components/ChannelPanel';
 import { LayerToggles } from '@/components/viewer/LayerToggles';
 import { TileInspector } from '@/components/viewer/TileInspector';
 import { MetadataPanel } from '@/components/viewer/MetadataPanel';
 import { useTilemapHealth, useZoneTilemap } from '@/api/tilemap-client';
 import { EventBus } from '@/game/EventBus';
+import { SERVICES } from '@/config/services';
 import { useViewerStore } from '@/store/viewer-store';
 import {
   DEFAULT_SEED,
@@ -183,6 +185,22 @@ export function PlayRoute(): JSX.Element {
 
       {/* Session E WS echo demo panel */}
       <EchoPanel />
+
+      {/* `F3` — the turn surface, and the reason it is here rather than nowhere.
+          `ChannelPanel` shipped in fc2ba5f8a with its client, its store and six
+          tests, and NOTHING ever rendered it: the commit's live proof drove the
+          client directly, so the view was born unreachable and stayed that way.
+          An unmounted view is the orphan shape one tier above the one
+          `orphan-model-gate` watches — the producer exists and the CONSUMER has
+          no caller — and nothing in the tree goes red for it, because it
+          compiles, its store compiles and the suite is green.
+
+          It reads the same `SERVICES` config `EchoPanel` does. `jwt` is the dev
+          token, which authenticates the CONNECTION; who the developer IS comes
+          from the server's `LW_WS_DEV_USER_REF_ID` (`F1`), never from here — a
+          client that could name its own `user_ref_id` would be choosing whose
+          bindings to inherit. */}
+      <ChannelPanel url={SERVICES.gameServer} jwt={SERVICES.devToken} />
 
       {/* Mobile + modal overlays */}
       <VirtualGamepad />

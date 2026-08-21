@@ -19,7 +19,7 @@ import {
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
 import { PRODUCER_NAME, producerKeyFromEnv, signProposal } from '../ws/producer-sign.js';
-import { subjectResolverFromEnv, type SubjectLookup } from '../ws/subject.js';
+import { isUserRefId, subjectResolverFromEnv, type SubjectLookup } from '../ws/subject.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -491,7 +491,35 @@ export class ChannelRoom extends Room {
       if (!options?.jwt || options.jwt !== expected) {
         throw new ServerError(4001, 'invalid token');
       }
-      return { userId: `dev:${String(options.jwt).slice(0, 4)}` };
+      // `F1` — the dev identity is SUPPLIED, never invented.
+      //
+      // This returned `` `dev:${jwt.slice(0, 4)}` ``: an identity fabricated
+      // from four characters of a SHARED token, so every session on the box was
+      // the same "user" — and after `E3` it was not a user at all, because
+      // `dev:dev_` is not a `user_ref_id` and the subject lookup refuses it. The
+      // whole demo path was dead and nothing reported it, because the only view
+      // that would have shown the refusal is mounted nowhere.
+      //
+      // A NARROWING, not a loosening: the value must be supplied by the
+      // SERVER's environment and must parse as a UUID, and there is no default,
+      // so the branch fails closed where it used to fabricate. `options` is not
+      // consulted for it — a client that could name its own `user_ref_id` would
+      // be choosing whose bindings to inherit, which is `SEALED-SUBJECT` with
+      // the lock moved one door out.
+      //
+      // It does NOT reintroduce what `E4` deleted. `LW_CHANNEL_ACTOR_MAP` said
+      // which ACTOR a user drives — a binding, and a second source of truth
+      // against `actor_control_binding`. This says who the DEVELOPER is, which
+      // is the redeemed ticket's job on the real path. A dev user with no grant
+      // still drives nobody.
+      const devUser = (process.env.LW_WS_DEV_USER_REF_ID ?? '').trim();
+      if (!isUserRefId(devUser)) {
+        throw new ServerError(
+          4001,
+          'dev auth requires LW_WS_DEV_USER_REF_ID to be a user_ref_id (uuid)',
+        );
+      }
+      return { userId: devUser };
     } catch (err) {
       const code = err instanceof ServerError ? (err.code as number) : authCloseCode(err);
       throw err instanceof ServerError ? err : new ServerError(code, (err as Error).message);
