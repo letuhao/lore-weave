@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 46 of 87 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 47 of 87 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/37) · `T46` (4/7) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/36) · `T46` (5/8) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7794,7 +7794,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   presence of two canon rules in the prompt. The three craft dimensions are supposed to be
   independent of the rule list; they are not.
 
-  ### 🔻 DEFERRAL `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`
+  ### ~~DEFERRAL~~ `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` — **CLOSED 2026-08-21 (T46k) — re-measured on the SIX-rule fixture the reopen asked for, in the TWO-violation shape the defect actually had.**
 
   | | |
   |---|---|
@@ -14594,6 +14594,44 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a) gates:** plan gates green; `plan-progress-block --write` re-derived in this commit.
   **QC (b):** N/A because no code changed. **QC (c) real data:** the two closures rest on
   `canon_reflect.py`'s actual call sites and on §2.1's actual text, both read at HEAD.
+
+  ### ✅ T46k 2026-08-21 — **the per-rule verdict defect is re-measured and CLOSED**, in its own shape
+
+  ```
+  SIX real rules sent (R1..R6) — the fixture the reopen demanded
+  planted: contradicts R1 (a different betrayer) AND R4 (the adversary is now an ally)
+    run 1  canon=1  ids=['R1','R4']  each `why` matches ITS OWN rule  whys DISTINCT
+    run 2  canon=1  ids=['R1','R4']  each `why` matches ITS OWN rule  whys DISTINCT
+    run 3  canon=1  ids=['R1','R4']  each `why` matches ITS OWN rule  whys DISTINCT
+  single-violation control (R1 only): 3/3, one violation, no satisfied rule flagged
+  ```
+
+  T46h and T46j both left this one alone, calling it *"a block that disagrees with itself"* — its
+  section contains **"FIXED AND RE-MEASURED, 2026-08-12"** and, later, **"is NOT closed"**. Read in
+  ORDER it is not a contradiction, it is a sequence: fixed on 08-12 against a **two-rule** fixture,
+  then reopened because *"previously only validated on two"*, with the retry naming a **six-rule**
+  fixture. Its `Retry when` says *"Immediately — it does not need a PO decision and it does not
+  need a stronger model"*. So it was measurable, and it has now been measured.
+
+  🎯 **Measured in the defect's OWN shape, which the obvious test would have missed.** The
+  original defect was *"a `violations[]` entry keyed to a rule id whose `why` belongs to a
+  DIFFERENT rule"*, reproduced with **two** verdicts carrying **identical `why` strings**. Today's
+  1a arm plants a violation of ONE rule — and a single-violation run gives mis-keying almost no
+  opportunity to show, so closing on it would have been green by construction. The passage above
+  contradicts **two** rules at once, which is the configuration that produced the bug.
+
+  ✅ **Absent 3/3**: exactly the two contradicted rules are named, each `why` describes the rule it
+  is attached to, the two `why` strings are **distinct**, and none of the four plainly-satisfied
+  rules is marked violated. The control run (one rule contradicted) also stays at one violation,
+  so the judge is not simply emitting a verdict per rule.
+
+  ⛔ **What this does not claim.** One passage, one model, three runs per shape. It re-establishes
+  the property the reopen asked for; it does not make the judge infallible, and
+  `D-QC5-ROLE-JUDGE-PRECISION` — a different judge, a **spend** question — is untouched.
+
+  **QC (a) gates:** plan gates green. **QC (b) the seam:** the real critic system prompt and the
+  real six active rules through LM Studio, the same path the flow uses. **QC (c) real data:** the
+  acceptance book's own six canon rules, and a planted passage built to break two of them.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
