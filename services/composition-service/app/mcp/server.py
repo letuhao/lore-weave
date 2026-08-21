@@ -3671,7 +3671,23 @@ async def composition_authoring_run_revert_all(ctx: MCPContext, args: _Authoring
 class _AuthoringRunManageArgs(ForbidExtra):
     """Flat superset for composition_authoring_run_manage (W/book — each op mints a confirm-token)."""
 
-    op: Literal["create", "start", "resume", "gate", "revert_all"]
+    op: Annotated[
+
+        Literal["create", "start", "resume", "gate", "revert_all"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: create | start | resume | gate | revert_all. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     book_id: str
     run_id: str | None = None                 # start, resume, gate, revert_all (NOT create)
     plan_run_id: str | None = None            # create (required)
@@ -3734,7 +3750,23 @@ async def composition_authoring_run_manage(ctx: MCPContext, args: _AuthoringRunM
 class _AuthoringRunReviewArgs(ForbidExtra):
     """Flat superset for composition_authoring_run_review (A/book — each op applies immediately)."""
 
-    op: Literal["pause", "close", "accept_unit", "reject_unit"]
+    op: Annotated[
+
+        Literal["pause", "close", "accept_unit", "reject_unit"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: pause | close | accept_unit | reject_unit. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     book_id: str
     run_id: str
     unit_index: int | None = None  # accept_unit, reject_unit (required for those)
@@ -4758,7 +4790,23 @@ async def composition_motif_unbind(
 class _MotifEditArgs(ForbidExtra):
     """Flat superset for composition_motif_edit (A/user); each op reads only its own fields."""
 
-    op: Literal["create", "patch", "archive", "restore"]
+    op: Annotated[
+
+        Literal["create", "patch", "archive", "restore"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: create | patch | archive | restore. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     motif_id: str | None = None          # patch, archive, restore
     book_id: str | None = None           # all (shared-tier variant)
     expected_version: int | None = None  # patch (required)
@@ -4848,7 +4896,23 @@ async def composition_motif_edit(ctx: MCPContext, args: _MotifEditArgs) -> dict:
 class _MotifLinkEditArgs(ForbidExtra):
     """Flat superset for composition_motif_link_edit (A/user)."""
 
-    op: Literal["create", "delete"]
+    op: Annotated[
+
+        Literal["create", "delete"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: create | delete. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     from_motif_id: str | None = None  # create
     to_motif_id: str | None = None    # create
     kind: Literal["composed_of", "precedes", "variant_of"] | None = None  # create
@@ -4891,7 +4955,23 @@ async def composition_motif_link_edit(ctx: MCPContext, args: _MotifLinkEditArgs)
 class _MotifBindEditArgs(ForbidExtra):
     """Flat superset for composition_motif_bind_edit (A/book — chapter binding)."""
 
-    op: Literal["bind", "unbind"]
+    op: Annotated[
+
+        Literal["bind", "unbind"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: bind | unbind. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     project_id: str | None = None   # both
     node_id: str | None = None      # both
     motif_id: str | None = None     # bind
@@ -7089,7 +7169,23 @@ class _ArcEditArgs(ForbidExtra):
     (like KgOntologyProposeArgs) so Pydantic stays the single validation truth; FastMCP
     flattens it on the wire (K16)."""
 
-    op: Literal["create", "update", "delete", "restore", "move", "assign_chapters"]
+    op: Annotated[
+
+        Literal["create", "update", "delete", "restore", "move", "assign_chapters"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: create | update | delete | restore | move | assign_chapters. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     book_id: str | None = None          # create, assign_chapters
     node_id: str | None = None          # update, delete, restore, move
     kind: Literal["saga", "arc"] | None = None   # create
@@ -7607,7 +7703,23 @@ class _ArcTemplateEditArgs(ForbidExtra):
     Wrapped so Pydantic validates/coerces the rich sub-models (threads/layout/pacing/
     arc_roster from plain dicts); FastMCP flattens on the wire (K16)."""
 
-    op: Literal["create", "update", "archive", "restore"]
+    op: Annotated[
+
+        Literal["create", "update", "archive", "restore"],
+
+        Field(description=(
+
+            "WHICH OPERATION to perform — the dispatch discriminator: create | update | archive | restore. "
+
+            "Every other argument is optional in the schema because this is a flat superset: "
+
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+
+        )),
+
+    ]
     arc_id: str | None = None           # update, archive, restore
     expected_version: int | None = None  # update (optional optimistic concurrency)
     code: str | None = None             # create (required)
@@ -7779,7 +7891,15 @@ class _StructTemplateEditArgs(ForbidExtra):
     # agent could author a structure but never DISCOVER one — and `plan_compile`'s new
     # `structure_template_id` would have been un-callable without guessing a UUID. An affordance
     # the agent cannot reach is the same silent no-op as a tool that does nothing.
-    op: Literal["list", "create", "update", "clone", "archive", "restore"]
+    op: Annotated[
+        Literal["list", "create", "update", "clone", "archive", "restore"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: list | create | update | clone | archive | restore. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     template_id: str | None = None       # update, clone, archive, restore
     expected_version: int | None = None  # update
     name: str | None = None              # create (req), update, clone
@@ -7857,7 +7977,15 @@ async def composition_structure_template_edit(ctx: MCPContext, args: _StructTemp
 
 
 class _OutlineNodeEditArgs(ForbidExtra):
-    op: Literal["create", "update", "delete", "restore", "move"]
+    op: Annotated[
+        Literal["create", "update", "delete", "restore", "move"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: create | update | delete | restore | move. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str | None = None        # all (create: optional)
     node_id: str | None = None           # update, delete, restore, move
     expected_version: int | None = None  # update (req), move (opt)
@@ -7945,7 +8073,15 @@ async def composition_outline_node_edit(ctx: MCPContext, args: _OutlineNodeEditA
 
 
 class _CanonRuleEditArgs(ForbidExtra):
-    op: Literal["create", "update", "delete", "restore"]
+    op: Annotated[
+        Literal["create", "update", "delete", "restore"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: create | update | delete | restore. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str | None = None        # all
     rule_id: str | None = None           # update, delete, restore
     expected_version: int | None = None  # update
@@ -7997,7 +8133,15 @@ async def composition_canon_rule_edit(ctx: MCPContext, args: _CanonRuleEditArgs)
 
 
 class _ErrorBlockEditArgs(ForbidExtra):
-    op: Literal["list", "resolve", "dismiss", "reopen"]
+    op: Annotated[
+        Literal["list", "resolve", "dismiss", "reopen"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: list | resolve | dismiss | reopen. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str | None = None    # all
     chapter_id: str | None = None    # list
     block_id: str | None = None      # resolve, dismiss
@@ -8109,7 +8253,15 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
 
 
 class _EntityOverrideEditArgs(ForbidExtra):
-    op: Literal["add", "update", "delete", "restore"]
+    op: Annotated[
+        Literal["add", "update", "delete", "restore"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: add | update | delete | restore. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str | None = None        # all
     target_entity_id: str | None = None  # add
     override_id: str | None = None       # update, delete
@@ -8156,7 +8308,15 @@ async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrid
 
 
 class _SceneLinkEditArgs(ForbidExtra):
-    op: Literal["create", "delete", "restore"]
+    op: Annotated[
+        Literal["create", "delete", "restore"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: create | delete | restore. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str | None = None       # both
     from_node_id: str | None = None     # create
     to_node_id: str | None = None       # create
@@ -8206,7 +8366,15 @@ async def composition_scene_link_edit(ctx: MCPContext, args: _SceneLinkEditArgs)
 # create_derivative stays separate (W/confirm-gated); switch_active_work stays separate (a
 # per-user active-work PREF keyed by book_id, over any Work, not derivative-CRUD). ─────────────
 class _DerivativeEditArgs(ForbidExtra):
-    op: Literal["archive", "restore", "update_spec"]
+    op: Annotated[
+        Literal["archive", "restore", "update_spec"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: archive | restore | update_spec. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     project_id: str                      # all (the derivative's project_id)
     expected_version: int | None = None  # archive (required) / restore (optional OCC)
     taxonomy: Literal["pov_shift", "character_transform", "au"] | None = None  # update_spec
@@ -8287,7 +8455,15 @@ async def composition_derivative_edit(ctx: MCPContext, args: _DerivativeEditArgs
 
 
 class _GlossaryBuildArgs(ForbidExtra):
-    op: Literal["start", "approve_plan", "status", "project_kg", "approve_edges", "cancel"]
+    op: Annotated[
+        Literal["start", "approve_plan", "status", "project_kg", "approve_edges", "cancel"],
+        Field(description=(
+            "WHICH OPERATION to perform — the dispatch discriminator: start | approve_plan | status | project_kg | approve_edges | cancel. "
+            "Every other argument is optional in the schema because this is a flat superset: "
+            "each op reads only ITS OWN fields, and this tool's description says which those are. "
+            "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
+        )),
+    ]
     # book_id OPTIONAL (ambient_book) — omitted inside a studio, resolves from X-Book-Id.
     book_id: str | None = None
     run_id: str | None = None                       # every op except `start`
