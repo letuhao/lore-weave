@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 53 of 94 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 54 of 95 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (19/37) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (20/38) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7166,6 +7166,44 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **To unblock** | Decide where `active_rules` comes from for the headless seam — the canon-rule corpus the critique endpoint uses, or rules derived from the bible's cast facts — and feed it through `canon_bible.py` beside `present_facts`. Then re-run C3's three chapters **N ≥ 3 times** and report the score distribution, not a single number. |
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
+
+  ### ✅ QC-5 C22 2026-08-21 — **`canon_consistency` means three different things by endpoint, and none of them said so**
+
+  Found by following C21 rather than by looking for it: the critique endpoint judged with
+  `active_rules` but `present_facts=[]` (`routers/engine.py:2067`). Checking the other callers
+  turned one oddity into a spread:
+
+  ```
+  authoring_run_service     rules ✓   facts ✓   bible.as_present_facts()
+  routers/engine critique   rules ✓   facts ✗   []
+  quality_report            rules ✗   facts ✓   the rendered bible
+  ```
+
+  **The emptiness is DEFENSIBLE and is not the bug.** `canon_for_chapter` needs a chapter
+  anchor to render the cast *as of* a position; the critique route takes a free-form passage and
+  has `work.book_id` but no chapter. Rendering an untimed bible there would hand the judge facts
+  from the reader's future, which is the spoiler-window rule the author-curation path already
+  has to opt out of deliberately. Withholding is right.
+
+  🔴 **The bug is that the output never declared it.** A `canon_consistency` judged with no
+  established facts is a weaker number than one judged against a 13-member cast, and nothing
+  downstream could tell them apart — the C3 shape exactly, one field later. So
+  `present_fact_count` is stamped in **`judge_prose`**, all three exits, beside the
+  `active_rule_count` added earlier today. One home, and it covers all three seams at once
+  rather than being added to whichever one someone is reading.
+
+  **🦷 BITE — and this one proves the C19 rewrite works PROSPECTIVELY.** Removed
+  `"present_fact_count"` from `_empty_critic` — a key that did not exist when that guard was
+  written:
+
+  ```
+  AssertionError: the degrade shape is missing ['present_fact_count'] — a consumer that reads
+  those on a healthy judge raises KeyError the moment one degrades.        1 failed, 22 passed
+  ```
+
+  The guard caught a field added hours after it, with no edit to the guard. That is the
+  difference between the rewritten comparison and the one it replaced, which could only ever
+  see keys `normalize_critique` happened to add. Restored; **23 passed**.
 
   ### 📊 QC-5 C21 2026-08-21 — **the judge has ZERO variance at temperature 0, and it flags conforming prose**
 

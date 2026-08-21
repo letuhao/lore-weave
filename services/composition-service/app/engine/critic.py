@@ -272,10 +272,12 @@ async def judge_prose(
         )
     except LLMError as exc:
         logger.warning("judge_prose degraded (LLM error): %s", exc)
-        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules), "error": "critic_unavailable"}
+        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules),
+                "present_fact_count": len(present_facts), "error": "critic_unavailable"}
     if job.status != "completed":
         logger.info("judge_prose job status=%s → degraded", job.status)
-        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules), "error": f"critic_{job.status}"}
+        return {**{d: None for d in _DIMENSIONS}, "violations": [], "active_rule_count": len(active_rules),
+                "present_fact_count": len(present_facts), "error": f"critic_{job.status}"}
     content = extract_judge_content(job.result)
     crit = normalize_critique(parse_critique_json(content))
     # Attribute the verdicts before anyone sees them. Done here rather than inside
@@ -333,4 +335,16 @@ async def judge_prose(
     # that report could not tell a deliberate no-rules critique from the C3 failure it looks
     # exactly like. One home, every exit, including both degrades above.
     crit["active_rule_count"] = len(active_rules)
+    # ...and how many established FACTS, for the same reason and a worse spread. The three
+    # seams that call this judge each ground it differently, measured 2026-08-21:
+    #
+    #   authoring_run_service   rules ✓   facts ✓ (bible.as_present_facts())
+    #   routers/engine critique rules ✓   facts ✗ -- no chapter anchor, so no spoiler-safe
+    #                                     "as of" cast exists to render; DEFENSIBLE
+    #   quality_report          rules ✗   facts ✓ (the rendered bible, deliberately)
+    #
+    # So `canon_consistency` means three different things by endpoint, and NONE of the three
+    # said which. A withheld input is fine; a withheld input the output does not declare is
+    # the C3 shape again -- indistinguishable from the input having gone missing.
+    crit["present_fact_count"] = len(present_facts)
     return crit

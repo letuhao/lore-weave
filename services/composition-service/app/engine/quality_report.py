@@ -69,6 +69,7 @@ def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
         "violations_raw_count": 0,
         "violations_dropped_labels": [],
         "active_rule_count": 0,
+        "present_fact_count": 0,
         "error": err,
     }
 
