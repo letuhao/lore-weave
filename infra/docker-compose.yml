@@ -160,6 +160,62 @@ services:
       ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
     restart: unless-stopped
 
+  # ── `G1` (2026-08-21) — the publisher: committed event → the wire.
+  #
+  # `pkg/redisemit` XADDs to `lw.events.<reality_id>`, which is exactly the
+  # stream `ChannelRoom.streamFor()` consumes. It had no Dockerfile and no
+  # compose entry, so the room subscribed to a stream with no writer and a
+  # browser rendered an empty roster with nothing anywhere reporting why.
+  # `Dockerfile.bridge` records the identical defect one service over.
+  #
+  # SHARD_DB_SSLMODE=disable is REQUIRED here and not a preference: the default
+  # is `require`, and the dev postgres image serves no TLS, so a publisher
+  # without this line connects to nothing and says only that it could not.
+  #
+  # PUBLISHER_SHARD_HOST_OVERRIDE exists because `reality_registry.db_host` is a
+  # LOGICAL shard name — a CHECK pins it to `pg-shard-N.internal` — so dialling
+  # the column verbatim resolves nothing. Same trap `E5` hit from the other
+  # side, where a real hostname in that column was refused by the constraint.
+  publisher:
+    build:
+      context: ..
+      dockerfile: services/publisher/Dockerfile
+      labels: *build-labels
+    environment:
+      PUBLISHER_ID: dev-publisher-0
+      SHARD_HOST: pg-shard-0.internal
+      # `host=HOST:PORT`, and the port is NOT optional even though the parser
+      # accepts it missing: `resolveHostPort` returns this value VERBATIM as the
+      # dial target and never consults SHARD_DB_PORT on the override path. So
+      # `…=postgres` parses cleanly and dials a host with no port. Written out
+      # after reading the consumer, not the parser.
+      PUBLISHER_SHARD_HOST_OVERRIDE: pg-shard-0.internal=postgres:5432
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      SHARD_DB_USER: loreweave
+      SHARD_DB_PASSWORD: loreweave_dev
+      SHARD_DB_PORT: "5432"
+      SHARD_DB_SSLMODE: disable
+      PUBLISHER_HTTP_ADDR: ":8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: on-failure:5
+    ports:
+      # 8091, not 8081. The first choice collided with a non-Docker listener on
+      # the dev box (`chaos-backend` on 0.0.0.0:8081), and the failure mode is
+      # worth the comment: Docker bound the mapping anyway, so `docker ps`
+      # showed `0.0.0.0:8081->8080` while host requests reached the OTHER
+      # process and came back 404. The container was healthy the whole time —
+      # `wget /healthz` inside it returns `ok` — so every signal pointed at the
+      # publisher being broken except the one that mattered.
+      - "8091:8080"
+    profiles:
+      - game
+      - full
+
   # ── `F2` (2026-08-21) — world-service's HTTP surface.
   #
   # It was absent from this file entirely, which meant the one service that
