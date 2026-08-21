@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T17` — the 10 binders A14 found free (7 constants, 3 already-deleted names). Class (d) is 34 and owes a shape decision.**
+**RESUME: `T25` (lane C) — §3.1's passage cutover. A14b: it frees 10 of T17's 54 at once, and nothing in T17 moves before it.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 59 of 107 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 59 of 108 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -10668,6 +10668,64 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ```
 
 
+  ### 🔴 A14b 2026-08-22 — **the "10 available" in A14 is WRONG, and rule 8 caught it before the batch**
+
+  ```
+  after moving SUPPORTED_PASSAGE_DIMS / SUPPORTED_VECTOR_DIMS / KNOWN_SOURCE_TYPES:
+
+    extraction/entity_embedder.py      -> ['find_entities_needing_embedding']
+    extraction/glossary_passage.py     -> ['get_passage_content_hash']
+    extraction/passage_ingester.py     -> ['delete_passages_for_source', 'get_source_ingest_state',
+                                           'set_source_lang_for_source']
+    routers/internal_dispatch.py       -> ['project_has_embedded_passages']
+    routers/public/drawers.py          -> ['count_passages_by_source_type']
+    search/retriever.py                -> ['PassageSearchHit', 'find_passages_by_fulltext']
+    tools/project_tools.py             -> ['project_has_embedded_passages']
+
+    modules freed by moving the 3 constants: 0 of 10
+  ```
+
+  **A14 read `class (a) = needs no port growth` as `available to pick up`. It is not.** Every one
+  of the seven imports a §3.1 FUNCTION beside the constant, so the constant move drops nobody
+  off the ceiling. **A13's sentence — *"nothing in the 54 is available to pick up"* — was
+  CORRECT, and A14's retraction of it is withdrawn.** A6 measured this exact thing in August
+  (*"repointing the two shared CONSTANTS would have moved this number by ZERO — all eleven
+  importers keep other repo names"*) and A14 re-derived a classification without re-checking the
+  one claim A6 had already settled.
+
+  ⚠️ **The class was right; the inference from it was not.** "Needs no port growth" and
+  "movable today" are two different questions, and A14 answered the first while writing the
+  second — the *one-concept-two-readers* shape, inside a single batch, one paragraph apart.
+  The gate never said "available"; only the prose did, which is the failure A14 itself was
+  built to stop.
+
+  ✅ **What survives, and it is the half that gates AGE.** Class (d) is **34, not 28** — derived,
+  ratcheted, printed every run. That correction is what
+  `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES` turns on and it stands unchanged. The
+  accurate split of 54 is:
+
+  ```
+  34  port-gated   (d) need an operation the port does not have   -> blocks the AGE cutover
+  10  §3.1-gated   7 constants+function, 3 function-only          -> fall off when T25 lands
+  10  out forever  7 one-shot/benchmark (§1.3c) + 3 janitors (§1.2)
+  ```
+
+  🎯 **So the queue's own order was right and the RESUME was not.** Nothing in T17 can move
+  until either §3.1 deletes the passage layer (frees 10 at once) or the port grows (the 34,
+  which owes a shape decision first). **`T25` is the head of the queue** — lane C, and the only
+  unblocked lane above F. RESUME repointed there.
+
+  **BITE — N/A, and the reason:** no code changed. This batch is rule 8 refusing a batch, and
+  its check is the measurement above: the criterion was "how many of the 10 have an empty
+  `neo4j_repos` import list after the move", which returned 0 and killed it. That criterion can
+  fail — A14's could not, which is how the claim got written.
+
+  **QC (a) gates:** all four plan gates green; `port-adoption-gate` unchanged at 54/19/2 and
+  class (d) 34/34 — this batch migrates nothing, so no ratchet moves.
+  **QC (b) the seam:** N/A — no code, no seam.
+  **QC (c) real data:** the seven modules' import lists, re-read from disk by AST after
+  simulating the constant move, rather than reasoned about.
+
   ### 📊 A14 2026-08-22 — class (d) becomes DERIVED, and A13's hand count was wrong **in both directions**
 
   ```
@@ -10703,16 +10761,24 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | 17 vector-layer | **3** | only 3 modules are §3.1-ONLY. The rest import a §3.1 name **and** an unported operation, and a module leaves the population when its LAST binding goes. |
   | 5 §1.2 janitors | **3** | `internal_admin` and `public/extraction` call a janitor **and** ten other unported operations between them. |
   | 28 class (d) | **34** | the 16 above, minus the 10 that turn out to need nothing. |
-  | 0 available | **10** | ⬇ |
+  | ~~0 available~~ | ~~**10**~~ | **A14b WITHDRAWS this row — A13 was right.** The 10 need no port growth but still import a §3.1 function, so none is available until T25. |
 
-  🎯 **AND THE CLAIM THAT SENT T17 TO THE BACK OF THE QUEUE IS FALSE.** A13 concluded
+  🎯 ~~**AND THE CLAIM THAT SENT T17 TO THE BACK OF THE QUEUE IS FALSE.**~~ **WITHDRAWN by
+  A14b the same day — A13 was right and the paragraph below is wrong.** The seven modules need
+  no port growth, but every one still imports a §3.1 function, so nothing falls off the ceiling
+  until T25 lands; "needs no port growth" is not "available". A6 had already measured exactly
+  this and A14 did not re-check the claim it was contradicting, which is the whole of the
+  error. Struck rather than deleted: the class-(d) correction above it is sound and was derived
+  the same way — only this inference was not.
+
+  ~~A13 concluded
   *"**Nothing in the 54 is available to pick up**"*, and that sentence is why §1.3's ceiling was
   written off as a derived number and the row parked. Derived: **10 modules need no port growth
   at all** — 7 whose last repo import is a CONSTANT (`SUPPORTED_PASSAGE_DIMS` ×5,
   `SUPPORTED_VECTOR_DIMS`, `KNOWN_SOURCE_TYPES`) and 3 whose remaining names §3.1 already
   deletes. A6 measured class (a) as *"moving ZERO"* in August because every importer then kept
   other repo names; eleven batches later seven of them do not, and no one re-measured. That is
-  the same discharged-dependency shape as T35 → class (d) itself.
+  the same discharged-dependency shape as T35 → class (d) itself.~~
 
   📐 **§3.1's boundary is a MODULE, not a list of names, and that is what made the derivation
   honest.** The first cut hand-listed thirteen vector symbols and still missed
