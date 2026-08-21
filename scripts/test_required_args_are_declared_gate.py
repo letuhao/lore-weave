@@ -49,13 +49,41 @@ def _live_offenders() -> dict[str, list[str]]:
     """{tool: [required args with no description]} from the catalogue cache."""
     import catalog  # noqa: PLC0415 — the cache reader lives beside the loop
 
+    def _declares(prop: dict, defs: dict) -> bool:
+        """Does the MODEL see a description for this argument?
+
+        Not the same question as `prop["description"] is non-empty`, and reading it that way
+        over-counted for a year of this baseline's life. An argument typed as a nested OBJECT
+        arrives as a `$ref` with no description of its own, while the schema it points at
+        carries one — plus a description on every field inside it. The model sees all of that;
+        only a naive top-level read misses it.
+
+        MEASURED 2026-08-22 across the whole 105-entry baseline: exactly ONE entry was this
+        shape — `lore_enrichment_auto_enrich.args`, whose $ref target opens "Every field carries
+        a Field(description=...) on purpose". One false positive in 105 is a sound instrument
+        with a blind spot, not a broken one, but it is the same nesting trap that made
+        kg_ontology_propose's enums look absent when they were nested inside an `anyOf` — and
+        that one nearly bought a fix for a defect that did not exist.
+        """
+        if (prop.get("description") or "").strip():
+            return True
+        ref = prop.get("$ref") or next(
+            (x.get("$ref") for x in (prop.get("anyOf") or []) if isinstance(x, dict) and x.get("$ref")),
+            None)
+        if not ref:
+            return False
+        target = defs.get(ref.rsplit("/", 1)[-1]) or {}
+        return bool((target.get("description") or "").strip()
+                    or any((f or {}).get("description") for f in (target.get("properties") or {}).values()))
+
     out: dict[str, list[str]] = {}
     for name, tool in catalog.load().items():
         schema = tool.get("inputSchema") or {}
         props = schema.get("properties") or {}
+        defs = schema.get("$defs") or {}
         missing = sorted(
             arg for arg in (schema.get("required") or [])
-            if not ((props.get(arg) or {}).get("description") or "").strip()
+            if not _declares(props.get(arg) or {}, defs)
         )
         if missing:
             out[name] = missing
