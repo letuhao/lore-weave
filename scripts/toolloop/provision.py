@@ -82,12 +82,43 @@ class ProvisionError(RuntimeError):
     pass
 
 
+# No hex letters (a-f) among the consonants, so a generated word ALWAYS contains a character
+# that cannot appear in a hex id. Without that, "00000000" rendered as "Babababa" — every
+# letter of which is a valid hex digit, which is precisely the thing this is here to avoid.
+_CONSONANTS = "gklmnprstvz"
+_VOWELS = "aeiou"
+
+
+def _pronounceable(seed_hex: str) -> str:
+    """A short name-shaped token from the run's hex nonce.
+
+    Deterministic (same run -> same word) and reversible enough to correlate with run_id in
+    logs, but consonant-vowel shaped so no reader -- human or model -- mistakes it for a UUID
+    or an opaque id. Two syllables per 4 hex chars gives ~14^2*5^2 per pair, plenty to keep
+    five repeats of one batch distinct.
+    """
+    out = []
+    for i in range(0, min(len(seed_hex), 8), 2):
+        b = int(seed_hex[i:i + 2], 16)
+        out.append(_CONSONANTS[b % len(_CONSONANTS)] + _VOWELS[(b // len(_CONSONANTS)) % len(_VOWELS)])
+    return "".join(out).capitalize()
+
+
 class Throwaway:
     """One scenario's substrate. Build it, use it, tear it down."""
 
     def __init__(self, label: str, *, mcp: MCPDirect | None = None) -> None:
         self.label = label
         self.run_id = uuid.uuid4().hex[:8]
+        # 🔴 `{run_word}` — the same per-run nonce, shaped so it CANNOT be mistaken for an id.
+        # Measured 2026-08-21, batch 29: naming an account-scoped fixture "Emberfall Reach
+        # {run_id}" put a bare 8-hex token in the sentence the model reads, and the model
+        # passed THAT as the world_id -- "I'm having trouble accessing the map (ID:
+        # `a671b6c9`)". A hex suffix in a NAME is indistinguishable from an identifier, so the
+        # fixture was handing the model a plausible wrong answer and then measuring whether it
+        # took it. Use {run_id} for CODES (slugs, machine keys) and {run_word} for anything a
+        # person would read as a name.
+        self.run_word = _pronounceable(self.run_id)
         self.title = f"{TITLE_PREFIX}{label}-{self.run_id}"
         self.mcp = mcp or MCPDirect()
         self.book_id: str | None = None
@@ -328,6 +359,7 @@ class Throwaway:
             return (obj.replace("{book_id}", self.book_id or "")
                        .replace("{chapter_id}", self.chapter_id or "")
                        .replace("{project_id}", self.project_id or "")
+                       .replace("{run_word}", self.run_word)
                        .replace("{run_id}", self.run_id))
         if isinstance(obj, dict):
             return {k: self._substitute(v) for k, v in obj.items()}

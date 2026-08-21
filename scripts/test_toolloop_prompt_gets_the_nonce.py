@@ -45,6 +45,7 @@ class _FakeFixture:
 
         self._t = provision.Throwaway.__new__(provision.Throwaway)
         self._t.run_id = "a1b2c3d4"
+        self._t.run_word = provision._pronounceable("a1b2c3d4")
         self._t.book_id = "BOOK"
         self._t.chapter_id = "CHAP"
         self._t.project_id = "PROJ"
