@@ -6,10 +6,10 @@
 **Adopts** [`2026-08-08-reality-layer-RUN-STATE.md`](2026-08-08-reality-layer-RUN-STATE.md) §0.6d as
 its execution contract, and §0.6's hazards.
 
-**Reconciles:** Gateway invariant `I1` — game-server is the sanctioned second entry point
-(`PRR-20`), and this adds an OUTBOUND internal call from it, which the ACL must name · Language
-rule `I3` — TypeScript is gateway/realtime; the transport must not grow a Postgres client, and the
-whole shape of this phase follows from that · User Boundaries & Tenancy — the read here is
+**Reconciles:** Gateway invariant `I1` · Language rule `I3` · User Boundaries & Tenancy —
+game-server is the sanctioned second entry point (`PRR-20`), and this adds an OUTBOUND internal call
+from it, which the ACL must name; TypeScript is gateway/realtime, so the transport must not grow a
+Postgres client and the whole shape of this phase follows from that; and the read here is
 **owner-scoped**, a different tier from `RA1`'s cross-user read.
 
 `SEALED-SUBJECT` also governs this work and is NOT a row in the standards index, so it is stated
@@ -297,4 +297,4 @@ proposal carries the user, the server resolves the actor, and a subject the call
 cannot be forged. What this phase added is a **display** read — which entity to render as *"you"* —
 and that is a different question from who may act. The client still never names its own subject.
 
-**RESUME: the board is CLOSED — 6 of 6, `EO-1` the only row left open (it needs the migrate-existing-realities path). Nothing in this plan is next. The honest next step is a WS-level run: a real ticket, a real join, a real submit — nobody has driven a turn through this edge end to end, and it needs world-service in `infra/docker-compose.yml`, which it is not.**
+**RESUME: the board is CLOSED — 6 of 6, and its open register is EMPTY (`EO-1` cleared 2026-08-21; the "needs the migrate-existing-realities path" reason was false — `migration-orchestrator/cmd/migrate` already had one). Nothing in this plan is next. The honest next step is a WS-level run: a real ticket, a real join, a real submit — nobody has driven a turn through this edge end to end, and it needs world-service in `infra/docker-compose.yml`, which it is not.**

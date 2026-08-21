@@ -96,23 +96,50 @@ FIELD = re.compile(r"^\s*\**Reconciles:?\**\s*:?\s*(.+?)\s*$", re.IGNORECASE | r
 NONE_FORM = re.compile(r"^\s*none\b\s*[-—]\s*\S", re.IGNORECASE)
 
 
+#: A markdown table's alignment row: `|---|:--:|---|`, and nothing else.
+_SEPARATOR = re.compile(r"^\|[\s|:-]+$")
+
+
 def index_rows() -> list[str]:
     """The first cell of every table row in the standards index.
 
     The index is a set of markdown tables; a row's first cell is the thing it
     governs. Matching is done on that cell so a `Reconciles:` entry can name a
     family (`DP-A1-A19`) or a phrase (`Actor hub`) — whichever the row uses.
+
+    # HEADERS ARE EXCLUDED STRUCTURALLY, AND THE FIRST VERSION NAMED THEM
+
+    A header cell is not a standard, so it must not join the reference set. The
+    original exclusion was an enumerated list of four lowercase prefixes
+    (`family`, `standard`, `i'm working on`, `id`) — **`NV-3`: a header added
+    tomorrow is default-uncovered**, and three already were. Measured
+    2026-08-21: `Test`, `Script` and `SoT file` were in the reference set.
+
+    That is not cosmetic. Matching is a two-way substring test, so a row whose
+    normalised form is `test` is inside almost any sentence — and
+    `Reconciles: a test I wrote` **PASSED at HEAD** (measured, both it and
+    `Reconciles: some script somewhere`). A gate against references that point
+    at nothing had an escape hatch spelled with the commonest word in the repo.
+
+    The rule here is the one markdown itself uses: a header is the line
+    immediately followed by an alignment row. It needs no list, so it covers
+    the table somebody adds next month. Dropping exactly those three and no
+    real row was measured before the swap.
     """
     if not INDEX.is_file():
         print(f"phase0-reconcile-gate: MISUSE — no standards index at {INDEX}", file=sys.stderr)
         sys.exit(2)
+    lines = INDEX.read_text(encoding="utf-8").splitlines()
     rows = []
-    for line in INDEX.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
+    for i, raw in enumerate(lines):
+        line = raw.strip()
         if not line.startswith("|") or set(line) <= set("|- :"):
             continue
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if _SEPARATOR.match(nxt):
+            continue  # this line is a header: the next line aligns it
         cell = line.split("|")[1].strip()
-        if cell and not cell.lower().startswith(("family", "standard", "i'm working on", "id")):
+        if cell:
             rows.append(cell)
     return rows
 
@@ -186,6 +213,76 @@ def field_value(text: str) -> str | None:
     return None
 
 
+def _resolves(name: str, norm_rows: list[str]) -> bool:
+    """Does `name` designate a row of the standards index?
+
+    Two-way substring on the normalised forms, so `Gateway invariant (I1)` and
+    `Gateway invariant I3` both reach their row whatever decoration the author
+    used. See `index_rows` for why the reference set must not contain a header
+    cell: with `Test` in it, this returns True for most English sentences.
+    """
+    n = _norm(name)
+    return bool(n) and any(n in r or r in n for r in norm_rows if r)
+
+
+#: The citation separator this convention uses. Deliberately NOT `,` or `;` —
+#: see `interleaved_citations`.
+_CITE_SPLIT = re.compile(r"\s*·\s*")
+
+#: `A — prose`, on either dash, with the spaces that make it a separator rather
+#: than a hyphenated word.
+_DASH_SPLIT = re.compile(r"\s+[-—]{1,2}\s+")
+
+
+def interleaved_citations(value: str, norm_rows: list[str]) -> list[str]:
+    """Citations stranded past the first em-dash, where nothing reads them.
+
+    # THE DEFECT
+
+    The convention is `A · B · C — prose`: names first, one em-dash, then what
+    the reconciliation found. `check` splits at the FIRST em-dash, so a field
+    written the other way —
+
+        Reconciles: A — why A · B — why B · C — why C
+
+    — has exactly one citation read and the rest ignored. **The more prior art
+    such a spec cites, the less of it the gate checks.** Measured 2026-08-21:
+    5 of 25 fields, **12 citations** past the first dash, unread. Two tracks
+    reconciled against `Non-Vacuity`, `Performance Standard`, `Security
+    Standard` and `Debugging Protocol` and the gate saw none of them.
+
+    # WHY THE OBVIOUS FIX WAS REVERTED, AND WHY THIS IS NOT THAT FIX
+
+    The first attempt widened NAME EXTRACTION: treat every `·`-segment as a
+    citation and red the ones resolving to nothing. That reds PROSE, because
+    prose legitimately contains both separators, and it was reverted for
+    inventing findings against a conforming field.
+
+    This runs in the **opposite direction**: a segment is reported only when
+    its head **DOES** resolve to a real index row. The error it can make is
+    therefore under-reporting, never a phantom — what it names is by
+    construction a row that exists. A sentence can only be flagged by naming a
+    standard, and a field that names a standard should be listing it.
+
+    That is also why the split is `·` ONLY. Measured: adding `,` and `;` takes
+    12 hits to 15, and all three extra are prose clauses — *"so it is env
+    config by the boundary's own test"* — matched through the loose `Test`
+    header row this run also deleted. The wider splitter was not skipped out of
+    caution; it was tried, measured, and reproduced exactly the noise that got
+    the first attempt reverted.
+    """
+    names = _DASH_SPLIT.split(value, maxsplit=1)[0]
+    rest = value[len(names):]
+    out = []
+    # [0] is the prose right after the dash — the FIRST name's own rationale. A
+    # stranded citation always follows a `·`, so it can never be segment 0.
+    for seg in _CITE_SPLIT.split(rest)[1:]:
+        head = _DASH_SPLIT.split(seg, maxsplit=1)[0].strip(" *`[]().,;")
+        if head and _resolves(head, norm_rows):
+            out.append(head)
+    return out
+
+
 def check(spec: Path, rows: list[str]) -> list[str]:
     text = spec.read_text(encoding="utf-8", errors="replace")
     rel = str(spec.relative_to(REPO)).replace("\\", "/")
@@ -214,28 +311,15 @@ def check(spec: Path, rows: list[str]) -> list[str]:
     # The separator is REQUIRED rather than inferred: a field that is half list
     # and half essay cannot be checked, and the rationale is the useful half.
     #
-    # ⚠ THE INTERLEAVED SHAPE IS NOT CHECKED, and that is a KNOWN, MEASURED gap.
-    #
-    # Authors do not always write `A, B, C — prose`. Some write `A — why A · B —
-    # why B`, pairing each citation with its reason. Splitting once at the FIRST
-    # em-dash reads `A` and ignores `B`: **the more prior art such a spec cites,
-    # the less of it is read.** Measured 2026-08-21 across the tree — 7 of 25
-    # fields use that shape, 15 citations sit past the first dash unread, and one
-    # is a genuine phantom.
-    #
-    # A parser widening was WRITTEN AND REVERTED, and the reason it was reverted
-    # is the useful part: once prose is allowed to contain `·` and em-dashes —
-    # which it does, correctly, in `2026-08-15-claim-rot.md` — a citation and a
-    # sentence are not distinguishable by punctuation. The widening caught the
-    # one real phantom and invented FIVE against a field that follows the stated
-    # convention exactly. A check that reds correct work to catch one defect is
-    # not an improvement; it is how a gate becomes noise someone silences.
-    #
-    # The fix is therefore to the CONVENTION, not the parser — refuse a field
-    # that interleaves, the way a closed-set arg is refused a free string — and
-    # that means rewriting 7 fields across tracks this board does not own.
-    # Tracked as `FO-2` in `docs/plans/2026-08-21-demo-path-RUN-STATE.md`.
-    names = re.split(r"\s+[-—]{1,2}\s+", value, maxsplit=1)[0]
+    # THE INTERLEAVED SHAPE IS REFUSED — see `interleaved_citations`. It was a
+    # KNOWN, MEASURED gap (`FO-2`) whose row said the fix belonged to the
+    # CONVENTION rather than the parser, and that is what shipped: every name
+    # goes before the one em-dash, the way a closed-set arg refuses a free
+    # string. The 5 fields that predated the rule were rewritten in the same
+    # commit, so the check was never green by emptiness.
+    # ONE definition of the separator, shared with `interleaved_citations` — two
+    # copies of this regex is how the two halves of the field drift apart.
+    names = _DASH_SPLIT.split(value, maxsplit=1)[0]
 
     norm_rows = [_norm(r) for r in rows]
     bad = []
@@ -243,14 +327,24 @@ def check(spec: Path, rows: list[str]) -> list[str]:
         part = part.strip(" *`[]()")
         if not part:
             continue
-        n = _norm(part)
-        if not any(n in r or r in n for r in norm_rows if r):
+        if not _resolves(part, norm_rows):
             bad.append(part)
     if bad:
         return [
             f"{rel}: `Reconciles:` names {len(bad)} entr(y/ies) with no row in the "
             f"standards index: {', '.join(repr(b) for b in bad)}.\n"
             f"      A reference pointing at nothing is the phantom-registration shape."
+        ]
+
+    stranded = interleaved_citations(value, norm_rows)
+    if stranded:
+        return [
+            f"{rel}: `Reconciles:` puts {len(stranded)} citation(s) AFTER the em-dash, "
+            f"where nothing reads them: {', '.join(repr(s) for s in stranded)}.\n"
+            f"      The field is `A · B · C — what the reconciliation found`: every\n"
+            f"      name before ONE em-dash, then the prose. Written `A — why A · B\n"
+            f"      — why B`, only `A` is checked, so the more prior art you cite the\n"
+            f"      less of it this gate reads. Hoist the names; keep every reason."
         ]
     return []
 
@@ -259,6 +353,10 @@ def selftest(rows: list[str]) -> int:
     """Non-vacuous in both directions, on synthetic input."""
     bad = []
     real = rows[0] if rows else "Data Plane"
+    # A SECOND real row, for the interleave arms: they need two names to
+    # strand one, and `real` twice would make "stranded" and "already listed"
+    # the same string.
+    second = next((r for r in rows[1:] if _norm(r) != _norm(real)), "Non-Vacuity")
     cases = [
         ("a spec with no Reconciles line", "# X\n\nbody\n", True),
         ("a real row cited", f"# X\n\n**Reconciles:** {real}\n", False),
@@ -288,6 +386,25 @@ def selftest(rows: list[str]) -> int:
         # changed nothing, measured. The trailing text must therefore contain a
         # SEPARATOR so the swallowed half becomes an entry of its own; only then
         # does the break have an observable effect.
+        # ── the INTERLEAVED field, both directions (`FO-2`) ──────────────────
+        #
+        # The first arm is the defect: a REAL second citation sitting past the
+        # em-dash, which the old parser read as prose and never checked. The
+        # second is the guard on the fix — prose after a `·` that names no row
+        # must NOT red, because reding it is precisely what got the earlier
+        # widening reverted. A detector with only the first arm would pass while
+        # flagging every discursive field in the tree.
+        ("a real citation stranded past the em-dash reds",
+         f"# X\n\nReconciles: {real} — why {real} · {second} — why {second}\n", True),
+        ("prose after a `·` that names no row does NOT red",
+         f"# X\n\nReconciles: {real} — the audit found A · and then it found B\n", False),
+        ("the canonical `A · B — prose` shape does NOT red",
+         f"# X\n\nReconciles: {real} · {second} — and here is what the look found\n", False),
+        # A header cell is not a standard. `Test` and `Script` were in the
+        # reference set until 2026-08-21, and matching is a substring test, so
+        # `Reconciles: a test I wrote` PASSED — measured, at HEAD.
+        ("a header cell of the index is not a citable row",
+         "# X\n\nReconciles: a test I wrote\n", True),
         ("a phantom in the NEXT paragraph is not part of the field",
          f"# X\n\n**Reconciles:** {real}\n\nLater, Quantum Flux Standard appears\n", False),
         ("a phantom in the next BLOCK (a list) is not part of the field",

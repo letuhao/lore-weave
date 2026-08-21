@@ -36,9 +36,10 @@ a browser. `F4` proved the SUBJECT hop — who you are. This is the STATE hop �
   `contracts/migrations/per_reality`, verifies the four tables the binary needs, and drives the real
   spine. Both names carry the `smoke` marker the fixtures' `guarded()` demands. **This board writes
   only there**, so the Rule-5 question `F4` stopped at does not arise.
-* **`DFO-7` does not block this.** The spine BINARY hangs, and `commit-spine-drain-once` passes in
-  the live-suite registry with its own runner — so a committed turn is reachable without fixing it.
-  A RESOLVED turn rendered live is a different claim and is out (below).
+* **`DFO-7` does not block this.** ⚠ **The premise of this bullet was wrong** and is corrected in
+  `G8`: `DFO-7` was CLOSED 2026-08-14, its subject was `--drain-once`, and the long-running mode
+  does not hang. The conclusion happens to survive — a committed turn is reachable — but it was
+  reached from a false reason. `commit-spine-drain-once` does pass in the live-suite registry.
 * **`actor-hub` reaches the events already.** `commit-service/src/domain/actor.rs` holds an
   `actor_hub::Actor`, and `dataflow_live.rs` walks *action → hub → DP write → events row → wire
   frame* with ids pasted. Every hop of this board is downstream of a chain that is already proven;
@@ -54,8 +55,10 @@ committed event.
 
 **OUT, each for a stated reason:**
 
-* **Fixing `DFO-7`.** The spine binary hangs and the drain-once path is green; making the long-running
-  binary terminate correctly is its own defect with its own row.
+* **Fixing `DFO-7`.** ⚠ **CORRECTED — see `G8` and `GD-13`.** There was nothing to fix: `DFO-7`
+  closed 2026-08-14, and the long-running mode is a consumer, so *"making the binary terminate"*
+  described the opposite of what it is for. Measured after the board closed: it consumes and
+  commits in ~1s and keeps running.
 * **A turn RESOLVED from the browser** — clicking Strike and watching the outcome return. That needs
   the proposal to survive producer signing (`LW_PRODUCER_KEY_GAME_SERVER` is unset and the room warns
   that commit-service will reject at the producer-identity stage) and the spine to be consuming. This
@@ -75,6 +78,7 @@ committed event.
 | `G4` the event reaches `lw.events.<reality>` and the room folds it | `[x]` | Publisher (second instance, pointed at the smoke meta) → **`lw.events.<reality>` XLEN=1**, and the room folded it: the browser turn went 0 → 1 |
 | `G5` live — a browser renders a roster entry that came from that event | `[x]` **manual**, `[ ]` **automated** | **`turn 1 · you are entity 1` + roster `entity-2 · healthy · [Strike]`**, reproduced from a clean stack. **Bitten**: delete `lw.events.<reality>`, re-join → `turn 0` and an EMPTY roster; restore → the entry returns. `you are entity 1` survives both, which is the control — the subject hop is independent of events. The Playwright spec is written and SKIPS: `/play` is behind `RequireAuth` and the app CLEARS an unusable token, so it needs one auth-service issued (`GO-2`) |
 | `G7` the loop BACK — the browser causes the state it renders | `[x]` | **Was declared OUT and it was reachable.** Browser Strike → proposal (`user_ref_id` server-stamped, **no `actor` field**) → `spine --drain-once`: **`consumed 1 · admitted 1 · committed 1 · turn 2`** → publisher → the room's tail → the page updated **with no reload**: `turn 2` and an outcome line **`1 strikes 2 for 9 (31 left)`**. That line prints the hub's NUMBER, not the derived badge |
+| `G8` the AUTOMATIC turn — a long-running spine, no `--drain-once` in the loop | `[x]` | **Measured 2026-08-21 after the board closed, because the reason it was excluded turned out to be false.** `target/debug/spine.exe` started with NO `--drain-once` against the demo stack, then a proposal XADDed **while it was already running**: `COMMIT 1787322708311-0 → channel_event_id 3 (Applied)`, committed **within 1s**, and the process **still running afterwards**. Event 3 is `turn.resolved` with `{"type":"struck","attacker":"1","target":"2","damage":9,"hp_left":31}` — `attacker: "1"` resolved by the kernel from the binding, the proposal carrying only `user_ref_id`. **The control is in the same run**: the first attempt used the synthetic default driver and produced `channel_event_id 2` = `proposal.rejected` *"user 3333…0003 drives no actor in this reality"* — so the consumer was demonstrably reading, resolving and writing, and the difference between commit and refusal is the binding, which is `SEALED-SUBJECT` failing closed |
 | `G6` suite + sweep green | `[x]` | **`SWEEP_RC=0` — 91 GREEN / 0 RED / 8 SKIP.** Rust workspace **2568 passed / 0 failed** / 14 ignored · **23 of 23** live suites · frontend-game **214 / 0** (22 files) · game-server **84 / 0** (2 skipped, live Redis) · `service_acl`+`pii`+`meta`+`publisher` green · `design-lint` and `actor-hub-figures` green. **No RED, tracked or otherwise** — the first board of the three where the sweep found nothing of mine to fix |
 
 ### Why `G2` is its own row rather than a step of `G5`
@@ -106,9 +110,16 @@ own Strike button, `user_ref_id` stamped by the server from `LW_WS_DEV_USER_REF_
 The island resolved the subject from the binding, `actor_hub::Actor::set_quantity` moved the vital,
 and the committed event came back through the publisher to a page that had not reloaded.
 
-**Still not a deployment.** The spine ran as `--drain-once`, invoked by hand between the click and
-the update. A real deployment runs it as a consumer, and that binary hangs (`DFO-7`). So the loop is
-proven; the AUTOMATIC turn is not.
+**Still not a deployment — and then it was measured (`G8`).** The `G7` run drove the spine as
+`--drain-once` by hand between the click and the update, and this paragraph originally said a real
+deployment could not, because *"that binary hangs (`DFO-7`)"*.
+
+**That was false in two ways at once.** `DFO-7` closed 2026-08-14 and its subject was
+`--drain-once` blocking before it read a proposal. And the no-flag mode is a DAEMON by construction
+— `block_ms: 2_000`, and an empty batch `continue`s where `--drain-once` `break`s — so *"it does
+not exit"* is the feature, not the defect. Run properly it commits a proposal in ~1s and stays up.
+`G8` has the output. What is genuinely not proven is the whole thing running under an orchestrator;
+that is a deployment question, not a binary one.
 
 ## §4 OPEN
 
@@ -121,6 +132,8 @@ proven; the AUTOMATIC turn is not.
 
 | id | what |
 |---|---|
+| `GD-14` | **Six gates went RED and the tree was fine — I had killed the sweep myself.** The first `--run-all` hit a 10-minute tool timeout and was SIGKILLed mid-harness, leaving `target/.bite-harness.lock` behind; the next sweep's six bite gates then refused to start in 0.1s each. **The lock's own message says exactly this** — *"if no harness is running, this is a stale lock from a killed run"* — and it names the pid, which was gone. Re-run serially after deleting it: **6 GREEN**, so the real sweep is 91 GREEN / 0 RED / 8 SKIP. Recorded because the SHAPE is the trap: a 0.1s RED from a gate that normally compiles Rust is not a finding, it is a gate that never ran, and a log skimmed for the word RED reports the opposite of what happened. |
+| `GD-13` | **I cited a CLOSED row as an open blocker, four times, and the thing it named was not happening.** Every board this session said *"the long-running spine hangs (`DFO-7`)"*. `DFO-7` closed 2026-08-14, its subject was `--drain-once`, and its own run-state says so in the row I was citing. What I actually observed was a consumer not exiting — which is what a consumer does; `block_ms: 2_000` and an empty batch `continue`s. Two checks would each have caught it alone: reading the closed row, or reading the twelve lines of the loop. Instead the claim propagated into two boards, the handoff and a `goal-prompt` note, and it did real damage — it is the stated reason `G8` was excluded from the board, so a slice that takes two minutes to prove sat unproven while I wrote paragraphs about why it could not be. **The failure mode `CLAUDE.md` names for deferrals — a reason nobody re-checks — applies to BOUNDARIES too, and `GD-7` was the same defect eight hours earlier.** |
 | `GD-12` | **The local sweep is NOT CI, and I had been reading it as if it were.** `SWEEP_RC=0 — 91 GREEN` was my sign-off line all session. It runs **99** of the ~200 scripts in `scripts/`, and `migration-idempotency-validator` is one it does not run — it is wired to `foundation-ci.yml` instead. So a green sweep is a real signal and a NARROWER one than "everything passes", and every "sweep green" claim in this session's commits should be read that way. The safety net existed; my local evidence just could not see it. |
 | `GD-11` | **My `0023` was not idempotent, and only a LIVE suite said so.** Re-provisioning re-applies the migration set — `provisioner_reentry_live` calls that *"the retry-safe operation"* — and Postgres has no `ADD CONSTRAINT IF NOT EXISTS`, so the second apply died with *"constraint already exists"*. Every sibling file in that directory is idempotent by construction and I did not look at one before writing mine. Three things then landed in order: the unit suites passed, the 91-gate sweep passed, and the live suite failed. **The cheapest check would have been reading the neighbouring file**; the check that actually fired cost a full live run. |
 | `GD-10` | **Two of the four rows I cleared were deferred against infrastructure that already existed.** `EO-1` said it needed a migrate-existing-realities path — `migration-orchestrator/cmd/migrate` has one. `GO-2` said it needed auth-service in the stack — `infra-auth-service-1` was `Up (healthy)` while I wrote the row. Both reasons would have been re-read and believed next session. **CLAUDE.md's rule is that "missing infrastructure" is unbuilt work, not a blocker; the sharper version is that it is often not even unbuilt** — the check is `ls`, and I skipped it twice in one day while writing rows whose whole purpose is to be trustworthy later. |
@@ -139,11 +152,11 @@ proven; the AUTOMATIC turn is not.
 ```goal-prompt
 goal: a browser renders a roster entry that came from an event the actor hub produced, with every write landing in a throwaway database
 note: |
-  Phase 0: the publisher EXISTS (services/publisher/pkg/redisemit XADDs lw.events.<reality>) and is in no compose file — unbuilt, not blocked, same gap F2 closed for world-service. No registered reality has events; the four streams that do carry entries belong to unregistered ids. scripts/smoke/spine-drain-once.sh already provisions loreweave_spine_smoke_meta + loreweave_spine_smoke_channel with both migration sets, so every write this board needs has a throwaway home and the Rule-5 question F4 stopped at does not arise. DFO-7 (the hanging spine binary) does not block this: the drain-once path is green.
+  Phase 0: the publisher EXISTS (services/publisher/pkg/redisemit XADDs lw.events.<reality>) and is in no compose file — unbuilt, not blocked, same gap F2 closed for world-service. No registered reality has events; the four streams that do carry entries belong to unregistered ids. scripts/smoke/spine-drain-once.sh already provisions loreweave_spine_smoke_meta + loreweave_spine_smoke_channel with both migration sets, so every write this board needs has a throwaway home and the Rule-5 question F4 stopped at does not arise. DFO-7 does not block this: it closed 2026-08-14, and the belief that the binary hangs was itself wrong — see G8.
 stop: |
   a bite does not go red, or goes red for the wrong reason
   a write would touch a database whose name carries no throwaway marker
   the browser would render a value that did not come from a committed event
 ```
 
-**RESUME: the board is CLOSED — 7 of 7 (`G7` was added after the fact; see the drift log). `GO-1` and `GO-2` remain open and neither is this board's to fix. The question three boards were opened to answer is answered: an event the actor hub produced renders in a browser, and the proof bites. The loop BACK is now proven too: a browser Strike causes the state the browser renders. What is NOT proven is the AUTOMATIC turn — the spine ran as `--drain-once` by hand between the click and the update, and the long-running consumer hangs (`DFO-7`).**
+**RESUME: the board is CLOSED — 8 of 8, and its open register is EMPTY. `G7` and `G8` were both added after the board was called done, and both were recovered the same way: by checking a reason that had been asserted rather than measured. The question three boards were opened to answer is answered end to end — an event the actor hub produced renders in a browser; a browser Strike causes the state the browser renders; and a long-running spine, with no `--drain-once` anywhere in the loop, commits that proposal in about a second and keeps running.**

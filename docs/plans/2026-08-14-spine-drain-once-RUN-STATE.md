@@ -7,13 +7,14 @@
 its execution contract, and §0.6's hazards (detached sweeps, real exit codes, no heredoc for a patch
 carrying backslashes, byte-level I/O, asserted anchors on every board edit).
 
-**Reconciles:** Non-Vacuity — the fix ships with a check that can fail, and the bite is pasted ·
-Debugging Protocol — no fix without root cause, and the cause was proven at the protocol level
-before a line changed · Performance Standard — *"timeouts all-languages"* is exactly the rule this
-violated, and **its gate does not reach the violation**: `timeout-discipline-lint.sh` scans Rust for
-`reqwest` without a timeout and knows nothing about an unbounded Redis read (`NV-3`, the scope never
-reaches it). Recorded rather than glossed; not built here, because the boundary below excludes it
-and `read_options()` now makes the mistake unavailable at the one place the value becomes a command.
+**Reconciles:** Non-Vacuity · Debugging Protocol · Performance Standard — the fix ships with a
+check that can fail, and the bite is pasted; no fix without root cause, and the cause was proven at
+the protocol level before a line changed; and *"timeouts all-languages"* is exactly the rule this
+violated, while **its gate does not reach the violation**: `timeout-discipline-lint.sh` scans Rust
+for `reqwest` without a timeout and knows nothing about an unbounded Redis read (`NV-3`, the scope
+never reaches it). Recorded rather than glossed; not built here, because the boundary below excludes
+it and `read_options()` now makes the mistake unavailable at the one place the value becomes a
+command.
 Its trigger is a SECOND bus implementation appearing.
 
 The look also asked whether the same defect exists in the siblings — this repo's recurring shape —

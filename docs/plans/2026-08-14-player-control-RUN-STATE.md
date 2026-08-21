@@ -13,11 +13,11 @@ found. Re-measure this line at every slice close; it went stale silently once al
 **Adopts** [`2026-08-08-reality-layer-RUN-STATE.md`](2026-08-08-reality-layer-RUN-STATE.md) §0.6d as
 its execution contract, and §0.6's hazards.
 
-**Reconciles:** User Boundaries & Tenancy — the binding is **per-user**, scope key `user_ref_id`,
-and a cross-user read is already registered as a sensitive path · Non-Vacuity — the agent-driver
-question is deferred with a trigger, not a prose row · Debugging Protocol — every claim below is a
-command, not a memory · Performance Standard — the resolution lands on the commit hot path and must
-not add a per-proposal round trip.
+**Reconciles:** User Boundaries & Tenancy · Non-Vacuity · Debugging Protocol · Performance
+Standard — the binding is **per-user**, scope key `user_ref_id`, and a cross-user read is already
+registered as a sensitive path; the agent-driver question is deferred with a trigger, not a prose
+row; every claim below is a command, not a memory; and the resolution lands on the commit hot path
+and must not add a per-proposal round trip.
 
 ---
 

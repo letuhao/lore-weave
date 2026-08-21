@@ -1,65 +1,65 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ KERNEL STATE ON A SCREEN — the question is answered (2026-08-21, branch `feat/game-logic`)
+## ▶ ALL FOUR BOARDS CLOSED, AND THE OPEN REGISTERS ARE EMPTY (2026-08-21, branch `feat/game-logic`)
 
-> [`2026-08-21-kernel-state-to-screen-RUN-STATE.md`](../plans/2026-08-21-kernel-state-to-screen-RUN-STATE.md)
-> — `G1`–`G6`. Opened by *"does the actor hub reach the FE end to end?"*, which the two boards before
-> it answered NO to, each for a different reason.
+> **`HEAD` after this commit.** Four boards — [player-edge](../plans/2026-08-21-player-edge-RUN-STATE.md)
+> `E1`–`E6` · [demo-path](../plans/2026-08-21-demo-path-RUN-STATE.md) `F1`–`F5` ·
+> [kernel-state](../plans/2026-08-21-kernel-state-to-screen-RUN-STATE.md) `G1`–`G8` · the closeout —
+> and **no open row left on any of them.** The five that were open at the last handoff (`GO-1`,
+> `GO-2`, `FO-1`, `FO-2`, `EO-1`) are all cleared.
 >
-> **`turn 1 · you are entity 1`, with a roster entry `entity-2 · healthy · [Strike]`.** That entry
-> exists ONLY because folding a committed `struck` event set hp on target 2. Every hop real:
+> **The pipeline is proven in both directions, automatically.**
 >
 > ```
-> actor-hub → spine (real binary, real proposal, real stream) → events row
->   → publisher → lw.events.<reality> → foldEvent → w1.frame → the DOM
+> browser Strike → proposal (user_ref_id server-stamped, NO actor field)
+>   → spine, LONG-RUNNING, no --drain-once → actor_hub::Actor::set_quantity
+>   → events row → publisher → lw.events.<reality> → foldEvent → the DOM
 > ```
 >
-> The payload is `{"type":"struck","attacker":"1","target":"2","damage":9,"hp_left":31}`, and
-> `attacker: "1"` is the entity the KERNEL resolved from the binding — the proposal carried only
-> `user_ref_id`. `SEALED-SUBJECT`, visible in committed data.
+> A page that never reloaded shows `turn 2 · 1 strikes 2 for 9 (31 left)`, and the number is the
+> hub's, not a derived badge. Every hop bitten.
 >
-> **Bitten.** Delete `lw.events.<reality>`, re-join → `turn 0` and an EMPTY roster; restore → the
-> entry returns. `you are entity 1` survives both, which is the control: the subject hop does not
-> depend on events, so the roster moving is about the roster.
+> **`G8` is the one added today**, and only because a reason got checked: three boards said *"the
+> long-running consumer hangs (`DFO-7`)"*. `DFO-7` closed 2026-08-14 and its subject was
+> `--drain-once`; the no-flag mode is a daemon by construction. Measured: a proposal XADDed while
+> the spine was already running committed in **~1s** (`COMMIT … → channel_event_id 3 (Applied)`,
+> `turn.resolved` / `struck` / `attacker: "1"` resolved by the kernel from the binding), and the
+> process stayed up. The control is in the same run — the synthetic driver produced
+> `proposal.rejected` *"drives no actor in this reality"*, so the difference between commit and
+> refusal is the binding. `GD-13` records the mis-citation.
 >
-> **`G1` found the missing hop.** The publisher — `pkg/redisemit`, which XADDs the exact stream
-> `ChannelRoom` consumes — had no Dockerfile and no compose entry. So an event could be committed and
-> reach nothing. `Dockerfile.bridge` records the identical defect one service over.
+> **`FO-2` closed the last gate gap**, and cost more than the row promised. `phase0-reconcile-gate`
+> now refuses a `Reconciles:` field that strands citations past the em-dash — reporting a segment
+> only when its head **does** resolve to a real index row, so it can under-report but never invent
+> a phantom, which is what got the earlier widening reverted. **94 → 106 citations actually read**;
+> the 5 legacy fields rewritten in the same commit. It also surfaced two things nobody was looking
+> for: the reference set was admitting the table HEADERS `Test`/`Script`/`SoT file`, so
+> `Reconciles: a test I wrote` **passed at HEAD**; and `Destructive DB ops in tests` — ENFORCED,
+> three enforcement layers, an incident behind it — **had no row in the standards index** and only
+> resolved through that `Test` cell. Both fixed.
 >
-> **Everything writes to `loreweave_kernel_state_smoke_*`.** `scripts/smoke/kernel-state-demo.sh`
-> provisions both, applies both migration sets, verifies seven tables, seeds reality+actor+binding,
-> commits a turn through the real spine and starts all three services, with `--down`. Re-run clean
-> from scratch: RC=0. That is why this board could proceed where `F4` stopped on Rule 5.
+> **⚠ Two things to carry, neither of them a task.**
 >
-> **AND THE LOOP BACK CLOSES (`G7`, added after the board was called done).** `§2` had declared it
-> OUT because *"the room warns commit-service will reject an unsigned proposal at the
-> producer-identity stage"* — which is the ROOM's side. The CONSUMER decides, and `services/commit-service/src/bin/spine.rs:128`
-> says with no key configured identity is not enforced. One grep would have settled it; the row was
-> only recovered because the PO asked whether the goal was actually complete.
+> 1. **The local sweep is not CI.** `SWEEP_RC=0 — 91 GREEN` runs 99 of ~200 scripts;
+>    `migration-idempotency-validator` is CI-wired only, which is why a non-idempotent migration
+>    passed the sweep and was caught by a live suite (`GD-11`, `GD-12`).
+> 2. **`frontend-game-e2e` has never run green on a PR.** It fires on `frontend-game/**` or
+>    `services/game-server/**` and used to time out before executing a test, because
+>    `playwright.config.ts` named a port `vite.config.ts` had left. The port is fixed and the job
+>    should now work — but it has not been observed working. Watch it on the first PR.
 >
-> Browser Strike → proposal (`user_ref_id` server-stamped, **no `actor` field** — `SEALED-SUBJECT`
-> read off the stream) → `spine --drain-once`: `consumed 1 · admitted 1 · committed 1 · turn 2` →
-> publisher → the room's tail → **the page updated with no reload**: `turn 2` and
-> **`1 strikes 2 for 9 (31 left)`**, which prints the hub's NUMBER rather than the derived badge.
+> **VERIFY.** Gate sweep **91 GREEN / 0 RED / 8 SKIP** (`gate-wiring-gate.py --run-all`; the six
+> bite gates that first reported RED in 0.1s were a stale `target/.bite-harness.lock` left by my own
+> killed run — re-run serially, 6 GREEN. `GD-14`). `phase0-reconcile-gate` **SELFTEST 15 cases** +
+> tree **OK, 25 specs / 128 index rows**, bitten three ways with byte-exact restores. Long-running
+> spine measured live against the demo stack. No Rust or TS source changed in this commit.
 >
-> **Still not a deployment:** the spine ran as `--drain-once` invoked by hand between the click and
-> the update. The long-running consumer hangs (`DFO-7`), so the loop is proven and the AUTOMATIC
-> turn is not.
->
-> **⚠ NOT DONE: the AUTOMATED browser assertion (`GO-2`).** The Playwright spec is written and
-> SKIPS. `/play` is behind `RequireAuth` and the app CLEARS a token it cannot use, so a seeded
-> placeholder is impossible by design; it needs one auth-service issued. The browser proof above is
-> real and bitten — it is the automation that is gated.
->
-> **▶ DO NEXT.** Candidates, none of them started: **`GO-2`** — auth in the demo stack, which turns
-> the manual proof into a CI-able one · **`GO-1`** — `e2e/smoke.spec.ts` clicks "Continue as guest",
-> a control that no longer exists in `frontend-game/src` · **the loop back** — clicking Strike and
-> watching the outcome return, which needs `LW_PRODUCER_KEY_GAME_SERVER` on both sides and the spine
-> consuming (`DFO-7`: the long-running binary hangs; `--drain-once` is fine) · **`FO-1`** —
-> `EchoRoom.onAuth` takes `options.userId` FROM THE CLIENT and that id keys the per-user connection
-> cap · **`FO-2`** — `phase0-reconcile-gate` reads only citations before the first em-dash (7 of 25
-> fields, 15 unread) · **`EO-1`** — no `CHECK (entity_id >= 0)` on `actors`, needs the
-> migrate-existing-realities path.
+> **▶ DO NEXT — nothing is in flight; the next task opens its own board.** The natural continuations,
+> none started: run the whole demo under an orchestrator rather than by script (`G8` proves the
+> binary, not the deployment) · the product path `G-S3`/`G-S4`, still parked on the PO because
+> combat and progression have no complete design to write a schema against · `DFO-6` and the two
+> unbuilt `DP-X2` Redis roles in
+> [data-foundation](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md).
 
 ---
 
@@ -97,19 +97,25 @@
 > image builds at 139 MB and carries `contracts/`, because two config defaults are CWD-relative —
 > `ED-D8` from the player-edge run reappearing as a packaging requirement.
 >
-> **⚠ WHAT IS STILL NOT PROVEN: actor-hub STATE in the browser.** The roster was empty and the turn
+> **⚠ WHAT IS STILL NOT PROVEN: actor-hub STATE in the browser.** *(Proven later the same day by
+> the kernel-state board — `G3`–`G5`. Kept as written because the reason it was not proven here is
+> the useful part.)* The roster was empty and the turn
 > 0 because reality `cd0747d2` has **zero committed events** (`XLEN 0`, `events` table 0 rows).
 > The SUBJECT hop is proven; hp/roster/turn have never been rendered. Doing it needs a reality with
 > both committed events AND a live binding, and no reality has both — creating one means granting a
 > binding, a write to the non-throwaway dev meta database.
 >
-> **▶ DO NEXT.** Either (a) get kernel STATE onto the screen — needs the write above, or a
-> throwaway reality provisioned for it, and the spine still hangs (`DFO-7`) so a RESOLVED turn is
-> further out; or (b) `FO-1` — `EchoRoom.onAuth` takes `options.userId ?? 'guest'` FROM THE CLIENT,
-> and that id keys the per-user connection cap, so a client evades the cap by picking a new id per
-> connection; or (c) `FO-2` — `phase0-reconcile-gate` reads only the citations before the first
-> em-dash (7 of 25 fields, 15 unread), whose fix is a convention change across tracks. `EO-1` from
-> the player-edge board is still open (no `CHECK (entity_id >= 0)` on `actors`).
+> **▶ DO NEXT — SUPERSEDED, and left in place because what it got wrong is the record.** Every
+> candidate it named is done: kernel STATE is on the screen (`G3`–`G5`), `FO-1`, `FO-2` and `EO-1`
+> are cleared, and *"the spine still hangs (`DFO-7`)"* was never true — see `GD-13`. Read the block
+> at the top of this file instead. Original text: either (a) get kernel STATE onto the screen —
+> needs the write above, or a throwaway reality provisioned for it, and the spine still hangs
+> (`DFO-7`) so a RESOLVED turn is further out; or (b) `FO-1` — `EchoRoom.onAuth` takes
+> `options.userId ?? 'guest'` FROM THE CLIENT, and that id keys the per-user connection cap, so a
+> client evades the cap by picking a new id per connection; or (c) `FO-2` —
+> `phase0-reconcile-gate` reads only the citations before the first em-dash (7 of 25 fields, 15
+> unread), whose fix is a convention change across tracks. `EO-1` from the player-edge board is
+> still open (no `CHECK (entity_id >= 0)` on `actors`).
 
 ---
 

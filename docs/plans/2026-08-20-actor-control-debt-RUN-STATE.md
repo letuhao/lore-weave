@@ -6,11 +6,11 @@
 **Adopts** [`2026-08-08-reality-layer-RUN-STATE.md`](2026-08-08-reality-layer-RUN-STATE.md) §0.6d as
 its execution contract, and §0.6's hazards.
 
-**Reconciles:** MCP Tool I/O Standard — the seam here is not an MCP tool, but it is the same
-two-services-two-languages shape the Frontend-Tool Contract governs, and the fix is that standard's
-own pattern · User Boundaries & Tenancy — the read this adds is **cross-user by construction** and
-must stay on the audited path · Non-Vacuity — both rows exist because a check was missing, so
-neither closes without a bite · Security Standard — an operator being able to ask *who drives this
+**Reconciles:** MCP Tool I/O Standard · User Boundaries & Tenancy · Non-Vacuity · Security
+Standard — the seam here is not an MCP tool, but it is the same two-services-two-languages shape the
+Frontend-Tool Contract governs, and the fix is that standard's own pattern; the read this adds is
+**cross-user by construction** and must stay on the audited path; both rows exist because a check
+was missing, so neither closes without a bite; and an operator being able to ask *who drives this
 actor* is a new capability, not a convenience.
 
 ---

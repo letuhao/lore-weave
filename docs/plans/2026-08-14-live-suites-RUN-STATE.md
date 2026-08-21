@@ -6,10 +6,10 @@
 **Adopts** [`2026-08-08-reality-layer-RUN-STATE.md`](2026-08-08-reality-layer-RUN-STATE.md) §0.6d as
 its execution contract, and §0.6's hazards.
 
-**Reconciles:** Non-Vacuity — the registry must not be a list that can go stale unnoticed, so the
-mechanism is a ratchet plus a cross-check against CI, not a document · Destructive DB ops in tests —
-this run PROVISIONS databases, so every name it creates carries a throwaway marker and the runner
-refuses one that does not · Debugging Protocol — the claim *"CI runs six of twenty"* is measured
+**Reconciles:** Non-Vacuity · Destructive DB ops in tests · Debugging Protocol — the registry must
+not be a list that can go stale unnoticed, so the mechanism is a ratchet plus a cross-check against
+CI, not a document; this run PROVISIONS databases, so every name it creates carries a throwaway
+marker and the runner refuses one that does not; and the claim *"CI runs six of twenty"* is measured
 below, not asserted.
 
 ---
