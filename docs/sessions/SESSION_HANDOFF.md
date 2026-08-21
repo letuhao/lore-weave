@@ -1,5 +1,53 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ KERNEL STATE ON A SCREEN — the question is answered (2026-08-21, branch `feat/game-logic`)
+
+> [`2026-08-21-kernel-state-to-screen-RUN-STATE.md`](../plans/2026-08-21-kernel-state-to-screen-RUN-STATE.md)
+> — `G1`–`G6`. Opened by *"does the actor hub reach the FE end to end?"*, which the two boards before
+> it answered NO to, each for a different reason.
+>
+> **`turn 1 · you are entity 1`, with a roster entry `entity-2 · healthy · [Strike]`.** That entry
+> exists ONLY because folding a committed `struck` event set hp on target 2. Every hop real:
+>
+> ```
+> actor-hub → spine (real binary, real proposal, real stream) → events row
+>   → publisher → lw.events.<reality> → foldEvent → w1.frame → the DOM
+> ```
+>
+> The payload is `{"type":"struck","attacker":"1","target":"2","damage":9,"hp_left":31}`, and
+> `attacker: "1"` is the entity the KERNEL resolved from the binding — the proposal carried only
+> `user_ref_id`. `SEALED-SUBJECT`, visible in committed data.
+>
+> **Bitten.** Delete `lw.events.<reality>`, re-join → `turn 0` and an EMPTY roster; restore → the
+> entry returns. `you are entity 1` survives both, which is the control: the subject hop does not
+> depend on events, so the roster moving is about the roster.
+>
+> **`G1` found the missing hop.** The publisher — `pkg/redisemit`, which XADDs the exact stream
+> `ChannelRoom` consumes — had no Dockerfile and no compose entry. So an event could be committed and
+> reach nothing. `Dockerfile.bridge` records the identical defect one service over.
+>
+> **Everything writes to `loreweave_kernel_state_smoke_*`.** `scripts/smoke/kernel-state-demo.sh`
+> provisions both, applies both migration sets, verifies seven tables, seeds reality+actor+binding,
+> commits a turn through the real spine and starts all three services, with `--down`. Re-run clean
+> from scratch: RC=0. That is why this board could proceed where `F4` stopped on Rule 5.
+>
+> **⚠ NOT DONE: the AUTOMATED browser assertion (`GO-2`).** The Playwright spec is written and
+> SKIPS. `/play` is behind `RequireAuth` and the app CLEARS a token it cannot use, so a seeded
+> placeholder is impossible by design; it needs one auth-service issued. The browser proof above is
+> real and bitten — it is the automation that is gated.
+>
+> **▶ DO NEXT.** Candidates, none of them started: **`GO-2`** — auth in the demo stack, which turns
+> the manual proof into a CI-able one · **`GO-1`** — `e2e/smoke.spec.ts` clicks "Continue as guest",
+> a control that no longer exists in `frontend-game/src` · **the loop back** — clicking Strike and
+> watching the outcome return, which needs `LW_PRODUCER_KEY_GAME_SERVER` on both sides and the spine
+> consuming (`DFO-7`: the long-running binary hangs; `--drain-once` is fine) · **`FO-1`** —
+> `EchoRoom.onAuth` takes `options.userId` FROM THE CLIENT and that id keys the per-user connection
+> cap · **`FO-2`** — `phase0-reconcile-gate` reads only citations before the first em-dash (7 of 25
+> fields, 15 unread) · **`EO-1`** — no `CHECK (entity_id >= 0)` on `actors`, needs the
+> migrate-existing-realities path.
+
+---
+
 ## ▶ THE DEMO PATH — kernel identity reaches a browser (2026-08-21, branch `feat/game-logic`)
 
 > [`2026-08-21-demo-path-RUN-STATE.md`](../plans/2026-08-21-demo-path-RUN-STATE.md) — `F1`–`F5`.

@@ -74,7 +74,7 @@ committed event.
 | `G3` a committed event exists, produced by the real path | `[x]` | The real `spine` binary consuming a real proposal off the real stream: **`consumed 1 · admitted 1 · committed 1 · turn 1`**. Payload `{"type":"struck","attacker":"1","target":"2","damage":9,"hp_left":31}` — and `attacker: "1"` is the entity the KERNEL resolved from the binding, since the proposal carried only `user_ref_id`. `SEALED-SUBJECT`, visible in committed data. Producer identity NOT enforced in this run and the binary says so; stated, not glossed |
 | `G4` the event reaches `lw.events.<reality>` and the room folds it | `[x]` | Publisher (second instance, pointed at the smoke meta) → **`lw.events.<reality>` XLEN=1**, and the room folded it: the browser turn went 0 → 1 |
 | `G5` live — a browser renders a roster entry that came from that event | `[x]` **manual**, `[ ]` **automated** | **`turn 1 · you are entity 1` + roster `entity-2 · healthy · [Strike]`**, reproduced from a clean stack. **Bitten**: delete `lw.events.<reality>`, re-join → `turn 0` and an EMPTY roster; restore → the entry returns. `you are entity 1` survives both, which is the control — the subject hop is independent of events. The Playwright spec is written and SKIPS: `/play` is behind `RequireAuth` and the app CLEARS an unusable token, so it needs one auth-service issued (`GO-2`) |
-| `G6` suite + sweep green | `[ ]` | |
+| `G6` suite + sweep green | `[x]` | **`SWEEP_RC=0` — 91 GREEN / 0 RED / 8 SKIP.** Rust workspace **2568 passed / 0 failed** / 14 ignored · **23 of 23** live suites · frontend-game **214 / 0** (22 files) · game-server **84 / 0** (2 skipped, live Redis) · `service_acl`+`pii`+`meta`+`publisher` green · `design-lint` and `actor-hub-figures` green. **No RED, tracked or otherwise** — the first board of the three where the sweep found nothing of mine to fix |
 
 ### Why `G2` is its own row rather than a step of `G5`
 
@@ -115,4 +115,4 @@ stop: |
   the browser would render a value that did not come from a committed event
 ```
 
-**RESUME: `G1` — the publisher. It has no Dockerfile and no compose entry; `services/world-service/Dockerfile` and the `world-service` compose block from `F2` are the shape to mirror. Measure what it actually needs at runtime before writing either — its env names are its own.**
+**RESUME: the board is CLOSED — 6 of 6. `GO-1` and `GO-2` remain open and neither is this board's to fix. The question three boards were opened to answer is answered: an event the actor hub produced renders in a browser, and the proof bites. What is NOT proven is the loop BACK — clicking Strike and watching the outcome return — which needs `LW_PRODUCER_KEY_GAME_SERVER` on both sides and a consuming spine (`DFO-7`).**
