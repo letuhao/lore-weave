@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 59 of 105 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 59 of 107 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/1) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
-> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -15928,6 +15928,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 - [~] **T54** — **Wire the AGE provider and flip the default** — the row this plan never had
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.1, §8.2. Unfinished, not undecided.
   ---
+  ### 🔻 DEFERRAL `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`
+
+  | | |
+  |---|---|
+  | **Blocker** | Flipping the graph default to AGE splits one conceptual graph across two stores: the **19** `GraphStore` adopters read AGE while the **54** `neo4j_repos` binders read Neo4j. Measured live on dev 2026-08-22 — both engines initialised in the same service, seconds apart, with AGE empty. Extraction and context assembly are on the port side, so they would have read an empty graph without erroring. |
+  | **Evidence** | T54b. `19 import GraphStore` / `54 bind neo4j_repos` from `port-adoption-gate`; startup log shows `Neo4j schema applied` at 18:39:50 and `AGE pool ready` at 18:39:51. Dev reverted to `neo4j`; the code default stays `age` and iso stays on AGE with a proven round trip. |
+  | **What must move, and it is NOT all 54** | §1.3's A13 classification: **17** vector-layer (deleted by §3.1, never ported), ~9 one-shot migration scripts (out of port scope), and **28 needing port operations whose shape §1.3 deferred to T35**. Only the 28 block the engine swap. |
+  | **Why it is open rather than blocked** | 🎯 **T35 is CLOSED.** The 28 were waiting on a decision that has since been made, and nobody restarted them. This is not a missing decision — it is unstarted work with a discharged dependency, the same shape T33a caught in `T33→T32`, `T46→T45` and `T48→T47`. |
+  | **Mechanism** | `port-adoption-gate` prints both numbers every run, so the gap between 19 and 54 is visible on every commit rather than needing an audit to rediscover. |
+  | **To unblock** | Take class (d) in T35-shaped batches: grow the port operation, migrate its binders, lower the ceiling in the same commit (rule 5). The engine swap lands when class (d) reaches zero — not when the ceiling does, which §1.3 correctly says it never will. |
+  | **Retry when** | Immediately — it is T17 class (d), unblocked since T35 closed. |
+
+  ### 🔴 T54b 2026-08-22 — **the dev flip SPLIT the graph across two engines, and that is the real blocker**
+
+  The dev bootstrap ran under §8.5's grant and worked exactly as designed:
+
+  ```
+  AGE pool ready (graph=g_shared)      pg_extension: age    ag_catalog.ag_graph: g_shared
+  dev Neo4j before 4926 entities / 4249 relations
+  dev Neo4j after  4926 entities / 4249 relations      <- untouched; the grant was narrow
+  ```
+
+  ✅ **Conformance against a REAL AGE, through the published port:** `102 passed, 59 skipped`,
+  and the AGE parameter genuinely ran — **25 `[age]` tests PASSED**, not skipped. 15 of the skips
+  are `AGE refuses this write` (`D-AGE-EVENT-WRITE-UNIMPLEMENTED`, §1.4's standing rule), and the
+  refusal is itself asserted, so "AGE was skipped" can never become "AGE passed".
+
+  🔴 **THEN THE MEASUREMENT THAT STOPS THIS ROW.** With the default flipped, the dev service held
+  **both engines live at once**:
+
+  ```
+  18:39:50  K11.3: Neo4j schema applied successfully   <- Neo4j, 4926 entities
+  18:39:51  AGE pool ready (graph=g_shared)            <- AGE, EMPTY
+
+  19 module(s) import GraphStore   -> read AGE      (empty)
+  54 module(s) bind neo4j_repos    -> read Neo4j    (populated)
+  ```
+
+  **One conceptual graph, two stores, one of them empty — inside a single service.** That is the
+  fragmentation this entire plan exists to remove, recreated by its own cutover. Extraction and
+  context assembly (`context/selectors/facts.py`, `entity_resolver`, `glossary_mirror`,
+  `motif_beat`) are port adopters, so they would have silently seen an empty graph.
+
+  ↩️ **Dev reverted to `KNOWLEDGE_GRAPH_BACKEND=neo4j`** — one coherent engine, Neo4j intact at
+  4926. The code default stays `age` (T54a, proven on iso), the AGE graph stays bootstrapped and
+  harmless, and `g_shared` is ready for the real cutover. **Reverting a pin is not retreating
+  from the decision; it is refusing to leave a working environment half-migrated.**
+
+  🎯 **THE REAL BLOCKER, and it is CONTEXT DRIFT with a name.** §1.3 classified all 54 binders on
+  2026-08-14: **17** are vector-layer (deleted by §3.1, irrelevant to the graph), ~9 are one-shot
+  migration scripts (out of port scope, correctly) — and **28 need port operations whose SHAPE
+  §1.3 left to T35**.
+
+  **T35 is closed.** Those 28 were unblocked by its closure and nobody restarted them. A
+  dependency discharged and the work it gated never resumed — the same shape as `T33→T32`,
+  `T46→T45` and `T48→T47`, which T33a caught as stale blockers. This one was not stale; it was
+  simply never picked up, and it is what makes AGE-as-the-only-engine impossible today.
+
+  ⚠️ **`port-adoption-gate`'s "ceiling not going to zero" is NOT in conflict with this.** §1.3 is
+  right that (b) and (c) never migrate. The 28 in class (d) are a different population, and they
+  are the ones the engine swap needs.
+
   ### ✅ T54a 2026-08-22 — **AGE is wired and IS the default. The provider no longer raises.**
 
   ```
