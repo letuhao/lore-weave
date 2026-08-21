@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` (lane C) — §3.1's passage cutover. A14b: it frees 10 of T17's 54 at once, and nothing in T17 moves before it.**
+**RESUME: `T25` ③ step 1 — drive passage writes on lw-iso until `soak-armed-gate` reads SOAKING. Dev secondary holds 0 passages (T25k).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 59 of 108 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 59 of 109 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (6/12) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (6/13) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3577,6 +3577,72 @@ vectors and validity intervals live in different stores.
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### 🔴 T25k 2026-08-22 — **③'s blocker is a CONFIG FLIP nobody named, not the benchmark DDL**
+
+  ```
+  app/adapters/vector_store_provider.py:101
+      read_primary = getattr(settings, "knowledge_vector_read_primary", "neo4j")
+
+  dev secondary (loreweave_knowledge_vectors), row counts:
+      passage_1024   0      passage_384   0      passage_1536   0
+      entity_1024   25      entity_384    0
+  dev soak-armed-gate :8216   ARMED_IDLE
+  ```
+
+  🎯 **T25j's precondition is true and it is not the precondition.** It measured *"no production
+  MODULE reads the Neo4j vector indexes"* — correct, `port-adoption-gate` holds the bypass at its
+  benchmark floor of 2. But the **adapter** reads them, because `knowledge_vector_read_primary`
+  defaults to `neo4j` and has never been flipped. "Nothing bypasses the port" and "nothing reads
+  the Neo4j indexes" are two different claims, and ③ was resting on the first while needing the
+  second. Deleting the DDL today would break live semantic search on both scopes.
+
+  ⚠️ **Same shape as A14's error, three hours apart and in the opposite direction.** There a
+  class meaning *"needs no port growth"* was read as *"available"*; here a gate meaning *"no
+  module bypasses the port"* was read as *"no reader left"*. Both times the artifact was right
+  and the sentence next to it was not. §8.4's *one-concept-two-readers* is doing real work in
+  this plan and it is worth naming twice.
+
+  📊 **And the passage scope has written NOTHING, which is why the flip cannot happen yet.** The
+  secondary holds 25 entity vectors and **zero passages** across all five dimension tables. So
+  dual-write is genuinely live — the entity rows prove the path works end to end — but no passage
+  ingest has run since the store was armed. `soak-armed-gate` reads `ARMED_IDLE` and its own note
+  is exactly right: *"the durable evidence is row counts in the secondary; check those before
+  concluding the soak never ran."* Checked. The entity rows say the mechanism works; the passage
+  zeros say the scope that §3.3 cuts over first has no evidence at all.
+
+  📐 **So ③'s real order of operations, in the order the decisions impose it:**
+
+  ```
+  1. passage writes must FLOW           -> soak-armed-gate reads SOAKING, not ARMED_IDLE
+  2. knowledge_vector_read_primary=postgres  (§3.3: passage scope cuts over FIRST)
+  3. THEN passage_embeddings_* DDL can go    (5 indexes)
+  4. entity_embeddings_* + event_embeddings_1024 stay -- §3.3 keeps entity reads on Neo4j
+     "until anchor_score has an answer", and D-T25B-PG-ANCHOR-SCORE still holds
+  5. the two benchmarks self-provision  -- necessary before (3), but never the binding constraint
+  ```
+
+  ⚠️ **The plan's own "what ③ still needs" named step 5 and called it *"the next unit, not
+  another decision"*.** It is a real unit and it is fourth in line. Recorded here rather than
+  silently reordered, because the sentence it corrects is three batches old and reads as settled.
+
+  ⛔ **Step 1 is a WRITE to dev Neo4j and GRANTS does not authorise it.** Passage ingest MERGEs
+  `:Passage` nodes; the SOAK grant covers `docker compose up -d knowledge-service` and nothing
+  more. The soak can be driven on lw-iso instead (rule 1: CODE on iso) — `D-T25B-SOAK`'s clause
+  is *"a non-trivial write count with `secondary_failed` at zero while writes were demonstrably
+  flowing"*, which a throwaway stack can satisfy. That is the next unit.
+
+  **BITE — N/A, and the reason:** no code changed. This batch is rule 2 applied to a
+  precondition — *"a number that reads as success is guilty until checked"* — and the check was
+  the provider's default plus five row counts. Its criterion can fail and did: "does anything
+  still read the Neo4j vector indexes" returned YES, by configuration.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate` unchanged at 54/19/2, class (d)
+  34/34; `soak-armed-gate` run against dev `:8216` → `ARMED_IDLE`.
+  **QC (b) the seam:** N/A — nothing changed; the dev stack was READ (metrics endpoint, five
+  `SELECT count(*)`). No write anywhere, rule 6 intact.
+  **QC (c) real data:** the five row counts above are the dev secondary, and the `neo4j` default
+  is read from the provider source, not recalled.
 
   ### 🔴 T25c 2026-08-21 — **the soak was never running**, and the plan spent nine days waiting for it
 
@@ -15337,7 +15403,11 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   their own index**; they rely on that DDL, and they are the only things that can compare the
   two backends. Deleting it silently would retire the comparison that justified the cutover.
   **Decided:** the benchmarks must ensure their own index before the shared DDL goes, so both
-  survive — that is the next unit, not another decision.
+  survive — ~~that is the next unit, not another decision~~. ⚠️ **T25k (2026-08-22) reorders
+  this: it is a real unit and it is FOURTH.** The binding constraint is
+  `knowledge_vector_read_primary`, which still defaults to `neo4j`, so the ADAPTER reads every
+  index this paragraph proposes to delete. "No production module reads them" was never the
+  same claim as "nothing reads them".
 
   ### ✅ T25i 2026-08-21 — **one of the two live readers is off the Neo4j vector indexes**
 
