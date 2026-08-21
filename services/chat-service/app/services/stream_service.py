@@ -2660,6 +2660,12 @@ _RUNTIME_CONTEXT_IDS = frozenset({"book_id", "chapter_id", "project_id"})
 #: Matched case-insensitively on a word-ish boundary, so `PLACEHOLDER`, `unknown_id`,
 #: `YOUR_ID_HERE` and `run_12345_placeholder` all hit while a real UUID cannot: hex has no
 #: letters past `f`, so "unknown", "placeholder", "provide", "todo" and "example" are unreachable.
+#: SCREAMING_SNAKE_CASE — all caps, digits and underscores, with at least one underscore. Both
+#: placeholders measured live take this shape ("UNKNOWN_ID_PLEASE_PROVIDE",
+#: "REPLACE_WITH_ACTUAL_REFERENCE_ID") and nothing this platform issues does: 0 of 293 real codes
+#: contain ANY uppercase letter, and a UUID has no underscore.
+_SCREAMING_SNAKE_RE = re.compile(r"[A-Z0-9]*_[A-Z0-9_]*")
+
 _PLACEHOLDER_TOKEN_RE = re.compile(
     r"(?:^|[^a-z])(?:unknown|placeholder|your[_-]?id|id[_-]?here|todo|tbd|example|"
     r"provide|fill[_-]?me|xxx+)(?:[^a-z]|$)",
@@ -2806,6 +2812,38 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
             and name not in _RUNTIME_CONTEXT_IDS
             and isinstance(value, str)
             and _PLACEHOLDER_TOKEN_RE.search(value)
+        ):
+            out.append(name)
+            continue
+        # 🔴 AND THE WORD LIST WAS TOO NARROW — REFUTED BY THE VERY NEXT RUN. The arm above
+        # caught reference_id="UNKNOWN_ID_PLEASE_PROVIDE"; the model's next attempt was
+        # "REPLACE_WITH_ACTUAL_REFERENCE_ID", which shares not one word with it. A blacklist is
+        # whack-a-mole against text a model invents freely.
+        #
+        # What the two DO share is shape: SCREAMING_SNAKE_CASE. So the rule is about the alphabet,
+        # not the vocabulary — and it is measured, not assumed. Across every code this platform
+        # has ever issued (240 motifs, 53 arc templates) exactly ZERO contain an uppercase letter,
+        # and a UUID is lowercase hex. So an `*_id` that is not a UUID and carries an uppercase
+        # letter is not an identifier this platform issued.
+        #
+        # NARROWED AFTER THE SUITE CAUGHT ME. My first shape rule was "not a UUID and contains
+        # an uppercase letter", and it broke a standing invariant of this very function: the
+        # existing test `test_with_no_properties_at_all_nothing_is_claimed` pins that
+        # world_id="Ashfall" is NOT dropped when nothing is declared (D-FJ-2 — no declaration, no
+        # judgement). "Ashfall" is a NAME, and it would also have caught a legitimate opaque
+        # vendor id like "ABC-123". So the rule is SCREAMING_SNAKE_CASE specifically — all caps,
+        # digits and underscores, with at least one underscore — which is what both measured
+        # placeholders are and what neither a name nor a vendor reference is.
+        #
+        # `*_id` ONLY, deliberately: the other `*_ref` here is image_ref, a MinIO object key,
+        # and object keys may legitimately be mixed-case. It stays with the declaration arm.
+        if (
+            name.endswith("_id")
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and not _is_uuid(value)
+            and _SCREAMING_SNAKE_RE.fullmatch(value.strip())
         ):
             out.append(name)
             continue

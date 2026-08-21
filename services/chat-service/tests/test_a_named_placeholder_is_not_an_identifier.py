@@ -91,3 +91,70 @@ class TestTheWordBoundaryIsRealNotSubstring:
         """Guarding against the arm being a naive `in` check that hits real data."""
         assert _invented_supplier_ids({"node_id": "abctodofed-1111-4000-8000-abcdefabcdef"},
                                       None, None) == []
+
+
+class TestTheWordListWasTooNarrowAndTheShapeRuleReplacesIt:
+    """🔴 MY FIRST FIX WAS REFUTED BY THE VERY NEXT RUN.
+
+    The word-list arm caught reference_id="UNKNOWN_ID_PLEASE_PROVIDE". Re-measured live on the
+    deployed build, the model's next attempt was "REPLACE_WITH_ACTUAL_REFERENCE_ID" — which
+    shares not one word with it, and sailed through. A blacklist is whack-a-mole against text a
+    model invents freely.
+
+    What the two share is SHAPE, and the shape rule is measured rather than assumed: across every
+    code this platform has ever issued — 240 motifs, 53 arc templates — exactly ZERO contain an
+    uppercase letter, and a UUID is lowercase hex.
+    """
+
+    def test_the_second_placeholder_is_caught(self):
+        assert _invented_supplier_ids(
+            {"reference_id": "REPLACE_WITH_ACTUAL_REFERENCE_ID"}, None, REF_PROPS) == [
+            "reference_id"]
+
+    def test_an_arbitrary_screaming_snake_stub_is_caught(self):
+        """The point of a shape rule: it does not need to have seen the wording before."""
+        assert _invented_supplier_ids({"node_id": "SOME_ID_I_MADE_UP"}, None, None) == ["node_id"]
+
+    def test_a_lowercase_slug_still_passes(self):
+        assert _invented_supplier_ids({"template_id": "throwaway-loop-skeleton-b15"}, None, None) == []
+
+    def test_an_UPPERCASE_UUID_still_passes(self):
+        """A UUID is a UUID whatever its case — the arm must test UUID-ness first."""
+        assert _invented_supplier_ids(
+            {"node_id": "01A02028-9C26-722A-A2D0-80FDCA7F2DE0"}, None, None) == []
+
+    def test_image_ref_is_left_to_the_declaration_arm(self):
+        """A MinIO object key may legitimately be mixed-case, so the shape rule is *_id only."""
+        props = {"image_ref": {"type": "string",
+                               "description": "optional MinIO object key of an already-uploaded base image"}}
+        assert _invented_supplier_ids({"image_ref": "maps/Ashfall-Base.png"}, None, props) == []
+
+
+class TestTheShapeRuleIsNarrowedToScreamingSnake:
+    """🔴 THE SUITE CAUGHT MY SECOND ATTEMPT TOO, and it was right to.
+
+    "not a UUID and contains an uppercase letter" broke a standing invariant of this same
+    function: `test_with_no_properties_at_all_nothing_is_claimed` pins that world_id="Ashfall" is
+    NOT dropped when nothing is declared (D-FJ-2 — no declaration, no judgement). It would also
+    have caught a legitimate opaque vendor reference like "ABC-123".
+
+    SCREAMING_SNAKE_CASE is what both measured placeholders actually are, and what neither a name
+    nor a vendor id is.
+    """
+
+    def test_a_bare_NAME_is_still_left_alone(self):
+        """The batch-8 case, and the invariant the broader rule broke."""
+        assert _invented_supplier_ids({"world_id": "Ashfall"}, None, None) == []
+
+    def test_an_opaque_vendor_reference_passes(self):
+        assert _invented_supplier_ids({"external_id": "ABC-123"}, None, None) == []
+
+    def test_a_single_uppercase_word_passes(self):
+        """No underscore, so not a stub shape."""
+        assert _invented_supplier_ids({"node_id": "EMBERFALL"}, None, None) == []
+
+    def test_both_measured_placeholders_still_caught(self):
+        assert _invented_supplier_ids({"reference_id": "UNKNOWN_ID_PLEASE_PROVIDE"}, None, None) \
+            == ["reference_id"]
+        assert _invented_supplier_ids(
+            {"reference_id": "REPLACE_WITH_ACTUAL_REFERENCE_ID"}, None, None) == ["reference_id"]
