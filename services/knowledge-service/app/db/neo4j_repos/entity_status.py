@@ -32,6 +32,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 logger = logging.getLogger(__name__)
@@ -101,31 +102,36 @@ def _node_to_status(node: Any) -> EntityStatus:
 # ── merge_entity_status ───────────────────────────────────────────────
 
 _MERGE_CYPHER = """
-MERGE (s:EntityStatus {id: $id})
-ON CREATE SET
-  s.user_id = $user_id,
-  s.project_id = $project_id,
-  s.entity_id = $entity_id,
-  s.status = $status,
-  s.from_order = $from_order,
-  s.source_types = [$source_type],
-  s.provenances = [$provenance],
-  s.source_chapter = $source_chapter,
-  s.evidence_count = 0,
-  s.created_at = datetime(),
-  s.updated_at = datetime()
-ON MATCH SET
-  s.source_types = CASE
-    WHEN $source_type IN s.source_types THEN s.source_types
-    ELSE s.source_types + $source_type
-  END,
-  s.provenances = CASE
-    WHEN $provenance IN coalesce(s.provenances, []) THEN s.provenances
-    ELSE coalesce(s.provenances, []) + $provenance
-  END,
-  s.updated_at = datetime()
-WITH s
-WHERE s.user_id = $user_id
+// §10.1/§10.2 — engine-neutral. One expression per property, degenerating correctly on
+// create: `coalesce` for create-only fields, and the accumulators written so that "no list
+// yet" produces the initial list rather than needing a separate ON CREATE branch. That is
+// the same shape `AgeGraphStore.merge_event` uses, and it is why a NULL guard leads each
+// CASE — without it, `$x IN s.source_types` against a null list yields null on create and
+// the ELSE arm would append to nothing.
+//
+// ⚠️ `user_id` moved into the MERGE KEY and the trailing `WITH s WHERE s.user_id` is gone —
+// on AGE that filter SILENTLY DISCARDS the write (T58), and on Neo4j it let a cross-tenant
+// id collision mutate another tenant's row and report nothing. `entity_status_id` hashes
+// `user_id` (line 72), so the pair cannot disagree.
+MERGE (s:EntityStatus {id: $id, user_id: $user_id})
+SET s.project_id     = coalesce(s.project_id, $project_id),
+    s.entity_id      = coalesce(s.entity_id, $entity_id),
+    s.status         = coalesce(s.status, $status),
+    s.from_order     = coalesce(s.from_order, $from_order),
+    s.source_chapter = coalesce(s.source_chapter, $source_chapter),
+    s.evidence_count = coalesce(s.evidence_count, 0),
+    s.created_at     = coalesce(s.created_at, {NOW}),
+    s.source_types = CASE
+      WHEN s.source_types IS NULL THEN [$source_type]
+      WHEN $source_type IN s.source_types THEN s.source_types
+      ELSE s.source_types + $source_type
+    END,
+    s.provenances = CASE
+      WHEN s.provenances IS NULL THEN [$provenance]
+      WHEN $provenance IN s.provenances THEN s.provenances
+      ELSE s.provenances + $provenance
+    END,
+    s.updated_at = {NOW}
 RETURN s
 """
 
@@ -153,7 +159,7 @@ async def merge_entity_status(
         raise ValueError("from_order must be an int (reading-axis event_order)")
     sid = entity_status_id(user_id, project_id, entity_id, from_order, status)
     result = await run_write(
-        session, _MERGE_CYPHER,
+        session, render(_MERGE_CYPHER, "neo4j"),
         user_id=user_id, id=sid, project_id=project_id, entity_id=entity_id,
         status=status, from_order=from_order, source_type=source_type,
         source_chapter=source_chapter or None, provenance=provenance,

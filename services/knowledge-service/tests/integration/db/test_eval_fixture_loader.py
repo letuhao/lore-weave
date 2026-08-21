@@ -29,7 +29,7 @@ def _vec(seed: float, *, dim: int = DIM) -> list[float]:
 
 
 @pytest.mark.asyncio
-async def test_loader_writes_tagged_passages_to_neo4j(neo4j_driver):
+async def test_loader_writes_tagged_passages_to_neo4j(neo4j_driver, passage_vector_index):
     user_id = f"u-test-{uuid.uuid4().hex[:8]}"
     project_id = "p-test"
     client = MagicMock()

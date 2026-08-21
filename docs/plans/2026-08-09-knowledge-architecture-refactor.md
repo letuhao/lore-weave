@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the next `ON CREATE SET` branches — `hierarchy` (4) and `entity_status` (1); 15 of the 16 remain.**
+**RESUME: `enrichment` + `relations` ON CREATE/MATCH — 100 dialect sites left, 10 of the 16 branches done.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,66 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 🐞 T69 2026-08-22 — **the "flake" was mine, and enumerating readers had failed twice**
+
+  ```
+  hierarchy (4 branches) + entity_status (1)      dialect 116 -> 100
+  knowledge unit 4302 · DB integration 605 passed, THREE consecutive clean full runs
+                        (was 599 passed / 1 failed, intermittently)
+  ```
+
+  T68 recorded `test_loader_writes_tagged_passages_to_neo4j` failing once and said plainly it
+  was **not diagnosed**. It failed again on the next full run, so rule 13 applies: a divergence
+  recorded is not a divergence diagnosed. Diagnosed now, and it is not a flake.
+
+  🔴 **`test_eval_fixture_loader.py` calls `find_passages_by_vector` too, and T65 missed it.**
+  T25 ③ deleted the passage vector DDL; T25n gave the two **benchmarks**
+  `ensure_passage_vector_index`; T65 gave **four tests** in `test_passages_repo.py` a
+  `passage_vector_index` fixture. This is the **fifth** reader and it asked for nothing — so it
+  passed only when `pytest-randomly` happened to schedule `test_passages_repo` first and leave
+  the index behind. Roughly every other run. **A test whose pass depends on another file's
+  fixture having run first does not fail honestly — it reads as flake and gets re-run rather
+  than fixed.**
+
+  🎯 **The list of readers was written BY HAND twice and was short both times.** So this stops
+  being a list: `test_passage_index_fixture_coverage.py` derives it — an AST scan for tests that
+  call a vector read, asserting each requests the fixture. The `passage_vector_index` fixture
+  moved to the package `conftest.py`, so there is one definition rather than one per file.
+
+  **BITE ×2:**
+
+  ```
+  31. the missed reader loses the fixture again (the bug exactly as it was)
+        FAILED — "these tests query a passage vector index without requesting
+                  `passage_vector_index`, so they pass only when another test created it
+                  first: test_eval_fixture_loader.py::test_loader_writes_tagged_passages…"
+  32. the scanner stops seeing tests (green because BLIND)
+        FAILED — "the scanner found NO test calling a vector read anywhere in this package —
+                  either every reader was removed (then delete this file) or the detector is
+                  broken"
+  ```
+
+  Bite 32 is the one a coverage-checking test usually lacks: if the scan matched nothing, the
+  first check would pass on an empty set forever. It is also validated on cases it was not
+  derived from — a non-test **helper** calling the same read must not be scored, or one utility
+  function would make every file look guilty.
+
+  📐 **The two translations in this row** — `hierarchy::_UPSERT_CYPHER` (4 `ON CREATE SET`
+  branches, each already paired with an unconditional `SET`, so the fold is `coalesce` and
+  nothing else) and `entity_status::_MERGE_CYPHER` (11 create + 3 match, with `NULL`-guards
+  leading the two accumulator CASEs so they produce the initial list on create). `entity_status`
+  also loses a trailing `WITH s WHERE s.user_id` — the same latent cross-tenant write T68 found
+  in `provenance`, and `entity_status_id` hashes `user_id` at line 72, so the key cannot
+  disagree. **Two of two translated queries have now turned out to carry that shape.**
+
+  **QC (a) gates:** unit **4302**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **116 → 100** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ **three** consecutive full DB integration runs on a fresh throwaway
+  Neo4j with AGE live — 605 passed, 0 failed each. Three, because the defect this row fixes was
+  invisible in one.
+  **QC (c) real data:** book/part/chapter/scene hierarchies and entity-status rows upserted and
+  re-upserted in a real Neo4j through the rewritten queries.
 
   ### ✅ T68 2026-08-22 — **the first `ON CREATE SET` translation, and it closes a latent tenancy hole**
 

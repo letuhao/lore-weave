@@ -182,6 +182,10 @@ def _guard_throwaway_neo4j(uri: str) -> None:
         )
 
 
+from app.db.neo4j_repos.vector_indexes import ensure_passage_vector_index
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
+
+
 def _neo4j_dsn() -> tuple[str, str, str] | None:
     uri = os.environ.get("TEST_NEO4J_URI")
     if not uri:
@@ -236,3 +240,21 @@ async def neo4j_driver():
             _neo4j_mod._driver = _prev
     finally:
         await driver.close()
+
+@pytest_asyncio.fixture
+async def passage_vector_index(neo4j_driver):
+    """T65 — these reads need `passage_embeddings_<dim>`, and NOTHING creates it any more.
+
+    T25 ③ deleted the passage vector DDL from `neo4j_schema.cypher` because §3.3 cut the
+    passage scope over to Postgres. That was correct and it left a third consumer nobody
+    named: T25j/T25n found the two BENCHMARKS and gave them
+    `ensure_passage_vector_index`; this suite reads the same index and was missed. It went
+    unnoticed because dev and iso still hold the index PHYSICALLY — removing a declaration
+    does not drop what exists — so only a FRESH Neo4j shows it, and the unit suite cannot.
+
+    Same remedy as the benchmarks: the reader owns its index.
+    """
+    async with neo4j_driver.session() as session:
+        for dim in SUPPORTED_PASSAGE_DIMS:
+            await ensure_passage_vector_index(session, dim)
+    yield

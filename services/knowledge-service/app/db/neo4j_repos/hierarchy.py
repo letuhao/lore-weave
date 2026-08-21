@@ -20,6 +20,7 @@ from typing import Any
 
 from typing import Literal
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession
 
 __all__ = [
@@ -38,26 +39,40 @@ __all__ = [
 # chapter. MERGE on `path` is the natural unique key (P1 deterministic);
 # constraints in neo4j_schema.py enforce uniqueness.
 _UPSERT_CYPHER = """
+// §10.1/§10.2 — engine-neutral. AGE has no ON CREATE SET, so each create-only field folds
+// into the unconditional SET as `coalesce(field, value)`: identical on Neo4j, because
+// coalesce keeps the stored value whenever one exists and there is none on create. The
+// title/updated_at assignments were ALREADY unconditional and are untouched.
 MERGE (b:Book {path: $book_path})
-  ON CREATE SET b.book_id = $book_id, b.created_at = datetime()
-  SET b.book_title = $book_title, b.updated_at = datetime()
+  SET b.book_id    = coalesce(b.book_id, $book_id),
+      b.created_at = coalesce(b.created_at, {NOW}),
+      b.book_title = $book_title,
+      b.updated_at = {NOW}
 MERGE (p:Part {path: $part_path})
-  ON CREATE SET p.part_id = $part_id, p.book_id = $book_id,
-                p.part_index = $part_index, p.created_at = datetime()
-  SET p.part_title = $part_title, p.updated_at = datetime()
+  SET p.part_id    = coalesce(p.part_id, $part_id),
+      p.book_id    = coalesce(p.book_id, $book_id),
+      p.part_index = coalesce(p.part_index, $part_index),
+      p.created_at = coalesce(p.created_at, {NOW}),
+      p.part_title = $part_title,
+      p.updated_at = {NOW}
 MERGE (b)-[:HAS_CHILD]->(p)
 MERGE (c:Chapter {path: $chapter_path})
-  ON CREATE SET c.chapter_id = $chapter_id, c.book_id = $book_id,
-                c.chapter_index = $chapter_index, c.created_at = datetime()
-  SET c.chapter_title = $chapter_title, c.updated_at = datetime()
+  SET c.chapter_id    = coalesce(c.chapter_id, $chapter_id),
+      c.book_id       = coalesce(c.book_id, $book_id),
+      c.chapter_index = coalesce(c.chapter_index, $chapter_index),
+      c.created_at    = coalesce(c.created_at, {NOW}),
+      c.chapter_title = $chapter_title,
+      c.updated_at    = {NOW}
 MERGE (p)-[:HAS_CHILD]->(c)
 WITH c
 UNWIND $scenes AS sc
   MERGE (s:Scene {path: sc.path})
-    ON CREATE SET s.scene_id = sc.scene_id, s.book_id = $book_id,
-                  s.chapter_id = $chapter_id, s.scene_index = sc.scene_index,
-                  s.created_at = datetime()
-    SET s.updated_at = datetime()
+    SET s.scene_id    = coalesce(s.scene_id, sc.scene_id),
+        s.book_id     = coalesce(s.book_id, $book_id),
+        s.chapter_id  = coalesce(s.chapter_id, $chapter_id),
+        s.scene_index = coalesce(s.scene_index, sc.scene_index),
+        s.created_at  = coalesce(s.created_at, {NOW}),
+        s.updated_at  = {NOW}
   MERGE (c)-[:HAS_CHILD]->(s)
 RETURN c.path AS chapter_path
 """
@@ -85,7 +100,7 @@ async def upsert_hierarchy_chain(
     the module docstring.
     """
     await session.run(
-        _UPSERT_CYPHER,
+        render(_UPSERT_CYPHER, "neo4j"),
         book_path=book_path, book_id=book_id, book_title=book_title,
         part_path=part_path, part_id=part_id, part_index=part_index, part_title=part_title,
         chapter_path=chapter_path, chapter_id=chapter_id,
