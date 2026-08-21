@@ -504,10 +504,31 @@ stated per row.
 | **SPG-R12** | `TVL_002` / `TVL_004` | composite travel and travel encounters gain `Passage` as their spatial substrate (SPG-A13) | **verify** |
 | **SPG-R13** | `TMP_001` + `_boundaries/02_extension_contracts.md` §2.X | **NEW 2026-07-30, discovered while retyping the machine contract.** `tilemap_templates` / `grid_size_per_kind` / `default_template_per_kind` / `skip_kind` were keyed by the retired `ChannelTier`; the **type** is fixed (`MapKind`), but the **semantics** now nearly collapse. That contract assumed **four** tilemap-bearing tiers at decreasing zoom (the `256/192/128/64` default — four values for four tiers, **correct as written**; an earlier note in this session calling it underspecified was wrong). Under `SPG-R9` the tilemap sits on **`Locale` alone**: `World`/`Region` are served by `GEO_001`'s Voronoi mesh, which **did not exist as a render target** when TMP_001 was drafted, and `Domain` carries `CSC_001`'s interior composition. So a per-kind map now has one meaningful key. **Routed to TMP_001, not decided here** — collapsing another feature's DRAFT schema while holding the `_boundaries` lock for a rename is the scope creep the mutex exists to prevent. | **verify** — type applied, semantics OPEN |
 
+| **SPG-R14** ✅ **APPLIED 2026-08-22** | `PF_001` | **the doc that owns "a place" was never in this table.** Thirteen rows corrected `MAP_001`, `GEO_001`, `CSC_001`, `ACT_001`, `TMP_001`, `EF_001`, `TVL_002`, `03_multiverse` and `RTM` — and missed `PF_001`, which is **CANDIDATE-LOCK, owns the `place.*` namespace, and is where an actor spawns.** It is written entirely in the retired `ChannelTier` ladder. Re-stated in `MapKind` terms | **APPLIED** — the mapping is below, and it is `SPG-A3`'s own consequence rather than a new decision: **the ladder's three middle rungs are ONE RECURSIVE KIND**, which is what replacing an ordinal ladder with a matrix was *for*. `PlaceId(ChannelId)` is **unchanged and needed no change** — `PF_001` had already keyed a place to a channel row in April, which is `SDF-A31` reached independently four months earlier. Reject-rule **ids are unchanged on purpose** (see below) |
 **Inherited and still unapplied:** [`WSA-R19..R24`](32_locus_as_actor.md) — doc 32 sealed with its
 own amendment rows explicitly *"PROPOSED, not applied: no feature spec was edited by this arc."*
 `SPG-R10` depends on `WSA-R19`. The two sets should be applied in one pass, because `WSA-R19`
 (`EntityId::Place`) and `SPG-A1` (`holder`) are the same seam approached from two directions.
+
+### `SPG-R14`'s mapping — five rungs become three kinds plus recursion
+
+| `ChannelTier` (retired `SPG-R1`) | `MapKind` | why this one |
+|---|---|---|
+| `Continent` · `Country` · `District` | **`Region`**, nesting | `MapKind::Region` is declared *"a geographic subdivision of a World; **recursive** (a Region may hold Regions)"* (§4). The three middle rungs were never three **kinds** — they were three **depths**, and one of them (`Country`) was never geography at all: §4 already moved political structure to an `owner_*` **attribute**, so territory changes hands by rebinding a relation instead of restructuring the tree |
+| `Town` | **`Locale`** | `SPG-R9` — `Locale` carries the tilemap |
+| `Cell` | **`Domain`** | `SPG-R5` (*"cell" → `Domain`*) · `CSC_001` owns the interior composition · `TMP-A1` excludes the cell tier from any `tilemap_view` |
+
+**So `PF_001`'s V1 invariant — *a place is 1:1 with a cell-tier channel* — reads: A PLACE IS 1:1 WITH A
+`Domain`.** Its own examples confirm the reading rather than strain it: a pavilion, a tea house and a
+market are interiors, which is exactly what `Domain` is for.
+
+**What is deliberately NOT renamed, and the reason is a trade rather than an omission:**
+`place.invalid_place_type_for_channel_tier` is a **registered V1 reject-rule id**
+([`02_extension_contracts.md:130`](_boundaries/02_extension_contracts.md),
+[`03_validator_pipeline_slots.md:212`](_boundaries/03_validator_pipeline_slots.md)) and reject ids reach
+clients. **An id is a contract; the words inside it are not.** Renaming a shipped reject id to fix its
+prose costs compatibility for no semantic gain, and would need its own `_boundaries` claim. **The id
+stays, its description is corrected, and the naming debt is recorded rather than paid.**
 
 ### SPG-A17 — Absolute position is defined only up to the nearest coordinate root
 
