@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: build the ratchet §10.1 needs — class (d) must fall by ENGINE-AGNOSTIC repo modules too, not only by port migration.**
+**RESUME: translate `entities` to AGE-neutral Cypher — 50 of the 161 dialect sites, every construct with a measured equivalent.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,71 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T62 2026-08-22 — **§10.1's second path gets its number: 161 dialect sites, ratcheted**
+
+  ```
+  [port-adoption-gate] Neo4j-only dialect 161/161 in the repo layer
+                       — §10.1's second path to class (d) zero
+
+      50  entities     CALL {} x10 · FOREACH x2 · ON CREATE SET x7 · ON MATCH SET x4 · datetime() x27
+      18  enrichment   ON CREATE SET x2 · ON MATCH SET x2 · datetime() x14
+      18  relations    CALL {} x2 · ON CREATE SET x2 · ON MATCH SET x2 · datetime() x12
+      13  events       FOREACH x1 · ON CREATE SET x1 · ON MATCH SET x1 · apoc. x1 · datetime() x9
+      13  facts · 13 hierarchy · 13 provenance · 7 passages · 6 temporal ·
+       5  entity_status · 4 maintenance · 1 project_graph
+  ```
+
+  §10.1 decided the port does **not** grow to 106 methods and that the repo layer becomes
+  engine-agnostic instead. **A decision with no number is a plan with no mechanism** — which is
+  precisely how class (d) sat at a stale "28" for eight days while the deferral quoting it
+  blocked the cutover. This is that number, shrink-only, printed every run.
+
+  📐 **Every construct counted has a MEASURED AGE equivalent**, not a hoped-for one:
+  `ON CREATE SET` → `coalesce` · `ON MATCH SET` → unconditional `SET` · `datetime()` →
+  `timestamp()` · `CALL {}` → SQL CTE/`LATERAL` · `FOREACH` → two statements in one
+  transaction (T58) · `apoc.` → the one with no equivalent at all, and there is exactly **one**
+  left, in `events`. The first four come from the 2026-08-11 construct probe; the fifth was
+  established by T58 and the sixth is why the count keeps `apoc.` separate rather than folding
+  it in.
+
+  🎯 **The probe's estimate was close and is now exact.** It predicted *"~33 anchoring rewrites
+  + 157 renames + 14 `CALL{}`"*. Measured inside the repo layer: **37** anchoring (23 + 14),
+  **106** renames, **14** `CALL{}` — plus **3** `FOREACH` and **1** `apoc.` it did not look
+  for. An eleven-day-old estimate that survives its own measurement is worth saying out loud;
+  most of the numbers checked in this run did not.
+
+  ⚠️ **A COUNT, not a proof, and the gate says so.** Zero here means no *known* Neo4j-only
+  construct remains — **not** that the layer runs on AGE. The things with teeth are the
+  conformance suite (124/41, T59) and the shadow differential (239/239 agreed, T60). This
+  number exists so the translation cannot stall silently.
+
+  ⚠️ **Text, not AST, and deliberately.** These constructs live inside triple-quoted Cypher
+  STRINGS, which an AST walk sees as opaque — the opposite trade from every other detector in
+  this file, and it carries the opposite risk: it cannot tell a construct from prose about one.
+  Accepted inside `neo4j_repos`, where a docstring naming `ON CREATE SET` is describing this
+  file's own Cypher.
+
+  **BITE ×2:**
+
+  ```
+  24. the `datetime()` pattern loses its zero-arg anchor  (`\(\s*\)` -> `\(`)
+        selftest FAIL — "`datetime($when)` was counted as the zero-arg `datetime()`"
+        live: dialect GREW to 164   <- a ceiling meant to reach zero, inflated by parameterised calls
+  25. a NEW Neo4j-only construct lands in the repo layer
+        live: FAIL — "Neo4j-only dialect GREW to 163 (ceiling 161)"
+  ```
+
+  Bite 24 is the one worth having: the failure mode of a text detector is over-counting, and a
+  backlog whose target is **zero** can never reach it if parameterised `datetime($when)` calls
+  are counted alongside the zero-arg form AGE has no name for.
+
+  **QC (a) gates:** `port-adoption-gate` PASS at 54/19/2, class (d) 34/34, dialect 161/161,
+  `--selftest` PASS and proven red by bite 24; `gate-wiring-gate` OK (108); four plan gates
+  green.
+  **QC (b) the seam:** N/A — one gate script; no service code, no wire contract.
+  **QC (c) real data:** the 161 are read from the twelve repo modules on every run, never from
+  a list — which is the whole difference between this and the estimate it replaces.
 
   ### ✅ T60 2026-08-22 — **T43/QC-7 RE-DERIVED: AGE clears the coverage floor, 239/239 agreed**
 

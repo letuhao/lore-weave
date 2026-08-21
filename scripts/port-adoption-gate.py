@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import ast
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -438,6 +439,34 @@ def selftest() -> int:
               "the resolution and the classification disagree end to end")
         ok = False
 
+    # ── the dialect ratchet (§10.1's second path) ────────────────────────────────────
+    # These live inside triple-quoted Cypher STRINGS, so the detector is text and its risk is
+    # the opposite of the AST ones above: it CANNOT tell a construct from prose about it. That
+    # is an accepted limit inside `neo4j_repos`, where a docstring naming `ON CREATE SET` is
+    # describing this file's own Cypher — but the counting itself must be right, and the
+    # case-insensitive and spacing variants are where a hand-written regex silently misses.
+    probe = (
+        "q = '''MERGE (e:E {id:1})" + chr(10) +
+        "ON  CREATE   SET e.a = datetime()" + chr(10) +
+        "on match set e.b = 1" + chr(10) +
+        "CALL  { RETURN 1 }" + chr(10) +
+        "FOREACH (x IN [1] | SET e.c = 2)" + chr(10) +
+        "CALL apoc.coll.union([], [])'''"
+    )
+    counts = {name: len(pat.findall(probe)) for name, pat in _DIALECT_PATTERNS}
+    for name, want in (("ON CREATE SET", 1), ("ON MATCH SET", 1), ("datetime()", 1),
+                       ("CALL { }", 1), ("FOREACH", 1), ("apoc.", 1)):
+        if counts[name] != want:
+            print(f"  FAIL — dialect detector counted {name!r} {counts[name]} times, "
+                  f"expected {want} (irregular spacing / lower case are the real forms)")
+            ok = False
+
+    # The negative: `datetime(x)` is NOT the zero-arg call AGE lacks a name for, and counting
+    # it would inflate a ceiling that is supposed to reach zero.
+    if [len(p.findall("f.at = datetime($when)")) for n, p in _DIALECT_PATTERNS if n == "datetime()"][0]:
+        print("  FAIL — `datetime($when)` was counted as the zero-arg `datetime()`")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring and a comment, in both directions (non-vacuous)")
     return 0 if ok else 1
@@ -631,9 +660,75 @@ def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list
     return out
 
 
+# ── THE SECOND PATH TO ZERO (spec §10.1) ────────────────────────────────────────────────
+#
+# §10.1 decided that class (d) does NOT reach zero by growing `GraphStore` to 106 methods —
+# 85 operations against a port of 21 would make the port a mirror of `neo4j_repos` with a
+# different import path, which its own law forbids ("grows by demand, not by inventory").
+# Substitutability lands at two levels instead: the port stays the DOMAIN boundary, and the
+# repo layer becomes ENGINE-AGNOSTIC.
+#
+# That second path needs a number, or it is a plan with no mechanism — the failure this file
+# already records twice (the stale 28, the stale vector precondition). This is that number:
+# the Neo4j-ONLY dialect sites left inside `neo4j_repos`.
+#
+# Each is a construct AGE rejects and has a measured equivalent for
+# (`docs/measurements/2026-08-11-age-construct-probe.md`, extended by T57–T59):
+#
+#   ON CREATE SET  ->  SET x = coalesce(x, v)
+#   ON MATCH SET   ->  unconditional SET
+#   datetime()     ->  timestamp()
+#   CALL { }       ->  SQL CTE / LATERAL          (AGE lives in Postgres; the host supplies it)
+#   FOREACH        ->  two statements in one transaction   (T58)
+#   apoc.          ->  no AGE equivalent at all; must be expressed another way
+#
+# ⚠️ A COUNT, not a proof. Zero here means no *known* Neo4j-only construct remains, NOT that
+# the layer runs on AGE — that is what the conformance suite and the shadow differential are
+# for, and they are the ones with teeth. This number exists so the translation cannot stall
+# silently, the way class (d) sat at "28" for eight days.
+_DIALECT_ROOT = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
+_DIALECT_PATTERNS = (
+    ("ON CREATE SET", re.compile(r"ON\s+CREATE\s+SET", re.I)),
+    ("ON MATCH SET", re.compile(r"ON\s+MATCH\s+SET", re.I)),
+    ("datetime()", re.compile(r"\bdatetime\s*\(\s*\)")),
+    ("CALL { }", re.compile(r"CALL\s*\{")),
+    ("FOREACH", re.compile(r"\bFOREACH\s*\(")),
+    ("apoc.", re.compile(r"\bapoc\.")),
+)
+
+#: Shrink-only, like every other number here. 161 measured 2026-08-22 (T62), the first time
+#: this backlog was counted rather than estimated. The 2026-08-11 probe predicted "~33
+#: anchoring rewrites + 157 renames + 14 CALL{}"; measured inside the repo layer it is 37
+#: anchoring, 106 renames, 14 CALL{}, plus 3 FOREACH and 1 apoc the probe did not look for.
+MAX_NEO4J_DIALECT_SITES = 161
+
+
+def scan_dialect() -> dict[str, dict[str, int]]:
+    """Neo4j-only Cypher constructs per repo module. Text, not AST, and deliberately so:
+    these live inside triple-quoted Cypher STRINGS, which an AST walk sees as opaque."""
+    out: dict[str, dict[str, int]] = {}
+    if not os.path.isdir(_DIALECT_ROOT):
+        return out
+    for fname in sorted(os.listdir(_DIALECT_ROOT)):
+        if not fname.endswith(".py"):
+            continue
+        try:
+            src = open(os.path.join(_DIALECT_ROOT, fname), encoding="utf-8",
+                       errors="replace").read()
+        except OSError:
+            continue
+        hits = {name: len(pat.findall(src)) for name, pat in _DIALECT_PATTERNS}
+        hits = {k: v for k, v in hits.items() if v}
+        if hits:
+            out[fname[:-3]] = hits
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true", help="show the modules")
+    ap.add_argument("--dialect", action="store_true",
+                    help="list the Neo4j-only Cypher constructs left in the repo layer")
     ap.add_argument("--classify", action="store_true",
                     help="split the concrete binders into the four classes of §1.3")
     ap.add_argument("--selftest", action="store_true", help="prove this gate can go red")
@@ -784,6 +879,34 @@ def main() -> int:
         return 1
     print(f"[port-adoption-gate] class (d) {len(class_d)}/{MAX_CLASS_D} — modules needing "
           f"a port operation that does not exist; AGE cannot be the only engine until 0")
+    dialect = scan_dialect()
+    dsites = sum(sum(v.values()) for v in dialect.values())
+
+    if args.dialect:
+        print(f"[port-adoption-gate] {dsites} Neo4j-only dialect site(s) in the repo layer"
+              f" (ceiling {MAX_NEO4J_DIALECT_SITES})")
+        for mod in sorted(dialect, key=lambda m: -sum(dialect[m].values())):
+            hits = dialect[mod]
+            detail = ", ".join(f"{k} x{v}" for k, v in sorted(hits.items()))
+            print(f"  {sum(hits.values()):4d}  {mod:22s} {detail}")
+        return 0
+
+    if dsites > MAX_NEO4J_DIALECT_SITES:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — Neo4j-only dialect GREW to {dsites} "
+              f"(ceiling {MAX_NEO4J_DIALECT_SITES}).{chr(10)}")
+        print("  A new `ON CREATE SET` / `datetime()` / `CALL {}` / `FOREACH` / `apoc.` was")
+        print("  added inside `neo4j_repos`. Spec §10.1 makes the repo layer ENGINE-AGNOSTIC;")
+        print("  every one of these has a measured AGE equivalent (2026-08-11 probe, T57-T59).")
+        print("  Run --dialect to see where.")
+        return 1
+    if dsites < MAX_NEO4J_DIALECT_SITES:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — dialect IMPROVED to {dsites} but the "
+              f"ceiling still says {MAX_NEO4J_DIALECT_SITES}.{chr(10)}")
+        print("  Lower it in the same commit (rule 5). This is the SECOND path to class (d)")
+        print("  zero and the one §10.1 chose; a stale ceiling is how the first one sat at 28.")
+        return 1
+    print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in the "
+          f"repo layer — §10.1's second path to class (d) zero")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 
