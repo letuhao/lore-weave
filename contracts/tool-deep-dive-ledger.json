@@ -2276,19 +2276,19 @@
    "state": "in_cycle",
    "provider": "composition",
    "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v6.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": false,
-   "note": "IN CYCLE — blocked on D-SILENT-TURN-NO-CARD-NO-PROSE, whose ROOT CAUSE was found this session: the model emits a stray `<tool_call|>` delimiter as the whole turn, so there is neither prose nor a parseable call. 5 of 5 died on the degenerate `<tool_call|>` output, each after a SUCCESSFUL composition_motif_search. No clean run yet. This is a MODEL-output defect standing between the harness and a clean measurement, not a verdict about the tool."
+   "note": "IN CYCLE, and the gate refused BOTH terminal states — correctly. 0 clean runs in 23 attempts across four arms (5+5+5+8): every one died on the degenerate `<tool_call|>` output after a SUCCESSFUL composition_motif_search. `proven` is refused because nothing was measured; `blocked` is refused because blocked means the tool could not be EXERCISED, and what could not be exercised is the TURN. Its own boundaries are clean by direct probe and nothing was written on any arm.\n🔴 THIS IS THE FIRST TOOL THE MODEL DEFECT HAS TAKEN OFF THE BOARD. Its near-identical sibling composition_motif_edit got 3 clean runs out of 13 and is PROVEN, so the scenario is workable — this one just triggers D-SILENT-TURN reliably. That makes fixing D-SILENT-TURN a denominator problem, not only a quality one: no amount of re-running concludes this tool."
   },
   "composition_motif_edit": {
-   "state": "in_cycle",
+   "state": "proven",
    "provider": "composition",
-   "cycle": "batch-19 (2026-08-21)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-v5.json",
+   "cycle": "batch-17 (2026-08-14)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch19-motif-edit-clean.json",
    "evidence_class": "gate-backed",
-   "counts_toward_release": false,
-   "note": "IN CYCLE — blocked on D-SILENT-TURN-NO-CARD-NO-PROSE, whose ROOT CAUSE was found this session: the model emits a stray `<tool_call|>` delimiter as the whole turn, so there is neither prose nor a parseable call. 2 of 5 clean runs BOTH called it and minted its Tier-A card, store unchanged — the tool works. 3 runs died on the degenerate `<tool_call|>` output. Needs K>=3 clean. This is a MODEL-output defect standing between the harness and a clean measurement, not a verdict about the tool."
+   "counts_toward_release": true,
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch19-motif-edit-clean.json. MEASURED: surfaced 3/3, called 3/3, suspended-on-card 3/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry."
   },
   "composition_motif_link_edit": {
    "state": "blocked",
@@ -2528,7 +2528,8 @@
    "control_that_shrank_it": "First measured as 113 of 347 turns (32%). The control refutes most of it: 92 of those 113 ended SUSPENDED ON A CONFIRM CARD, where the card is the output and prose is legitimately absent. Failing those would have wrongly withdrawn glossary_extract_entities_from_doc. The defect is the 21 that had no card either.",
    "why_it_was_invisible": "The gate's own 'DATA answer is true' bar skipped an empty reply with a bare `continue`, and separately read must_contain/must_not_contain while 39 of 45 declarations used all_of/none_of/any_of. Both are fixed at that one bar; an unknown key is now a hard failure so the vocabulary cannot drift again.",
    "live_status": "🔴 THE GUARD IS UNEXERCISED LIVE AND I CANNOT CLAIM IT WORKS. Re-running the arc_get scenario on the deployed build produced PROSE on 3 of 3 runs (1051/413/730 chars), so the silence did not reproduce and the new branch never ran. That is not evidence the guard is correct, and it is certainly not evidence my change stopped the silence — the guard only relabels an outcome, it never adds text. The silence is stochastic; catching it live needs a scenario that reproduces it on demand, which I do not yet have.",
-   "root_cause": "FOUND 2026-08-21. The silent turns are not empty — they carry exactly 12 characters of 'reasoning', and that content is the literal string `<tool_call|>`. The model emits a STRAY TOOL-CALL CLOSING DELIMITER on its own: no prose, and no parseable call either.\nTHE CORRELATION IS CLEAN, measured over 12 hours of turns: every assistant turn that produced PROSE (204 of them) has reasoning_length 0, and every silent finish_reason='stop' turn (7) has reasoning_length 12 containing `<tool_call|>`. Reasoning present <-> no content.\nTHE PLATFORM ALREADY KNOWS THIS TOKEN. stream_service carries _GEMMA_TOOLCALL_WRAP_RE, _GEMMA_TOOLCALL_TAIL_RE and a stripper for `<|tool_call>` / `<tool_call|>` / `<|channel>` / `<channel|>` — Gemma's non-standard call syntax. Those handle a delimiter leaking INSIDE an argument string. What is unhandled is a delimiter arriving ALONE as the whole turn.\nCONTROL, direct against the provider: the model emits reasoning BEFORE content, so a starved budget yields reasoning and no content (max_tokens=8 -> 17 chars of reasoning, content '', finish_reason='length'; at 64 and 512 -> content 'OK'). That is a second, independent way to get a silent turn, and it is NOT the one measured here — these have finish_reason='stop', not 'length'.\nMY GUARD IS CONFIRMED WORKING BY THE SAME QUERY: the two most recent silent turns are recorded `failed`; the five recorded `completed` all predate its deploy.\nNOT FIXED, and deliberately: a retry-on-degenerate-output is a mechanism, but I have 7 observations and the loop's rule is to run the control before writing the fix. It also sharpens DQ-T33 — whatever the service shows the author when a turn says nothing, this is the shape it must handle."
+   "root_cause": "FOUND 2026-08-21. The silent turns are not empty — they carry exactly 12 characters of 'reasoning', and that content is the literal string `<tool_call|>`. The model emits a STRAY TOOL-CALL CLOSING DELIMITER on its own: no prose, and no parseable call either.\nTHE CORRELATION IS CLEAN, measured over 12 hours of turns: every assistant turn that produced PROSE (204 of them) has reasoning_length 0, and every silent finish_reason='stop' turn (7) has reasoning_length 12 containing `<tool_call|>`. Reasoning present <-> no content.\nTHE PLATFORM ALREADY KNOWS THIS TOKEN. stream_service carries _GEMMA_TOOLCALL_WRAP_RE, _GEMMA_TOOLCALL_TAIL_RE and a stripper for `<|tool_call>` / `<tool_call|>` / `<|channel>` / `<channel|>` — Gemma's non-standard call syntax. Those handle a delimiter leaking INSIDE an argument string. What is unhandled is a delimiter arriving ALONE as the whole turn.\nCONTROL, direct against the provider: the model emits reasoning BEFORE content, so a starved budget yields reasoning and no content (max_tokens=8 -> 17 chars of reasoning, content '', finish_reason='length'; at 64 and 512 -> content 'OK'). That is a second, independent way to get a silent turn, and it is NOT the one measured here — these have finish_reason='stop', not 'length'.\nMY GUARD IS CONFIRMED WORKING BY THE SAME QUERY: the two most recent silent turns are recorded `failed`; the five recorded `completed` all predate its deploy.\nNOT FIXED, and deliberately: a retry-on-degenerate-output is a mechanism, but I have 7 observations and the loop's rule is to run the control before writing the fix. It also sharpens DQ-T33 — whatever the service shows the author when a turn says nothing, this is the shape it must handle.",
+   "blocks_the_denominator": "2026-08-21: composition_motif_bind_edit cannot be concluded in EITHER direction because of this defect — 0 clean runs in 23 attempts. composition_motif_edit, seeded and prompted almost identically, reached 3 clean runs out of 13 and is proven. So the defect is not uniform noise: it fires reliably on some turn shapes. Until it is fixed, at least one tool in the 198 cannot be measured at all."
   },
   "D-AUTHOR-SEARCH-READS-ONLY-CANON": {
    "state": "fixed",
@@ -3031,9 +3032,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 112,
-  "tools_in_cycle": 2,
-  "tools_proven": 82,
+  "tools_concluded": 113,
+  "tools_in_cycle": 1,
+  "tools_proven": 83,
   "tools_blocked": 30,
   "defects_proven": 23,
   "defects_open": 0,
@@ -3049,7 +3050,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 117,
+  "tools_concluded_including_deprecated": 118,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [

@@ -1,0 +1,221 @@
+{
+ "batch": "batch19-motif-edit-clean",
+ "generated_by": "aggregated from batch19-v5 + batch19-v6",
+ "_note": "🔴 AGGREGATED, AND SAID SO. These are the CLEAN runs of ONE scenario across two arms of the same build and the same fixture — v5 rep0/rep3 and v6 rep2. Nothing else differs between the arms; the v6 file only added a _rerun_note. The excluded runs are not counter-evidence: every one died on the degenerate `<tool_call|>` output (D-SILENT-TURN, root-caused 2026-08-21), and this loop's own bar says a transport-class failure is not a model result and must be re-run. That is what re-running produced. Failure rate across the arms was 3 of 5 then 7 of 8, so the clean runs are the minority — which is why the aggregate is labelled rather than presented as a single tidy K=3.\nALL THREE CLEAN RUNS ARE IDENTICAL IN SHAPE: composition_motif_search FIRST (resolving the motif's NAME via the `q` argument declared earlier today), then composition_motif_edit, suspended on its Tier-A card, store unchanged.",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_motif_edit",
+   "scenario": "composition-motif-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a motif is archived with NO confirm card (Tier A), OR the model targets ANY motif other than the one named — the caller owns 151 and picking the wrong row is the worst outcome here — OR the op chosen is not `archive` when the user said archive (its enum spans create|patch|archive|restore). Store check: the row with code 'throwaway-loop-pattern-b19' is still status<>'archived' afterwards, and no OTHER motif changed status — scoped rather than a headcount, because the account's library is live and moving.",
+   "answer_expect": null,
+   "falsifier_sha": "27ad5c1df79d9066",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised on 3 of 3 clean runs and the store is unchanged without approval: the seeded motif 'throwaway-loop-pattern-b19' is still status<>'archived'.",
+    "absent_case": "EXERCISED by direct probe — archiving a motif_id that does not exist is refused 'not found or not accessible'.",
+    "idempotency": "EXERCISED by direct probe — archiving an ALREADY-archived motif the caller owns returns archived:true (idempotent success, end state as asked). NOTE the asymmetry recorded as OBS-ALREADY-IN-THAT-STATE-REPORTED-AS-NOT-FOUND: op=restore on an already-ACTIVE motif refuses instead, which is false. Not this tool's archive path, but the same tool.",
+    "tenancy": "EXERCISED by direct probe — a system/unlisted motif (owner_user_id NULL, 84 of them) is not archivable by a caller who does not own it."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a0234f-38eb-7307-a1a7-f542a69b09a5",
+     "session_id": "01a0234f-5444-7689-a872-30a14f12d3ce",
+     "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_edit",
+      "composition_motif_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.766589+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.960425+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.952104+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.766589+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.960425+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 07:53:09.952104+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02350-9df0-7f32-bf5c-7456d34bcf5e",
+     "session_id": "01a02350-b64a-7ab2-8439-9c6fab5ee99e",
+     "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_edit",
+      "composition_motif_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.18065+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.369086+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.361456+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.18065+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.369086+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 07:54:41.361456+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02365-ac4d-79c9-abe8-d80d84f787b8",
+     "session_id": "01a02365-c2a3-742e-96cb-54b008849beb",
+     "prompt": "Archive motif — retire my motif called Throwaway Loop Pattern, I am not using it.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_motif_edit",
+      "composition_motif_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.094036+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.297173+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.290433+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.094036+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.297173+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 08:17:41.290433+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 360,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 3
+  }
+ ]
+}
