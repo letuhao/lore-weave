@@ -1,16 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `1c4f35c00` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+**HEAD:** `b536ffd97` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
 
-## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 153 of 198 shippable tools concluded
+## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 166 of 198 shippable tools concluded
 
 **Where it stands, derived not typed** — `python scripts/toolloop/work_remaining.py`:
 
 ```
-198 shippable (315 federated − 117 deprecated) | 153 concluded | 45 remaining | 0 in flight
+198 shippable (315 federated − 117 deprecated) | 166 concluded | 32 remaining | 0 in flight
 ```
 
-113 proven, 40 blocked, batches 1–29 closed. The `/goal` directive that drove it was
+122 proven, 44 blocked, batches 1–32 closed. The `/goal` directive that drove it was
 CLEARED on 2026-08-21; [`../plans/2026-08-13-tool-deep-dive-GOAL.md`](../plans/2026-08-13-tool-deep-dive-GOAL.md)
 is the prompt to paste back to resume, and
 [`../plans/2026-08-13-tool-deep-dive-RUNBOOK.md`](../plans/2026-08-13-tool-deep-dive-RUNBOOK.md)
@@ -46,11 +46,28 @@ defect, the owning suite green, and the image verified BY CONTENT (md5 per file,
 * `D-SILENT-TURN-NO-CARD-NO-PROSE` — recording is fixed (stored `failed`, not `completed`); the
   silence itself is not.
 
-**🔴 `gate.py audit` is RED, deliberately.** Three tools — `world_get`, `world_map_list`,
-`world_map_get` — have evidence on disk and NO ledger row, because their replies are a FALSE
-ABSENCE: they tell the author a world they own does not exist, and one run offered to rebuild it.
-The answer bar refuses to let a dishonest answer be concluded around, which is what it is for.
-Fixing it is a retrieval-layer decision — **DQ-T36**. Do not clear the audit by concluding them.
+**🔴 `gate.py audit` is RED, deliberately — two tools, both for the same honest reason.**
+`kg_entity_edge_timeline` and `kg_ontology_propose` have evidence and no ledger row.
+The first replies with a FALSE ABSENCE ("I don't have any information about Aldric Vane") over a
+node its own seed created; the answer bar refuses to let a dishonest answer be concluded around.
+The second is refused on a precondition whose only fix is approving ANOTHER tool's card, and a
+dedicated clean arm lost 2 of 5 to transport errors twice running. **Do not clear the audit by
+concluding them.**
+
+**Three hazards this stretch found the hard way — all now guarded:**
+
+| hazard | guard |
+|---|---|
+| a whole provider silently reverts to a stale image (poisoned Docker COPY cache) — twice, and deploying ANY service can trigger it for a DIFFERENT one | `catalog.py --refresh` refuses to cache a surface that declares less than the one it replaces, and names `--no-cache` in the refusal |
+| a seed assertion is SQL written against a schema I did not read — cost 25 runs (`WHERE id=` on a table keyed `project_id`), 4 runs, and an arm | `fe_runner` executes every seed assertion once before spending a turn and refuses the batch |
+| an edit made `main()` a silent no-op; every run exited 0 having done nothing, and the helper's own tests stayed green | the CLI is exercised end-to-end as a subprocess, plus a check that `main()` still references `ApprovalState`/`main_async`/`emit_batch` |
+
+**The measurement that reframed the loop:** batch 30 proved the world family's id chain IS
+walkable — four hops, 5/5 — but only ACROSS turns. Batches 31–32 then found the sharper problem:
+a write tool that is missing from the turn's surface does not produce "I can't", it produces a
+FALSE SUCCESS. `world_map_update_marker` ranks **#1 of all 315 tools** for its own prompt, was
+advertised on 0 of 5 runs, and reported "Ironhold is now Ironhold Keep" 5/5 with the pin
+unchanged. See DQ-T36.
 
 **Three things this stretch measured that are worth carrying forward:**
 
