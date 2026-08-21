@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: QC-3 ✅ · QC-6 ✅. ⛔ STOPPED — `T33`'s live bite needs a PO call (see T33b): the only stack with `:Event` nodes is dev and `causal-edges` WRITES. Then `T46` (live repro in QC-6b) → `T25` ③ → `T48` → `T49` ⛔.**
+**RESUME: QC-3 ✅ · QC-6 ✅. ⛔ `T33` live bite needs a PO call (T33b: only dev has `:Event`, `causal-edges` WRITES). `T46` still has NO live evidence — my repro was retracted (T46e). Then `T25` ③ → `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 42 of 85 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 42 of 84 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-5` (17/41) · `T46` (2/5) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -13547,21 +13547,27 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite
   from the weaker side.**
   (depends on T45)
-  🔴 **THE ASYMMETRY IS NOW A LIVE REPRODUCTION, not a table row (QC-6b, 2026-08-21).**
-  `bitemporal-parity-gate` has carried *"pin-aware supersession: postgres HAS it, neo4j does
-  NOT — an author's EXPLICIT close survives re-derivation in glossary and would be overwritten"*
-  as a capability difference. QC-6b renamed a real entity and re-kinded it, then ran a real
-  chapter extraction, and read the node back:
+  ⚠️ **RETRACTED SAME DAY (T46e, 2026-08-21) — I claimed a live reproduction here and it was
+  not one.** The claim was: QC-6b renamed an entity, re-ran extraction, the rename was
+  overwritten, therefore the pin-aware supersession gap had been reproduced. Checked afterwards,
+  and it is wrong on the mechanism:
 
   ```
-  after re-kind      canonical='lam trach vo anh'   kind=person     <- the author's edit
-  after extraction   canonical='lam trach'          kind=character  <- the extractor's
+  merge_entity ON MATCH SET  touches aliases, source_types, provenances, confidence,
+                             auto_created, version, updated_at -- NOT name/canonical_name/kind
+                             (and it already honours a pin: `e.user_edited`)
+  glossary SSOT for the anchor: cached_name unchanged, updated_at 2026-08-11
   ```
 
-  Identity held perfectly (one node, `e.id` unmoved); the **content** did not. An author who
-  renames a character and then re-runs extraction loses the rename **silently** — no error, no
-  conflict, the node simply reads as the extractor left it. `maintain_chain`'s pin-awareness is
-  the mechanism that would have preserved it, and moving it is what this row is for.
+  **There was no author rename.** QC-6b drove `/internal/extraction/glossary-sync-entity`, the KG
+  **mirror-write** endpoint, with a name the glossary side had never been told about. The SSOT
+  still held the original and `app/events/handlers.py:1090` re-mirrored it back. A mirror
+  reconverging on its source of truth is the system **working**, not the asymmetry firing.
+
+  📐 **So this row's asymmetry is still exactly what `bitemporal-parity-gate` records** — pin-aware
+  supersession on FACT chains (`valid_to_pinned`), an author's explicit CLOSE surviving
+  re-derivation. A different code path from entity name/kind, and reading one as the other is the
+  analogy rule 13 forbids. **T46 still needs its live evidence and this batch does not supply it.**
   ---
   ### 📊 T46a 2026-08-14 — **"port Go → Python" is a category error, and the KG is the weaker side**
 
@@ -14148,26 +14154,22 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   each checked to have **actually landed** — a no-op rename would make every later assertion
   true and meaningless.
 
-  ### 🔴 AND IT SURFACED T46'S ASYMMETRY, LIVE — the author's rename DID NOT SURVIVE
+  ### ⚠️ AND THE SECONDARY CLAIM I FIRST WROTE HERE WAS WRONG — retracted (T46e)
 
-  ```
-  after re-kind      canonical='lam trach vo anh'   kind=person     <- the author's edit
-  after extraction   canonical='lam trach'          kind=character  <- the extractor's
-  ```
+  The run showed the node's name and kind back at their original values after extraction, and I
+  recorded that as *"the author's rename did not survive — T46's asymmetry, live"*. It is not.
+  `merge_entity`'s `ON MATCH SET` never writes `name`, `canonical_name` or `kind` (it already
+  honours an `e.user_edited` pin), and the glossary SSOT for this anchor still holds its original
+  name at `updated_at 2026-08-11`. **No author rename ever happened**: this proof drives the KG
+  MIRROR-write endpoint, so the value I wrote was never in the source of truth, and the glossary
+  event handler re-mirrored the true value back. That is correct behaviour.
 
-  The identity held; the **content did not**. Re-extraction overwrote the author's explicit
-  rename and re-kind with the values derived from the chapter text. This is exactly the row
-  `bitemporal-parity-gate` has been carrying as a capability difference — *"pin-aware
-  supersession: postgres HAS it, neo4j does NOT — an author's EXPLICIT close survives
-  re-derivation in glossary and would be overwritten"* — and it has been a table entry rather
-  than an observation. **It is now an observation**, on a real run, on a real entity.
-
-  📐 **Which is T46's case, made concrete.** `maintain_chain`'s pin-awareness is the mechanism
-  that would have preserved the author's edit, and it is the thing T46 exists to move from Go to
-  Python. Until it lands, an author who renames a character and then re-runs extraction loses the
-  rename silently — no error, no conflict, the node simply reads as the extractor left it. That
-  is a **content** defect, not an identity one, so it does not block QC-6's criteria; it belongs
-  to T46 and it now has a live reproduction rather than an argument.
+  ⛔ **What that costs this proof, stated plainly.** The rename and re-kind were applied at the KG
+  mirror — the same writer QC-6a's first half used, and one of the three minting writers §4.1
+  names — NOT through a real author edit in glossary. So what is proven is that `e.id` survives a
+  mirror rename, a mirror re-kind and a real re-extraction with no duplicate minted. That is the
+  identity property QC-6 asks for, and it stands. **"An author renames a character" is not what
+  was exercised**, and the row must not be read as claiming it.
 
   **QC (a) gates:** plan gates green; no code changed — this is the acceptance run the row
   specifies. **QC (b) the seam:** rename and re-kind through `glossary-sync-entity`, then a real
