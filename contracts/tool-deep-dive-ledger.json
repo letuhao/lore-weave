@@ -2788,6 +2788,46 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch34.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "settings_update_profile": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "settings_model_set_favorite": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across 5 clean runs, so the model was never shown it.\n\n🔴 WITHIN THIS SAME BATCH, `settings_update_profile` surfaced 5/5 and raised its card 5/5, and one batch earlier `settings_model_register` surfaced 5/5 and was called 5/5. Same account scope, same tier, same settings family, same invocation. So this is not 'settings tools do not surface' and not the deep-id-chain pattern batches 29-33 hit — three sibling tools were dropped from the advertised catalogue while a fourth was kept.\n\nD-LAZY-TAIL-UNUSED remains the mechanism (find_tools_call_count was 0 in the batch-31 surface capture, so the model never reaches for the tail that holds an unadvertised tool), but WHICH tools get advertised is not explained by tier, scope, family or id depth. That is DQ-T36, and it is now the single largest reason tools in this loop cannot be exercised.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "settings_model_set_active": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across 5 clean runs, so the model was never shown it.\n\n🔴 WITHIN THIS SAME BATCH, `settings_update_profile` surfaced 5/5 and raised its card 5/5, and one batch earlier `settings_model_register` surfaced 5/5 and was called 5/5. Same account scope, same tier, same settings family, same invocation. So this is not 'settings tools do not surface' and not the deep-id-chain pattern batches 29-33 hit — three sibling tools were dropped from the advertised catalogue while a fourth was kept.\n\nD-LAZY-TAIL-UNUSED remains the mechanism (find_tools_call_count was 0 in the batch-31 surface capture, so the model never reaches for the tail that holds an unadvertised tool), but WHICH tools get advertised is not explained by tier, scope, family or id depth. That is DQ-T36, and it is now the single largest reason tools in this loop cannot be exercised.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "settings_model_update": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across 5 clean runs, so the model was never shown it.\n\n🔴 WITHIN THIS SAME BATCH, `settings_update_profile` surfaced 5/5 and raised its card 5/5, and one batch earlier `settings_model_register` surfaced 5/5 and was called 5/5. Same account scope, same tier, same settings family, same invocation. So this is not 'settings tools do not surface' and not the deep-id-chain pattern batches 29-33 hit — three sibling tools were dropped from the advertised catalogue while a fourth was kept.\n\nD-LAZY-TAIL-UNUSED remains the mechanism (find_tools_call_count was 0 in the batch-31 surface capture, so the model never reaches for the tail that holds an unadvertised tool), but WHICH tools get advertised is not explained by tier, scope, family or id depth. That is DQ-T36, and it is now the single largest reason tools in this loop cannot be exercised.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "memory_timeline": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — and this arm RETIRES THE SECOND HYPOTHESIS about why.\n\n  batch34, inside a 5-scenario batch   SURFACED 5/5, CALLED 5/5\n  arm 2, run ALONE                     SURFACED 0/5\n  arm 3, run ALONE                     SURFACED 0/5\n  batch35, inside a 5-scenario batch   SURFACED 0/5   <- this one\n\nThe first write-up said 'the catalogue varies run to run'. The third arm made that look like batch COMPOSITION — alone versus in a batch, two for two either way. This arm ran it inside a five-scenario batch again and it did not surface, which kills that too.\n\nSo: one 5/5 in four arms, two hypotheses refuted by measurement, and NO third hypothesis offered here. That is the honest state. Recording it is worth more than a tidy explanation would be — this loop has already retracted four causal stories that felt equally reasonable.\n\nmemory_timeline itself remains unconcluded rather than concluded on a dirty arm: in the one arm where it ran it was called 5/5 and answered correctly on 3 of 5 ('There are currently no narrative events recorded in the timeline for this book'), with the other 2 EMPTY — D-SILENT-TURN-NO-CARD-NO-PROSE.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -3554,10 +3594,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 175,
+  "tools_concluded": 180,
   "tools_in_cycle": 0,
-  "tools_proven": 126,
-  "tools_blocked": 49,
+  "tools_proven": 127,
+  "tools_blocked": 53,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3572,7 +3612,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 180,
+  "tools_concluded_including_deprecated": 185,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
