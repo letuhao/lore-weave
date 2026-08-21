@@ -27,7 +27,14 @@ services:
       args:
         PG_MAJOR: "18"
     image: loreweave/postgres-knowledge:18
-    container_name: infra-knowledge-pg-1
+    # ⚠️ NO `container_name`. It used to pin `infra-knowledge-pg-1`, which is byte-identical
+    # to what compose derives for the default project (`<project>-<service>-1`) and therefore
+    # bought nothing — while making this layer UNUSABLE by any second project, because a
+    # container name is global to the daemon. None of the 42 services in docker-compose.yml
+    # pins one, which is exactly why the isolated stack works for them and not for this.
+    # Measured 2026-08-21 (T25g): lw-iso could not resolve `knowledge-pg` at all, so its
+    # dual-write logged `secondary_failed = 9` on BOTH scopes — eighteen rows the primary
+    # accepted and no secondary ever received.
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
@@ -35,7 +42,11 @@ services:
     ports:
       # NOT 5432: the shared dev postgres already owns it, and a collision here would be
       # silently "the other database" rather than a failure to start.
-      - "5556:5432"
+      #
+      # Overridable because a published host port is ABSOLUTE — the one thing an isolated
+      # project cannot solve by itself (see gen-isolated-compose.py's own opening). lw-iso
+      # sets 25556, matching the +20000 convention every other service follows.
+      - "${KNOWLEDGE_PG_PORT:-5556}:5432"
     volumes:
       # ⚠️ `/var/lib/postgresql`, NOT `/var/lib/postgresql/data`. The postgres 18+ images
       # store the cluster in a MAJOR-VERSION subdirectory (`PGDATA=/var/lib/postgresql/18/

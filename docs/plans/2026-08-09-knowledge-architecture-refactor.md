@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ must NOT drop the Neo4j indexes yet (T25f: soak disarmed twice, iso `secondary_failed=18`, passage scope never landed). Fix the iso secondary, then ③. `T46` has no live evidence (T46e). Then `T48` → `T49` ⛔.**
+**RESUME: `T25` ③ needs (a) the DEV passage scope to land — blocked by the content-hash skip-gate, needs new/changed text — and (b) authorisation for the destructive index drop. Both scopes now soak clean (T25g). `T46` has no live evidence (T46e). Then `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 43 of 87 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 44 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/7) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14294,6 +14294,55 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (FAILING) and dev `:8216` (DISARMED, then ARMED_IDLE after re-arming).
   **QC (c) real data:** 18 real secondary failures on lw-iso and a real unplanned container
   recreate on dev, with its config-hash as the fingerprint.
+
+  ### ✅ T25g 2026-08-21 — **the passage scope soaks for the first time**, and the thing blocking it was one line of compose
+
+  ```
+  BEFORE  lw-iso: knowledge-pg does not resolve   secondary_failed = 9 on BOTH scopes
+  AFTER   lw-iso-knowledge-pg-1 on lw-iso_default (its own volume, port 25556)
+          backfill-passages -> {"chapters_ingested": 4, "passages_created": 12}
+          knowledge_vector_dual_write_total{outcome="both",scope="passage"} 12.0
+          gate: SOAKING — 12 write(s) landed, secondary_failed = 0
+          PARITY: primary (Neo4j) 12  ==  secondary (pg) 12 rows, 12 distinct keys
+  ```
+
+  T25f left the iso secondary unreachable and called that the next concrete step. It was one
+  line: **`container_name: infra-knowledge-pg-1`**, hardcoded in the opt-in layer.
+
+  🎯 **A container name is global to the daemon**, so pinning one makes a layer usable by exactly
+  one project — and the pin bought nothing, because `<project>-<service>-1` derives the *identical*
+  name for the default stack. Measured: **none of the 42 services in `docker-compose.yml` pins a
+  `container_name`**, which is precisely why the isolated stack works for all of them and not for
+  this. The published port `5556` had the same problem and is now `${KNOWLEDGE_PG_PORT:-5556}` —
+  a host port is the one thing an isolated project cannot solve by itself, as
+  `gen-isolated-compose.py` says in its own opening.
+
+  ✅ **So lw-iso now has its OWN throwaway vector secondary** (`172.20.0.36` on `lw-iso_default`,
+  its own volume), and the dev one is untouched on a different network with its 25 rows. That is
+  rule 6's shape: the soak that WRITES runs on the throwaway stack.
+
+  📐 **And the passage scope landed — the first successful passage write in this plan's history.**
+  Every prior reading was `passage 0`: on dev because the content-hash skip-gate correctly refuses
+  to re-embed unchanged text, on iso because there was no secondary to write to. A stack with the
+  text never ingested and a reachable secondary produces 12 writes, zero failures.
+
+  ⚠️ **`n_live_tup` IS NOT A ROW COUNT, and it nearly became a finding.** `pg_stat_user_tables`
+  first read **5** against 12 writes, which looks exactly like a secondary silently dropping rows.
+  It is autovacuum's estimate. `count(*)` says **12 rows, 12 distinct `(source_id, chunk_index)`
+  keys, 4 chapters** — exact parity with the primary. The plan cites secondary row counts as the
+  durable evidence behind the soak; they must be `count(*)`, not the statistics view.
+
+  ⛔ **What ③ still lacks, and it is now a short list.** Both scopes are proven to work end to end
+  — entity on dev (25 rows, `count(*)`), passage on iso (12 rows, parity verified). What ③ needs
+  before dropping the Neo4j vector indexes is (a) the **dev** passage scope actually landing, which
+  the skip-gate makes impossible without new or changed chapter text, and (b) authorisation: the
+  drop is a destructive write to the dev graph, which the 2026-08-21 GRANTS do not cover.
+
+  **QC (a) gates:** plan gates green; `soak-armed-gate --selftest` 14/14. **N/A because** no
+  service code changed — the fix is a compose layer and the rest is operation.
+  **QC (b) the seam:** a rebuilt `lw-iso` knowledge-service (it predated the arming gauge) writing
+  through the real dual-write store to a real second Postgres.
+  **QC (c) real data:** 12 real passage vectors, counted on both sides and keyed 1:1.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
