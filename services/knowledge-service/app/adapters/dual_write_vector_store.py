@@ -228,6 +228,23 @@ class DualWriteVectorStore:
         does not exist means every subsequent write to that store is unindexed, so the
         failure is systematic rather than one lost row. Failing loudly at the one call that
         happens per job start is much cheaper than discovering it at cutover.
+
+        ⚠️ MED-3 — ACCEPTED, PO sign-off 2026-08-21 (QC-3), not an oversight.
+        The consequence is asymmetric and it is worth stating where the behaviour lives.
+        POST-CUTOVER the secondary is NEO4J, so a Neo4j outage still fails every ingestion
+        job at its first index call — even though pgvector, by then the primary, could serve
+        it alone. The reverse direction degrades carefully; this one does not.
+
+        Accept-and-document was chosen over swallow-and-count because the alternative buys
+        availability with a silence this phase has been paying for all week: a swallowed
+        `ensure_index` leaves the demoted store accumulating unindexed writes, and the only
+        signal would be a counter nobody reads until a cutback needs that store and finds it
+        unusable. A loud failure at job start is recoverable by restarting the job; a quietly
+        unindexed backup is discovered when it is the only copy left.
+
+        Revisit when `read_primary == "postgres"` has soaked and a cutback is genuinely off
+        the table — at that point swallow-and-count on the demoted side is the right trade,
+        and it needs its own counter series before it is taken.
         """
         names = await self._primary.ensure_index(
             project_id=project_id, embedding_model_uuid=embedding_model_uuid,

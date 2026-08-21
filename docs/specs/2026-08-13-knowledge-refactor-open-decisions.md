@@ -290,6 +290,40 @@ Go-const-block shape this repo has a gate for. `test_the_two_real_backends_agree
 reads the Neo4j keys out of the adapter's **AST** and compares them to `_PASSAGE_ATTRS`, so a
 key added to one and not the other reds by name.
 
+### 3.3 QC-3 is SIGNED OFF — halfvec HNSW replaces StreamingDiskANN — **DECIDED (PO 2026-08-21)**
+
+The checkpoint's owed evidence was delivered (real-corpus recall/latency on both backends,
+the rebuild measurement above the parallel-build threshold, and the restore drill), and the
+PO signed off. Three dispositions, all now implemented rather than recorded:
+
+1. **Adopt `halfvec_hnsw`.** On the real corpus diskann recalled **0.836** with a worst query
+   at **0.500** and was the slowest non-fp16 cell; halfvec_hnsw scored **1.000** at ~41 % of
+   the table bytes. It also reaches dims the alternative could not: pgvector caps HNSW at
+   2000 dims for `vector` but 4000 for `halfvec`, so 2560 and 3072 gain an exact-free path.
+
+   ⚠️ **The COLUMN stays `vector(dim)`; only the INDEX is halfvec.** The bench cell measured a
+   halfvec *column*, but Decision T4 calls these vectors durable primary data and rewriting
+   them to fp16 is not reversible — an index is. `DROP INDEX` puts diskann back; a downcast
+   column cannot be undone. The one-line grant did not settle this, so it is settled here.
+
+2. **MED-2 → migration ticket.** `PRIMARY KEY (entity_id)` → `PRIMARY KEY (user_id,
+   entity_id)`, `ON CONFLICT (entity_id)` → `ON CONFLICT (user_id, entity_id)`, and delete the
+   `user_id = EXCLUDED.user_id` assignment that only exists because the conflict target cannot
+   carry the tenant. Not taken here: it is a schema change on a live table and rule 7 makes it
+   a step of its own. The ticket is a **tripwire, not prose** — two tests assert the current,
+   known-wrong shape, so the migration cannot land without deliberately rewriting them.
+
+3. **MED-3 → accept-and-document.** Post-cutover the secondary is Neo4j, so a Neo4j outage
+   still fails every ingestion job at its first `ensure_index` — even though pgvector could
+   serve alone. Accepted, and documented at the call site rather than in a plan nobody reads
+   at 3 a.m. Swallow-and-count was rejected because it buys availability with silence: a
+   swallowed `ensure_index` leaves the demoted store accumulating unindexed writes, found
+   only when a cutback needs it. Revisit once `read_primary == "postgres"` has soaked.
+
+**LOW-4 was real and is fixed in passing.** `ensure_index` returned the `emb` name that
+`ensure_vector_schema` had just dropped, and the name parser rejected `emb_hv` — so the store
+built an index it could not drop and advertised one that no longer existed.
+
 ### 3.2 The restore drill's recall gap is accepted and documented — **DECIDED**
 *Replaces `D-T25B-SOAK`.* `pg_restore` rebuilds the ANN graph rather than copying it, so
 post-restore top-10 overlap was 7/10 at 20 000 rows. **Data recovery is promised; *result*

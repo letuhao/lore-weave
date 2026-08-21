@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 43 of 90 evidence blocks closed inside them.**
+**58 of 66 rows done · 8 open · 42 of 86 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (15/38) · `T46` (2/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3842,14 +3842,14 @@ vectors and validity intervals live in different stores.
   **Review of my own change** caught the store being constructed **per chunk** inside the ingest
   loop (and per entity in the embedder); both are now resolved once per batch.
 
-- [~] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
+- [x] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.2. Unfinished, not undecided.
   `/review-impl` (data migration — deeper than `/aif-review`). Then **live**: re-run
   `flat_knn_rawsearch.py` against the real corpus on both backends and publish **recall@10 and
   latency ratios**, not absolutes.
   **Restore drill (mandatory):** back up the vectors, drop them, restore, re-run recall. Decision T4
   says vectors are durable primary data — **an untested restore is not a backup.**
-  ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
+  ✅ **POST-REVIEW checkpoint CLEARED — PO signed off 2026-08-21** ([spec §3.3](../specs/2026-08-13-knowledge-refactor-open-decisions.md)): adopt `halfvec_hnsw`, MED-2 → migration ticket (tripwired), MED-3 → accept-and-document. Evidence in T25e below.
   ---
   ### 🔻 QC-3d 2026-08-14 — recall on the REAL corpus: **diskann returns half the top-10, and one query none of it**
 
@@ -13838,6 +13838,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   → LM Studio on rebuilt images, and the dual-write reaching a second live Postgres.
   **QC (c) real data:** 4853 live entities in 4853 groups, a real 20 s extraction job costing
   $0.0040, and 25 real 1024-dim vectors in the secondary.
+
+  ### ✅ T25e / QC-3 SIGN-OFF 2026-08-21 — **halfvec HNSW is adopted, and the whole vector suite was green while it happened**
+
+  ```
+  entity_vectors_1024_emb     diskann   -> DROPPED
+  entity_vectors_1024_emb_hv  hnsw (((embedding)::halfvec(1024)) halfvec_cosine_ops)  CREATED
+  25 rows intact.   EXPLAIN: Index Scan using entity_vectors_1024_emb_hv
+  knowledge-service unit 4248 -> 4279    BITE x5 (56-60), each red on its own assertion
+  ```
+
+  Grant 3. The evidence QC-3 owed was already in (real-corpus recall on both backends, the
+  rebuild measurement above the parallel-build threshold, the restore drill); the PO signed off
+  and this batch implements the three dispositions instead of recording them.
+
+  🎯 **Why halfvec wins, from the measurement rather than fashion.** diskann recalled **0.836**
+  with a worst query at **0.500** and was the slowest non-fp16 cell; halfvec_hnsw scored **1.000**
+  at ~41 % of the table bytes. It also reaches dims the alternative could not — pgvector caps HNSW
+  at 2000 dims for `vector` and 4000 for `halfvec`, so 2560 and 3072 get an exact-free path for
+  the first time.
+
+  ⚠️ **The COLUMN stays `vector(dim)`. Only the INDEX is halfvec.** The bench cell measured a
+  halfvec *column*, and copying that would have downcast durable primary data (Decision T4) to
+  fp16 irreversibly. An index is reversible — `DROP INDEX` puts diskann back. The one-line grant
+  did not settle column-vs-index, so it is settled in [spec
+  §3.3](../specs/2026-08-13-knowledge-refactor-open-decisions.md) with the reason.
+
+  ### 🔴 THREE SILENT FAILURE MODES, AND THE SUITE WAS GREEN THROUGH ALL OF THEM
+
+  The vector suite (74 tests) stayed green while the index kind **and both query expressions**
+  were rewritten, because **nothing asserted the DDL or the `ORDER BY` at all**. Each of these
+  would have shipped:
+
+  1. **`CREATE INDEX IF NOT EXISTS` under the old name** finds the existing diskann index on
+     every deployment that has already run schema-ensure and silently keeps it — the schema says
+     halfvec, the server serves diskann, nothing fails. Fixed with a new name **and** an explicit
+     `DROP`, created-then-dropped so there is never a window with no ANN index.
+  2. **An `ORDER BY` that drifts from the index expression by one cast** still returns correct
+     rows and silently becomes a seq scan. There is no error, and the symptom is latency on a
+     table big enough for latency to matter. `emb_index_expr()` is now the single home both the
+     DDL and the query read from.
+  3. **`index_name` raised on `emb_hv`** — its closed set was `("emb", "tenant")`, so
+     schema-ensure would have thrown at boot. No test caught it; the first evidence would have
+     been a dead service.
+
+  ⚠️ **LOW-4 turned out to be live, and the fix found a second half of it.** `ensure_index`
+  returned the `emb` name that `ensure_vector_schema` had just dropped, and
+  `_INDEX_NAME_RE` rejected `emb_hv` — so `drop_index`, whose name re-parse is its injection
+  barrier, **refused to drop the very index this store creates**. The store built an index it
+  could not remove and advertised one that no longer existed.
+
+  ✅ **MED-2 is a TRIPWIRE, not a ticket in prose.** The migration (`PRIMARY KEY (user_id,
+  entity_id)`, matching conflict target, and deleting the `user_id = EXCLUDED.user_id` assignment
+  that only exists to work around the tenant-less target) is rule 7 work and not a review's to
+  take. Two tests now assert the current **known-wrong** shape, so it cannot land without
+  deliberately rewriting them — and cannot be quietly forgotten meanwhile.
+
+  ✅ **MED-3 is accepted where the behaviour lives**, not in a plan nobody reads at 3 a.m.
+  Swallow-and-count was rejected on the record: it buys availability with silence, leaving the
+  demoted store accumulating unindexed writes, discovered only when a cutback needs it.
+
+  **BITE ×5, each red on its own assertion:**
+
+  ```
+  56. entity ORDER BY drops the halfvec cast  E "ORDER BY does not open with the index
+                                                 expression ... this query is a sequential scan"
+  57. score computed in fp32, ordering fp16   E "score is not computed from
+                                                 (embedding::halfvec(384)) ... can disagree
+                                                 with the ordering"
+  58. index_name collapses every kind to _emb E 2 failed (retired-name + no-reuse)
+  59. the parser rejects emb_hv               E "the halfvec index name does not parse —
+                                                 drop_index will refuse it"
+  60. ensure_index advertises the DROPPED one E test_ensure_index_advertises_the_index_that_EXISTS
+  ```
+
+  **QC (a) gates:** knowledge-service unit **4248 → 4279**; plan gates green.
+  **QC (b) the seam:** the migration was run through the real `ensure_vector_schema` against the
+  live secondary on a rebuilt image — diskann dropped, halfvec HNSW created, **25 rows intact**.
+  **QC (c) real data:** `EXPLAIN` on the statement `build_search_sql` actually emits reports
+  `Index Scan using entity_vectors_1024_emb_hv` with `Order By: ((embedding)::halfvec(1024) <=>
+  ...)`, so the planner agrees the expression matches — a textual assertion alone would not have
+  shown that.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

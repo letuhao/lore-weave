@@ -107,16 +107,40 @@ def entity_table(dim: int) -> str:
     return f"entity_vectors_{dim}"
 
 
+def emb_index_expr(dim: int) -> str:
+    """The halfvec expression the ANN index is built on — and the ONLY place it is written.
+
+    QC-3's adoption of halfvec HNSW has a failure mode with no error message: pgvector uses
+    an expression index only when the query's `ORDER BY` is textually that expression, so an
+    ORDER BY that drifts by one cast still returns correct rows and silently becomes a seq
+    scan. Nothing raises, no test fails, and the symptom is latency on a table big enough to
+    matter. So `ensure_vector_schema` and `build_search_sql` both read it from here rather
+    than each spelling it out, and the paired test pins that they agree.
+    """
+    _check_dim(dim)
+    return f"(embedding::halfvec({dim}))"
+
+
 def index_name(scope: VectorScope, dim: int, kind: str) -> str:
     if scope not in ("passage", "entity"):
         raise ValueError(f"unknown vector scope {scope!r}")
-    if kind not in ("emb", "tenant"):
+    # `emb` is the retired StreamingDiskANN index; it stays in the closed set because
+    # `ensure_vector_schema` still names it in order to DROP it, and a deployment that never
+    # ran the diskann version must be able to ask for that name without raising.
+    if kind not in ("emb", "emb_hv", "tenant"):
         raise ValueError(f"unknown index kind {kind!r}")
     _check_dim(dim)
     return f"{scope}_vectors_{dim}_{kind}"
 
 
-_INDEX_NAME_RE = re.compile(r"^(?P<scope>passage|entity)_vectors_(?P<dim>\d+)_(?P<kind>emb|tenant)$")
+# `emb_hv` FIRST: with `emb` first the engine matches it, hits `$` against the remaining
+# "_hv" and only finds the right branch by backtracking. Ordering it explicitly costs
+# nothing and stops the name this store now mints from depending on that.
+# `emb` stays parseable: `drop_index` is how an operator removes the retired diskann
+# index by hand on a deployment that has not restarted into the new schema-ensure.
+_INDEX_NAME_RE = re.compile(
+    r"^(?P<scope>passage|entity)_vectors_(?P<dim>\d+)_(?P<kind>emb_hv|emb|tenant)$"
+)
 
 
 def parse_vector_index_name(name: str) -> dict[str, str] | None:
@@ -251,9 +275,32 @@ async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None 
             for stmt in _ENTITY_LIFECYCLE_BACKFILL:
                 await conn.execute(stmt.format(table=etable))
             for scope, table in (("passage", ptable), ("entity", etable)):
+                # QC-3 sign-off (PO 2026-08-21): halfvec HNSW replaces StreamingDiskANN.
+                # On the real corpus diskann recalled 0.836 with a worst query at 0.500 and
+                # was the slowest non-fp16 cell, while halfvec_hnsw scored 1.000 at ~41 % of
+                # the table bytes. It also reaches dims diskann's alternative could not:
+                # pgvector caps HNSW at 2000 dims for `vector` but 4000 for `halfvec`, so
+                # 2560 and 3072 have an exact-free path for the first time.
+                #
+                # The COLUMN stays `vector(dim)`. The bench cell measured a halfvec column,
+                # but Decision T4 calls these vectors durable primary data and rewriting
+                # them to fp16 is not reversible — an index is. Same index, same recall,
+                # and `DROP INDEX` puts it back.
+                #
+                # ⚠️ A NEW index name, and the old one dropped explicitly. Reusing the
+                # `emb` name with `CREATE INDEX IF NOT EXISTS` would find the existing
+                # diskann index on every deployment that has already run this function and
+                # silently keep it — the schema would say halfvec and the server would
+                # serve diskann, with nothing failing anywhere.
                 await conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS {index_name(scope, dim, 'emb')} "
-                    f"ON {table} USING diskann (embedding vector_cosine_ops)"
+                    f"CREATE INDEX IF NOT EXISTS {index_name(scope, dim, 'emb_hv')} "
+                    f"ON {table} USING hnsw "
+                    f"({emb_index_expr(dim)} halfvec_cosine_ops)"
+                )
+                # Created first, dropped second: the reverse order leaves a window with no
+                # ANN index at all, and on a large table that window is a seq scan per query.
+                await conn.execute(
+                    f"DROP INDEX IF EXISTS {index_name(scope, dim, 'emb')}"
                 )
             # The tenant b-tree is not redundant with the diskann index: it gives the
             # planner a filter-FIRST path for a small tenant, where scanning that tenant's
@@ -423,11 +470,16 @@ class PgVectorStore:
             evec = f"${len(params)}::vector"
             params.append(k)
             elimit = f"${len(params)}"
+            # QC-3: the ORDER BY expression must be TEXTUALLY the index's expression or
+            # the planner cannot use it — the query would still be correct and would
+            # silently become a seq scan, which is the failure mode with no error message.
+            ehv = emb_index_expr(dim)
+            eq = f"{evec}::halfvec({dim})"
             esql = (
-                f"SELECT entity_id AS record_id, 1 - (embedding <=> {evec}) AS score, "
+                f"SELECT entity_id AS record_id, 1 - ({ehv} <=> {eq}) AS score, "
                 f"project_id, archived "
                 f"FROM {etable} WHERE {' AND '.join(where)} "
-                f"ORDER BY embedding <=> {evec} LIMIT {elimit}"
+                f"ORDER BY {ehv} <=> {eq} LIMIT {elimit}"
             )
             return esql, params, applied
         table = passage_table(dim)
@@ -460,8 +512,13 @@ class PgVectorStore:
         params.append(k)
         limit = f"${len(params)}"
 
+        # Same expression as the index, for the same reason as the entity branch above.
+        # `score` is computed from the halfvec distance too, not the fp32 one: a score that
+        # disagreed with the ordering it was returned in is a bug report waiting to happen.
+        phv = emb_index_expr(dim)
+        pq = f"{vec}::halfvec({dim})"
         select = (
-            f"SELECT id::text AS record_id, 1 - (embedding <=> {vec}) AS score, "
+            f"SELECT id::text AS record_id, 1 - ({phv} <=> {pq}) AS score, "
             f"{', '.join(_PASSAGE_ATTRS)}"
             # The stored vector, aliased so the row key matches the port's field name.
             # Cast to text and parsed back rather than returned raw: asyncpg has no codec
@@ -471,7 +528,7 @@ class PgVectorStore:
         )
         sql = (
             f"{select} FROM {table} WHERE {' AND '.join(where)} "
-            f"ORDER BY embedding <=> {vec} LIMIT {limit}"
+            f"ORDER BY {phv} <=> {pq} LIMIT {limit}"
         )
         return sql, params, applied
 
@@ -626,8 +683,13 @@ class PgVectorStore:
         """
         _check_dim(embedding_dimension)
         await ensure_vector_schema(self._pool, dims=(embedding_dimension,))
+        # `emb_hv`, not `emb`. `ensure_vector_schema` above just DROPPED the `emb` index —
+        # returning that name would hand every caller a relation that no longer exists, and
+        # `drop_index` would silently no-op on it (`DROP INDEX IF EXISTS`) while the real
+        # index stayed. LOW-4 already flagged this surface as the one that drifts from what
+        # is actually serving reads; naming the retired index here is that drift exactly.
         names = {
-            scope: index_name(scope, embedding_dimension, "emb")
+            scope: index_name(scope, embedding_dimension, "emb_hv")
             for scope in ("passage", "entity")
         }
         logger.debug(
