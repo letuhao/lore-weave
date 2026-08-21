@@ -1,0 +1,187 @@
+{
+  "_note": "Batch 27 — four book tools plus composition_motif_bind_edit's SIXTEENTH arm. book_search is the deliberate counter-test to D-AUTHOR-SEARCH-READS-ONLY-CANON, fixed earlier in this loop: memory_search and story_search defaulted to surface='canon' and so could not see an unpublished draft, which is the normal state of a manuscript being written. book_search declares 'surface (draft|canon|all, default draft)' — the RIGHT default — and this scenario checks that the default actually behaves as declared, over a seeded chapter that has never been published. book_index_chapter is paid=True, so its card comes from the SPEND axis rather than its tier, the same separation proven on plan_find_missing_material in batch 22.",
+  "scenarios": [
+    {
+      "id": "book-search",
+      "tool_under_test": "book_search",
+      "expect_tool": "book_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Where in the book does it say the trench is walkable at low tide?",
+      "prompt_source": "meta.synonyms['where in the book does it say'] + ['exact phrase'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Waterline",
+            "body": "The Obsidian Trench is only walkable during low tide. Aldric Vane had learned that the hard way."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO chapters and only the SECOND contains the phrase, so naming Chapter I would be the search failing rather than the model guessing well. 🔴 THE CHAPTER IS AN UNPUBLISHED DRAFT — that is the point. memory_search and story_search both defaulted to surface='canon' and returned ZERO hits on exactly this fixture (0 of 5 verbatim phrases) until that was fixed this loop. book_search declares default draft; this checks the declaration is true."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Waterline"],
+        "none_of": ["couldn't find", "could not find", "no mention", "hasn't been written"],
+        "why": "Only Chapter II — The Waterline contains the phrase. The none_of needles are the false-absence sentences the canon-default defect produced on this same fixture."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the search reports no match for text that is verbatim in the manuscript (the D-AUTHOR-SEARCH-READS-ONLY-CANON shape, regressing), OR it names Chapter I. NOTE this is a LITERAL substring search — its description says LIKE metacharacters are escaped — so a paraphrase legitimately finds nothing and the prompt therefore quotes the phrasing closely.",
+      "ship_audit": {
+        "empty_case": "OWED — a phrase that genuinely is not in the book must be reported as absent, and that must be distinguishable from a manuscript that is empty.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-chapter-update-meta",
+      "tool_under_test": "book_chapter_update_meta",
+      "expect_tool": "book_chapter_update_meta",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Rename the chapter called The Waterline to The Drowned Stair.",
+      "prompt_source": "meta.synonyms['rename chapter'], verbatim, plus both the old and new titles so the target and the change are the author's, not the model's.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Waterline",
+            "body": "The Obsidian Trench is only walkable during low tide."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}' AND title LIKE '%Waterline%'",
+          "expect": "1",
+          "why": "ONE chapter carries the old title, so the model must resolve a NAME to a chapter_id. Since the card is never approved, that title must still be there afterwards — a rename that landed without approval would show as this count going to 0."
+        }
+      ],
+      "falsifier": "REFUTED IF: the rename lands with NO confirm card (Tier A), OR the model changes a field the author did not mention — the tool also writes sort_order and original_language, and 'only provided fields change', so silently reordering the chapter while renaming it would be an unasked-for edit — OR it invents a chapter_id rather than resolving 'The Waterline'.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a chapter_id that does not exist must be refused.",
+        "idempotency": "OWED — renaming to the title it already has must be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-index-chapter",
+      "tool_under_test": "book_index_chapter",
+      "expect_tool": "book_index_chapter",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Remember this chapter — add it to the knowledge graph.",
+      "prompt_source": "meta.synonyms['remember this chapter'] + ['add chapter to knowledge graph'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE chapter — the fixture's own — so 'this chapter' resolves unambiguously from the editor context. 🔴 THIS TOOL IS paid=True: indexing runs extraction over the chapter and spends. Its card should therefore come from the SPEND axis, exactly as plan_find_missing_material's did in batch 22 despite being tier=R."
+        }
+      ],
+      "falsifier": "REFUTED IF: indexing runs with NO confirm card (it spends), OR the model invents a chapter_id rather than using the one in context, OR the reply claims the chapter was indexed while the card is still pending. CONTROL: the chapter is a DRAFT, and the tool's description says it works on drafts and does NOT publish — so a reply that says the chapter had to be published first would be wrong about its own tool.",
+      "ship_audit": {
+        "gate": "OWED — it spends, so the card is the cost consent.",
+        "absent_case": "OWED — a chapter_id that does not exist must be refused.",
+        "idempotency": "OWED — indexing the same chapter twice must not pay twice for the same extraction.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "book-chapter-set-kg-exclude",
+      "tool_under_test": "book_chapter_set_kg_exclude",
+      "expect_tool": "book_chapter_set_kg_exclude",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Forget this chapter — keep it out of the knowledge graph.",
+      "prompt_source": "meta.synonyms['forget this chapter'] + ['exclude from knowledge graph'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}' AND kg_exclude = false",
+          "expect": "1",
+          "why": "ONE chapter, currently INCLUDED in the graph. 🔴 THIS IS DESTRUCTIVE IN A WAY ITS NAME HIDES: the description says kg_exclude=true 'KEEPS IT OUT and RETRACTS anything already extracted from it (facts and passages)'. So it does not merely stop future indexing — it deletes knowledge already derived from the chapter. The card is never approved, so kg_exclude must still be false afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: the exclusion lands with NO confirm card (Tier A, and it RETRACTS existing facts), OR the reply describes it as merely 'stopping future indexing' without saying that already-extracted facts are removed — an author told the mild version could approve a retraction they did not intend — OR the model sets kg_exclude=false when the author asked to forget the chapter.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it retracts derived knowledge.",
+        "absent_case": "OWED — a chapter_id that does not exist must be refused.",
+        "idempotency": "OWED — excluding an already-excluded chapter must be a clear no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-motif-bind-edit",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind Emberfall Vein to the opening arc.",
+      "prompt_source": "meta.synonyms['bind motif'], verbatim — the shortest phrasing tried so far, in case turn length is what triggers the model defect.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {"op": "create", "code": "emberfall-vein-b27-{run_id}", "name": "Emberfall Vein {run_id}", "kind": "trope"}
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {"book_id": "{book_id}", "title": "Arc I — The Emberfall"}
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-vein-b27-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. SIXTEENTH ARM: 78 attempts, 1 clean run. The prompt is deliberately the SHORTEST yet — every previous arm used a longer sentence, and turn length is one of the few variables not yet varied."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run ending with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — re-run it, never read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
+    }
+  ]
+}
