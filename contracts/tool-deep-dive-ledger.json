@@ -2596,6 +2596,22 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch28.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "world_map_delete": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch29.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on the id chain. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. Called 5/5 with a NAME, refused before reaching the gate — so the Tier-A card was NEVER exercised through the chat path and there is no gate evidence for it. The tool itself is sound at the boundary: direct probes show a first delete returning {deleted: true}, a second refused, an absent id refused, and a cross-tenant id refused.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch29.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "world_delete": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch29.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on the id chain. The world/map family is UUID-only and no tool accepts a name, so every one of these is gated on the same chain: world_list -> world_id, world_map_list -> map_id. Across FOUR arms and 100 live runs the model never walked it once. Called 5/5 with a NAME, refused before reaching the gate, so the card for this HARD, NOT REVERSIBLE delete was never exercised through chat. Worth recording plainly: across 100 runs the model NEVER invented a UUID for it — the invented-id guard held every time on the most destructive tool in the batch, and it also volunteered the member-book guard unprompted.\n\nTHE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR. Every id argument now declares 'NOT a name — if you have the world's NAME, call world_list first', and the refusals name their supplier the way this service's best refusal does. The declaration was plainly READ:\n    BEFORE: \"I need the specific ID for that world to list its maps. If you have the ID, please provide it.\"\n    AFTER:  \"I couldn't delete the world because I need its unique ID ... To proceed, I first need to find the correct ID. I'll list your worlds now to find it.\"\nThe model stated the correct plan, naming the right supplier, and then ENDED THE TURN without making the call. Intent changed; the second tool call never happened. That is D-CLAIMED-ACTION-WITH-NO-FOLLOW-THROUGH, a sibling of the already-open D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, and it means the blocker is NOT the declaration — it is that the turn does not chain a second call after a refusal.\n\nRecorded as a REFUTED fix hypothesis rather than a win. The declaration is kept on correctness grounds (a required id whose supplier is undeclared is a real defect, and the same fix on composition_generate.model_ref and motif_search.q was measured to help), but it did not unblock these tools and must not be reported as if it had. See DQ-T36.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch29.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -3362,10 +3378,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 151,
+  "tools_concluded": 153,
   "tools_in_cycle": 0,
   "tools_proven": 113,
-  "tools_blocked": 38,
+  "tools_blocked": 40,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3380,7 +3396,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 156,
+  "tools_concluded_including_deprecated": 158,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
