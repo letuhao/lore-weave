@@ -1124,6 +1124,58 @@ is the work; this section fixes the target so it cannot drift, and nothing here 
 change to a consumer service outside this plan's scope.
 
 
+
+### 8.7 The remaining three federations need a GRANT primitive, not a route — **DECIDED (T55/f, 2026-08-22)**
+
+§8.6 decided four routes belong behind the KAL. `timeline` shipped (T55/e) because its consumer
+already holds a `book_id`. The other three do not, and measuring why turned up something
+sharper than a missing route.
+
+**`KalAuthGuard` is book-scoped by construction, not by convention.** Its user-mode arm reads
+`req.params?.bookId` and throws `'book scope required'` when it is absent, then gates on
+`hasBookAccess(bookId, userId)`:
+
+```
+1. SERVICE mode   a valid X-Internal-Token  -> return true          (no book check)
+2. USER mode      Bearer JWT -> req.params.bookId REQUIRED
+                             -> hasBookAccess(bookId, userId) or 403
+```
+
+Measured on the live iso stack against the route shipped in T55/e:
+
+```
+USER mode, owner     -> 403 "no grant on this book"
+USER mode, stranger  -> 403 "no grant on this book"      (no grants seeded; the arm fires)
+SERVICE mode         -> 200                              (internal token, trusted caller)
+```
+
+**So a `@Controller('v1/kal/projects/:projectId')` would have NO user-mode authorisation path
+at all.** Every JWT request to it would 401 on `'book scope required'`, and the only way to
+reach it would be with an internal token — which bypasses the guard entirely. A federated read
+surface whose only usable door is the one that skips authorisation is worse than the direct
+call it replaces, because it *looks* governed.
+
+**Decided: the remaining three are blocked on `hasProjectAccess(projectId, userId)`, a new
+authorisation primitive, and not on route-writing.** Two alternatives were considered and
+rejected:
+
+* **Resolve project → book inside the gateway, then reuse `hasBookAccess`.** This is the cheap
+  one, and it is domain logic in the gateway — `gateway-domain-logic-gate` exists in this repo
+  precisely to keep that out, and the mapping (`knowledge_projects.book_id`) belongs to the
+  owning service. A project with no book, or two books, would be decided in the wrong place.
+* **Make the consumers carry `book_id`.** composition-service holds a project id because its
+  work is project-shaped; `wiki-neighborhood`'s caller holds only a `glossary_entity_id` and
+  has neither. Pushing the resolution outward multiplies the lookup across 13 services.
+
+**What this leaves.** Three routes stay `federate` in the ledger with `MAX_FEDERATE_OWED = 3`,
+so they are named on every gate run and cannot quietly drop off. The next unit of work is the
+grant primitive, and it is a knowledge-gateway/auth question rather than an INV-KAL one.
+
+⚠️ **Not a deferral.** The shape is decided here; what is unfinished is building
+`hasProjectAccess` and the controller that uses it. Nothing about the four-route verdict in
+§8.6 changes.
+
+
 ## 9 · OWED — the dev vector cutover (T25 ③ step 3)
 
 ### 9.1 Deleting the passage vector DDL needs dev on `postgres` first — **PO DECISION OWED**

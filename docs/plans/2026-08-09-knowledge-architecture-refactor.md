@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**60 of 69 rows done · 9 open · 67 of 115 evidence blocks closed inside them.**
+**60 of 69 rows done · 9 open · 68 of 116 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (3/3) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (4/4) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19652,13 +19652,25 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   chapter-2 arm is the control: without it `found=True` would be reachable by a store that
   answers everything.
 
-  🔴 **A tenancy property surfaced, and it is PRE-EXISTING, not introduced here.** A different
-  `X-User-Id` gets the same event. Diagnosed from the workload rather than by analogy:
-  `internal_timeline.py:113` takes `user_id` from the row loaded at line 91
-  (`SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1`) and never consults
-  the caller. The direct call had the identical property, so federation neither added nor
-  removed it — **but it did not add the scoping either**, and saying "it is behind the KAL now"
-  would imply otherwise. Recorded so the next reader is not misled; owed as its own question.
+  🔴 ~~**A tenancy property surfaced, and it is PRE-EXISTING**~~ — **RETRACTED within the hour
+  by T55/f, and the retraction is the useful part.** A different `X-User-Id` did get the same
+  event, and I attributed it to `internal_timeline.py:113` taking `user_id` from the row loaded
+  at line 91 rather than from the caller. That is true of the downstream and it was **not the
+  proximate cause.** My probe sent an internal token, and `KalAuthGuard` returns `true` on one
+  at line 38 before any book check — so the test exercised SERVICE mode and proved nothing
+  about tenancy.
+
+  Measured properly, in USER mode, the guard holds:
+
+  ```
+  USER mode, owner     -> 403 "no grant on this book"
+  USER mode, stranger  -> 403 "no grant on this book"     (no grants seeded; the arm FIRES)
+  SERVICE mode         -> 200                             (internal token, trusted caller)
+  ```
+
+  **I stopped at the first explanation that fit.** Rule 13 says prove which side is wrong from
+  the workload; I read the workload and then stopped reading one layer too early. The guard is
+  §8.7's whole subject, so the mistake paid for itself — but it was a mistake.
 
   ⚠️ **The compiler caught a collision worth keeping.** `entities/:entityId/timeline` already
   owns the METHOD name `timeline` in that class — TS2393. The two ROUTES never collided, which
@@ -19677,6 +19689,65 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `14 passed`. ⚠️ **18 pre-existing failures in `test_extraction_*`** — verified identical with
   this change stashed, in four files this row never touches. Not claimed as green.
   **QC (c) real data:** the three-arm table above, from the running iso stack.
+
+
+  ---
+  ### ✅ T55/f 2026-08-22 — **the last three need a GRANT primitive, not a route — and I had to retract a finding to see it**
+
+  ```
+  federate-owed  3    blocked on `hasProjectAccess`, DECIDED in §8.7
+  T55/e's tenancy finding   RETRACTED — it measured SERVICE mode and proved nothing
+  ```
+
+  🔬 **`KalAuthGuard` is book-scoped by CONSTRUCTION, not by convention.** Its user-mode arm
+  reads `req.params?.bookId`, throws `'book scope required'` when absent, and gates on
+  `hasBookAccess(bookId, userId)`. Its service-mode arm returns `true` on a valid internal
+  token at line 38, before any of that.
+
+  ```
+  USER mode, owner     -> 403 "no grant on this book"
+  USER mode, stranger  -> 403 "no grant on this book"     (no grants seeded; the arm FIRES)
+  SERVICE mode         -> 200                             (internal token, trusted caller)
+  ```
+
+  ⚖️ **So a `v1/kal/projects/:projectId` controller would have NO user-mode door.** Every JWT
+  request would 401 on `'book scope required'`, leaving the internal token — which skips the
+  guard — as the only way in. **A federated read surface whose only usable door is the one that
+  skips authorisation is worse than the direct call it replaces, because it looks governed.**
+
+  🎯 **Decided (§8.7): the three are blocked on `hasProjectAccess(projectId, userId)`, a new
+  authorisation primitive — not on route-writing.** Two cheaper routes were considered and
+  rejected with reasons:
+
+  ```
+  resolve project->book IN THE GATEWAY, reuse hasBookAccess
+      domain logic in the gateway; `gateway-domain-logic-gate` exists to keep it out, and
+      `knowledge_projects.book_id` belongs to the owning service. A project with no book, or
+      two, would be decided in the wrong place.
+  make the CONSUMERS carry book_id
+      composition-service holds a project id because its work is project-shaped, and
+      wiki-neighborhood's caller holds only a glossary_entity_id — neither has a book.
+      Pushing resolution outward multiplies the lookup across 13 services.
+  ```
+
+  🔴 **And T55/e's "pre-existing tenancy property" is RETRACTED.** A different `X-User-Id` did
+  get the same event, and I blamed `internal_timeline.py:113` reading `user_id` from the loaded
+  row. True of the downstream — **and not the proximate cause.** My probe carried an internal
+  token, so the guard short-circuited at line 38 and the test exercised SERVICE mode.
+
+  **I stopped at the first explanation that fit.** Rule 13 says prove which side is wrong from
+  the workload; I read the workload and stopped one layer early. The correction is struck into
+  T55/e in place rather than quietly edited, and the guard it uncovered is §8.7's whole subject
+  — so the mistake paid for itself, which does not make it less of one.
+
+  **QC (a) gates:** all repo gates green; `knowledge-http-surface-gate` PASS at 11/41/3.
+  **QC (b) live smoke:** the four-arm table above, against the REBUILT gateway on `lw-iso` —
+  and it is the control that matters: two identities, two modes, three distinct outcomes.
+  **QC (c) real data:** N/A beyond the above — this row decides a shape and writes no data.
+
+  ⛔ **Owed:** `hasProjectAccess` and the controller that uses it. A knowledge-gateway/auth
+  question now, not an INV-KAL one. The ledger keeps all three named at
+  `MAX_FEDERATE_OWED = 3`, so they cannot quietly drop off.
 
 
 - [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
