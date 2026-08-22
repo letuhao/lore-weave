@@ -847,8 +847,13 @@ ORDER BY coalesce(n.anchor_score, 0.0) DESC,
          coalesce(n.mention_count, 0) DESC,
          n.id ASC
 LIMIT $limit
-WITH collect(n) AS seeds
-WITH seeds, [s IN seeds | s.id] AS seed_ids
+// §10.1 — the ids are collected ALONGSIDE the nodes, not projected out of them afterwards.
+// AGE cannot read a property off a vertex bound inside a list comprehension, so
+// `[s IN seeds | s.id]` is rejected with `could not find properties for s` while being
+// ordinary Cypher on Neo4j. Same construct, same cure as the four chain maintainers (T84) —
+// found here by RUNNING the function against AGE (T86), in a query T82 had already rewritten
+// once without executing it on the other engine.
+WITH collect(n) AS seeds, collect(n.id) AS seed_ids
 UNWIND seeds AS node
 WITH seed_ids, collect(DISTINCT properties(node)) AS node_props
 OPTIONAL MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity)

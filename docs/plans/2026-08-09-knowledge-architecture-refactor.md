@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: raise AGE coverage past 21/152 — the 131 unproven repo functions are the cutover's real risk.**
+**RESUME: wave 4 — 102 repo functions still unproven on AGE; entities (36) and facts (12) are the bulk.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,64 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T86 2026-08-22 — **wave 3: AGE coverage 21 → 50 of 152, and a rewrite I never ran on the other engine**
+
+  ```
+  AGE coverage   21/152 (13%)  ->  50/152 (32%)   floor moved in this commit
+  wave 3         29 functions across NINE modules previously untried
+  knowledge unit 4336 · DB integration 631 -> 632 passed, 0 failed
+  ```
+
+  📐 T85 established that coverage — not the dialect count — is what a cutover decision should
+  read, and that 131 of 152 functions had never been executed against AGE. This is the next 29:
+  relations' subgraphs and 2-hop, provenance's cascade and cleanup, `entity_status`, `hierarchy`,
+  `maintenance`, `coref`, `graph_views`, `schema_usage`, `flywheel`, and `temporal`'s restitch.
+
+  🔴 **ONE MORE INSTANCE OF THE LIST-COMPREHENSION LIMITATION — in a query T82 had already
+  rewritten.** `_PROJECT_SUBGRAPH_CYPHER` carried `[s IN seeds | s.id] AS seed_ids`: a property
+  read off a vertex bound inside a comprehension, which AGE rejects outright with `could not
+  find properties for s`. T84 found the identical construct in the four chain maintainers and
+  cured it there; **this one survived because T82 rewrote the query without ever executing it on
+  the other engine.**
+
+  That is the lesson worth keeping: *a rewrite that is not run on both engines is a rewrite for
+  one.* T82 removed the query's `CALL { }`, verified it on Neo4j, moved the ratchet to zero — and
+  left a construct AGE cannot parse, sitting inside the row that declared the layer
+  engine-agnostic.
+
+  ⚙️ **Two functions do NOT run, and both are recorded rather than worked around.**
+
+  ```
+  project_graph.purge_project    PostgresSyntaxError: syntax error at or near "SHOW"
+  graph_state.project_has_...    builds its own Settings; takes no session at all
+  ```
+
+  `purge_project` reaches `vector_indexes.list_summary_vector_indexes`, which issues **`SHOW
+  VECTOR INDEXES YIELD name`** — a Neo4j *administrative* command, not Cypher. It is not a
+  dialect problem to translate: the module it calls is one §3.1 deletes and
+  `port-adoption-gate` already lists under `_DELETED_MODULES`. The dependency is residue from a
+  layer that has moved, and restructuring it is T25/§3.1's work, not this row's.
+
+  🔬 **The ratchet did its job on the way in.** Adding wave 3 made `port-adoption-gate` FAIL —
+  *"repo functions proven on AGE ROSE to 50 (floor 21)"* — and refuse the commit until the floor
+  moved with it. That is rule 5 working rather than being remembered.
+
+  ```
+  bite  the seed ids go back to a list comprehension   RED — the third wave, by name
+  ```
+
+  ⛔ **32% is still a third.** 102 repo functions have never met AGE, and every wave so far has
+  found something: three defects in wave 1, three in wave 2, one in wave 3 plus one structural
+  dependency. The rate is falling, which is what one would hope, but nothing yet licenses reading
+  the remainder as clean — and the wave-3 find was in a query that had already been rewritten,
+  reviewed and shipped.
+
+  **QC (a) gates:** unit 4336, DB integration 632, `port-adoption-gate` PASS at the new floor of
+  50 and provably red on the rise, dialect 0/0, engine literals 0/0, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed.
+  **QC (c) real data:** 29 functions executed against a live AGE 1.7.0 graph; the same suite
+  green against a throwaway Neo4j.
 
   ### 🔴 T85 2026-08-22 — **class (d)'s claim went FALSE, and my own coverage number was four too high**
 

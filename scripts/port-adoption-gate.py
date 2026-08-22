@@ -874,8 +874,10 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: number carrying a claim it no longer supports is worse than no number.
 #:
 #: What DOES track engine readiness is coverage: how much of the repo layer has been RUN
-#: against AGE.
-MIN_AGE_PROVEN_FUNCTIONS = 21
+#: against AGE. 21 -> 50 of 152 when T86's third wave landed, and the ratchet is what
+#: made the rise visible — it FAILED on the increase and demanded the floor move in the
+#: same commit, which is rule 5 working rather than being remembered.
+MIN_AGE_PROVEN_FUNCTIONS = 50
 
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",

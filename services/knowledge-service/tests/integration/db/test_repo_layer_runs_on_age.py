@@ -42,7 +42,8 @@ pytestmark = pytest.mark.asyncio
 #: maintenance and the bi-temporal chain.
 _WAVE_1 = 12   # entities / relations / provenance          (T83)
 _WAVE_2 = 13   # facts / events / entity_status / hierarchy / maintenance / the chain  (T84)
-_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2
+_WAVE_3 = 29   # the READ/DERIVE surface across nine more modules              (T86)
+_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3
 
 _GRAPH = "repo_conformance"
 
@@ -291,4 +292,95 @@ async def test_the_SECOND_WAVE_runs_on_AGE_too(age_session):
         f"only {ran} second-wave repo functions were exercised against AGE; the floor is "
         f"{_WAVE_2} of {_PROVEN_ON_AGE} total. This number is shrink-only — a function that "
         f"stops being proven is a regression in the claim, not a smaller test."
+    )
+
+
+async def test_the_THIRD_WAVE_covers_the_read_and_derive_surface(age_session):
+    """Nine more modules — relations' subgraphs, provenance's cascade, entity_status, hierarchy,
+    maintenance, coref, graph_views, schema_usage, flywheel, temporal's restitch.
+
+    ⚠️ **One more instance of the list-comprehension limitation, in a query T82 had already
+    rewritten.** `_PROJECT_SUBGRAPH_CYPHER` carried `[s IN seeds | s.id] AS seed_ids` — a
+    property read off a vertex bound inside a comprehension, which AGE rejects with
+    `could not find properties for s`. T84 found the same construct in the four chain
+    maintainers; this one survived because T82 rewrote the query without ever executing it on
+    the other engine. **A rewrite that is not run on both engines is a rewrite for one.**
+    """
+    from app.db.neo4j_repos import coref, entity_status as es, flywheel, graph_views
+    from app.db.neo4j_repos import entities as en, hierarchy as hi, maintenance as mt
+    from app.db.neo4j_repos import provenance as pv, relations as rl, schema_usage, temporal
+
+    ran = 0
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    proj = f"p-{uuid.uuid4().hex[:8]}"
+    s = age_session
+
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai", kind="person",
+                                source_type="chapter")
+    rin = await en.merge_entity(s, user_id=uid, project_id=proj, name="Rin", kind="person",
+                                source_type="chapter")
+    rel = await rl.create_relation(s, user_id=uid, subject_id=kai.id, predicate="knows",
+                                   object_id=rin.id, confidence=0.8)
+    src = await pv.upsert_extraction_source(s, user_id=uid, project_id=proj,
+                                            source_type="chapter", source_id="ch-1")
+    await pv.add_evidence(s, user_id=uid, target_label="Entity", target_id=kai.id,
+                          source_id=src.id, job_id="j1", extraction_model="m", confidence=0.9)
+
+    assert (await rl.get_relation(s, user_id=uid, relation_id=rel.id)).id == rel.id
+    ran += 1
+    await rl.find_relations_2hop(s, user_id=uid, entity_id=kai.id,
+                                 hop1_types=["knows"], hop2_types=["knows"]); ran += 1
+
+    sub = await rl.get_project_subgraph(s, user_id=uid, project_id=proj)
+    ran += 1
+    assert {n.id for n in sub.nodes} == {kai.id, rin.id}, (
+        f"the project subgraph returned {[n.id for n in sub.nodes]} — this is the query whose "
+        f"`[s IN seeds | s.id]` AGE rejects outright"
+    )
+    await rl.get_world_subgraph(s, user_id=uid, project_ids=[proj]); ran += 1
+    assert (await rl.invalidate_relation(s, user_id=uid, relation_id=rel.id)) is not None
+    ran += 1
+    await rl.recreate_relation(s, user_id=uid, subject_id=kai.id, predicate="knows",
+                               object_id=rin.id); ran += 1
+
+    assert (await pv.get_extraction_source(s, user_id=uid, source_type="chapter",
+                                           source_id="ch-1")).source_id == "ch-1"
+    ran += 1
+    await pv.remove_evidence_for_source(s, user_id=uid, source_id=src.id); ran += 1
+    await pv.remove_evidence_for_natural_key(s, user_id=uid, project_id=proj,
+                                             source_type="chapter", source_id="ch-1"); ran += 1
+    await pv.cleanup_zero_evidence_nodes(s, user_id=uid, project_id=proj); ran += 1
+    await pv.delete_source_cascade(s, user_id=uid, source_type="chapter",
+                                   source_id="ch-1"); ran += 1
+
+    await es.statuses_detail_at_order(s, user_id=uid, project_id=proj,
+                                      entity_ids=[kai.id], at_order=10); ran += 1
+    await es.list_gone_entities(s, user_id=uid, project_id=proj); ran += 1
+
+    await hi.count_child_chapters(s, part_id="p1"); ran += 1
+    await hi.count_child_parts(s, book_id="b1"); ran += 1
+    await hi.list_chapter_ids_under_part(s, part_id="p1"); ran += 1
+    await hi.top_entity_names_for_chapter(s, chapter_id="ch-1"); ran += 1
+
+    await mt.count_nodes_by_label(s, user_id=uid, project_id=proj, label="Entity"); ran += 1
+    await mt.delete_orphan_extraction_sources(s, user_id=uid, project_id=proj); ran += 1
+    await mt.reconcile_evidence_count_for_label(s, user_id=uid, project_id=proj,
+                                                label="Entity"); ran += 1
+    await mt.invalidate_stale_quarantined_facts(s, user_id=uid); ran += 1
+
+    await coref.load_anchored_kinds(s, user_id=uid, project_id=proj); ran += 1
+    await coref.load_coref_entities(s, user_id=uid, project_id=proj, kind="person",
+                                    limit=10); ran += 1
+    await graph_views.read_project_graph_edges(s, user_id=uid, project_id=proj,
+                                               limit=10); ran += 1
+    await graph_views.read_entity_edge_timeline(s, user_id=uid, entity_id=kai.id,
+                                                edge_type="RELATES_TO", limit=10); ran += 1
+    await schema_usage.observed_components(s, user_id=uid, project_id=proj); ran += 1
+    await schema_usage.usage_summary(s, user_id=uid, project_id=proj); ran += 1
+    await flywheel.get_flywheel_delta(s, user_id=uid, job_id="j1"); ran += 1
+    await temporal.restitch_chains_after_retract(s, user_id=uid, project_id=proj); ran += 1
+
+    assert ran >= _WAVE_3, (
+        f"only {ran} third-wave repo functions were exercised against AGE; the floor is "
+        f"{_WAVE_3} of {_PROVEN_ON_AGE} total."
     )
