@@ -6,9 +6,9 @@
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
 > decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **ALL NINE APPLIED** —
-> open `SDF-Q1..Q18`, of which **sixteen are resolved and TWO remain** — `Q12`, blocked on a `PROG_001`
-> parameter that does not exist and which this tier may not invent, and `Q15`, which needs a space
-> view to measure and that view is not built yet, §8.1).
+> open `SDF-Q1..Q18`, of which **seventeen are resolved**. **One remains: `Q15`**, which needs a space
+> view to measure and that view is not built. `Q12` closed in §18 — `SDF-F8` turned out to be a unit
+> error that `SDF-A31` exposed.)
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
@@ -535,7 +535,7 @@ is therefore *"add `PortalSet` **and say which relation a spatial read means**"*
 | ~~`SDF-Q5`~~ | ~~which clock~~ **✅ RESOLVED §13.1 — `SDF-A28`**: the **realm clock of the node's nearest realm-declaring ancestor**, never the reader's. Already shipped as a per-channel `time_flow_rate` (`TDIL`:644 — 天上一日人間一年). **`LayerDef` needs NO clock field** — a finding resolved by *deleting* the fix it seemed to demand. ~~ (`SDF-F1`) |
 | ~~`SDF-Q6`~~ | ~~border/adjacency has no index~~ **✅ RESOLVED §12.4 — `SDF-A25`**: there are **TWO adjacency relations** and only one was named. Geometric (the generated mesh's `neighbors`, immutable, **already sorted ascending**) vs Connective (the portal graph, mutable). A read must DECLARE which. The border query needs **no index and no cache** — one pass, ~6 000 tests, cheaper than the invalidation bookkeeping. ~~ — the shape every territory feature asks for. (`SDF-F2`) |
 | ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
-| `SDF-Q12` ⚠ **STILL OPEN — and §16 made it MEASURABLY WORSE** | `M-2` is measured: a node costs **251 B**, not the computed 96 B, so 1 M nodes is **239 MiB** and the same envelope buys **~191 nodes per player**, not ~500. A `Pocket` inner world (1 024) is therefore **5.4× the allowance, not 2×**. The blocking half is unchanged and re-verified 2026-08-22: **`PROG_001` states no realm distribution** — searched for population, rarity, proportion and tier-reach language and found none. So the space tier now knows its own number exactly and still cannot close the row, which is `SDF-F8` stated with arithmetic instead of concern. (§11.6 · §16.3) |
+| ~~`SDF-Q12`~~ | ~~budget numbers~~ **✅ CLOSED §18 — `SDF-A35`, and `SDF-F8` was a UNIT ERROR.** §11.6 compared **1 024 CELLS against a 500-NODE allowance**, and `SDF-A31` — written six sections later in this same document — settled that a generated cell is **never a row**. So 500 holders cost **500 node rows, not 512 000**: 126 KB, **0.05 %** of the envelope rather than 51 %. The binding constraint is the **baseline**, and `SDF-A30` shares it by digest, so 500 holders on one template seed cost ~0.94 MB **total**. The `PROG_001` dependency survives but **shrinks**: not *"how many reach 神境"* but *"how many DISTINCT seeds"*, and it can no longer break the design ~~ |
 | ~~`SDF-Q13`~~ | ~~is a dematerialised subtree charged~~ **✅ RESOLVED §11.1 — `SDF-A18`**: YES, and the research only looked contradictory because *budget* meant three costs. The node budget is **storage** (charged always); the live set and object budget are **CPU/render** (charged while materialised). Containment compresses the latter two, never the first. ~~ `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
 | ~~`SDF-Q14`~~ | ~~Limbo's budget is unowned~~ **✅ RESOLVED §11.3 — `SDF-A20`**: Limbo is **not a parent, it is a QUEUE WITH A DEADLINE**, and the charge stays with the estate until resolved. EVE Asset Safety is the shipped model. ~~ — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
 | ~~`SDF-Q8`~~ | ~~history-derived layers~~ **✅ RESOLVED §13.2 — `SDF-A29`**: they are **PROJECTIONS, not layers**, and the tier already ships (`crates/projections`). A layer is read AND written by the sim; a projection is only read. Reads must be against a **pinned** projection version, or it is `SDF-A4` rule 5 in a new costume. ~~ — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
@@ -1730,3 +1730,67 @@ position is exactly the float `SDF-R2` just removed from `Transform`.
 view of its own gaps; every gap turned out to have an owner one folder away. That is the fourth time in
 this run — after `SPG-Q6`, `SDF-Q16` and the eight retired-row citations — and the pattern is now the
 finding: **this project's most common defect is not a wrong design, it is a register that was never told.**
+
+---
+
+## 18 — `SDF-Q12` closed, and `SDF-F8` was a UNIT ERROR its own successor exposed
+
+`SDF-Q12` has stood as *"cannot be closed by this tier — it needs a `PROG_001` parameter"* since §11.6.
+Re-reading §11.6 after `SDF-A31` landed shows the premise is gone.
+
+### 18.1 — What §11.6 actually compared
+
+> *"An inner world bounded to `Pocket` is **1 024 CELLS**. That is DOUBLE the per-player allowance."*
+
+The allowance is **500 NODES**. **Cells were compared against a node budget** — and on 2026-08-22
+`SDF-A31` settled that a **generated cell is not a node and never a row**: it is an index
+`(owner_node, cell_index)` into its owner's baseline, derivable rather than allocated.
+
+**So a `Pocket` inner world costs ZERO node rows for its cells.** Its node cost is its **authored**
+structure — the `World` node itself, plus whatever the holder actually builds inside.
+
+`SDF-F8` was not wrong about arithmetic. It was wrong about **units**, and the axiom that exposed it was
+written six sections later by the same document.
+
+### 18.2 — The recomputation, on measured figures only
+
+| quantity | source | value |
+|---|---|---|
+| node row, as stored | **measured**, §16 | **251 B** |
+| baseline, as stored | doc 37 §7 | **~915 B/cell** (~15 MB at `Megaplanet`'s 16 384) |
+| baseline, packed | doc 37 §7 | **~20 B/cell** (~320 KB at `Megaplanet`) |
+
+For **500 holders** each with a `Pocket` (1 024-cell) inner world:
+
+| | old reading (§11.6) | measured |
+|---|---:|---:|
+| node rows | 512 000 | **500** — one authored `World` each |
+| node bytes | ~49 MB | **126 KB** |
+| share of a 1 M-node envelope | **51 %** | **0.05 %** |
+
+> **`SDF-A35` — the node budget is NOT the binding constraint on inner worlds, and never was. The
+> BASELINE budget is.** 500 **distinct** `Pocket` seeds cost **~470 MB stored / ~10 MB packed**; 500
+> holders sharing **one template seed** cost **~0.94 MB / ~20 KB total**, because `SDF-A30` shares a
+> seed-derived baseline **by digest**.
+
+### 18.3 — What this leaves `PROG_001`, and it is a smaller question
+
+The dependency does not disappear; **it changes shape and shrinks**:
+
+| was | is |
+|---|---|
+| *"how many actors reach 神境"* — because each cost 1 024 nodes | *"how many **DISTINCT** inner-world seeds exist"* — because holders sharing a template share a baseline |
+
+**A progression rebalance can no longer multiply the map tier's storage by an order of magnitude**,
+which was `SDF-F8`'s stated fear. It can only multiply the number of distinct baselines, and only if
+inner worlds are authored with distinct seeds — **which is a WORLD-GEN authoring decision this tier can
+state a default for: share the template unless the fiction requires otherwise.**
+
+> **`SDF-Q12` is CLOSED.** The budget numbers are answerable and answered. The residual input is narrower,
+> cheaper, and no longer capable of breaking the design — which is what *"decide it and write down the
+> decision"* looks like when the measurement moves the question rather than answering it.
+
+**And the honest limit, stated because §16 stated its own:** `~915 B/cell` is doc 37's figure for stored
+baseline, not a measurement taken here, and the packed figure is its own estimate of an irreducible core.
+The node figure **is** measured. So the ratio between the two budgets is sound; the baseline's absolute
+size still rests on doc 37's arithmetic rather than on a database read.
