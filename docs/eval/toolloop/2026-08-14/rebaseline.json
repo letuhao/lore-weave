@@ -4742,7 +4742,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 4/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
-        "idempotency": "OWED — op=start on an already-started run must not start a second one.",
+        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: mints a confirm_token for op=create. It will mint, but a meaningful idempotency test has to REDEEM twice, and creating a real authoring run needs a plan_run_id from an actual plan run — the fixture has none, so redeeming would fail on a precondition rather than exercise the second call. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -5241,7 +5241,8 @@
       "surfaced_count": 5,
       "called_count": 4,
       "wrote_count": 0,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED on P4-PRECONDITION's own cause, now measured at the SHIP bar rather than inferred. LIVE is sound — the tool surfaced 5/5, was called 4/5, its absent and foreign ids refuse IDENTICALLY, empty names the missing field, and the OWNING STORE is unchanged on every run. What cannot be exercised is IDEMPOTENCY, because the fixture cannot reach the state where a first call does anything: mints a confirm_token for op=create. It will mint, but a meaningful idempotency test has to REDEEM twice, and creating a real authoring run needs a plan_run_id from an actual plan run — the fixture has none, so redeeming would fail on a precondition rather than exercise the second call.\n\nSo this is not a tool defect and not a surfacing failure — it is the harness gap this problem exists to name, and the tool stays blocked until a fixture can build that state."
     },
     {
       "tool": "composition_conformance_run",
@@ -6077,7 +6078,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 5/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
-        "idempotency": "OWED — decompiling a book that ALREADY has an arc layer must not silently duplicate it.",
+        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: {\"outcome\":\"no_op\",\"arcs\":0,\"chapters_assigned\":0}. The first call returns an HONEST no-op — nothing to decompile — because a seeded arc alone is not the state this tool consumes; it needs arcs with chapters assigned. Two no-ops prove nothing about idempotency. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -6588,7 +6589,8 @@
       "surfaced_count": 5,
       "called_count": 5,
       "wrote_count": 1,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED on P4-PRECONDITION's own cause, now measured at the SHIP bar rather than inferred. LIVE is sound — the tool surfaced 5/5, was called 5/5, its absent and foreign ids refuse IDENTICALLY, empty names the missing field, and the OWNING STORE is unchanged on every run. What cannot be exercised is IDEMPOTENCY, because the fixture cannot reach the state where a first call does anything: {\"outcome\":\"no_op\",\"arcs\":0,\"chapters_assigned\":0}. The first call returns an HONEST no-op — nothing to decompile — because a seeded arc alone is not the state this tool consumes; it needs arcs with chapters assigned. Two no-ops prove nothing about idempotency.\n\nSo this is not a tool defect and not a surfacing failure — it is the harness gap this problem exists to name, and the tool stays blocked until a fixture can build that state."
     },
     {
       "tool": "composition_derivative_edit",
@@ -9508,7 +9510,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 1/5, suspended-on-card 1/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "This scenario IS the absent case — there are no scene nodes to link.",
-        "idempotency": "OWED — the same edge twice must not create two rows.",
+        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: not found or not accessible. A scene LINK joins outline SCENE nodes; the fixture's composition_arc_create produces arc nodes, which the tool correctly refuses. Reaching the state needs an outline with scenes, which the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -10062,7 +10064,8 @@
       "surfaced_count": 5,
       "called_count": 1,
       "wrote_count": 1,
-      "suspended_count": 1
+      "suspended_count": 1,
+      "blocked_reason": "BLOCKED on P4-PRECONDITION's own cause, now measured at the SHIP bar rather than inferred. LIVE is sound — the tool surfaced 5/5, was called 1/5, its absent and foreign ids refuse IDENTICALLY, empty names the missing field, and the OWNING STORE is unchanged on every run. What cannot be exercised is IDEMPOTENCY, because the fixture cannot reach the state where a first call does anything: not found or not accessible. A scene LINK joins outline SCENE nodes; the fixture's composition_arc_create produces arc nodes, which the tool correctly refuses. Reaching the state needs an outline with scenes, which the scenario does not build.\n\nSo this is not a tool defect and not a surfacing failure — it is the harness gap this problem exists to name, and the tool stays blocked until a fixture can build that state."
     },
     {
       "tool": "glossary_create_chapter_link",
@@ -13503,7 +13506,7 @@
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 1/5, suspended-on-card 4/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
         "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
-        "idempotency": "OWED — adopting the same template twice must not duplicate the ontology.",
+        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: this project has no adopted ontology to edit. A fresh kg project has no ontology, so op=schema_edit refuses before any edit can be made — and idempotency needs a FIRST call that does something. Reaching the state needs kg_adopt_template first, which is a second fixture the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -14085,7 +14088,8 @@
       "surfaced_count": 5,
       "called_count": 1,
       "wrote_count": 4,
-      "suspended_count": 4
+      "suspended_count": 4,
+      "blocked_reason": "BLOCKED on P4-PRECONDITION's own cause, now measured at the SHIP bar rather than inferred. LIVE is sound — the tool surfaced 5/5, was called 1/5, its absent and foreign ids refuse IDENTICALLY, empty names the missing field, and the OWNING STORE is unchanged on every run. What cannot be exercised is IDEMPOTENCY, because the fixture cannot reach the state where a first call does anything: this project has no adopted ontology to edit. A fresh kg project has no ontology, so op=schema_edit refuses before any edit can be made — and idempotency needs a FIRST call that does something. Reaching the state needs kg_adopt_template first, which is a second fixture the scenario does not build.\n\nSo this is not a tool defect and not a surfacing failure — it is the harness gap this problem exists to name, and the tool stays blocked until a fixture can build that state."
     },
     {
       "tool": "kg_propose_edge",
