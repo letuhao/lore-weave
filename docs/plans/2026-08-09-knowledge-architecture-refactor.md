@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T46 — the merged store's SUBSTRATE. The repo layer is 97% proven on AGE; the choice is X1's and owed to the PO.**
+**RESUME: T54's last line — `infra/.env` → `age`. The blocker that reverted it is DISCHARGED (T54/d); the flip itself needs a GRANT, because it writes to dev. T46's substrate is a separate PO question.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 67 of 117 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 68 of 118 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (3/5) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19174,6 +19174,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | `port-adoption-gate` prints both numbers every run, so the gap between 19 and 54 is visible on every commit rather than needing an audit to rediscover. |
   | **To unblock** | 📐 **DECIDED — spec §10.1 (T61).** ~~Grow the port operation, migrate its binders~~ would mean **106 methods**: class (d) demands **85 distinct operations** against a port of 21, 83 of them taking a Cypher session. That is `neo4j_repos` with an `abstractmethod` decorator, and the port's own law refuses it (*"grows by demand, not by inventory"*). Substitutability lands at TWO levels instead: `GraphStore` stays the DOMAIN boundary and grows by demand; the repo layer becomes ENGINE-AGNOSTIC, priced by the 2026-08-11 construct probe and demonstrated on the three hardest cases by T57–T60. |
   | **Retry when** | Immediately — it is T17 class (d), unblocked since T35 closed. |
+
+  ### ✅ T54/d 2026-08-22 — **D-AGE-DEFAULT-SPLITS-THE-GRAPH is DISCHARGED; the pin is all that is left**
+
+  The deferral above blocks on one measured fact: *"the 19 `GraphStore` adopters read AGE while
+  the 54 `neo4j_repos` binders read Neo4j."* **That is no longer true, and the proof is a live
+  run rather than an argument.**
+
+  ```
+  T89   WRITE  /internal/knowledge/enriched-writeback  -> repo layer  (neo4j_repos)
+        READ   /internal/knowledge/wiki-neighborhood   -> GraphStore  (the port)
+
+        AGE g_shared   "Aurelia Vane" | "person" | 5f9a2aaa-…
+        iso Neo4j      0                    <- the OTHER store never saw it
+  ```
+
+  Both halves followed one session. `neo4j_session()` has been engine-aware since T54c, the
+  repo layer carries **0** portable dialect constructs and **0** engine literals, and T90 drove
+  the read surface on `age` and on `neo4j` with identical results. The 19-vs-54 count still
+  describes which modules IMPORT what; it no longer describes which STORE they read.
+
+  📐 **What remains of T54 is one line, and it is already decided.** §8.5 (PO 2026-08-22) names
+  both halves of the TIER:
+
+  ```
+  DEFAULT_BACKEND = "age"  in app/db/graph_backend.py     ✅ DONE
+  KNOWLEDGE_GRAPH_BACKEND=age  in infra/.env              ⛔ still `neo4j` — T54b's revert
+  ```
+
+  ⚖️ **The revert's reason is discharged; its CONSEQUENCE is not, and it is measured.** Dev's
+  AGE graph is bootstrapped and empty; dev's Neo4j is not:
+
+  ```
+  dev knowledge-pg   age 1.7.0 · g_shared present · Entity count 0
+  dev Neo4j          5052 entities · 1144 RELATES_TO · 370 Fact
+  ```
+
+  §8.5 accepted this in principle — rebuild-on-demand re-projects entities from the glossary
+  SSOT, *"the rebuild restores IDENTITY only"*, and per `D-T41` the extraction-derived relations
+  do not come back without re-extraction. So the flip trades **1 144 relations and 370 facts**
+  that are not rebuildable for a dev stack that states its backend.
+
+  🛑 **HANDED BACK on the fifth stop condition, not on the decision.** The engine choice is made
+  (§8.5, AGE) and the blocker that reverted it is closed. What is not covered is the operational
+  moment: flipping `infra/.env` makes the dev knowledge-service write to a non-throwaway store,
+  and the session GRANTS (PO 2026-08-21 — SOAK, RECANON, QC-3, QC-5 clause 1) do not include it.
+  §8.5's own grant is explicitly narrow: *"`CREATE EXTENSION age` and `create_graph` … schema
+  objects on the knowledge Postgres, not data writes"*, and that bootstrap is already done.
+
+  **The action awaiting authorisation is one line:** `infra/.env:14`
+  `KNOWLEDGE_GRAPH_BACKEND=neo4j` → `age`, then recreate `knowledge-service`. Nothing else in
+  this row is outstanding.
+
 
   ### 🔴 T54b 2026-08-22 — **the dev flip SPLIT the graph across two engines, and that is the real blocker**
 
