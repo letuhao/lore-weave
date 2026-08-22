@@ -1,0 +1,578 @@
+{
+  "batch": "c-skill",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "registry_set_skill_enabled",
+      "scenario": "registry-set-skill-enabled",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+      "answer_expect": null,
+      "falsifier_sha": "22ee0c1832bdcaf0",
+      "ship_audit": {
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/c-skill.json): called 5/5 and left SUSPENDED on a card on ALL FIVE runs with NO approval, and the owning store is unchanged — the only movement is the async extraction outbox on 2 runs. Empty prose is correct here: the CARD is the output, which the gate's own note allows.",
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c-skill-ship-probe.txt): an unknown slug is refused, 'skill not found: <slug>'.",
+        "idempotency": "OWED — NOT EXERCISED. Toggling twice needs a skill this run OWNS; the only 'glossary' rows are one System skill (which must never be mutated) and five pre-existing user-tier copies belonging to 2026-07-02 fixtures. A fixture that creates its own user-tier skill via registry_propose_skill would close it.",
+        "tenancy": "OWED — NOT EXERCISED (docs/eval/toolloop/2026-08-14/c-skill-ship-probe.txt). This tool keys on a SLUG, not a per-user id, so a foreign UUID is just another unknown slug and the probe's 'tenancy' case tests nothing. The real question — can one account disable ANOTHER account's skill — needs a SECOND ACCOUNT, and it matters because the contract says disabling a System skill 'applies only to this user; the shared skill is never changed'."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02bba-ade6-70c9-ae20-1963704f1b8f",
+          "session_id": "01a02bba-e152-7954-b526-cbd567e00cfe",
+          "prompt": "Turn off the glossary skill for me.",
+          "scenario_prompt": "What skills do I have available?",
+          "prior_turns": [
+            {
+              "prompt": "What skills do I have available?",
+              "called": [
+                "registry_list_skills"
+              ],
+              "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan, materializing your thoughts into a formal chapter and scene structure.\n*   **Composition (`composition`):** Use this to build your story's outline, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motif library.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter plan.\n*   **Drafting:** Once a plan is established, I can move into focused drafting to write out your chapters.\n\n#"
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_set_skill_enabled"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:30.047291+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:30.029438+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:29.797389+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:30.047291+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:07:30.029438+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:03.960231+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:03.960231+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02bbb-5c4c-7bc5-8c48-b942bcb69e99",
+          "session_id": "01a02bbb-98d6-7dad-bfc8-ea6550e0ae8c",
+          "prompt": "Turn off the glossary skill for me.",
+          "scenario_prompt": "What skills do I have available?",
+          "prior_turns": [
+            {
+              "prompt": "What skills do I have available?",
+              "called": [
+                "registry_list_skills"
+              ],
+              "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan, materializing your thoughts into a formal chapter and scene structure.\n*   **Composition (`composition`):** Use this to build your story's outline, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motif library.\n*   **The planner (`plan_forge`):** A high-level planning tool. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter story plan.\n*   **Drafting:** Once a plan is set, I can move into focused drafting to write out your chapters.\n\n### **Worl"
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_set_skill_enabled"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.697055+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.680418+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.462266+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.697055+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:14.680418+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02bbc-0a4b-7030-8083-92792db3d68f",
+          "session_id": "01a02bbc-3cc1-77b6-8a23-2b4ded6c144d",
+          "prompt": "Turn off the glossary skill for me.",
+          "scenario_prompt": "What skills do I have available?",
+          "prior_turns": [
+            {
+              "prompt": "What skills do I have available?",
+              "called": [
+                "registry_list_skills"
+              ],
+              "text": "You have access to several specialized skills designed to help you manage every stage of your novel's creation, from initial worldbuilding to final drafting. Here is a summary of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan that is immediately ready for drafting.\n*   **Composition (`composition`):** Use this to build your story's outline, write or publish chapters, declare \"canon\" rules, and manage your motif library.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document and transform it into a structured, chapter-by-chapter plan.\n*   **Drafting & Revision:** I can write chapters, draft specific scenes, and handle revisions to your pr"
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_set_skill_enabled"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.238145+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.222469+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.001133+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.238145+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:08:59.222469+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02bbc-aef7-7f11-beab-2717484eabce",
+          "session_id": "01a02bbc-e6be-7c55-99a6-40d64060e3a1",
+          "prompt": "Turn off the glossary skill for me.",
+          "scenario_prompt": "What skills do I have available?",
+          "prior_turns": [
+            {
+              "prompt": "What skills do I have available?",
+              "called": [
+                "registry_list_skills"
+              ],
+              "text": "You have access to several specialized skills designed to help you build, plan, and write your novel. Here is a summary of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured chapter and scene plan.\n*   **Composition (`composition`):** Use this to build your story's outline, write or publish chapters, declare \"canon\" rules, and manage your motif library.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter plan.\n*   **Drafting:** Once a plan is established, I can move into a focused drafting mode to write long, detailed chapters.\n\n### **Worldbuilding & Lore**\n*   **Story bible A"
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_set_skill_enabled"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.382229+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.372862+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.165658+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.382229+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:09:41.372862+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:11.6429+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:11.6429+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02bbd-507f-737c-8c1a-5049df65c884",
+          "session_id": "01a02bbd-890c-7454-98e9-118c4b0ada72",
+          "prompt": "Turn off the glossary skill for me.",
+          "scenario_prompt": "What skills do I have available?",
+          "prior_turns": [
+            {
+              "prompt": "What skills do I have available?",
+              "called": [
+                "registry_list_skills"
+              ],
+              "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan (chapters and scenes) that we can then use for drafting.\n*   **Composition (`composition`):** I can build your story's outline, write or publish chapter prose, establish \"canon\" rules for your world, and manage your motif library.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter story plan.\n*   **Drafting:** Once a plan is in place, I can use a focused drafting specialist to write long, careful chapters based o"
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "registry_set_skill_enabled"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.687727+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.680588+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.493556+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.687727+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 23:10:22.680588+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 2,
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED on SHIP, with LIVE now SOUND and its previous evidence REPLACED. Re-measured K=5 from scenarios-b41-skill: SURFACED 5/5, CALLED 5/5, ZERO errors, suspended on a card 5/5 with no approval and the owning store untouched.\n\n🔴 ITS PREVIOUS 5-of-5 FAILURE WAS A BROKEN SEED ASSERTION, NOT THE PLATFORM. The copies in batch38/39/40 count EVERY row with slug='glossary' and expect 1; the store holds 6 — one System skill and five USER-TIER copies from 2026-07-02, which is how per-user overrides work. b41-skill scoped it to tier='system' all along, and 'last file wins' picked the regressed copy because batch40 sorts after b41-skill.\n\nWhat remains owed is real: TENANCY needs a second account (a slug is not a per-user id, so the probe's foreign-UUID case tests nothing), and IDEMPOTENCY needs a skill this run OWNS rather than the System skill it must never mutate."
+    }
+  ]
+}

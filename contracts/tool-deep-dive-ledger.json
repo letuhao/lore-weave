@@ -2983,9 +2983,9 @@
   },
   "registry_set_skill_enabled": {
    "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/b41-skill.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across 5 CLEAN runs (zero errors), so the model was never shown it. D-LAZY-TAIL-UNUSED, the same cause as batches 31-40 (DQ-T36).\n\n🔴 AND THIS IS THE FIRST CLEAN ARM THIS TOOL HAS EVER HAD, AFTER THREE I MISREAD. Batches 38, 39 and 40 each recorded it as '5 of 5 lost to transport errors' and I wrote that into three commits and the session handoff. They were never transport failures. Every one says, in the run's own error field:\n    PROVISION ProvisionError: SEED ASSERTION FAILED\nMy assertion counted `slug='glossary'` ACCOUNT-WIDE and expected 1. The registry holds SIX rows with that slug — one System-tier plus five user-tier overrides created 2026-07-02 by other accounts, body 'override', seven weeks before this loop touched it. The seed failed before a turn ever ran.\n\nWHAT MADE IT INVISIBLE: the report's `err` column shows a count, and I read '5' as a provider fault three times without opening the error. A fixture bug wore a provider's clothes for three batches, and the same week I built a preflight specifically so a broken seed assertion could not cost a batch — it catches INVALID SQL, and this SQL was perfectly valid and simply wrong. Scoped to tier='system', the arm is clean at the first attempt.\n\nThe tool itself is still unproven: it was never advertised, so there is no evidence about it. The SYSTEM row it targets is untouched, and its absent-slug refusal was exercised by direct probe in batch 38 — 'skill not found: no-such-skill-xyz'.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/b41-skill.json",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-skill.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 2/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on SHIP, with LIVE now SOUND and its previous evidence REPLACED. Re-measured K=5 from scenarios-b41-skill: SURFACED 5/5, CALLED 5/5, ZERO errors, suspended on a card 5/5 with no approval and the owning store untouched.\n\n🔴 ITS PREVIOUS 5-of-5 FAILURE WAS A BROKEN SEED ASSERTION, NOT THE PLATFORM. The copies in batch38/39/40 count EVERY row with slug='glossary' and expect 1; the store holds 6 — one System skill and five USER-TIER copies from 2026-07-02, which is how per-user overrides work. b41-skill scoped it to tier='system' all along, and 'last file wins' picked the regressed copy because batch40 sorts after b41-skill.\n\nWhat remains owed is real: TENANCY needs a second account (a slug is not a per-user id, so the probe's foreign-UUID case tests nothing), and IDEMPOTENCY needs a skill this run OWNS rather than the System skill it must never mutate.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-skill.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   }
@@ -3987,7 +3987,7 @@
   "defects_proven": 25,
   "defects_open": 14,
   "deferred_questions": 17,
-  "last_batch": "batch-41 (2026-08-14)",
+  "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 173,
    "prose_note_pre_gate": 25,
