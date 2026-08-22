@@ -1,16 +1,16 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `8db7d8532` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+**HEAD:** `4a740ce41` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
 
-## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: 196 of 198 shippable tools concluded
+## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: COMPLETE — 198 of 198 shippable tools concluded
 
 **Where it stands, derived not typed** — `python scripts/toolloop/work_remaining.py`:
 
 ```
-198 shippable (315 federated − 117 deprecated) | 196 concluded | 2 remaining | 0 in flight
+198 shippable (315 federated − 117 deprecated) | 198 concluded | 0 remaining | 0 in flight
 ```
 
-133 proven, 63 blocked, batches 1–40 closed. The `/goal` directive that drove it was
+133 proven, 65 blocked, batches 1–41 closed. **The denominator is closed.** The `/goal` directive that drove it was
 CLEARED on 2026-08-21; [`../plans/2026-08-13-tool-deep-dive-GOAL.md`](../plans/2026-08-13-tool-deep-dive-GOAL.md)
 is the prompt to paste back to resume, and
 [`../plans/2026-08-13-tool-deep-dive-RUNBOOK.md`](../plans/2026-08-13-tool-deep-dive-RUNBOOK.md)
@@ -46,16 +46,29 @@ defect, the owning suite green, and the image verified BY CONTENT (md5 per file,
 * `D-SILENT-TURN-NO-CARD-NO-PROSE` — recording is fixed (stored `failed`, not `completed`); the
   silence itself is not.
 
-**🔴 `gate.py audit` is RED, deliberately — TWO tools, both on TRANSPORT, neither on behaviour.**
-`translation_update_settings` surfaced 5/5 across SEVEN arms and lost 5, 1, 4, 4, 5, 5, 4 of 5 runs
-to "upstream sent 'error' with no error message". `registry_set_skill_enabled` lost 5 of 5 on all
-three of its arms. Neither has ever had a clean distribution, so the gate correctly refuses
-`blocked` while the turn itself is unproven. **Do not clear the audit by concluding them** — and an
-eighth arm is fishing, not sampling.
+**✅ `gate.py audit` is CLEAN — 203 rows, every tool with evidence has a ledger row.**
 
-A LEAD, not a claim: in a 3-hour window `chat_messages` shows 163 turns, 11 with
-`outcome='failed'` and **zero** with `is_error` set. If a transport-failed turn is not flagged,
-these failures are invisible to anything counting errors rather than reading outcomes.
+**THE LAST TWO TOOLS WERE NOT BLOCKED BY THE PLATFORM. THEY WERE BLOCKED BY MY OWN MISREADINGS,**
+and both were recorded in this file as "transport errors" before being diagnosed:
+
+* `translation_update_settings` — seven arms of "upstream sent 'error' with no error message" were
+  a **RAIL-PINNED TURN THAT NEVER COMPLETES**. The prompt pins `translation-pass`; the server drives
+  the rail and never emits an assistant message (`CP-0.4 orphaned turn ... abandoned_by_user`). Not
+  slowness: raising the client budget 180s → 900s changed only the error's name. The control that
+  proved it — the same tool, phrasing that does not pin the rail — came back **5/5 clean**.
+  D-RAIL-PINNED-TURN-NEVER-COMPLETES deserves attention well beyond this tool: the words that pin
+  the rail are ordinary ones, and the author sees no error, just a turn that never answers.
+* `registry_set_skill_enabled` — three arms of "5 of 5 transport errors" were
+  `PROVISION ProvisionError: SEED ASSERTION FAILED`. My assertion counted `slug='glossary'`
+  account-wide and expected 1; the registry holds six (one System, five user-tier overrides from
+  another suite in July). **The report's `err` column is a COUNT, and I read "5" as a provider
+  fault three times without opening the error.**
+
+**A SEED ASSERTION PROVES THE ROW EXISTS WHERE I PUT IT** — nothing more. It does not prove the tool
+can see it (the `jobs_*` seed wrote to `translation_jobs` while those tools read jobs-service's
+cross-service projection), and it does not prove it was scoped to the thing under test. The
+preflight added this week catches INVALID SQL; both of these were valid SQL that was wrong about
+the world.
 
 **THE DOMINANT BLOCKER IS NOW SURFACING, NOT THE TOOLS** — the highest-value thing an owner could
 fix. Most blocked tools were never advertised (`find_tools_call_count: 0`; the lazy tail is never

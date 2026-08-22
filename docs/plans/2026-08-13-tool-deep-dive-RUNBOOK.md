@@ -140,8 +140,8 @@ section below says never to read a total out of this file, and that applies here
 315  federated total        315          315          315
 117  deprecated             117          117          117
 198  SHIPPABLE                                                     <- the denominator
-     concluded within it     30          109          196
-     remaining              168           89            2
+     concluded within it     30          109          198
+     remaining              168           89            0
 ```
 
 Re-derive both halves with:
