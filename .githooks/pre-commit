@@ -382,6 +382,15 @@ fi
 # grows and the mirror does not.
 "$PY" "$ROOT/scripts/world-scale-parity-gate.py"
 
+# lore-bible-park-gate -- the lore-bible track is PARKED and `LB0` found a 253-file
+# service already shipping the sweep `LB2` was going to rebuild. The board's own
+# words for carrying that forward were "carry that finding forward when this track
+# legitimately reopens", which is a wish. This reds the moment a lore-bible SCHEMA
+# or PRODUCER appears and hands the author the finding at the only moment it
+# matters -- before the sweep gets rebuilt. `D-LORE-BIBLE-PARKED-SWEEP-EXISTS`.
+"$PY" "$ROOT/scripts/lore-bible-park-gate.py" --selftest >/dev/null
+"$PY" "$ROOT/scripts/lore-bible-park-gate.py"
+
 # amendment-rot-gate — deferral-gate's sibling, for the DESIGN corpus rather than
 # the code tier. Same conclusion reached a third time, from a third direction:
 # 15 of 25 WSA amendment ids were UNGREPPABLE (written `**R19**`, no prefix), six

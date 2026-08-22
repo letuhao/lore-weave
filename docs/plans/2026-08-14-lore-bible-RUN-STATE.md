@@ -19,6 +19,17 @@
 > *"17 docs, zero code"* is true of the lore-bible ARTIFACT and misleading about the WORK. Carry
 > that finding forward when this track legitimately reopens.
 >
+> **✅ THE PARK NOW HAS A MECHANISM (`B4`, 2026-08-22).** It had a declared wake-up and nothing that
+> changes colour by itself, so `LB0`'s finding lived only in this paragraph.
+> `scripts/lore-bible-park-gate.py` — wired in `.githooks/pre-commit`, 7 self-test cases — reds the
+> moment a lore-bible **schema or producer** appears under `contracts/`, `crates/`, `services/`,
+> `sdks/` or `clients/`, and prints the finding. Docs do not trip it: a parked track has to stay
+> thinkable. **It does not forbid the work; it forbids doing the work without reading why the last
+> attempt stopped.** Registered as `D-LORE-BIBLE-PARKED-SWEEP-EXISTS`. The sweep was re-measured
+> at **253** Python files, not 252.
+>
+> **`LB1`/`LB2`/`LB3` stay open and stay parked** — reopening is the PO's call, not a board's.
+>
 > **What would wake it up:** the PO reopening the BOOK_TO_GAME track, *after* the data foundation
 > closes and *after* combat and progression have complete designs to write a schema against.
 >

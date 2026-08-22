@@ -343,7 +343,7 @@ that file is ungoverned history, and a third copy is the drift this run keeps fi
 | `B1` | **reality-layer `3C` + `3D` as ONE commit** — `ids.rs` re-added, `CapabilityToken`, `trait ControlPlane`, `SessionContext`, the `#[cfg(test)]` double. The producer `3C` was waiting for is the control-plane seam, and `3D` *is* that seam | `[x]` | **DONE 2026-08-22 — §3.7. ALREADY BUILT; the board was never told.** Verified by the rows' OWN criteria: `clippy -p dp -D warnings` **rc=0**, and the field → `pub` bite reds `forged_reality_id`. Both boards updated |
 | `B2` | **kernel-state `G5` automated.** Its status cell ticks the MANUAL leg and leaves the AUTOMATED leg unticked — the browser render is proven by hand and by nothing that runs again | `[x]` | **DONE 2026-08-22 — §3.8. The suite was already written and had never been RUN.** 2 passed on chromium in ~1.9 s against the real stack; bite `XLEN 1→0` reds both. `FLOW-19`'s shape a second time |
 | `B3` | **game-tier `1b5-*` — eight rows marked `⬜ OPEN` at `:1700`–`:1707` that a discharge table at `:1787` closes.** The work shipped; the register was never told | `[x]` | **DONE 2026-08-22 — §3.9. All eight verified against the CODE, not the discharge table, then ticked.** Bite: deleting `channels_id_positive` reds `dp-channels-schema-gate`. One row (`L3`/`L4`) is prose-discharged and says so |
-| `B4` | **lore-bible `LB1`/`LB2`/`LB3` — unpark or park with a trigger.** `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep. A board parked for a *good* reason still needs the reason written where the next reader looks | `[ ]` | |
+| `B4` | **lore-bible `LB1`/`LB2`/`LB3` — unpark or park with a trigger.** `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep. A board parked for a *good* reason still needs the reason written where the next reader looks | `[x]` | **DONE 2026-08-22 — §3.10. STAYS PARKED — reopening is the PO's call — and the park now has a MECHANISM.** `scripts/lore-bible-park-gate.py`, wired, 7 self-test cases. `deferral-gate` 12/36 → **13/37** mechanised |
 
 #### 3.7 · `B1` — verified, not built
 
@@ -438,6 +438,36 @@ eight was checked against what shipped:
 these eight. And `goal-prompt.py` could not have caught any of them: all eight are marked `⬜`, which
 `C1`'s second gap makes invisible.
 
+#### 3.10 · `B4` — the park was sound; what it lacked was a mechanism
+
+**The decision is: STAYS PARKED.** The reason is good and it is not a board's to overturn — opening
+the track was a boundary violation, and its schema was being written against `progression_kinds` and
+combat tuning, features the PO has not finished designing. *"A contract written against a feature that
+does not exist"* is the orphan shape `orphan-model-gate.py` already refuses. **Reopening is the PO's
+call.**
+
+What was missing is the same thing `A5` supplied: the park **declared** a wake-up and had nothing that
+changes colour by itself, so `LB0`'s finding lived only in a paragraph — and the board's own words for
+carrying it forward were *"carry that finding forward when this track legitimately reopens"*, which is
+a wish.
+
+**`scripts/lore-bible-park-gate.py`**, wired in `.githooks/pre-commit`: reds the moment a lore-bible
+**schema or producer** appears under `contracts/`, `crates/`, `services/`, `sdks/` or `clients/`, and
+prints `LB0`'s finding at the only moment it matters — **before the sweep gets rebuilt**. Docs do not
+trip it; a parked track has to stay thinkable. **It does not forbid the work. It forbids doing the
+work without reading why the last attempt stopped.**
+
+**Re-measured: 253 Python files, not 252.** Small, and the point of re-measuring rather than copying.
+
+**Its own self-test caught its regex on the first run.** The boundary was ``, and `` needs a
+non-word character while `_` **is** one — so `0099_lore_bible.up.sql` and `lore_bible_section`, the
+two shapes the gate most needs to see, both failed to match. **Two of six arms red immediately.** Now
+letter-guards, with `folklore_bible` added as a near-miss on the other side. 7 cases, all bite.
+
+`gate-wiring-gate`: 119 → **120 gates, all wired**. `deferral-gate`: **12/36 → 13/37** mechanised.
+
+**Lane B is CLOSED.**
+
 ### Lane C — the tooling that hid the work
 
 | # | Row | Status | Evidence |
@@ -505,7 +535,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `B4` — lore-bible `LB1`/`LB2`/`LB3`: unpark or park with a trigger. `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep, and the board says it is parked rather than deleted — so the question is whether the park has a reason a reader can find, not whether to build it. Then lane C, where `C1` now carries THREE measured gaps.**
+**RESUME: `C1` — the tooling that hid the work, and it now carries THREE measured gaps: 30 of 51 boards parse as empty (bolded ids); `⬜` is not in the vocabulary at all, hiding 27 open rows; and it cannot tell a marker from a MENTION of a marker, which silently ticked row `B2` and then row `C1` itself. **Lanes A and B are CLOSED — 9 of 13 rows.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
