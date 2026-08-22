@@ -5,7 +5,7 @@
      namespace, which is the opposite of what the catalog is for. -->
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
-> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **four applied (`R1`, `R2`, `R3`, `R7`), five proposed** —
+> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **six applied, three proposed** —
 > open `SDF-Q1..Q18`, of which **sixteen are resolved and TWO remain** — `Q12`, blocked on a `PROG_001`
 > parameter that does not exist and which this tier may not invent, and `Q15`, which needs a space
 > view to measure and that view is not built yet, §8.1).
@@ -500,7 +500,7 @@ RUN-STATE §22):
 
 ## 7 — Amendments this doc raises against sealed docs 36 and 37
 
-**Status: `SDF-R1`, `SDF-R2`, `SDF-R3` and `SDF-R7` are APPLIED (2026-08-22); the other five are PROPOSED.** Doc 36's `SPG-A17` now carries the integer `Transform`
+**Status: SIX of nine are APPLIED (2026-08-22) — `SDF-R1` `R2` `R3` `R7` `R8` `R9`. Three remain PROPOSED: `R4` (an Encounter closure, `COMB_*`'s), `R5` (**blocked** — layers bind to `MapKind` and the layer registry `T4` is unbuilt) and `R6` (the 16×16 default, `CSC_001`'s).** Doc 36's `SPG-A17` now carries the integer `Transform`
 and an amendment note recording what applying it corrected; every other row is still only here, which is
 the mechanism. `R1..R6` come from
 the first pass; **`R7..R9` were raised by the deep dives in §11–§13** and two of them target doc 37, which
@@ -515,8 +515,8 @@ is why the section title changed.
 | `SDF-R5` | `SPG-A2` | layers bind to `MapKind`; `home_kinds` required, validated on write | `R-29` |
 | `SDF-R6` | `SPG-R5` | the 16×16 default gains a quantitative justification **and a cost**: layout solvers fall over at ~30 rooms (so recursion is mandatory), but over-fragmentation makes a continuous field numerically unstable | `R-62` (Edgar) · `R-48` (Barotrauma) |
 | **`SDF-R7`** ✅ **APPLIED 2026-08-22** | `SPG-A3` | add a **SCALE matrix** beside the containment matrix, so `Domain → World` is legal *at `Pocket`* | **APPLIED in `world_seed`**: `NodeDecl` carries a `scale`, and the edge is refused at `Megaplanet` **and at `None`** — silence is not consent, since an undeclared scale inherits a generator default that is not `Pocket`. Bounded to **that edge only**; a `Gigaplanet` under a `Universe` passes, because checking every `World` would be the quota `SDF-A19` refuses. `WorldScale` is mirrored rather than imported, with a **parity gate** in both directions |
-| **`SDF-R8`** | doc 37 ([`WDS-*`](37_world_data_storage.md)) | **snapshot-compaction is absent.** `compact`, `truncate` and `fold-baseline` return **zero hits** in a doc committed on the same day. Without it `SDF-A17`'s bound is on *lifetime* edits, so a long-lived world eventually refuses its owner's edits permanently — worse than the `R-61` behaviour it was written to avoid | `SDF-A21` (§11.4). Carries a retention cost: the **original** baseline must be kept while any replay target predates the compaction — `WDS-A6` arriving a second time for a second reason |
-| **`SDF-R9`** | doc 37 | doc 37 scopes **the node tree** (*"per-reality Postgres"*) and is silent on the other eight tables. State the rule instead of the instance: **seed-derived shared by digest · log-derived per-reality · registry per-ruleset** | `SDF-A30` (§13.2). The payoff is concrete — a hundred realities forked from one book share one 14.9 MB baseline |
+| **`SDF-R8`** ✅ **APPLIED 2026-08-22** | doc 37 | **snapshot-compaction is absent** | **APPLIED as `WDS-A9`.** The absence was found by grep, not review: `compact`, `truncate` and `fold-baseline` returned **zero hits** the day after doc 37 was committed. The finding is that **refusing alone is WORSE than `R-61`'s NMS behaviour** — NMS degrades, a bare refusal means a long-lived world permanently cannot be edited by its owner. Compaction moves the bound from *lifetime* edits to *un-compacted delta*, and its retention cost is stated: the original baseline survives while any replay target predates the fold |
+| **`SDF-R9`** ✅ **APPLIED 2026-08-22** | doc 37 | state the SCOPE rule, not the instance | **APPLIED as `WDS-A10`** — seed-derived shared by digest · log-derived per-reality · registry per-ruleset. Carried in with the **measured** numbers rather than the claim: 251 B/node as stored, 1.10 MB per reality against a 14.9 MB shared baseline, **92 % saved at N=100** — and the note that it holds ONLY because `SDF-A31` keeps generated cells out of the row space |
 
 **`SDF-R3` carries a rider added on the reconciliation pass.** `PortalSet` supplies **connective**
 adjacency; `SDF-A25` (§12.4) found there are **two** relations and the other one already exists — the
