@@ -20087,10 +20087,29 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ⛔ **STILL OWED: T48 cannot close while any row is open.** Its first criterion is *every
-  task fully implemented*, and **ten rows remain**. The figures quoted below are QC-1's
-  evidence and this gate's own selftest — they are examples of the property being
-  enforced, **not** a claim that T48's audit has passed. What is done is the MECHANISM;
-  what is owed is the re-run, once the last row closes.
+  task fully implemented*. The figures quoted below are QC-1's evidence and this gate's own
+  selftest — they are examples of the property being enforced, **not** a claim that T48's
+  audit has passed. What is done is the MECHANISM; what is owed is the re-run, once the last
+  row closes.
+
+  📐 **~~ten rows remain~~ → SEVEN (2026-08-23), and the composition is what matters, not the
+  count.** `plan-verify`: *69 tasks — 62 done, 7 tracked, 0 untouched; 7 unfinished cite a
+  decision, 0 do not*. Of the seven:
+
+  ```
+  T17   by DESIGN does not close — §1.3: "the ceiling is therefore not going to zero, and
+        that is correct". Its FLOOR is the number that means anything.
+  T33 ⛔ · T49 ⛔   stop conditions, by the run contract
+  QC-5 ⏸           a POST-REVIEW checkpoint
+  T25 · T46        each owes ONE narrow operational input (a soak duration; §6.3c's
+                   `knowledge-pg` vs shared `postgres` topology) — neither is a design gap
+  T48              this row
+  ```
+
+  ⚠️ **So T48's first criterion cannot be met by building.** Five of the six others are
+  structurally open — a design row that never closes, two stop conditions, a checkpoint, and
+  two awaiting an operator's call. Recording that here so the next reader does not spend a
+  session trying to grind the count to zero: **what T48 waits on is a decision, not work.**
 
   ### ✅ T48a 2026-08-14 — the evidence gate T48 was the promise to look for
 
