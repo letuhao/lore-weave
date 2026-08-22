@@ -1,0 +1,44 @@
+
+catalog_get_book   required=['book_id']
+  absent   refused    MCP catalog_get_book error: book not found
+  tenancy  refused    MCP catalog_get_book error: book not found
+  empty    refused    MCP catalog_get_book error: invalid book id
+  oracle   identical
+
+jobs_get   required=['service', 'job_id']
+  absent   refused    MCP jobs_get error: Error executing tool jobs_get: {"message": "not found or not accessible"}
+  tenancy  refused    MCP jobs_get error: Error executing tool jobs_get: {"message": "not found or not accessible"}
+  empty    refused    MCP jobs_get error: Error executing tool jobs_get: invalid input for query argument $2: '' (invalid UUID '': length must be between 32..36 characters, got 0)
+  oracle   identical
+
+memory_forget   required=['fact_id']
+  absent   SUCCEEDED  {"invalidated": false, "reason": "no matching fact found"}  🔴 SUCCEEDED — a boundary that does not hold
+  tenancy  SUCCEEDED  {"invalidated": false, "reason": "no matching fact found"}  🔴 SUCCEEDED — a boundary that does not hold
+  empty    refused    MCP memory_forget error: Error executing tool memory_forget: {"message": "invalid arguments: fact_id: String should have at least 1 character"}
+  oracle   identical
+
+composition_motif_bind_edit   required=['op']
+  absent   refused    MCP composition_motif_bind_edit error: Error executing tool composition_motif_bind_edit: op=bind requires project_id, node_id, and motif_id
+  tenancy  refused    MCP composition_motif_bind_edit error: Error executing tool composition_motif_bind_edit: op=bind requires project_id, node_id, and motif_id
+  empty    refused    MCP composition_motif_bind_edit error: Error executing tool composition_motif_bind_edit: op=bind requires project_id, node_id, and motif_id
+  oracle   identical
+
+── TARGETED FOLLOW-UP + TWO READINGS THAT ARE NOT DEFECTS ──────────────────────────────────
+composition_motif_bind_edit (op-dispatch: only `op` required, so the generic cases never touched an
+id). Re-probed with op=bind read from the enum [bind|unbind] plus project_id/node_id/motif_id:
+  absent   refused   not found or not accessible
+  tenancy  refused   not found or not accessible
+  empty    refused   op=bind requires project_id, node_id, and motif_id
+  oracle   IDENTICAL
+
+memory_forget's "🔴 SUCCEEDED" on absent and tenancy is NOT a boundary failure. It returns
+{"invalidated": false, "reason": "no matching fact found"} — a soft no-op with an honest payload
+rather than a refusal, IDENTICAL for an absent id and a foreign one, so it is no existence oracle
+and it invalidates nothing. The probe cannot tell a truthful no-op from a boundary that does not
+hold; a human has to. Recorded as exercised and SOUND.
+
+jobs_get's empty case refuses, but it leaks a RAW DRIVER ERROR to the caller:
+  invalid input for query argument $2: '' (invalid UUID '': length must be between 32..36 characters, got 0)
+That is asyncpg's message, not the platform's. It refuses correctly and no boundary is crossed, so
+it is not a SHIP failure — but every other refusal measured in this loop names the field and the
+next move, and this one names a query argument position. Noted, not filed as a defect.

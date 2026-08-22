@@ -4743,7 +4743,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 4/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
-        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: mints a confirm_token for op=create. It will mint, but a meaningful idempotency test has to REDEEM twice, and creating a real authoring run needs a plan_run_id from an actual plan run — the fixture has none, so redeeming would fail on a precondition rather than exercise the second call. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
+        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: mints a confirm_token for op=create. It will mint, but a meaningful idempotency test has to REDEEM twice, and creating a real authoring run needs a plan_run_id from an actual plan run — the fixture has none, so redeeming would fail on a precondition rather than exercise the second call. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -6079,7 +6079,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 5/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
-        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: {\"outcome\":\"no_op\",\"arcs\":0,\"chapters_assigned\":0}. The first call returns an HONEST no-op — nothing to decompile — because a seeded arc alone is not the state this tool consumes; it needs arcs with chapters assigned. Two no-ops prove nothing about idempotency. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
+        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: {\"outcome\":\"no_op\",\"arcs\":0,\"chapters_assigned\":0}. The first call returns an HONEST no-op — nothing to decompile — because a seeded arc alone is not the state this tool consumes; it needs arcs with chapters assigned. Two no-ops prove nothing about idempotency. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -9515,7 +9515,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 1/5, suspended-on-card 1/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "This scenario IS the absent case — there are no scene nodes to link.",
-        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: not found or not accessible. A scene LINK joins outline SCENE nodes; the fixture's composition_arc_create produces arc nodes, which the tool correctly refuses. Reaching the state needs an outline with scenes, which the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
+        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: not found or not accessible. A scene LINK joins outline SCENE nodes; the fixture's composition_arc_create produces arc nodes, which the tool correctly refuses. Reaching the state needs an outline with scenes, which the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -13515,7 +13515,7 @@
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 1/5, suspended-on-card 4/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
         "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
-        "idempotency": "NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: this project has no adopted ontology to edit. A fresh kg project has no ontology, so op=schema_edit refuses before any edit can be made — and idempotency needs a FIRST call that does something. Reaching the state needs kg_adopt_template first, which is a second fixture the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
+        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION, measured 2026-08-23 (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt). Observed: this project has no adopted ontology to edit. A fresh kg project has no ontology, so op=schema_edit refuses before any edit can be made — and idempotency needs a FIRST call that does something. Reaching the state needs kg_adopt_template first, which is a second fixture the scenario does not build. This is P4-PRECONDITION's own thesis reaching the SHIP bar: the fixture cannot put the store in the state the tool needs, so the first call is a no-op and a second no-op proves nothing. Recorded as unexercised rather than dressed up as a pass.",
         "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
@@ -21011,9 +21011,9 @@
       },
       "falsifier_sha": "4cf8978f4ed6f482",
       "ship_audit": {
-        "absent_case": "OWED — a private or unknown book_id must return not-found, and the two must be indistinguishable.",
-        "empty_case": "OWED — an empty public catalogue is not reachable here.",
-        "tenancy": "OWED — scope=none: the PUBLIC surface must not leak a private book's detail to anyone, including its own owner, through this tool."
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): an absent book_id is refused 'book not found'.",
+        "empty_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): an empty value is refused, 'invalid book id'.",
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): a foreign book_id refuses IDENTICALLY — no existence oracle. That uniformity is also DQ-T38's evidence: it refuses a PUBLIC book the same way."
       },
       "defects": [],
       "runs": [
@@ -21603,7 +21603,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, and the model is RIGHT — this is P7's invariant failing on the platform, not on the tool. Re-measured K=5: SURFACED 5/5, CALLED 0/5. The model answered 'there are no public books in the catalogue to open' and ended the turn, which is TRUE of what it was given: catalog_list_public_books returns {items: [], total: 0}.\n\n🔴 BUT THE STORE SAYS OTHERWISE. loreweave_sharing.sharing_policies holds 44 rows with visibility='public'. Forty-four books are marked public and the public catalogue lists none of them — 'a store that accepts a write must have a read that can find it'. The tool's own boundary is sound: an absent id, a foreign id AND a book that IS marked public all refuse IDENTICALLY ('book not found'), which is correct as an anti-oracle and is also why the tool cannot be reached. Registered as DQ-T38; the pipeline that builds the public listing is not this loop's to trace."
     },
     {
       "tool": "memory_forget",
@@ -21614,9 +21615,9 @@
       "falsifier_sha": "345e0021dd641cbb",
       "ship_audit": {
         "gate": "OWED — Tier A.",
-        "absent_case": "OWED — a fact_id that does not exist must be refused.",
+        "absent_case": "EXERCISED and SOUND (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): an absent fact_id returns {invalidated:false, reason:'no matching fact found'} — a truthful no-op, not a refusal, and it invalidates nothing.",
         "idempotency": "OWED — forgetting an already-invalidated fact must refuse or be a clear no-op.",
-        "tenancy": "OWED — project-scoped."
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): a foreign fact_id behaves IDENTICALLY to an absent one, so it is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -22149,7 +22150,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED on a supplier that CANNOT answer — not the model, not the tool. Re-measured K=5: SURFACED 5/5, CALLED 0/5. The model made zero tool calls and said 'Since I have no record of the Obsidian Trench in your project's memory or manuscript, I cannot forget a fact that isn't currently stored'.\n\n🔴 IT WAS RIGHT AND THE STORE PROVES BOTH HALVES. The seed stored TWO facts (neo4j Fact.project = 2 before and after), so they exist. But memory_search(query='Obsidian Trench') returns {hits: [], total: 0, degraded: {semantic: 'not_indexed'}} — a fact stored by memory_remember is NOT findable until the project is indexed, and memory_forget's own description says to use only a fact_id seen in an earlier tool result. Its single supplier returns nothing, so the tool is unreachable BY DESIGN. D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED, twin of D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ.\n\nBoundary EXERCISED and sound: an absent fact_id returns a truthful no-op ({invalidated:false, reason:'no matching fact found'}), a foreign one behaves identically, and empty refuses by name."
     },
     {
       "tool": "composition_motif_bind_edit",
@@ -22159,10 +22161,10 @@
       "answer_expect": null,
       "falsifier_sha": "af254b96cab7184f",
       "ship_audit": {
-        "gate": "OWED — Tier A.",
-        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
-        "idempotency": "OWED — the same binding twice must not create two applications.",
-        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): called 5/5 through the chat path with the OWNING STORE unchanged on every run — the only movement recorded is the async outbox and the global neo4j Fact count, neither of which is this tool's store.",
+        "absent_case": "EXERCISED by TARGETED probe (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt); the generic sweep could not reach it (only `op` is required). op=bind with an absent id: refused, 'not found or not accessible'.",
+        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): binding a motif needs a real project, outline node and motif together, and the fixture builds none of that trio. Same shape as P4's four idempotency gaps.",
+        "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): a foreign id refuses IDENTICALLY."
       },
       "defects": [],
       "runs": [
@@ -22722,7 +22724,8 @@
       "surfaced_count": 5,
       "called_count": 5,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED on a PRECONDITION at the SHIP bar, with LIVE sound. Re-measured K=5: SURFACED 5/5 and CALLED 5/5 with zero errors — its recorded 'surfaced 0/5' is refuted, and DQ-T32's sharpened case ('Bind Emberfall Vein to the opening arc' splitting the contiguous synonym) no longer reproduces, because a bare 'bind' was added to its declarations.\n\nBoundary EXERCISED by targeted probe (the generic sweep could not reach it — only `op` is required): absent and foreign ids refuse IDENTICALLY, empty NAMES all three missing fields. The owning store is unchanged on every run.\n\nIDEMPOTENCY cannot be exercised: binding a motif needs a real project, an outline NODE and a motif together, and the fixture builds none of that trio — the same shape as P4's four idempotency gaps. Note this tool ALSO still carries DQ-T32's live half: three sibling phrasings ('Attach the pattern called X to...') still miss answerability, so P8 cannot clear without the owner's decision on that question."
     },
     {
       "tool": "jobs_get",
@@ -22732,9 +22735,9 @@
       "answer_expect": null,
       "falsifier_sha": "68d66c1614f7779f",
       "ship_audit": {
-        "empty_case": "OWED — an account with no jobs must say so, not invent one.",
-        "absent_case": "OWED — a job_id that does not exist must return 'not found or not accessible', and that string must not distinguish another user's job from a nonexistent one.",
-        "tenancy": "OWED — user-scoped; another account's job_id must be refused."
+        "empty_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): refused — though it leaks a RAW asyncpg message naming a query argument position rather than the field. Noted there, not filed.",
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): an absent job is refused 'not found or not accessible'.",
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): a foreign job refuses IDENTICALLY."
       },
       "defects": [],
       "runs": [

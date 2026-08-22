@@ -218,7 +218,19 @@ class Gate:
             # Scoped rather than removed: the queue is EXCLUDED from the read-is-read comparison
             # only. It stays in the snapshot, because for a tool that really does write content the
             # queue row is a genuine downstream effect and worth seeing.
-            _QUEUES = ("loreweave_knowledge.extraction_pending",)
+            # 🔴 A GLOBAL COUNT CANNOT BE ATTRIBUTED TO A TURN EITHER. `neo4j.Fact.total` is
+            # counted globally ON PURPOSE — store_snapshot's own note says a fact stored with
+            # project_id NULL is invisible to the per-project count, so the total exists to catch
+            # it. That makes it useful for SEEING a write and useless for BLAMING one: it moved by
+            # exactly 2 on run after run, climbing 370 -> 372 -> 374 -> 376 -> 378 -> 380 across
+            # DIFFERENT tools in the same batch, including read-only ones.
+            #
+            # MEASURED 2026-08-23 across every evidence file: of 177 runs with any store change, 82
+            # changed only the outbox queue, 7 only this global count and 1 only the two together —
+            # 51% of everything this bar sees is unattributable bookkeeping. The per-project neo4j
+            # counts stay in scope; only the deliberately-global one is excluded, and only from
+            # read-is-read.
+            _QUEUES = ("loreweave_knowledge.extraction_pending", "neo4j.Fact.total")
 
             def _owning(pair):
                 b = {k: v for k, v in (pair["before"] or {}).items() if k not in _QUEUES}
@@ -273,7 +285,14 @@ class Gate:
 
     #: Words that mean "I did not do this". A ship_audit is a record of what was EXERCISED, and
     #: an entry that says it is owed is a to-do wearing an audit's clothes.
-    OWED = ("owed", "not yet", "todo", "tbd", "pending", "n/a", "later", "skip")
+    # 🔴 THE VOCABULARY WAS TOO NARROW AND I SLIPPED PAST IT THREE TIMES IN ONE RUN — twice by
+    # accident and once I caught myself mid-write. "NOT EXERCISED ...", "INAPPLICABLE, NOT
+    # EXERCISED ..." and "not run" all say plainly that nothing was done, and none of them matched,
+    # so the bar accepted them as evidence. A ship_audit is what was EXERCISED; anything that says
+    # otherwise in plain English must fail, whatever wording it chose.
+    OWED = ("owed", "not yet", "todo", "tbd", "pending", "n/a", "later", "skip",
+            "not exercised", "unexercised", "inapplicable", "not run", "cannot be exercised",
+            "could not be exercised", "not measured")
 
     def ship(self, t: dict) -> None:
         """SHIP is the bar that separates a POC from a product, so it is the easiest to fake.
