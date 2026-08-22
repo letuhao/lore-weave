@@ -16,11 +16,12 @@
    "cycle": 1,
    "title": "The advertised surface drops the tool, and the turn then reports the write as done",
    "invariant_candidate": "A tool the turn's own request names must be reachable in that turn — and when it is NOT reachable, the turn may not claim its effect.",
-   "status": "CAUSE UNKNOWN — three hypotheses already retired by measurement, so this cycle OPENS WITH DIAGNOSIS, not a fix.",
+   "status": "DIAGNOSED 2026-08-22, offline, against the REAL answerable_tools and the cached 315-tool catalogue. A FOURTH hypothesis is retired and the mechanism is named. The fix is GATED ON DQ-T32, which is an owner decision in the dossier.",
    "retired_hypotheses": [
     "RANKING — world_map_update_marker ranks #1 of 315 and world_map_update_region #2 for their own measured prompts, scored offline with the shipped scorer. Both surfaced 0/5.",
     "TIER / SCOPE / FAMILY — settings_model_set_active, _set_favorite and _update surfaced 0/5 in the same batch where settings_update_profile surfaced 5/5 and carded 5/5. Same account scope, same tier, same family.",
-    "BATCH COMPOSITION — memory_timeline surfaced 5/5 inside a 5-scenario batch, then 0/5 alone, 0/5 alone again, then 0/5 inside a 5-scenario batch."
+    "BATCH COMPOSITION — memory_timeline surfaced 5/5 inside a 5-scenario batch, then 0/5 alone, 0/5 alone again, then 0/5 inside a 5-scenario batch.",
+    "THE ANSWERABLE_MAX CEILING — answerable_tools truncates to the 8 longest-synonym matches, so a matched tool could in principle be cut. ZERO of the 25 landed there: 23 were never matched at all and 2 matched and survived. The ceiling is not the mechanism."
    ],
    "false_statement_tools": [
     "plan_keep_material",
@@ -63,7 +64,21 @@
     "translation_update_settings": "D-RAIL-PINNED-TURN-NEVER-COMPLETES — the rail-pinning phrasing makes the turn never emit an assistant message at all",
     "kg_ontology_propose": "P5 — denied its own tool it raised glossary_adopt_standards' card, seeking consent for a different subsystem"
    },
-   "dq": "DQ-T36"
+   "dq": "DQ-T36",
+   "diagnosis": {
+    "instrument": "scripts/toolloop/answerability_probe.py — imports the REAL answerable_tools rather than reimplementing it, reads the cached catalogue, and takes the MEASURED turn (the LAST one) from the scenario files.",
+    "mechanism": "🔴 THE CONTIGUOUS-PHRASE ANSWERABILITY MATCHER, on 23 of 25. stream_service's R1 block states the platform's guarantee outright — 'if the user's words match a tool's own vocabulary, it is on the wire — whatever the budget, the domain selection or the rail decided' — and discovery_catalog is the near-full turn catalogue, so that check sees almost everything. It is the guarantee that failed, not a budget: the words never matched.",
+    "the_misses_are_one_shape": "Every one is a pronoun substitution or an interposed word, never a different meaning. 'rename region' vs 'Rename the AREA CALLED The North'; 'relabel marker' vs 'Relabel the PIN CALLED Ironhold'; 'turn off skill' vs 'Turn off the GLOSSARY skill'; 'stop job' vs 'Stop THE TRANSLATION ONE'; 'workflow steps' vs 'the STEPS OF THE autonomous-drafting WORKFLOW'; 'rename model' vs 'Rename THE FIRST ONE to Drafting Model'. This is verbatim what DQ-T32 recorded from batch 12 and never generalised.",
+    "the_control_that_could_have_refuted_it": "Both directions, because one direction is not evidence. Tools that SURFACED N/N matched answerability 89 of 96 (93%); tools that surfaced 0/N matched 7 of 33 (21%). If the surfaced population had also failed to match, answerability would not be what advertises them and this diagnosis would be wrong.",
+    "the_seven_surfaced_without_a_match": "tool_load and propose_edit are consumer-local / always-on and are advertised by another path entirely — their own ledger rows say so. world_get, catalog_get_book, registry_get_skill, kg_sync_available and kg_propose_edge were seeded by the domain hot set. So answerability is the DOMINANT path, not the only one, and this is stated rather than smoothed over.",
+    "the_two_exceptions_inside_P1": {
+     "glossary_book_sync_apply": "EXPLAINED — it is one of the five INTENT_GATED_SETUP_TOOLS, so filter_intent_gated_setup_tools removes it from discovery_catalog BEFORE answerability runs. Its match is irrelevant; the R1 guarantee cannot reach a tool that is no longer in the catalogue. That is DQ-T31 / P9-INTENT-GATE's mechanism, and it is why the intent gate is the SEVENTH frame and the last one upstream. NOT MOVED to P9 here: the partition rule moves a tool when a RE-RUN blocks it on a different cause, and no re-run has happened. Cycle 1's re-run confirms or refutes it.",
+     "memory_timeline": "🔴 UNEXPLAINED, and left that way. It matched answerability and still surfaced 0/5, and it is the tool whose four arms already killed the batch-composition hypothesis (5/5 in a batch, 0/5 alone, 0/5 alone, 0/5 in a batch). Filling this in with a plausible story is how five hypotheses in this loop got retracted."
+    },
+    "what_this_refutes_of_my_own": "🔴 IT REFUTES MY OWN DOSSIER RECOMMENDATION FOR DQ-T36, within the hour, exactly as that entry's caveat predicted it might. I recommended '(a) reserve a slot for any tool whose declared synonyms match the request'. That fix is INERT for 23 of these 25, because the synonyms never matched. The dossier is corrected in place rather than quietly.",
+    "consequence_for_the_partition": "P1-SURFACE and P8-ANSWERABILITY are ONE mechanism — 23 + 2 = 25 of the 65 blocked tools. The cycles are not merged, because the cleared bar is per-cluster and the re-runs are separate evidence, but cycle 1's fix is expected to clear cycle 8 as a side effect, and cycle 8 must then prove it rather than assume it.",
+    "why_no_fix_yet": "The fix is DQ-T32 option (b) — relax the matcher to an in-order subsequence with a bounded gap — and DQ-T32 is an OPEN OWNER DECISION. It is not mine to take: _synonym_pattern's word-boundary work exists because 'cat' matched inside 'category' and cost a live run, and the CONSENT check now depends on answerability too, so widening it changes consent behaviour and not just surfacing. What is unblocked, and is cycle 1's next step, is MEASURING the trade across all 315 tools so the decision is made on evidence rather than on my prose."
+   }
   },
   {
    "id": "P3-NAME-TO-ID",

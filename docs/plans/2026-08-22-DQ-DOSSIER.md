@@ -40,12 +40,44 @@ make it convincing), `plan_keep_material` 4/5 with zero tool calls, `world_map_r
 selection alone and make the ABSENCE explicit to the model, as DQ-T3's withheld-stamp already does
 for gated tools; (c) status quo — rely on the lazy tail.
 
-> **RECOMMENDED: (a), and cycle 1 measures it before it ships.** (c) is the status quo and is
-> measured to produce false success. (b) is already shipped for gated tools and the same batch
-> showed the model *not calling* `tool_list`, so the notice would land where nobody reads it.
-> **Caveat I want on the record:** the cause is still unknown, so (a) is a *policy* I can implement
-> and not yet a *diagnosis*. Cycle 1 opens with diagnosis and this recommendation may not survive
-> it — five prose-shaped hypotheses have already been refuted in this loop.
+> ### 🔴 CORRECTED 2026-08-22, SAME DAY — the diagnosis refuted my own recommendation
+>
+> I first recommended **(a) reserve a slot for any tool whose declared synonyms match the request**,
+> with the caveat that cycle 1's diagnosis might not leave it standing. It did not, within the hour.
+>
+> Measured offline against the **real** `answerable_tools` and the cached 315-tool catalogue, on
+> each tool's own **measured** turn (`scripts/toolloop/answerability_probe.py`): **23 of the 25
+> were never matched by answerability at all.** Option (a) reserves a slot for tools that match —
+> so it is **inert for 23 of these 25**. A fourth hypothesis dies with it: the `ANSWERABLE_MAX = 8`
+> ceiling truncates matches by synonym length, and **zero** of the 25 were cut by it.
+>
+> **The real mechanism is the contiguous-phrase matcher, and every miss is one shape** — a pronoun
+> substitution or an interposed word, never a different meaning:
+>
+> | declares | the author actually said |
+> |---|---|
+> | `rename region` | "Rename the **area called The North** to The Frozen North" |
+> | `relabel marker` | "Relabel the **pin called Ironhold** to Ironhold Keep" |
+> | `turn off skill` | "Turn off the **glossary** skill for me" |
+> | `stop job` | "**Stop the translation one.**" |
+> | `workflow steps` | "Show me the **steps of the autonomous-drafting** workflow" |
+> | `rename model` | "**Rename the first one** to Drafting Model" |
+>
+> **The control that could have refuted it, run in both directions:** tools that surfaced N/N
+> matched answerability **89 of 96 (93%)**; tools that surfaced 0/N matched **7 of 33 (21%)**. The
+> seven surfaced-without-a-match are explained and named — `tool_load` and `propose_edit` are
+> always-on/consumer-local, the other five were domain hot-seeded — so answerability is the
+> *dominant* path, not the only one.
+>
+> **`DQ-T36` therefore is not a question about slot reservation. It is `DQ-T32`.** P1 (25 tools) and
+> P8 (2 tools) are one mechanism. Of the two exceptions inside P1, `glossary_book_sync_apply` is
+> one of the five `INTENT_GATED_SETUP_TOOLS` and is stripped from the catalogue *before*
+> answerability runs — that is `DQ-T31` — and **`memory_timeline` is unexplained and is being left
+> that way** rather than filled in with a plausible story.
+>
+> **REVISED RECOMMENDATION: answer `DQ-T32` and this follows from it.** The residual DQ-T36
+> question worth keeping is narrow: *should a tool the request names be guaranteed a slot even when
+> the matcher is relaxed?* — i.e. option (a) as a **backstop**, not as the fix.
 
 ### DQ-T6 — may the hot-seed budget advertise a domain's WRITES while dropping its primary READ?
 
@@ -118,6 +150,14 @@ want bound is the most natural phrasing there is, and it is exactly what defeats
 **Options.** (a) keep it contiguous and keep fixing declarations; (b) relax to an in-order word
 subsequence with a bounded gap; (c) weight by word rarity across the catalogue.
 
+> ### 🔴 PROMOTED 2026-08-22 — this is no longer a small question
+>
+> Cycle 1's diagnosis found that **23 of the 25 tools in `P1-SURFACE` were never matched by
+> answerability on their own measured turn**, every miss a pronoun substitution or an interposed
+> word. So this DQ does not govern two tools in cycle 8 — **it governs 25 of the 65 blocked tools,
+> and cycle 1's fix is gated on your answer to it.** It is now the single highest-leverage decision
+> in the dossier.
+>
 > **RECOMMENDED: (b), measured against the live catalogue before it ships.** (a) is working and
 > scales with every phrasing a user can invent, which is not a bound. **The risk is real and must
 > be measured, not argued:** `_synonym_pattern`'s word-boundary work exists because `cat` matched
