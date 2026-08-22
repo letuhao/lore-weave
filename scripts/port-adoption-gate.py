@@ -772,7 +772,11 @@ _DIALECT_PATTERNS = (
 #: form was asserted rather than measured — and the measurement, when it was finally taken,
 #: found the OCC gate the construct implemented was not atomic on NEO4J either. The last
 #: class is 11 `CALL {}`, which the probe DID measure (`LATERAL`/CTE).
-MAX_NEO4J_DIALECT_SITES = 11
+#:
+#: **T81 collapsed the two `CALL { … UNION … }` sites to 9.** They were the only ones using the
+#: subquery for a UNION rather than a per-row aggregation; the remaining 9 are all the
+#: correlated `collect()`/`count()` shape.
+MAX_NEO4J_DIALECT_SITES = 9
 
 
 def _code_strings(src: str) -> str:

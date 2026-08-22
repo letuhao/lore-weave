@@ -1036,7 +1036,11 @@ def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
     from app.db.neo4j_repos import entities as em
     for cypher in (em._FIND_BY_NAME_CYPHER_ACTIVE, em._FIND_BY_NAME_CYPHER_ALL):
         assert "exclude_project_ids" in cypher
-        assert "NOT coalesce(e.project_id, '') IN exclude_project_ids" in cypher
+        # T81 collapsed `CALL { … UNION … }` into one MATCH with an OR, so the predicate reads
+        # the PARAMETER directly instead of a subquery-local alias. The rule is unchanged and
+        # is now easier to hold: it appeared TWICE before, once per arm, and a diary exclusion
+        # present in one arm and missing from the other was invisible to a containment check.
+        assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in cypher
 
 
 def test_events_filter_cypher_carries_the_diary_exclusion_predicate():

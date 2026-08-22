@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the last dialect class — `CALL {}` x11, the one the 2026-08-11 probe DID measure (`LATERAL`/CTE).**
+**RESUME: the last 9 dialect sites — all one shape, the correlated `collect()`/`count()` subquery. Measure AGE's collect ordering first.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,83 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T81 2026-08-22 — **the `CALL { … UNION … }` pair, and a name-resolution arm nothing tested**
+
+  ```
+  entities::_FIND_BY_NAME_CYPHER_ALL / _ACTIVE   CALL {} + UNION  ->  one MATCH with an OR
+  Neo4j-only dialect                             11 -> 9   (all 9 now the SAME shape)
+  knowledge unit 4329 · DB integration 616 -> 621 passed, 0 failed
+  ```
+
+  📐 **Measured before written** (rule 8). The subquery's own comment justified itself on the
+  planner — *"the first arm uses the index, the second scans only when needed"* — and AGE has no
+  subquery, while Cypher cannot `ORDER BY` after a top-level `UNION`, so the only shape that
+  keeps the ranking is one `MATCH` with an `OR`. EXPLAIN then PROFILE on the dev graph, on a
+  real `(canonical_name, alias)` pair:
+
+  ```
+  CALL {} + UNION (today)     NodeIndexSeek + NodeByLabelScan   2 rows   13537 dbHits
+  collapsed OR (shipped)      NodeIndexSeek + NodeByLabelScan   2 rows   13539 dbHits
+  ```
+
+  Same operators, the same two entities, 0.01% more work. **The planner was already rewriting
+  the `OR` into a seek-plus-scan union by itself** — writing that union by hand bought nothing
+  and cost 48 lines across two near-identical blocks. (The 13.5k dbHits are the alias half
+  forcing a label scan over all 4926 entities, because `IN e.aliases` is unindexable. That is a
+  pre-existing cost, unchanged by this rewrite.)
+
+  🎯 **BITE C: DELETING ALIAS RESOLUTION ENTIRELY LEFT THE WHOLE SUITE GREEN.** Cutting the
+  query down to `e.canonical_name = $canonical_name` alone — so an entity can only ever be found
+  under its own current name — broke nothing anyone was testing. Nothing caught it because
+  `merge_entity` seeds `aliases = [$name]`, so for a freshly-extracted entity both halves match
+  the same node and arm 1 alone suffices. The alias half earns its keep only once name and alias
+  diverge, which is exactly what a rename produces:
+
+  ```
+  merge_entity("Kai")        canonical_name "kai"       aliases ["Kai"]        either arm
+  ...renamed to "Kai Zhou"   canonical_name "kai zhou"  aliases ["Kai", …]     ALIAS ARM ONLY
+  ```
+
+  So every reference written before a rename resolves to nothing, and the graph looks perfectly
+  healthy. The same silent-absence shape as every hole this run has found.
+
+  ⚠️ **And bite D — deleting the CANONICAL half instead — also went green**, because every
+  fixture I had written was satisfiable by the alias arm. Its real case is a spelling the caller
+  typed that canonicalises onto the stored form but is stored nowhere: `張濟` → `张济`, the
+  simplified/traditional class the dev graph has 17 groups of (T35). Two arms, two independent
+  bites, two tests; either alone would have left half the query unpinned.
+
+  🔴 **I misread bite A and had to retract it.** The first cut of this row claimed dropping
+  `RETURN DISTINCT` was a found bug and shipped a test file asserting it. Re-bitten, the test
+  passed — so I measured directly instead: on Neo4j the `OR`-to-union rewrite **already
+  deduplicates by node identity**, one row either way. There was no duplicate and no hole.
+  `DISTINCT` stays because it is what `UNION` (not `UNION ALL`) promised and relying on a planner
+  rewrite for a correctness property is the implicit dependency this plan keeps finding the hard
+  way — but the file now says that, instead of claiming a defect that does not exist.
+
+  ```
+  A  RETURN DISTINCT dropped         ✅GREEN -> RETRACTED, no duplicate exists on Neo4j
+  B  the ACTIVE twin stops filtering archived   RED  4 tests, incl. both adapters
+  C  the ALIAS half of the OR removed        ✅GREEN -> now reds by name
+  D  the CANONICAL half removed              ✅GREEN -> now reds by name
+  ```
+
+  The two twins differ by exactly one line (`e.archived_at IS NULL`) and were 24-line
+  near-duplicates. That is the other reason the shape was worth losing: a predicate added to one
+  arm and not the other — or to one twin and not the other — is invisible by inspection.
+
+  **All 9 remaining dialect sites are now one shape**: the correlated `collect()` / `count()`
+  subquery, whose Cypher-level cure (order-preserving `collect` after a `WITH … ORDER BY`) needs
+  its own AGE measurement before anything is written.
+
+  **QC (a) gates:** unit 4329, `port-adoption-gate` PASS at 9/9 — ceiling moved in this commit —
+  `--selftest` PASS, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved. 621
+  DB-integration tests ran on a throwaway Neo4j with AGE live.
+  **QC (c) real data:** the EXPLAIN/PROFILE table above is the dev graph's own 4926 entities;
+  the committed tests resolve a renamed entity and a traditional-spelling variant in a real
+  Neo4j.
 
   ### 🔴 T80 2026-08-22 — **`FOREACH` reaches ZERO, and the OCC gate it implemented was NOT ATOMIC**
 

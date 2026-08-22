@@ -983,27 +983,34 @@ async def get_entity_by_id_any_owner(
 # without copying them on every row. The outer ORDER BY ranks
 # the merged result set: anchored above discovered, then by
 # confidence, then alphabetical.
+# §10.1 — one MATCH with an OR, not `CALL { … UNION … }`. AGE has no subquery, and Cypher
+# cannot `ORDER BY` after a top-level `UNION`, so the OR is the only shape that keeps the
+# ranking. The subquery's comment justified itself on the planner — *"the first arm uses the
+# index, the second scans only when needed"* — and that justification survives the collapse.
+# EXPLAIN and PROFILE on the dev graph, 2026-08-22, on a real (canonical_name, alias) pair:
+#
+#   CALL {} + UNION (today)     NodeIndexSeek + NodeByLabelScan   2 rows   13537 dbHits
+#   collapsed OR (this)         NodeIndexSeek + NodeByLabelScan   2 rows   13539 dbHits
+#
+# Same operators, the same two entities, 0.01% more work. The planner was already turning the
+# OR into a seek-plus-scan union by itself; writing the union by hand bought nothing.
+#
+# ⚠️ `DISTINCT` is load-bearing and replaces what `UNION` (not `UNION ALL`) was doing: an
+# entity whose canonical_name matches AND whose aliases contain the name would otherwise come
+# back twice, and `find_entities_by_name` is a resolution path — a duplicate there reads as
+# two candidate entities where there is one.
+#
+# The 13.5k dbHits are the alias-membership half forcing a label scan over all 4926 entities.
+# That is a pre-existing cost of `IN e.aliases` being unindexable, unchanged by this rewrite
+# and unrelated to it.
 _FIND_BY_NAME_CYPHER_ALL = """
-CALL {
-  WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
-  MATCH (e:Entity)
-  WHERE e.user_id = user_id
-    AND e.canonical_name = canonical_name
-    AND (project_id IS NULL OR e.project_id = project_id)
-    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
-  RETURN e
-  UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
-       $exclude_project_ids AS exclude_project_ids
-  MATCH (e:Entity)
-  WHERE e.user_id = user_id
-    AND name IN e.aliases
-    AND (project_id IS NULL OR e.project_id = project_id)
-    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
-  RETURN e
-}
-RETURN e
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND (e.canonical_name = $canonical_name OR $name IN e.aliases)
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND (size($exclude_project_ids) = 0
+       OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
+RETURN DISTINCT e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
@@ -1148,29 +1155,18 @@ async def get_most_connected_entity(
     return str(record["name"])
 
 
+# The `include_archived=False` twin. The ONLY difference is `e.archived_at IS NULL`, and it
+# has to be in BOTH arms of the old shape — which is the other reason the pair existed as two
+# 24-line blocks: a filter added to one arm and not the other is invisible.
 _FIND_BY_NAME_CYPHER_ACTIVE = """
-CALL {
-  WITH $user_id AS user_id, $project_id AS project_id,
-       $canonical_name AS canonical_name, $exclude_project_ids AS exclude_project_ids
-  MATCH (e:Entity)
-  WHERE e.user_id = user_id
-    AND e.canonical_name = canonical_name
-    AND e.archived_at IS NULL
-    AND (project_id IS NULL OR e.project_id = project_id)
-    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
-  RETURN e
-  UNION
-  WITH $user_id AS user_id, $project_id AS project_id, $name AS name,
-       $exclude_project_ids AS exclude_project_ids
-  MATCH (e:Entity)
-  WHERE e.user_id = user_id
-    AND name IN e.aliases
-    AND e.archived_at IS NULL
-    AND (project_id IS NULL OR e.project_id = project_id)
-    AND (size(exclude_project_ids) = 0 OR NOT coalesce(e.project_id, '') IN exclude_project_ids)
-  RETURN e
-}
-RETURN e
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND (e.canonical_name = $canonical_name OR $name IN e.aliases)
+  AND e.archived_at IS NULL
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND (size($exclude_project_ids) = 0
+       OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
+RETURN DISTINCT e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
