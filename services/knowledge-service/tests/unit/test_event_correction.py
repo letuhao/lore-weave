@@ -43,8 +43,30 @@ def test_update_event_cypher_captures_before_and_bumps_version():
     assert "e.version = current_version + 1" in m._UPDATE_EVENT_FIELDS_CYPHER
     # merge_event ON CREATE seeds version=1; ON MATCH must NOT bump it (so a
     # user's If-Match baseline survives extraction re-mentions).
-    on_match = m._MERGE_EVENT_CYPHER.split("ON MATCH SET")[1]
-    assert "version" not in on_match
+    # RESTATED (T73): the branches merged into one SET (§10.1), so "ON MATCH must not touch
+    # version" is now "the ONLY assignment to version is a coalesce" — which keeps the
+    # stored value on every re-merge and sets 1 only on create. OCC still belongs solely to
+    # update_event_fields; a bare `e.version = ...` here would let extraction bump it and
+    # silently invalidate an author edit in flight.
+    # Assert on the SHAPE without a regex: every `e.version` occurrence must be part of the
+    # single coalesce assignment. Two earlier attempts died on escaping (a `[^,]+` that
+    # stopped inside coalesce, then a character class whose escape collapsed) — string
+    # containment says the same thing and cannot be mis-escaped.
+    cy = m._MERGE_EVENT_CYPHER
+    assert "coalesce(e.version, 1)" in cy, (
+        "merge_event must seed version via coalesce(e.version, 1) — that sets 1 on create "
+        "and keeps the stored value on every re-merge"
+    )
+    assert "current_version" not in cy, (
+        "merge_event references the OCC bump — version belongs solely to update_event_fields; "
+        "extraction moving it would silently invalidate an author edit in flight"
+    )
+    assert "e.version          = coalesce(e.version, 1)" in cy or (
+        "e.version = coalesce(e.version, 1)" in cy
+    ), (
+        "merge_event must assign version only as coalesce(e.version, 1); a bare assignment "
+        "would let extraction bump it and silently invalidate an author edit in flight"
+    )
 
 
 @pytest.mark.asyncio

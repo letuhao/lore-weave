@@ -150,89 +150,66 @@ def _node_to_fact(node: Any) -> Fact:
 
 
 _MERGE_FACT_CYPHER = """
-MERGE (f:Fact {id: $id})
-ON CREATE SET
-  f.user_id = $user_id,
-  f.project_id = $project_id,
-  f.type = $type,
-  f.content = $content,
-  f.canonical_content = $canonical_content,
-  f.confidence = $confidence,
-  f.pending_validation = $pending_validation,
-  f.valid_from = coalesce($valid_from, datetime()),
-  f.valid_until = NULL,
-  f.source_types = [$source_type],
-  f.provenances = [$provenance],
-  f.source_chapter = $source_chapter,
-  f.from_order = $from_order,
-  // F3 — story valid-time axis. valid_from_ordinal is the ordinal the fact was
-  // established at (unified with from_order); a fresh fact opens its interval
-  // (valid_to_ordinal NULL → eff = +∞ null-sink). The interval CLOSE is done
-  // by temporal.maintain_chain after the merge, never here.
-  f.valid_from_ordinal = $valid_from_ordinal,
-  f.valid_to_ordinal = NULL,
-  f.valid_to_ordinal_eff = $open_ceiling,
-  // dec-3 — detected in-story date (optional valid-time refinement). NULL when the
-  // prose carried no explicit calendar date (the dominant case). Additive: it
-  // never participates in the ordinal chain, only annotates/sorts.
-  f.event_date_iso = $event_date_iso,
-  // WS-2.6b — the structured claim (diary supersession detection). NULL for coarse/extraction facts.
-  f.predicate = $predicate,
-  f.object = $object,
-  f.evidence_count = 0,
-  f.archived_at = NULL,
-  f.created_at = datetime(),
-  f.updated_at = datetime()
-ON MATCH SET
-  // Backfill from_order on a later re-extraction that DOES carry one (a fact first
-  // seen via a positionless source keeps NULL until a positioned source re-mentions
-  // it); never overwrite an existing order.
-  f.from_order = coalesce(f.from_order, $from_order),
-  // F3 — backfill the story-time lower bound on a later positioned re-extraction
-  // (a fact first seen positionless keeps NULL until a positioned source
-  // re-mentions it); never overwrite an existing one. valid_to_ordinal is owned
-  // by maintain_chain, so it is NOT touched on MATCH here.
-  f.valid_from_ordinal = coalesce(f.valid_from_ordinal, $valid_from_ordinal),
-  f.valid_to_ordinal_eff = coalesce(
-    f.valid_to_ordinal_eff,
-    CASE WHEN f.valid_to_ordinal IS NULL THEN $open_ceiling ELSE f.valid_to_ordinal END
-  ),
-  // dec-3 — prefer the MORE precise (longer truncated-ISO) in-story date when both
-  // non-null, mirroring :Event's C18 HIGH-1 semantic: a fact re-mentioned with a
-  // less-precise date ("1880" vs an earlier "1880-06-15") must not downgrade the
-  // stored precision. NULL new value leaves the stored one; NULL stored adopts the
-  // new. Backfill-friendly: a fact first seen dateless gains a date on a later
-  // re-extraction that carries one.
-  f.event_date_iso = CASE
-    WHEN $event_date_iso IS NULL THEN f.event_date_iso
-    WHEN f.event_date_iso IS NULL THEN $event_date_iso
-    WHEN size($event_date_iso) > size(f.event_date_iso) THEN $event_date_iso
-    ELSE f.event_date_iso
-  END,
-  f.source_types = CASE
-    WHEN $source_type IN f.source_types THEN f.source_types
-    ELSE f.source_types + $source_type
-  END,
-  // CM5 provenance — accumulate deduped origins (mirrors source_types).
-  f.provenances = CASE
-    WHEN $provenance IN coalesce(f.provenances, []) THEN f.provenances
-    ELSE coalesce(f.provenances, []) + $provenance
-  END,
-  f.confidence = CASE
-    WHEN $confidence > f.confidence THEN $confidence
-    ELSE f.confidence
-  END,
-  f.pending_validation = CASE
-    WHEN $confidence > f.confidence THEN $pending_validation
-    ELSE f.pending_validation
-  END,
-  // WS-2.6b — backfill the claim on a later re-mention that carries it (never clobber a stored one),
-  // mirroring the event_date_iso backfill posture.
-  f.predicate = coalesce(f.predicate, $predicate),
-  f.object = coalesce(f.object, $object),
-  f.updated_at = datetime()
-WITH f
-WHERE f.user_id = $user_id
+// §10.1/§10.2 — engine-neutral. Six semantics, per T71's table, and three fields that must
+// NOT be assigned at all:
+//   never-assign  valid_until, valid_to_ordinal, archived_at — ON CREATE ONLY in the original.
+//                 An absent property IS null, so omitting them is identical on create, while
+//                 ANY assignment would fire on match: `valid_until` would resurrect a
+//                 superseded fact (F5), `valid_to_ordinal` is owned by `maintain_chain`, and
+//                 `archived_at` would un-archive. T71 shipped exactly this bug in
+//                 `_CREATE_RELATION_CYPHER` and the suite caught it; it is pre-empted here.
+//   create-only   coalesce(field, value)
+//   accumulate    a CASE whose FIRST arm handles the absent list
+//   stored-wins   coalesce(f.field, $param)      from_order / valid_from_ordinal — F3
+//                 BACKFILL: a fact first seen positionless gains a position later, and one
+//                 that has a position never moves.
+//   max-wins      confidence, and pending_validation follows the SAME comparison
+//   precision     event_date_iso
+//
+// ⚠️ `user_id` in the MERGE KEY; the trailing `WITH f WHERE f.user_id` is gone. FOURTH query
+// with that shape (provenance T68, entity_status T69, passages T72, this). `fact_id` hashes
+// `user_id` (line 130).
+MERGE (f:Fact {id: $id, user_id: $user_id})
+SET f.project_id        = coalesce(f.project_id, $project_id),
+    f.type              = coalesce(f.type, $type),
+    f.content           = coalesce(f.content, $content),
+    f.canonical_content = coalesce(f.canonical_content, $canonical_content),
+    f.source_chapter    = coalesce(f.source_chapter, $source_chapter),
+    f.valid_from        = coalesce(f.valid_from, $valid_from, {NOW}),
+    f.evidence_count    = coalesce(f.evidence_count, 0),
+    f.created_at        = coalesce(f.created_at, {NOW}),
+    f.from_order        = coalesce(f.from_order, $from_order),
+    f.valid_from_ordinal = coalesce(f.valid_from_ordinal, $valid_from_ordinal),
+    f.valid_to_ordinal_eff = coalesce(f.valid_to_ordinal_eff, $open_ceiling),
+    f.predicate         = coalesce(f.predicate, $predicate),
+    f.object            = coalesce(f.object, $object),
+    f.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN f.event_date_iso
+      WHEN f.event_date_iso IS NULL THEN $event_date_iso
+      WHEN size($event_date_iso) > size(f.event_date_iso) THEN $event_date_iso
+      ELSE f.event_date_iso
+    END,
+    f.source_types = CASE
+      WHEN f.source_types IS NULL THEN [$source_type]
+      WHEN $source_type IN f.source_types THEN f.source_types
+      ELSE f.source_types + $source_type
+    END,
+    f.provenances = CASE
+      WHEN f.provenances IS NULL THEN [$provenance]
+      WHEN $provenance IN f.provenances THEN f.provenances
+      ELSE f.provenances + $provenance
+    END,
+    f.confidence = CASE
+      WHEN f.confidence IS NULL THEN $confidence
+      WHEN $confidence > f.confidence THEN $confidence
+      ELSE f.confidence
+    END,
+    f.pending_validation = CASE
+      WHEN f.confidence IS NULL THEN $pending_validation
+      WHEN $confidence > f.confidence THEN $pending_validation
+      ELSE f.pending_validation
+    END,
+    f.updated_at = {NOW}
 RETURN f
 """
 
@@ -315,7 +292,7 @@ async def merge_fact(
     )
     result = await run_write(
         session,
-        _MERGE_FACT_CYPHER,
+        render(_MERGE_FACT_CYPHER, "neo4j"),
         user_id=user_id,
         id=fid,
         project_id=project_id,

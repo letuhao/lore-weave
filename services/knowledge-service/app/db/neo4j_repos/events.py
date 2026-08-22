@@ -32,6 +32,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field, model_serializer
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
 from app.db.repositories import VersionMismatchError
@@ -155,103 +156,77 @@ def _node_to_event(node: Any) -> Event:
 
 
 _MERGE_EVENT_CYPHER = """
-MERGE (e:Event {id: $id})
-ON CREATE SET
-  e.user_id = $user_id,
-  e.project_id = $project_id,
-  e.title = $title,
-  e.canonical_title = $canonical_title,
-  e.summary = $summary,
-  e.chapter_id = $chapter_id,
-  e.event_order = $event_order,
-  e.chronological_order = $chronological_order,
-  e.event_date_iso = $event_date_iso,
-  e.time_cue = $time_cue,
-  e.participants = $participants,
-  // KG-TL Option A — anchor array, aligned to $participants (built post-dedup
-  // by merge_event). [] when the caller didn't resolve anchors → the read path
-  // sees a length mismatch and falls back to read-time resolution.
-  e.participant_entity_ids = $participant_entity_ids,
-  e.confidence = $confidence,
-  e.source_types = [$source_type],
-  e.provenances = [$provenance],
-  e.evidence_count = 0,
-  e.mention_count = 0,
-  e.archived_at = NULL,
-  e.version = 1,
-  e.created_at = datetime(),
-  // T4.1 flywheel — the extraction job that first minted this event (net-new).
-  e.created_job_id = $job_id,
-  e.updated_at = datetime()
-ON MATCH SET
-  e.summary = coalesce($summary, e.summary),
-  // CM4: keep the MINIMUM event_order on re-merge — a monotone-earliest
-  // invariant. NOTE: event identity is keyed on chapter_id (see event_id),
-  // so the SAME title in different chapters is two distinct nodes — this
-  // ON MATCH only fires on RE-EXTRACTION of the same chapter (re-publish, or
-  // an event surviving retract-then-write via cross-source evidence). Min-keep
-  // means a re-merge never pushes an event LATER in reading order, so an event
-  // already inside a `before_chapter` spoiler-cutoff stays inside it
-  // (idempotent under re-extraction). coalesce(new,old) was last-write-wins
-  // (re-extraction could shuffle the intra-chapter index); the prior docstring
-  // already CLAIMED first-write intent — min is the stricter, stable form.
-  e.event_order = CASE
-    WHEN $event_order IS NULL THEN e.event_order
-    WHEN e.event_order IS NULL THEN $event_order
-    WHEN $event_order < e.event_order THEN $event_order
-    ELSE e.event_order
-  END,
-  // chronological_order is overwritten wholesale by rerank_chronological_order
-  // (a global date-rank pass), so the per-merge value is transient — keep the
-  // simple upgrade-from-NULL here.
-  e.chronological_order = coalesce($chronological_order, e.chronological_order),
-  // C18 review-impl HIGH-1: prefer MORE precise (longer ISO string)
-  // when both non-null. Otherwise the same event re-mentioned in a
-  // different chapter with less detail (e.g. "1880" vs an earlier
-  // "1880-06-15") would silently downgrade the stored precision.
-  // Mirrors confidence's max-wins semantic.
-  e.event_date_iso = CASE
-    WHEN $event_date_iso IS NULL THEN e.event_date_iso
-    WHEN e.event_date_iso IS NULL THEN $event_date_iso
-    WHEN size($event_date_iso) > size(e.event_date_iso) THEN $event_date_iso
-    ELSE e.event_date_iso
-  END,
-  // C18-DEF-01: first-write-wins for narrative time hint. Re-mentions
-  // of the same event in different chapters keep the original phrasing
-  // rather than churning to whatever the latest chapter happened to say.
-  // Mirrors event_order / chronological_order's first-write-wins intent.
-  e.time_cue = coalesce(e.time_cue, $time_cue),
-  e.participants = CASE
-    WHEN size($participants) = 0 THEN e.participants
-    ELSE e.participants + [p IN $participants WHERE NOT p IN e.participants]
-  END,
-  // KG-TL Option A — append the anchor for each NEW participant, by the SAME
-  // index filter as the participants append above so the two arrays stay
-  // aligned. coalesce($participant_entity_ids[i], "") guards a caller that
-  // passed [] (no anchors resolved): an out-of-range index → null → "" (Neo4j
-  // lists reject null elements). A legacy node (no prior array) starts from []
-  // → a short array → the read path's length guard falls it back to read-time
-  // resolution until the backfill normalizes it.
-  e.participant_entity_ids = CASE
-    WHEN size($participants) = 0 THEN coalesce(e.participant_entity_ids, [])
-    ELSE coalesce(e.participant_entity_ids, []) + [i IN range(0, size($participants) - 1) WHERE NOT $participants[i] IN e.participants | coalesce($participant_entity_ids[i], "")]
-  END,
-  e.source_types = CASE
-    WHEN $source_type IN e.source_types THEN e.source_types
-    ELSE e.source_types + $source_type
-  END,
-  // CM5 provenance — accumulate deduped origins (mirrors source_types).
-  e.provenances = CASE
-    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
-    ELSE coalesce(e.provenances, []) + $provenance
-  END,
-  e.confidence = CASE
-    WHEN $confidence > e.confidence THEN $confidence
-    ELSE e.confidence
-  END,
-  e.updated_at = datetime()
-WITH e
-WHERE e.user_id = $user_id
+// §10.1/§10.2 — engine-neutral. Same six-semantics table as facts/relations (T71), and the
+// same never-assign rule: `archived_at` was ON CREATE ONLY, and assigning it here would
+// UN-ARCHIVE an event on every re-extraction. Omitted — an absent property is null on create,
+// which is what the old arm set. `version` and the counters take `coalesce` because they are
+// create-only but non-null.
+//
+// The accumulator CASEs gain a NULL first arm so they produce the initial list on create
+// instead of needing a separate ON CREATE branch; `AgeGraphStore.merge_event` (T58) uses the
+// identical shape and is conformance-checked against this query on real traffic.
+//
+// ⚠️ `user_id` in the MERGE KEY; the trailing `WITH e WHERE e.user_id` is gone. FIFTH query
+// with that shape (provenance T68, entity_status T69, passages T72, facts T73, this).
+// `event_id` hashes `user_id`.
+MERGE (e:Event {id: $id, user_id: $user_id})
+SET e.project_id       = coalesce(e.project_id, $project_id),
+    e.title            = coalesce(e.title, $title),
+    e.canonical_title  = coalesce(e.canonical_title, $canonical_title),
+    e.chapter_id       = coalesce(e.chapter_id, $chapter_id),
+    e.evidence_count   = coalesce(e.evidence_count, 0),
+    e.mention_count    = coalesce(e.mention_count, 0),
+    e.version          = coalesce(e.version, 1),
+    e.created_at       = coalesce(e.created_at, {NOW}),
+    e.created_job_id   = coalesce(e.created_job_id, $job_id),
+    e.summary          = coalesce($summary, e.summary),
+    e.time_cue         = coalesce(e.time_cue, $time_cue),
+    e.chronological_order = coalesce($chronological_order, e.chronological_order),
+    // CM4: keep the MINIMUM event_order on re-merge — a monotone-earliest invariant, so a
+    // re-merge never pushes an event LATER in reading order and one already inside a
+    // `before_chapter` spoiler cutoff stays inside it.
+    e.event_order = CASE
+      WHEN $event_order IS NULL THEN e.event_order
+      WHEN e.event_order IS NULL THEN $event_order
+      WHEN $event_order < e.event_order THEN $event_order
+      ELSE e.event_order
+    END,
+    // C18 review-impl HIGH-1: prefer the MORE precise (longer ISO) date; a less-detailed
+    // re-mention must not downgrade the stored precision.
+    e.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN e.event_date_iso
+      WHEN e.event_date_iso IS NULL THEN $event_date_iso
+      WHEN size($event_date_iso) > size(e.event_date_iso) THEN $event_date_iso
+      ELSE e.event_date_iso
+    END,
+    e.participants = CASE
+      WHEN size($participants) = 0 THEN coalesce(e.participants, [])
+      ELSE coalesce(e.participants, [])
+           + [p IN $participants WHERE NOT p IN coalesce(e.participants, [])]
+    END,
+    // KG-TL Option A — the anchor array stays index-aligned to `participants` by using the
+    // SAME filter; `coalesce($participant_entity_ids[i], "")` guards a caller that resolved
+    // no anchors, because Cypher lists reject null elements.
+    e.participant_entity_ids = CASE
+      WHEN size($participants) = 0 THEN coalesce(e.participant_entity_ids, [])
+      ELSE coalesce(e.participant_entity_ids, []) + [i IN range(0, size($participants) - 1) WHERE NOT $participants[i] IN coalesce(e.participants, []) | coalesce($participant_entity_ids[i], "")]
+    END,
+    e.source_types = CASE
+      WHEN e.source_types IS NULL THEN [$source_type]
+      WHEN $source_type IN e.source_types THEN e.source_types
+      ELSE e.source_types + $source_type
+    END,
+    e.provenances = CASE
+      WHEN e.provenances IS NULL THEN [$provenance]
+      WHEN $provenance IN e.provenances THEN e.provenances
+      ELSE e.provenances + $provenance
+    END,
+    e.confidence = CASE
+      WHEN e.confidence IS NULL THEN $confidence
+      WHEN $confidence > e.confidence THEN $confidence
+      ELSE e.confidence
+    END,
+    e.updated_at = {NOW}
 RETURN e
 """
 
@@ -340,7 +315,7 @@ async def merge_event(
     normalized_time_cue = time_cue or None
     result = await run_write(
         session,
-        _MERGE_EVENT_CYPHER,
+        render(_MERGE_EVENT_CYPHER, "neo4j"),
         user_id=user_id,
         id=eid,
         project_id=project_id,

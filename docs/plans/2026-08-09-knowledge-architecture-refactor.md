@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `facts` + `events` ON CREATE/MATCH — the last two of the 16 branches; 65 dialect sites left.**
+**RESUME: §10.3's whole-map `ON CREATE SET e2 = props` — the last branch shape; 54 dialect sites left.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T73 2026-08-22 — **`facts` + `events`: all 16 branches done, and the never-assign rule finally exists**
+
+  ```
+  facts + events, both ON CREATE/MATCH branches      dialect 65 -> 54
+  knowledge unit 4304 -> 4310 · DB integration 605 passed, two consecutive clean full runs
+
+  §10.3's 16 per-property ON CREATE SET branches: 16 / 16 translated.
+  ```
+
+  🎯 **THE NEVER-ASSIGN RULE, STATED ONCE INSTEAD OF A FOURTH TIME.** Three merge queries have
+  fields that were ON-CREATE-ONLY and must not be assigned at all, because the value they set
+  is exactly what an absent property already means:
+
+  ```
+  valid_until       assigning it RESURRECTS a superseded fact/relation      (F5)
+  valid_to_ordinal  owned by temporal.maintain_chain, not by the merge      (F3)
+  archived_at       UN-ARCHIVES the node on every re-extraction
+  ```
+
+  T71 shipped `valid_until` unconditionally in `_CREATE_RELATION_CYPHER` and the suite caught
+  it — that one instance was covered. **Bite 39 then reinstated `archived_at` in
+  `_MERGE_FACT_CYPHER` and every test in the repository passed.** A third one-off would have
+  left the fourth undefended, so `test_merge_never_assign_invariants.py` states the rule over
+  all three queries.
+
+  🔴 **AND THAT NEW TEST WAS GREEN BY CONSTRUCTION ON ITS FIRST RUN.** Bite 39 applied cleanly
+  — line 179 of `facts.py` visibly read `f.archived_at       = NULL,` — and the file still went
+  green, because the matcher looked for `"archived_at ="` and **the merged SET column-aligns its
+  `=`**. Caught only by re-running the bite *after* adding the rule, rather than assuming a new
+  test must work. The rule and its own non-vacuity checks now share ONE matcher; the first cut
+  had the rule using a regex and the checks using string containment, so the checks could pass
+  while the rule was blind — and they did.
+
+  **BITE ×3:**
+
+  ```
+  39. facts: archived_at reinstated
+        BEFORE the rule: whole suite passed
+        AFTER : FAILED — "assigns `archived_at` — it un-archives the node on every
+                          re-extraction … Offending line(s): ['f.archived_at       = NULL,']"
+  40. events: version becomes a bare assignment (extraction bumps OCC)
+        FAILED — "merge_event must seed version via coalesce(e.version, 1)"
+  41. relations: valid_to_ordinal reinstated
+        FAILED — "is owned by temporal.maintain_chain; the merge must not write it (F3)"
+  ```
+
+  📐 **`events` was the safest of the three to translate**, because
+  `AgeGraphStore.merge_event` (T58) already implements the identical single-`SET` shape and has
+  been conformance-checked against this query on real traffic since. The repo query now matches
+  the adapter rather than the adapter approximating the repo.
+
+  ⚠️ **`user_id` moved into the MERGE key in both.** That is the **fourth and fifth** query with
+  a trailing `WITH … WHERE <n>.user_id` after the `SET` — provenance (T68), entity_status (T69),
+  passages (T72), facts, events. **Five of eight translated queries.** On AGE the filter
+  silently discards the write; on Neo4j it let a cross-tenant id collision mutate the other
+  tenant's row and report nothing found.
+
+  ⚠️ **Four unit tests restated.** Two compared the executed query to the raw template
+  (→ `render(...)`); one asserted `"version" not in on_match` — a keyword the merge deletes,
+  restated as *"the only assignment is `coalesce(e.version, 1)`"*, which is what the rule meant
+  and keeps OCC solely with `update_event_fields`; one asserted event_date_iso's create-side
+  literal, restated as the first arm of the precision CASE.
+
+  🐞 **Three failed attempts at that version assertion before one worked** — a `[^,]+` that
+  stopped at the comma inside `coalesce(...)`, then a character class whose `\\n` escape
+  collapsed into a real newline, then a `count()` that read `e.version` twice on one line
+  (target and coalesce argument). Landed on string containment, which cannot be mis-escaped.
+
+  **QC (a) gates:** unit **4310**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **65 → 54** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ two consecutive full DB integration runs on a fresh throwaway Neo4j
+  with AGE live — 605 passed, 0 failed each.
+  **QC (c) real data:** facts and events merged, re-merged, chained, archived and
+  version-clashed in a real Neo4j through the rewritten queries.
 
   ### ✅ T72 2026-08-22 — **`passages` translated; a template that is BOTH a format and a dialect template**
 

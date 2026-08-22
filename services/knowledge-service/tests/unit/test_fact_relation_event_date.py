@@ -106,7 +106,10 @@ def test_fact_readback_carries_event_date_iso():
 
 
 def test_merge_fact_cypher_sets_event_date_iso_on_create():
-    assert "f.event_date_iso = $event_date_iso" in fm._MERGE_FACT_CYPHER
+    # RESTATED (T73): the ON CREATE arm is merged away, so "set on create" is the first
+    # arm of the precision CASE — `WHEN f.event_date_iso IS NULL THEN $event_date_iso`.
+    assert "WHEN f.event_date_iso IS NULL THEN $event_date_iso" in re.sub(
+        r"\s+", " ", fm._MERGE_FACT_CYPHER)
 
 
 def test_create_relation_cypher_sets_event_date_iso_on_create():

@@ -126,10 +126,10 @@ async def test_merge_fact_maintain_chain_fires_after_merge_with_subject(mock_run
     )
     # 1: MERGE fact, 2: link subject, 3: maintain_chain
     cyphers = [c.args[1] for c in mock_run.await_args_list]
-    assert fm._MERGE_FACT_CYPHER in cyphers
+    assert render(fm._MERGE_FACT_CYPHER, "neo4j") in cyphers
     assert render(tm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j") in cyphers
     assert cyphers.index(render(tm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j")) > cyphers.index(
-        fm._MERGE_FACT_CYPHER)
+        render(fm._MERGE_FACT_CYPHER, "neo4j"))
 
 
 @pytest.mark.asyncio
