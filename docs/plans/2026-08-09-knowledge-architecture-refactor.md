@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T55 — INV-KAL, the federated read surface enforced from a DERIVED list, not a hand-written one.**
+**RESUME: T56 — the anti-rot audit set: every check earned by a defect this plan actually hit.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 64 of 113 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 65 of 114 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2551,6 +2551,85 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T55a 2026-08-22 — **the KAL guard is DERIVED from the KAL, and the hand-list was four reads behind**
+
+  ```
+  guarded federated reads   7 hand-written  ->  10 derived from kal-read.controller.ts
+  newly guarded             canonical-translation · entities/by-ids · state
+  --selftest                13 checks, all passing, provably red
+  knowledge unit 4336 passed, 0 failed
+  ```
+
+  📐 **Measured before building** (rule 8). The KAL's read controller calls **11** distinct
+  upstream `/internal/...` read paths; `knowledge-http-surface-gate` hand-listed **7**:
+
+  ```
+  guarded    /internal/books/{}/entities/{}/canonical-snapshot · facts · timeline · attr-values
+  guarded    /internal/books/{}/entities/search · kg/neighborhood · retrieve
+  UNGUARDED  /internal/books/{}/entities/{}/canonical-translation
+  UNGUARDED  /internal/books/{}/entities/by-ids
+  UNGUARDED  /internal/books/{}/state
+  excluded   /internal/books/{}/entities            <- the authored catalog, deliberately
+  ```
+
+  Three federated reads a consumer could bypass the KAL on, **while the gate printed PASS**.
+  That is what a hand-list always becomes: correct on the day it is written.
+
+  🎯 **The KAL's read controller IS the manifest.** Every upstream path it calls is by
+  definition a federated read, so the guarded set is derived from it. The row's own bite is now
+  a selftest check: *"a read the KAL STARTS federating is guarded with NO gate edit"* — adding
+  `lore-digest` to the controller guards it immediately, and removing it un-guards it.
+
+  🔬 **Deriving walked straight into two defects, both of which the derivation itself found.**
+
+  * **The scan matched RAW LINES**, so the moment `entities/by-ids` became guarded, two
+    services' *docstrings* naming that upstream path were reported — while both actually call
+    the KAL's `/v1/kal/books/{id}/cast/by-ids`. Reporting prose is worse than a false positive:
+    the cheapest way to green it is to delete the sentence, which removes the explanation and
+    changes nothing about the code. Comments and Python docstrings are now blanked before
+    matching, **preserving the line count** so a real violation still points at the right line.
+  * **The manifest was read as prose too.** The first derivation picked
+    `/internal/.../entities/by-ids` out of a comment in the controller — an ellipsis where a
+    book id belongs — and turned it into a guarded pattern. A gate whose guarded set can be
+    extended by writing a sentence is the same defect as one that fires on a sentence. The
+    manifest is read as code.
+
+  ⚠️ **And the selftest found a hazard in my own helper**: `_to_pattern([])` compiled `(?:)`,
+  which matches **every line** — so an empty derived set would have flagged the whole repo
+  rather than guarding nothing. `_load_covered` checked emptiness, but its check does not
+  protect a second caller. It raises now.
+
+  ```
+  1  the KAL federates a NEW read           guarded with NO gate edit (the row's own bite)
+  2  a consumer calls a newly-guarded read  RED, and the remedy PRINTS the derived set
+  3  the manifest is unreadable             REFUSES — "would pass everything"
+  ```
+
+  Bite 3 matters because the failure it prevents is the quiet one: a gate that cannot find its
+  manifest and reports a clean scan.
+
+  ⛔ **What this row does NOT close, stated rather than papered over.** The plan's other half —
+  *"migrate or explicitly exempt each of the 13"* — is not a gate change. composition-service
+  reads `/internal/context/build`, `/internal/context/glossary-semantic` and
+  `/internal/projects/{id}/fact-for-check` directly, and **the KAL federates none of the three**
+  (0 mentions across `knowledge-gateway/src`). No rule in this file can guard a read the KAL
+  does not offer; closing it means federating them, which is a design decision. Adding them to
+  a list here would make the gate look complete while the reads stayed exactly as direct as
+  they are — the precise failure this row exists to end. Recorded, not hand-listed.
+
+  A repo-wide count was considered as a visible mechanism and rejected on measurement: scoping
+  it to "direct `/internal` reads the KAL does not federate" yields **222 path shapes** across
+  the whole platform, almost none of them knowledge. A number that large is noise, not a
+  mechanism, and would have to be narrowed by deriving the two owners' served routes — a second
+  derivation, and its own unit.
+
+  **QC (a) gates:** unit 4336, `knowledge-http-surface-gate` PASS at 10 derived, `--selftest`
+  13/13 and provably red under all three bites, `--staged` PASS, `knowledge-access-gate` (the
+  TABLE half) unchanged and PASS, four plan gates green.
+  **QC (b) live smoke:** N/A — a static gate; nothing runtime moved.
+  **QC (c) real data:** the 7-vs-11 gap is measured off the real `kal-read.controller.ts`, and
+  the two docstring false positives are real files in translation-service and worker-ai.
 
   ### ✅ T54c 2026-08-22 — **the two-store split is closed: one backend, one store, in ONE function**
 
