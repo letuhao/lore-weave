@@ -153,11 +153,62 @@ INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle)
 VALUES ('$REALITY', $CHANNEL, NULL, 'reality', 0, 'active');
 INSERT INTO actors (reality_id, actor_id, entity_id)
 VALUES ('$REALITY', '$ACTOR', $ENTITY);
+
+-- A4 -- A WORLD, AND THE ACTOR IN IT.
+--
+-- NO BACKTICKS BELOW, and that is not style. This heredoc is UNQUOTED (<<SQL)
+-- so the shell expands $REALITY and $ENTITY -- which is why it can seed at all --
+-- and it expands backticks too. The first version of this block wrote ordinary
+-- prose quoting like A4 and level_name, and the shell tried to RUN them:
+--   kernel-state-demo.sh: line 151: A4: command not found
+--
+-- Channel 1 above is the reality's own root channel (level_name 'reality') and
+-- is NOT a map node: nothing ever gave it a kind. The space tree is separate,
+-- and an actor is sited in a NODE, not in a channel.
+--
+-- These rows are the SHAPE of contracts/world/demo_v1.json, applied here rather
+-- than through seed_world, because this script seeds a channel database
+-- directly while the seeder is reached through provisioning. The authored file
+-- itself is proven by world_declarations.rs and world_seed_live; what THIS
+-- proves is that the browser can show where an actor is.
+--
+-- ONE ROOT PER REALITY, and this is where that stopped being abstract.
+--
+-- The first version added its own root node (parent NULL) for the world. 0019's
+-- channels_root_single is a PARTIAL UNIQUE INDEX -- at most one root per reality
+-- -- so the insert was refused, ON CONFLICT DO NOTHING swallowed the refusal,
+-- and the child then failed on a foreign key that named a row which had never
+-- been written:
+--   Key (reality_id, parent, parent_depth)=(..., 10, 0) is not present
+--
+-- Channel 1 IS the root. So the map hangs off it: channel 1 becomes the world
+-- node, and the tavern is a Domain beneath it. In a real provision seed_world
+-- writes its own root because the reality is empty; here one already exists, and
+-- the tree has to acknowledge that rather than fight it.
+INSERT INTO map_layout (reality_id, channel_id, kind, pos_x, pos_y)
+VALUES ('$REALITY', $CHANNEL, 'world', 500, 500) ON CONFLICT DO NOTHING;
+INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle)
+VALUES ('$REALITY', 11, $CHANNEL, 'yen-vu-lau', 1, 'active') ON CONFLICT DO NOTHING;
+INSERT INTO map_layout (reality_id, channel_id, kind, pos_x, pos_y)
+VALUES ('$REALITY', 11, 'domain', 480, 520) ON CONFLICT DO NOTHING;
+INSERT INTO place (reality_id, place_id, place_type, canon_ref, name_vi, name_en)
+VALUES ('$REALITY', 11, 'tavern', '{"kind":"BookChapter","path":"ch1"}'::jsonb,
+        'Yen Vu Lau', 'Misty Rain Pavilion')
+ON CONFLICT DO NOTHING;
+
+-- THE SPAWN. Entity 1 is the actor the browser drives, and it is now somewhere.
+INSERT INTO entity_binding
+  (reality_id, entity_id, entity_type, location_kind, cell_id, lifecycle_state)
+VALUES ('$REALITY', $ENTITY, 'pc', 'in_cell', 11, 0)
+ON CONFLICT DO NOTHING;
+
 SQL
 
 echo "   reality_registry     : $(q "$META_DB" "SELECT count(*) FROM reality_registry WHERE reality_id='$REALITY'")"
 echo "   actor_control_binding: $(q "$META_DB" "SELECT count(*) FROM actor_control_binding WHERE reality_id='$REALITY' AND revoked_at IS NULL")"
 echo "   actors               : $(q "$CHAN_DB" "SELECT count(*) FROM actors WHERE reality_id='$REALITY'")"
+echo "   map nodes            : $(q "$CHAN_DB" "SELECT count(*) FROM map_layout WHERE reality_id='$REALITY'")"
+echo "   sited entities       : $(q "$CHAN_DB" "SELECT count(*) FROM entity_binding WHERE reality_id='$REALITY'")"
 
 # ── G3: a committed event, produced by the real path ────────────────────────
 #

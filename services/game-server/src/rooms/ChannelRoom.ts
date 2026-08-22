@@ -19,6 +19,7 @@ import {
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
 import { PRODUCER_NAME, producerKeyFromEnv, signProposal } from '../ws/producer-sign.js';
+import { placeResolverFromEnv, type FramePlace } from '../ws/place.js';
 import { isUserRefId, subjectResolverFromEnv, type SubjectLookup } from '../ws/subject.js';
 import { log } from '../log.js';
 
@@ -613,8 +614,19 @@ export class ChannelRoom extends Room {
     // Null and not a default entity: the frame is what the client renders as
     // "you", and inventing one is the same confused-deputy claim one layer up
     // from the submit path — it would show a stranger's actor as the reader's.
+    // `A4` — WHERE the driven actor is. ADVISORY: a failed lookup costs a
+    // location, never a join, so this is awaited but never throws (see
+    // `ws/place.ts`). Only asked when there IS an actor: a spectator drives
+    // nobody, so "where are you" has no subject.
+    let place: FramePlace | undefined;
+    if (actor !== undefined) {
+      const resolver = placeResolverFromEnv();
+      if (resolver) place = await resolver.resolve(this.opts.realityId, Number(actor));
+    }
+
     client.send('w1.frame', {
       self: actor === undefined ? null : { entity_id: actor, ...this.view.actors[actor] },
+      ...(place ? { place } : {}),
       turn_number: this.view.turn_number,
       roster: Object.entries(this.view.actors).map(([id, a]) => ({
         entity_id: id,

@@ -837,7 +837,7 @@ components:
           description: '`in_cell` only — the `channels.id` the entity occupies.'
         kind_of_node:
           type: string
-          description: 'Serialised as `kind` inside the `in_cell` payload; the node''s `MapKind`.'
+          description: 'The node''s `MapKind`. Named `node_kind` and not `kind` because the discriminant already owns `kind` -- a field of that name would emit a DUPLICATE JSON key and destroy the tag.'
         level_name:
           type: string
           description: '`in_cell` only — the reality''s own word for the level (`DP-A13`).'

@@ -262,7 +262,15 @@ pub struct EntityLocation {
     /// The `channels.id` the entity occupies.
     pub node: i64,
     /// The node's `MapKind`.
-    pub kind: String,
+    ///
+    /// WARNING: `node_kind`, NOT `kind`. The enum is `#[serde(tag = "kind")]`,
+    /// so a field called `kind` here serialises a DUPLICATE JSON KEY:
+    /// `{"kind":"in_cell", ..., "kind":"domain"}`. Rust emits both happily;
+    /// every JSON parser keeps the LAST, so the discriminant is destroyed and a
+    /// TypeScript reader sees `kind === "domain"` and concludes the entity is
+    /// nowhere. Found by the browser test, which is the only thing that reads
+    /// this end to end.
+    pub node_kind: String,
     /// The reality's own word for the level (`DP-A13`).
     pub level_name: String,
     /// `None` unless the node is a `Domain` carrying a `place` row.
@@ -306,7 +314,7 @@ pub async fn where_is(
             Ok(Whereabouts::InCell(EntityLocation {
                 entity_id,
                 node,
-                kind,
+                node_kind: kind,
                 level_name,
                 place_name,
             }))

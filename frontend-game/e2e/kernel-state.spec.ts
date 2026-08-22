@@ -171,6 +171,20 @@ test.describe('kernel state reaches the browser', () => {
         'XLEN lw.events.<reality> and the publisher log.',
     ).toBeVisible({ timeout: 15_000 });
 
+    // `A4` -- WHERE the actor is. The end of the PO's sentence: "make place
+    // where actor can spawn on".
+    //
+    // This entry exists ONLY because entity_binding sites entity 1 in node 11,
+    // node 11 carries a `place` row, and the room resolved it through
+    // world-service's /internal/v1/space/where-is. Delete the binding and the
+    // header renders without it -- the frame omits `place` rather than
+    // inventing one, the same refusal `self: null` makes one field over.
+    await expect(
+      page.getByTestId('frame-place'),
+      'no place -- is the actor sited (entity_binding), does its node have a map_layout \
+       row and a place, and is LW_WORLD_SERVICE_URL set for the room?'
+    ).toHaveText(/Yen Vu Lau/, { timeout: 15_000 });
+
     // The turn advanced too. Asserted AFTER the roster because it is the weaker
     // claim: a turn number moves for any committed event, including one whose
     // payload folds to nothing.

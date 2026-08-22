@@ -181,7 +181,7 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
     match space_view::where_is(pool, &reality, sited.entity_id).await {
         Ok(Whereabouts::InCell(loc)) => {
             if loc.node != 2
-                || loc.kind != "domain"
+                || loc.node_kind != "domain"
                 || loc.place_name.as_deref() != Some("Yen Vu Lau")
             {
                 return Err(format!("sited actor resolved to {loc:?}"));

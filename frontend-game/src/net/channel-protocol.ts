@@ -82,10 +82,29 @@ export interface RosterEntry {
 }
 
 /** `w1.frame` — the first frame (doc 20 §3). */
+/**
+ * `A4` — WHERE the driven actor is.
+ *
+ * OPTIONAL, and its absence is a real answer rather than a gap: an actor that
+ * has never been sited is nowhere, and until a reality has a world that is every
+ * actor. The room also omits it when the lookup fails, because a location is
+ * ADVISORY — a space-view outage must cost a line of text, never a join.
+ *
+ * `place_name` is present only when the node is a `Domain` carrying a `place`;
+ * `PF_001` makes that 1:1 and no other kind has one.
+ */
+export interface FramePlace {
+  node: U64;
+  /** The reality's own word for the level (`DP-A13`). */
+  level_name: string;
+  place_name?: string;
+}
+
 export interface W1Frame {
   self: { entity_id: U64; hp?: number; down?: boolean; fled?: boolean };
   turn_number: U64;
   roster: RosterEntry[];
+  place?: FramePlace;
 }
 
 /**

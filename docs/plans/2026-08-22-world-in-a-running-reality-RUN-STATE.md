@@ -157,7 +157,7 @@ refusing it.
 | `"market"` restored | *"node 5 declares place_type `market`, which `0026_place`'s `place_type_closed` would refuse"* — **without a database** |
 
 **Live evidence:** `A3 AUTHORED WORLD: 5 nodes, 2 places, from contracts/world/demo_v1.json`.
-| `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[ ]` | |
+| `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[~]` | **THE CHAIN IS BUILT AND PROVEN END TO END — §3.8 — on the THROWAWAY demo stack. 2 passed on chromium; the bite (unsite the actor) reds.** What remains is the substitution onto one of the ten, which is `A2`'s authorisation |
 
 #### 3.1 · `A1` — what `migrate` actually does, read at `HEAD`
 
@@ -200,6 +200,44 @@ live write** — that half of `D-1` stands untouched.
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `B1` | **game-tier's `RealityId + SessionContext` row still reads `⬜ board TBD`** — a **fourth** place the finished `3C`/`3D` work is not reflected, after reality-layer, the `1b5-*` rows and `G5`. Found while verifying the previous goal | `[x]` | **DONE 2026-08-22 — §3.5.** Corrected with evidence, and precisely: the TYPES are built, the ADOPTION half is reality-layer `3E` and stays open. `clippy -p dp -D warnings` **rc=0** |
+#### 3.8 · `A4` — the chain is built and proven; only the reality is borrowed
+
+**`A4` is NOT blocked on `A2`. Only its last substitution is.** The whole chain now exists and runs:
+
+```
+  entity_binding -> world-service POST /internal/v1/space/where-is
+    -> game-server ws/place.ts -> W1Frame.place -> ChannelPanel -> the DOM
+```
+
+and the browser says `turn 1 · you are entity 1 · at Yen Vu Lau`.
+
+**What was missing: nothing answered *"where is entity N"*.** `assemble` answers *"what is at node
+X"*. The server half (`where_is`, three distinct facts) is §`a43e1ca99`; this row is the rest.
+
+**The place lookup is ADVISORY and the subject lookup is not, and that asymmetry is deliberate.** A
+failed subject lookup means the room cannot know who is acting, so it binds nobody. A failed PLACE
+lookup means a poorer frame, not a wrong one — so it degrades to no location rather than refusing the
+join. Making it fail closed would let a space-view outage take down joins that never needed it.
+
+**Three defects found by running it, and the third is the one worth keeping:**
+
+| # | defect | how it surfaced |
+|---|---|---|
+| 1 | the SQL comments contained backticks, and the heredoc is UNQUOTED | the shell ran them: `kernel-state-demo.sh: line 151: A4: command not found` |
+| 2 | the demo added a SECOND root; `channels_root_single` allows one | `ON CONFLICT DO NOTHING` **swallowed** the refusal and the child then failed on a key naming a row never written. The map now hangs off channel 1 |
+| 3 | **`#[serde(tag = "kind")]` collided with `EntityLocation.kind`** | `{"kind":"in_cell", …, "kind":"domain"}` — **a duplicate JSON key.** Rust emits both; every parser keeps the LAST, so the discriminant was destroyed and TypeScript read `kind === "domain"` and concluded the entity was nowhere |
+
+**Defect 3 is invisible to every layer except the last one.** world-service's own live test passed —
+it reads Rust structs, not JSON. The contract passed — it describes fields, not collisions. Only a
+browser reading real JSON could see it, which is the argument for this row existing at all. Renamed
+`node_kind`, in the type, the contract and the wire.
+
+**The bite:** delete the `entity_binding` row and re-join — the header renders without a location and
+the assertion reds with *"no place — is the actor sited…"*. Restored; green again.
+
+**What is borrowed:** the demo's reality lives in `loreweave_kernel_state_smoke_*`, a throwaway. It
+is not one of the ten. `A4` therefore stays `[~]`: **the mechanism is proven, the subject is not the
+real one**, and swapping it is exactly what `A2`'s authorisation unlocks.
 #### 3.5 · `B1` — the fourth stale reflection, corrected precisely
 
 The game-tier board's slice table read `| **3** | RealityId + SessionContext | ⬜ *board TBD* |`.
@@ -324,7 +362,7 @@ and counted rather than lumped.
 
 ## 7 · RESUME
 
-**RESUME: `A2` — STOPPED FOR AUTHORISATION (§3.3), and `A4` depends on it. Everything that does not need a live reality is DONE: `A1`, `A3`, `B1`, `B2`, `C1` — 5 of 7. The remaining two both require writing to a real reality, which is the STOP list.**
+**RESUME: `A2` — STOPPED FOR AUTHORISATION (§3.3). It is now the ONLY thing left: `A1`, `A3`, `B1`, `B2`, `C1` are done and `A4`'s whole chain is built and proven end to end on the throwaway stack (§3.8), browser included. What `A2` unlocks is the substitution of a REAL reality for the borrowed one — nothing else.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is
