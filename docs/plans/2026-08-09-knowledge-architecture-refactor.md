@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the project-scoped KAL controller — `hasProjectAccess` is BUILT (T55/g); what is left is the routes that call it + 3 consumers. T54/T56 CLOSED; T46's substrate stays a PO question.**
+**RESUME: `wiki-neighborhood` — the LAST federate-owed, and it fits neither scope axis (its caller holds only a `glossary_entity_id`). T54/T56 CLOSED; T46's substrate stays a PO question.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**61 of 69 rows done · 8 open · 67 of 114 evidence blocks closed inside them.**
+**61 of 69 rows done · 8 open · 68 of 115 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (5/5) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (6/6) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19810,6 +19810,84 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⛔ **Owed, and now only this:** the project-scoped KAL controller that CALLS
   `hasProjectAccess`, plus repointing the three consumers. `MAX_FEDERATE_OWED = 3` keeps them
   named on every gate run.
+
+
+  ---
+  ### ✅ T55/h 2026-08-23 — **the project axis lands: 3 federate-owed → 1, and user mode DISCRIMINATES**
+
+  ```
+  KAL federated reads   11 -> 13     MAX_FEDERATE_OWED  3 -> 1     (rule 5, same commit)
+  direct-call ledger    41 -> 39     composition-service repointed (3 sites)
+  composition unit 3648 · gateway 43 · tsc clean
+  ```
+
+  🎯 **The proof is the arm that could not exist before.** `KalAuthGuard`'s user-mode path
+  needed `req.params.bookId`; a project route had no door but the internal token, which skips
+  the guard. With `hasProjectAccess` (T55/g) wired in, live on the rebuilt gateway:
+
+  ```
+  SERVICE mode (internal token)   200
+  USER mode, the project OWNER    200        <- this door DID NOT EXIST before
+  USER mode, a STRANGER           403 {"message":"no grant on this project"}
+  ```
+
+  Three outcomes, two identities, two modes. A federated surface that answered all three the
+  same way would be federation in name only.
+
+  ⚖️ **ONE guard, not two.** `KalAuthGuard` now dispatches on whichever scope param the route
+  carries. The identity half — JWT validation and pinning `req.kalUserId` against header
+  spoofing — is identical, and a second guard would have been two readers of one concept. A
+  route with **neither** param still fails closed, which is why it reads params rather than
+  taking a constructor flag: a new controller cannot inherit a guard that then has nothing to
+  check and waves it through.
+
+  🔴 **The gate's own manifest was the thing most likely to rot, and it nearly did.**
+  `KAL_READ_CONTROLLER` was one hard-coded filename. Adding `kal-project-read.controller.ts`
+  would have left the gate deriving **11** reads while **13** existed — so the two new
+  federations would not have been guarded and consumers could have kept calling them direct,
+  with the gate green. It is a GLOB now (`*read*.controller.ts`), so a third controller is
+  picked up the day it is written:
+
+  ```
+  controllers: ['kal-project-read.controller.ts', 'kal-read.controller.ts']   -> 13 reads
+  ```
+
+  **A derived gate is only as derived as its least-derived input**, and that input was a
+  string constant one level up from the derivation it fed.
+
+  🔬 **Scope now travels in the PATH and the identity, never the body.** The owning endpoints
+  take `user_id`/`project_id` in their bodies; the controller supplies both from what the
+  guard scoped — `ctx.userId` and `@Param('projectId')`. The client test asserts their
+  **absence** from the request body, because a body that still carried them would keep working
+  right up until someone trusted it.
+
+  ⚠️ **And a two-way `if` was quietly wrong in the eval driver.** `_internal_base` returned the
+  knowledge base for every value that was not `"glossary"`, so a new `"knowledge_gateway"`
+  target would have gone to knowledge-service and 404'd in a way that reads like a missing
+  route. It is a mapping now, and an unknown key RAISES rather than picking a default host.
+
+  ```
+  the gate, after adding the routes and BEFORE repointing
+      [kal-covered-internal-read] knowledge_client.py:456  glossary-semantic
+      [kal-covered-internal-read] knowledge_client.py:658  fact-for-check
+      [kal-covered-internal-read] eval/driver.py:343       fact-for-check
+  ...and after repointing, the other arm
+      STALE /internal/context/glossary-semantic · STALE /internal/projects/{}/fact-for-check
+  ```
+
+  Both arms fired without the gate being edited — the mechanism §8.3 asked for, exercised in
+  both directions for the second time.
+
+  **QC (a) gates:** composition-service unit **3648**, knowledge-gateway **43** + `tsc
+  --noEmit` clean, `knowledge-http-surface-gate` PASS at 13/39/1 with `--selftest` green, all
+  repo gates green.
+  **QC (b) live smoke:** the three-arm table above, gateway REBUILT on `lw-iso`, backend
+  `age`; the seam is composition → gateway → knowledge-service.
+  **QC (c) real data:** against the real project row `01a0298e…` and its real owner.
+
+  ⛔ **One federation left, and it is the odd one.** `wiki-neighborhood`'s caller holds a
+  `glossary_entity_id` and **neither a book nor a project**, so it fits neither scope axis.
+  That is a third question, not a third route.
 
 
 - [x] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit

@@ -54,9 +54,14 @@ class KnowledgeContractError(Exception):
 class KnowledgeClient:
     def __init__(
         self, base_url: str, internal_token: str = "", timeout_s: float = 5.0,
-        extract_timeout_s: float = 180.0,
+        extract_timeout_s: float = 180.0, kal_url: str = "",
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        # T55/h — the KAL base, for the reads §8.6 decided are federated. Separate from
+        # `_base_url` on purpose: most of this client's calls are WRITES and computes that
+        # stay direct, and collapsing the two would make "which surface am I on" a thing a
+        # reader has to infer from the path instead of from the attribute.
+        self._kal_url = (kal_url or "").rstrip("/")
         self._internal_token = internal_token
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
         # C27 — extract-item runs an LLM Pass-2 extraction (slow); its per-request
@@ -453,13 +458,19 @@ class KnowledgeClient:
         failure or a no-embedding project — the caller falls back to glossary
         FTS. Caller MUST have verified ownership first (SEC2; internal endpoint
         trusts the token)."""
-        url = f"{self._base_url}/internal/context/glossary-semantic"
+        # T55/h — through the KAL (§8.6). `user_id` and `project_id` are NOT in the body any
+        # more: the controller takes the project from the PATH it scoped and the user from the
+        # request identity, so a caller cannot name an owner it did not authenticate as.
+        if not self._kal_url:
+            logger.warning("KNOWLEDGE_GATEWAY_URL unset — no semantic glossary context")
+            return []
+        url = f"{self._kal_url}/v1/kal/projects/{project_id}/glossary-semantic"
         payload = {
-            "user_id": str(user_id), "project_id": str(project_id),
             "query": query, "max_entities": max_entities, "max_tokens": max_tokens,
         }
         try:
-            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+            headers = {**self._internal_headers(), "X-User-Id": str(user_id)}
+            resp = await self._http.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
                 logger.warning("knowledge glossary-semantic → %d", resp.status_code)
                 return []
@@ -655,7 +666,13 @@ class KnowledgeClient:
         advisory — a knowledge outage must never block a generate, F1)."""
         if not glossary_entity_ids and not entity_ids:
             return None
-        url = f"{self._base_url}/internal/projects/{project_id}/fact-for-check"
+        # T55/h — through the KAL (§8.6). No `X-User-Id`: the owning endpoint resolves the
+        # owner from `knowledge_projects` by project id, the same way the timeline read
+        # resolves it from the book.
+        if not self._kal_url:
+            logger.warning("KNOWLEDGE_GATEWAY_URL unset — fact-for-check degrades to advisory")
+            return None
+        url = f"{self._kal_url}/v1/kal/projects/{project_id}/fact-for-check"
         payload: dict[str, Any] = {"at_order": at_order}
         if glossary_entity_ids:
             payload["glossary_entity_ids"] = list(glossary_entity_ids)
@@ -691,6 +708,7 @@ def init_knowledge_client() -> KnowledgeClient:
     if _client is None:
         _client = KnowledgeClient(
             settings.knowledge_internal_url, settings.internal_service_token,
+            kal_url=settings.knowledge_gateway_url,
         )
     return _client
 

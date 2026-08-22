@@ -113,6 +113,30 @@ def strip_prose(src: str) -> str:
 # The KAL's read controller IS the manifest. Every upstream path it calls is, by definition, a
 # federated read; deriving from it means a read added to the KAL is guarded the day it is
 # federated rather than the day someone remembers this file.
+#: The KAL's read manifest. A GLOB, not a filename — T55/h added
+#: `kal-project-read.controller.ts` for the project-scoped axis, and a gate pinned to the one
+#: original file would have kept reporting 11 federated reads while 13 existed, so the two new
+#: ones would NOT have been guarded and consumers could keep calling them direct. The manifest
+#: growing is exactly the event this gate is derived to survive; hard-coding one path made the
+#: derivation only as good as a hand-list one level up.
+KAL_READ_CONTROLLER_DIR = os.path.join("services", "knowledge-gateway", "src", "kal")
+KAL_READ_CONTROLLER_GLOB = "*read*.controller.ts"
+
+
+def _kal_read_controllers() -> list[str]:
+    """Every KAL read controller, sorted. Empty is an ERROR the caller refuses to run on."""
+    import fnmatch
+    root = os.path.join(REPO_ROOT, KAL_READ_CONTROLLER_DIR)
+    if not os.path.isdir(root):
+        return []
+    return sorted(
+        os.path.join(KAL_READ_CONTROLLER_DIR, f)
+        for f in os.listdir(root)
+        if fnmatch.fnmatch(f, KAL_READ_CONTROLLER_GLOB)
+    )
+
+
+#: Kept for the error text and for tests that name the original.
 KAL_READ_CONTROLLER = os.path.join(
     "services", "knowledge-gateway", "src", "kal", "kal-read.controller.ts",
 )
@@ -163,9 +187,14 @@ def _to_pattern(paths: list[str]) -> re.Pattern[str]:
 
 
 def _load_covered() -> tuple[re.Pattern[str], list[str]]:
-    path = os.path.join(REPO_ROOT, KAL_READ_CONTROLLER)
+    controllers = _kal_read_controllers()
     try:
-        src = open(path, "r", encoding="utf-8", errors="replace").read()
+        if not controllers:
+            raise OSError(f"no {KAL_READ_CONTROLLER_GLOB} under {KAL_READ_CONTROLLER_DIR}")
+        src = chr(10).join(
+            open(os.path.join(REPO_ROOT, c), encoding="utf-8", errors="replace").read()
+            for c in controllers
+        )
     except OSError as exc:
         raise SystemExit(
             f"[knowledge-http-surface-gate] cannot read the KAL read controller at "
@@ -357,22 +386,19 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #: `fact-for-check` from `federate` to `ops` would drop the owed count with nothing going red,
 #: and §8.6 would still read as enforced while enforcing less. Rule 5 — this number moves in
 #: the SAME COMMIT as the federation that moves it, and only DOWN.
-#: 4 -> 3 at T55/e: `timeline` is federated (`POST /v1/kal/books/:bookId/timeline`)
-#: and its consumer repointed, in the same commit as this line (rule 5).
-MAX_FEDERATE_OWED = 3
+#: 4 -> 3 at T55/e (`timeline`), 3 -> 1 at T55/h (`fact-for-check` +
+#: `glossary-semantic`, on the new project-scoped controller). Each drop lands in the
+#: same commit as the federation that caused it (rule 5).
+#:
+#: The 1 left is `wiki-neighborhood`, and it is the odd one: its caller holds a
+#: `glossary_entity_id` and NEITHER a book nor a project, so it fits neither scope axis.
+MAX_FEDERATE_OWED = 1
 
 DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     # ── federate: DECIDED (§8.6) to belong behind the KAL ────────────────────────────────
-    "/internal/projects/{}/fact-for-check": (
-        "federate", "§8.6: FactForCheck{at_order, entities[status], relations["
-        "valid_from_ordinal, valid_to_ordinal], events[event_order]} — ORDINALS ON THE WIRE. "
-        "The textbook case, and it was watched firing live while this gate said PASS."),
     "/internal/knowledge/wiki-neighborhood": (
         "federate", "§8.6: entity + capped relations — the same shape as the already-"
         "federated `kg/neighborhood`. Two routes, one domain question."),
-    "/internal/context/glossary-semantic": (
-        "federate", "§8.6: GlossaryEntityForContext[] — an entity read reached by semantic "
-        "search. `entities/search` is already federated; same question, other retrieval."),
     # ── compute: reads knowledge, returns a rendered artefact ────────────────────────────
     "/internal/context/build": (
         "compute", "§8.6: ContextBuildResponse{mode, context, token_count, stable_context, "
