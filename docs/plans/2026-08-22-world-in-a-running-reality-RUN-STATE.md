@@ -1,6 +1,6 @@
 # RUN-STATE — the producers are reachable, and no running reality has a world
 
-**Reconciles:** Foundation Invariants **I1–I19** · Data Plane channels **DP-Ch1–Ch37** · No-Defer-Drift · Destructive DB ops in tests · Admin Action Policy — and the reconciliation is again the subject rather than a formality. **Reality provisioning, per-reality migration and the space schema all already exist**: `provision_flow` + `provisioner` run 12 steps including `seed_world_structure`, `services/migration-orchestrator/cmd/migrate` is the per-reality migrator, and `0022`–`0030` are registered in the manifest. Nothing here is a new model. The gap is that **the nine realities on this shard were provisioned before those migrations existed and were never brought forward**, so every table the previous board gave a producer to is absent from all of them.
+**Reconciles:** Foundation Invariants **I1–I19** · Data Plane channels **DP-Ch1–Ch37** · No-Defer-Drift · Destructive DB ops in tests · Admin Action Policy — and the reconciliation is again the subject rather than a formality. **Reality provisioning, per-reality migration and the space schema all already exist**: `provision_flow` + `provisioner` run 12 steps including `seed_world_structure`, `services/migration-orchestrator/cmd/migrate` is the per-reality migrator, and `0022`–`0030` are registered in the manifest. Nothing here is a new model. The gap is that **the ten realities on this shard were provisioned before those migrations existed and were never brought forward**, so every table the previous board gave a producer to is absent from all of them.
 
 > **Read this file FIRST after any compaction.** Then `git log`, then continue.
 >
@@ -16,7 +16,7 @@
 
 The place can now be built and an actor can now be put in it. **No running reality has either.**
 
-**DONE means:** a reality that exists on this shard today has a world, an actor sited in it, and a browser that shows where that actor is — each proven by running the production path. **Not a fresh throwaway. One of the nine.**
+**DONE means:** a reality that exists on this shard today has a world, an actor sited in it, and a browser that shows where that actor is — each proven by running the production path. **Not a fresh throwaway. One of the ten.**
 
 ---
 
@@ -24,9 +24,9 @@ The place can now be built and an actor can now be put in it. **No running reali
 
 | what | measured |
 |---|---|
-| realities on this shard | **9** (`lw_reality_*`) |
-| newest migration applied in them | **`0019_channels`** |
-| `map_layout` / `entity_binding` / `place` / `portal` / `layer_registry` / `encounter` | **the tables DO NOT EXIST** in any of the nine |
+| realities on this shard | **10** (`lw_reality_*`), all `status=active` — **the first draft of this table said 9; see `WD-2`** |
+| newest migration applied in them | **two cohorts**: 7 at `0019_channels` (15 applied), 3 at `0021_turn_slot` (17) |
+| `map_layout` / `entity_binding` / `place` / `portal` / `layer_registry` / `encounter` | **the tables DO NOT EXIST** in any of the ten |
 | `actors` (`0022`) | absent too — so the actor registry has no home there either |
 | realities with a world | **0** |
 
@@ -34,7 +34,7 @@ The previous board proved the producers are reachable: `seed_world` ← `provisi
 
 ### The shape, for the third time
 
-`apply_migrations` was rewritten on 2026-08-08 to apply every manifest migration — and that only ever affected realities provisioned **after** that date. The nine predate it. **A fix that only reaches new subjects is `1b5-H1`'s shape** (*"the fix reached one site of N"*), and `1b12-05` already recorded that *"registration is necessary and not sufficient"*.
+`apply_migrations` was rewritten on 2026-08-08 to apply every manifest migration — and that only ever affected realities provisioned **after** that date. All ten predate it. **A fix that only reaches new subjects is `1b5-H1`'s shape** (*"the fix reached one site of N"*), and `1b12-05` already recorded that *"registration is necessary and not sufficient"*.
 
 **The tell:** the last three boards each ended by discovering that the thing they built had no consumer. This one starts from the consumer and works back.
 
@@ -59,10 +59,46 @@ The previous board proved the producers are reachable: `seed_world` ← `provisi
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `A1` | **MEASURE the migrate path before touching a real reality.** What does `migration-orchestrator/cmd/migrate` do to an existing reality — which migrations, in what order, with what dry-run? Does it read the manifest, and does it refuse a reality it cannot reach? **Read-only.** | `[ ]` | |
-| `A2` | **The nine realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[ ]` | |
+| `A1` | **MEASURE the migrate path before touching a real reality.** What does `migration-orchestrator/cmd/migrate` do to an existing reality — which migrations, in what order, with what dry-run? Does it read the manifest, and does it refuse a reality it cannot reach? **Read-only.** | `[x]` | **DONE 2026-08-22 — §3.1. Read-only throughout; nothing was written.** Two of `D-1`'s assumptions are NOT expressible with this CLI — see `§3.2` |
+| `A2` | **The ten realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[ ]` | |
 | `A3` | **Something DECLARES a world** — `OR-3` from the previous board. Every caller passes an empty declaration today, so the seed step reports `Skipped` on every path. Where the declaration LIVES is this row's decision | `[ ]` | |
 | `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[ ]` | |
+
+#### 3.1 · `A1` — what `migrate` actually does, read at `HEAD`
+
+| question | answer |
+|---|---|
+| how many migrations per invocation? | **ONE.** `migrate <migration_id>`. Bringing the fleet to head is **9 invocations** (`0022`…`0030`) |
+| which realities? | **ALL of them.** `realityreg.ActiveRealities` = every row whose `status` is in `{seeding, active, pending_close, frozen, migrating}`. **There is no `--reality` flag** |
+| are `0022`–`0030` breaking? | **all nine are `breaking: false`** → `internal/runner`, concurrency 10. The canary path and its nil `Verifier` (fail-closed) never engage |
+| what does `--dry-run` show? | **routing only.** It never opens the meta DB: it prints *"would: route through internal/runner with concurrency=10"* and stops. It cannot name a reality, show a diff, or say which are behind |
+| does it refuse a reality it cannot reach? | **No — it continues and reports.** `cmd/migrate/main.go:217` counts per-reality `Succeeded` and prints `done: N applied, M failed`, returning an error only after the fan-out. **A partial fan-out is possible and is reported, not prevented** |
+| how does it reach the shard? | `db_host` is `pg-shard-0.internal`, which does not resolve from a dev box. `--host-override` exists for exactly this |
+
+**The fleet, measured (read-only):**
+
+```
+  7 realities  0019_channels   15 applied   map_layout absent
+  3 realities  0021_turn_slot  17 applied   map_layout absent
+ 10 total, all status=active, all missing 0022-0030
+```
+
+**The probe is controlled**, because `f` everywhere proves nothing on its own: the same
+`to_regclass('public.map_layout') IS NOT NULL` returns **`t`** against
+`loreweave_kernel_state_smoke_channel`, a database that does have the tables.
+
+#### 3.2 · What `A1` forces on `A2`, and it contradicts `D-1`
+
+**`D-1` says *"dry-run first, on one reality, with the diff shown"*. The CLI can do NEITHER.**
+
+- **One reality** — there is no targeting flag. The fleet is whatever `ActiveRealities` returns.
+- **A diff** — `--dry-run` does not connect to anything. It is a manifest lookup that prints a route.
+
+So `A2` cannot follow `D-1` as written, and the honest options are three: **(a)** temporarily narrow
+the fleet by `status` so only one reality is drainable, **(b)** add a `--reality` flag to the CLI, or
+**(c)** accept a fleet-wide apply on the grounds that all nine migrations are additive and
+`breaking: false`. **`A2` decides and records which, and it still stops for authorisation before any
+live write** — that half of `D-1` stands untouched.
 
 ### Lane B — the registers this run keeps finding stale
 
@@ -105,13 +141,14 @@ The previous board proved the producers are reachable: `seed_world` ← `provisi
 
 | id | what happened |
 |---|---|
+| **WD-2** | **I wrote "nine realities" and there are TEN.** It reached the board's §1, the RESUME line, the goal prompt and a commit message before `A1` counted properly. The original probe loop listed ten rows and I read nine — **a number I produced from a listing rather than from a `count(*)`**, which is the same class as `PD-4` (a claim taken from a document instead of measured). `A1` also found the fleet is not uniform: **two cohorts, not one** |
 | **WD-1** | **The verification script for the previous goal was WRONG, and it said the goal was not met.** It took the FIRST `#[cfg(test)]` in a file as a cut-off; `provisioner_live.rs` has one at line 483 followed by 250 lines of production, so the real `seed_world` call at 632 was filed as test and reported `prod=0`. **The controls did not catch it** — in both control files every `#[cfg(test)]` sits below every call site, so the cut-off happened to land correctly. *A control only proves what it exercises.* The tool can only UNDER-report, so no earlier conclusion changed |
 
 ---
 
 ## 7 · RESUME
 
-**RESUME: `A1` — read `migration-orchestrator/cmd/migrate` at `HEAD` and dry-run it against ONE of the nine realities. Read-only. Nothing writes to a non-throwaway database until `A2`, and `A2` stops for authorisation (`D-2`). The measured starting point: nine realities, all at `0019_channels`, none of which has `map_layout`, `entity_binding`, `place` or `actors` at all.**
+**RESUME: `A2` — bring the fleet forward, and READ §3.2 FIRST: `D-1`'s "dry-run on one reality with the diff shown" is NOT expressible with this CLI — there is no `--reality` flag and `--dry-run` never opens a database. Decide among the three options in §3.2, record the decision, and STOP for authorisation before any live write (`D-2`). The fleet is TEN realities, all `active`, in two cohorts (7 at `0019_channels`, 3 at `0021_turn_slot`), and all ten are missing `0022`–`0030`.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is
