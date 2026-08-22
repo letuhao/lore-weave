@@ -7,6 +7,8 @@ Covers ``update_entity_fields`` version check + bump and
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -204,7 +206,13 @@ def test_cypher_version_coalesce_default_matches_read_path():
         ("_MERGE_ENTITY_CYPHER", m._MERGE_ENTITY_CYPHER),
         ("_MERGE_UPDATE_TARGET_CYPHER", m._MERGE_UPDATE_TARGET_CYPHER),
     ]
-    for name, cypher in cypher_snippets:
+    for name, raw in cypher_snippets:
+        # T78 — strip Cypher `//` comments first. The merged `_MERGE_ENTITY_CYPHER` explains
+        # in a comment WHY `coalesce(e.version, 0) + 1` is the wrong translation (4272 of 4926
+        # dev nodes have no `version`, and the old match arm sent every one of them to 2), and
+        # this scan read the explanation as the mistake. Prose is not code — the same fix
+        # `port-adoption-gate.scan_dialect` needed on the same day.
+        cypher = re.sub(r"//[^\n]*", "", raw)
         assert "coalesce(e.version, 0)" not in cypher, (
             f"{name}: uses 0 as coalesce default; must be 1 to match "
             f"_node_to_entity's read-path default"

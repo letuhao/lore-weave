@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `_MERGE_ENTITY_CYPHER` (21/7, the largest) + `_MERGE_REWIRE_RELATES_TO_CYPHER` — the last two branches.**
+**RESUME: the `datetime()` tail — 25 sites across 7 modules, the last construct with a per-engine STORED TYPE.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,88 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T78 2026-08-22 — **the last two branches: `ON CREATE SET` reaches ZERO, and the ceiling was counting its own cure**
+
+  ```
+  entities::_MERGE_ENTITY_CYPHER              21 create / 7 match props
+  entities::_MERGE_REWIRE_RELATES_TO_CYPHER   12 create / 7 match props
+  Neo4j-only dialect                          44 -> 39   (3 of the 44 were COMMENTS)
+  ON CREATE SET / ON MATCH SET in neo4j_repos      0     <- the class is CLOSED
+  knowledge unit 4311 -> 4313 · DB integration 607 -> 611 passed, 0 failed
+  remaining backlog: datetime() x25, CALL {} x11, FOREACH x3
+  ```
+
+  📐 **The two largest merge queries in the layer, and the point at which `coalesce` stops
+  being the answer.** §10.1's recipe is "a create-only field folds into the unconditional `SET`
+  as `coalesce(field, value)`", and it held for 14 of the 21 fields here. Four did not, and the
+  dev graph is what said so rather than reasoning — 4926 `:Entity` nodes, measured 2026-08-22:
+
+  ```
+  glossary_entity_id   4287 / 4926 anchored   -> an unconditional `= NULL` DE-ANCHORS 87%
+  archived_at             6 / 4926 archived   -> T73's rule, fourth query
+  version              4272 / 4926 have NONE  -> `coalesce(e.version, 0) + 1` is NOT equivalent;
+                                                 the old match arm sent every one of them to 2
+  created_job_id       4413 / 4926 are null   -> `coalesce` BACK-FILLS net-new attribution onto
+                                                 90% of the graph, one extraction away
+  ```
+
+  The first two join `_NEVER_ASSIGN` — `glossary_entity_id` is now the largest member of that
+  class by a wide margin, and its failure is the quietest: a de-anchored entity is a perfectly
+  well-formed node. The other two are gated on an `existed` flag read before the `MERGE`, the
+  same shape T75/T77 used to retire `__was_created`.
+
+  🔴 **`user_id` moved INTO the merge key.** It was an `ON CREATE SET` field with a trailing
+  `WITH e WHERE e.user_id = $user_id`, and `merge_entity`'s own docstring already admitted that
+  filter defends nothing — the `SET` has run by the time it drops the row. `Entity.id` is UNIQUE
+  database-wide, so a foreign-tenant node at that id now fails the `CREATE` loudly instead of
+  being mutated and then hidden from the caller. Same correction as T77 and the AGE adapter;
+  this was the last of the five trailing tenancy filters found across the eight translations.
+
+  🎯 **THE CEILING WAS COUNTING ITS OWN CURE.** `scan_dialect` already excluded Python
+  docstrings and comments — `_code_strings`' docstring records that fix, and the reason for it:
+  *"this ceiling's target is ZERO, and prose can never reach zero"*. It stopped at the Python
+  layer. A Cypher `//` comment lives INSIDE the string literal, so a note explaining why a query
+  no longer needs `ON CREATE SET` was scored as the query still having one. Three of the 44 were
+  such notes, and **the whole `ON CREATE SET` / `ON MATCH SET` class read as 3 outstanding when
+  it was already zero.** The identical defect, one level down, in the detector that exists to
+  catch it — and the same one turned up a third time in `test_entities_mutations.py`, whose
+  `coalesce(e.version, 0)` scan was tripped by the comment explaining why 0 is wrong.
+
+  🔬 **BITES 4, 5 AND 6 EACH FOUND AN UNCOVERED LEG.** Seven bites; three of them rewrote an
+  `existed` leg into its wrong form and the entire suite stayed green:
+
+  ```
+  1  existed always false                             RED  parity::resolving_twice_is_idempotent
+  2  reinstate e.glossary_entity_id = NULL             RED  never_assign[_MERGE_ENTITY_CYPHER] +2
+  3  e.version bumps on a node just created            RED  parity::same_entity_including_its_id +1
+  4  e.created_job_id = coalesce(..., $job_id)      ✅GREEN  <- a later job steals the credit
+  5  r.valid_until drops its `NOT existed` leg      ✅GREEN  <- a CLOSED relation rewired OPEN
+  6  r.pending_validation drops its `existed` guard ✅GREEN  <- a QUARANTINED edge rewired VALID
+  7  remove the Cypher-comment strip                   RED  gate 42/39 — but SELFTEST still PASSED
+  ```
+
+  All three holes fail the way every hole this run has found fails — a **silent absence**. Bite 5
+  is F5 resurrection reached from the opposite side to T71: not by assigning `valid_until`, but
+  by failing to. The match arm's "either side open → open" rule is correct for two edges being
+  combined and wrong for an edge being created, where the other side is null by definition.
+  `test_merge_create_vs_match_legs.py` now covers all three, plus the reverse case for
+  `pending_validation` so the new guard cannot quarantine everything instead.
+
+  ⚠️ **Bite 7 is the sharper one: my own selftest could not see it.** Removing the comment strip
+  from `scan_dialect` breached the ceiling (42/39) and the `--selftest` still printed PASS,
+  because the selftest called `_CYPHER_COMMENT.sub` directly. It proved the regex worked, not
+  that anything CALLED it. `scan_dialect` now takes an injectable `sources` map and the selftest
+  runs the probe modules through the real scanner; bite 7 re-run fails it by name.
+
+  **QC (a) gates:** unit 4313, `port-adoption-gate` PASS at 39/39 — ceiling moved in this
+  commit — `--selftest` PASS and provably red under bite 7, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; the change is inside `neo4j_repos` and
+  no contract, route or event moved. The equivalent control ran instead: 611 DB-integration
+  tests on a throwaway Neo4j with AGE live, of which 195 are the conformance / shadow-differential
+  / adapter-parity set that exercises both engines.
+  **QC (c) real data:** entities created, re-merged, archived, merged-into and rewired in a real
+  Neo4j; the four field policies read back off the stored nodes and edges.
 
   ### ✅ T77 2026-08-22 — **`_UPSERT_ANCHOR_CYPHER`, the second `__was_created` — and the never-assign rule's MIRROR**
 

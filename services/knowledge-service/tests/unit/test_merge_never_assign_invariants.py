@@ -8,6 +8,7 @@ property already means:
     valid_until        assigning it RESURRECTS a superseded fact/relation      (F5)
     valid_to_ordinal   owned by `temporal.maintain_chain`, not by the merge    (F3)
     archived_at        assigning it UN-ARCHIVES on every re-extraction
+    glossary_entity_id assigning it DE-ANCHORS the entity from its glossary row (T78)
 
 ⚠️ **This file exists because the same defect appeared three times and only one instance had a
 guard.** T71 shipped `valid_until` unconditionally in `_CREATE_RELATION_CYPHER` and the suite
@@ -63,12 +64,21 @@ _NEVER_ASSIGN = [
     # UN-ARCHIVE an entity on every sync from the glossary.
     ("entities._GLOSSARY_ANCHOR_SYNC_CYPHER", en._GLOSSARY_ANCHOR_SYNC_CYPHER,
      ("archived_at",)),
+    # T78 — the last and by far the largest. `_MERGE_ENTITY_CYPHER` had `glossary_entity_id =
+    # NULL` and `archived_at = NULL` ON CREATE ONLY. Measured on the dev graph 2026-08-22:
+    # 4287 of 4926 :Entity nodes carry an anchor, so assigning the first would de-anchor 87%
+    # of the graph on the next extraction — every one of them silently, since a de-anchored
+    # node is still a well-formed node.
+    ("entities._MERGE_ENTITY_CYPHER", en._MERGE_ENTITY_CYPHER,
+     ("glossary_entity_id", "archived_at")),
 ]
 
 _WHY = {
     "valid_until": "resurrects a superseded fact/relation on every re-extraction (F5)",
     "valid_to_ordinal": "is owned by temporal.maintain_chain; the merge must not write it (F3)",
     "archived_at": "un-archives the node on every re-extraction",
+    "glossary_entity_id": ("severs the node from its glossary row — 4287 of 4926 dev nodes "
+                           "carry one, and a de-anchored node still looks well-formed"),
 }
 
 

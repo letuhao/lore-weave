@@ -257,42 +257,60 @@ WHERE prior.canonical_name = $canonical_name
        OR prior.project_id = $project_id)
 WITH prior ORDER BY (prior.id = $id) DESC, prior.created_at ASC
 WITH collect(prior.id)[0] AS priorId
-MERGE (e:Entity {id: coalesce(priorId, $id)})
-ON CREATE SET
-  e.user_id = $user_id,
-  e.project_id = $project_id,
-  e.name = $name,
-  e.canonical_name = $canonical_name,
-  e.kind = $kind,
-  e.aliases = [$name],
-  e.canonical_version = $canonical_version,
-  e.source_types = [$source_type],
-  e.provenances = [$provenance],
-  e.confidence = $confidence,
-  e.glossary_entity_id = NULL,
-  e.anchor_score = 0.0,
-  e.archived_at = NULL,
-  e.evidence_count = 0,
-  e.mention_count = 0,
-  e.user_edited = false,
-  e.version = 1,
-  e.auto_created = $auto_created,
-  e.created_at = {NOW},
-  // T4.1 flywheel — the extraction job that first minted this node (net-new
-  // attribution). Set ONLY on create, so it permanently credits the creating
-  // job; a later match by another job never changes it. NULL for non-job writes
-  // and pre-T4.1 nodes.
-  e.created_job_id = $job_id,
-  e.updated_at = {NOW}
-ON MATCH SET
+WITH coalesce(priorId, $id) AS eid
+
+// §10.1 — the create/match split, restated as a FACT ABOUT THE DATA instead of a branch
+// keyword. AGE has neither `ON CREATE SET` nor `ON MATCH SET`, and most create-only fields
+// fold into `coalesce` because an absent property is already the value the create arm wrote.
+// Four here do NOT, and each fails silently in a different direction — measured on the dev
+// graph 2026-08-22 over 4926 :Entity nodes:
+//
+//   glossary_entity_id  was `= NULL` ON CREATE. 4287 of 4926 nodes carry an anchor, so an
+//                       unconditional assignment DE-ANCHORS 87% of the graph on the next
+//                       extraction. It is never assigned at all — absent is already null.
+//   archived_at         same shape (T73's rule, 6 archived rows) — never assigned.
+//   version             `coalesce(e.version, 0) + 1` looks equivalent and is not: 4272 of
+//                       4926 nodes have NO `version` yet, and the old match arm sent every
+//                       one of them to 2, not 1.
+//   created_job_id      NULL on 4413 nodes. `coalesce` would BACK-FILL net-new attribution
+//                       onto them, crediting a later job with creating the node — the exact
+//                       thing the T4.1 comment below forbids.
+//
+// So the flag is read before the MERGE, in the same statement, the way T75/T77 replaced
+// `__was_created`. `pre` is at most one node (`Entity.id` IS UNIQUE), so no fan-out.
+OPTIONAL MATCH (pre:Entity {id: eid, user_id: $user_id})
+WITH eid, pre IS NOT NULL AS existed
+
+// `user_id` moves INTO the merge key. It used to be an ON CREATE field with a trailing
+// `WITH e WHERE e.user_id = $user_id`, and merge_entity's own docstring already admitted that
+// filter defends nothing: the SET has run by the time it drops the row. `Entity.id` is UNIQUE
+// database-wide, so a foreign-tenant node at this id now fails the CREATE loudly instead of
+// being mutated and then hidden from the caller.
+MERGE (e:Entity {id: eid, user_id: $user_id})
+SET
+  e.project_id       = CASE WHEN existed THEN e.project_id       ELSE $project_id END,
+  e.name             = CASE WHEN existed THEN e.name             ELSE $name END,
+  e.canonical_name   = CASE WHEN existed THEN e.canonical_name   ELSE $canonical_name END,
+  e.kind             = CASE WHEN existed THEN e.kind             ELSE $kind END,
+  e.canonical_version = coalesce(e.canonical_version, $canonical_version),
+  e.anchor_score     = coalesce(e.anchor_score, 0.0),
+  e.evidence_count   = coalesce(e.evidence_count, 0),
+  e.mention_count    = coalesce(e.mention_count, 0),
+  e.user_edited      = coalesce(e.user_edited, false),
+  e.created_at       = coalesce(e.created_at, {NOW}),
+  // T4.1 flywheel — the extraction job that first minted this node (net-new attribution).
+  // Set ONLY on create, so it permanently credits the creating job; a later match by another
+  // job never changes it. NULL for non-job writes and pre-T4.1 nodes, and it STAYS null:
+  // `coalesce` would hand those 4413 nodes to whichever job touched them next.
+  e.created_job_id   = CASE WHEN existed THEN e.created_job_id   ELSE $job_id END,
   e.aliases = CASE
     WHEN coalesce(e.user_edited, false) = true THEN e.aliases
-    WHEN $name IN e.aliases THEN e.aliases
-    ELSE e.aliases + $name
+    WHEN $name IN coalesce(e.aliases, []) THEN e.aliases
+    ELSE coalesce(e.aliases, []) + $name
   END,
   e.source_types = CASE
-    WHEN $source_type IN e.source_types THEN e.source_types
-    ELSE e.source_types + $source_type
+    WHEN $source_type IN coalesce(e.source_types, []) THEN e.source_types
+    ELSE coalesce(e.source_types, []) + $source_type
   END,
   // CM5 provenance — accumulate the deduped set of authorship origins
   // (PO: accumulate). Mirrors source_types. coalesce guards pre-CM5 nodes
@@ -301,18 +319,19 @@ ON MATCH SET
     WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
     ELSE coalesce(e.provenances, []) + $provenance
   END,
+  // The `IS NULL` arm is what the create branch used to be. Without it a new node keeps
+  // `null`, because `$confidence > null` is null, not true.
   e.confidence = CASE
-    WHEN $confidence > e.confidence THEN $confidence
+    WHEN e.confidence IS NULL OR $confidence > e.confidence THEN $confidence
     ELSE e.confidence
   END,
   e.auto_created = CASE
-    WHEN $auto_created = false THEN false
-    ELSE coalesce(e.auto_created, false)
+    WHEN existed AND $auto_created = false THEN false
+    WHEN existed THEN coalesce(e.auto_created, false)
+    ELSE $auto_created
   END,
-  e.version = coalesce(e.version, 1) + 1,
+  e.version = CASE WHEN existed THEN coalesce(e.version, 1) + 1 ELSE 1 END,
   e.updated_at = {NOW}
-WITH e
-WHERE e.user_id = $user_id
 RETURN e
 """
 
@@ -2935,27 +2954,36 @@ RETURN out_edges, in_edges
 
 _MERGE_REWIRE_RELATES_TO_CYPHER = """
 UNWIND $edges AS edge
-MATCH (subj:Entity {id: edge.subject_id})
-WHERE subj.user_id = $user_id
-MATCH (obj:Entity {id: edge.object_id})
-WHERE obj.user_id = $user_id
+MATCH (subj:Entity {id: edge.subject_id, user_id: $user_id})
+MATCH (obj:Entity {id: edge.object_id, user_id: $user_id})
+
+// §10.1 — same shape as `_MERGE_ENTITY_CYPHER` above: read the create/match distinction as a
+// fact before the MERGE, because AGE has no branch keyword. Most fields fold into the match
+// arm untouched (an absent property is exactly what its `IS NULL` guard already tests). TWO
+// do not, and both fail by CORRUPTING the edge rather than by erroring:
+//
+//   pending_validation  the match arm AND-combines so a validated edge absorbs a quarantined
+//                       duplicate. On a NEW edge that reads `null AND edge.pv` -> false, so a
+//                       quarantined edge would be created already VALIDATED.
+//   valid_until         the match arm resolves "either side open -> open". On a NEW edge that
+//                       reads `null IS NULL -> NULL`, so a CLOSED relation is created OPEN.
+//                       That is the F5 resurrection class again (T71), reached from the other
+//                       side: not by assigning the field, but by failing to.
+//
+// Neither is visible on dev today — 0 of 1144 :RELATES_TO edges are quarantined and 0 are
+// closed (2026-08-22) — which is exactly why a naive translation would have shipped green.
+OPTIONAL MATCH (subj)-[pre:RELATES_TO {id: edge.new_id}]->(obj)
+WITH edge, subj, obj, pre IS NOT NULL AS existed
+
 MERGE (subj)-[r:RELATES_TO {id: edge.new_id}]->(obj)
-ON CREATE SET
-  r.user_id = $user_id,
-  r.subject_id = edge.subject_id,
-  r.object_id = edge.object_id,
-  r.predicate = edge.predicate,
-  r.confidence = edge.confidence,
-  r.source_event_ids = edge.source_event_ids,
-  r.source_chapter = edge.source_chapter,
-  r.valid_from = edge.valid_from,
-  r.valid_until = edge.valid_until,
-  r.pending_validation = edge.pending_validation,
-  r.created_at = {NOW},
-  r.updated_at = {NOW}
-ON MATCH SET
+SET
+  r.user_id          = $user_id,
+  r.subject_id       = coalesce(r.subject_id, edge.subject_id),
+  r.object_id        = coalesce(r.object_id, edge.object_id),
+  r.predicate        = coalesce(r.predicate, edge.predicate),
+  r.created_at       = coalesce(r.created_at, {NOW}),
   r.confidence = CASE
-    WHEN edge.confidence > r.confidence THEN edge.confidence
+    WHEN r.confidence IS NULL OR edge.confidence > r.confidence THEN edge.confidence
     ELSE r.confidence
   END,
   r.source_event_ids = [
@@ -2968,8 +2996,11 @@ ON MATCH SET
   // to match the codebase-wide convention (relations.py filter
   // helpers all use `coalesce(r.pending_validation, false)`).
   // Consistent NULL semantics across read + merge paths.
-  r.pending_validation = coalesce(r.pending_validation, false)
-    AND coalesce(edge.pending_validation, false),
+  r.pending_validation = CASE
+    WHEN existed THEN coalesce(r.pending_validation, false)
+                       AND coalesce(edge.pending_validation, false)
+    ELSE edge.pending_validation
+  END,
   // Earliest non-null valid_from wins; NULL loses to concrete.
   r.valid_from = CASE
     WHEN r.valid_from IS NULL THEN edge.valid_from
@@ -2980,6 +3011,7 @@ ON MATCH SET
   // valid_until IS NULL means "still active" (relations.py:13) —
   // so NULL wins here. Only when BOTH are concrete do we take MAX.
   r.valid_until = CASE
+    WHEN NOT existed THEN edge.valid_until
     WHEN r.valid_until IS NULL OR edge.valid_until IS NULL THEN NULL
     WHEN edge.valid_until > r.valid_until THEN edge.valid_until
     ELSE r.valid_until

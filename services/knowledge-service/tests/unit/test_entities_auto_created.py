@@ -19,6 +19,8 @@ tests/integration/db/.
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -134,36 +136,54 @@ async def test_merge_entity_default_passes_auto_created_false_to_run_write(mock_
 # ── Cypher template lock (M1 promotion regression-lock) ─────────────
 
 
-def test_merge_entity_cypher_has_auto_created_on_create_clause():
-    """`_MERGE_ENTITY_CYPHER` ON CREATE SET must include $auto_created.
+def _statements(cypher: str) -> str:
+    """`cypher` with its `//` comments removed.
 
-    Regression-lock: removing this line would let auto-created nodes
-    silently inherit null on create, breaking the "show auto-created"
-    UI filter from cycle 73e onward.
+    T78 merged the two arms, and the notes explaining WHY a field is or is not assigned now
+    sit inside the query string. A text-lock that reads them is asserting about prose — the
+    same blindness `port-adoption-gate.scan_dialect` had to fix the same day, one layer down.
     """
-    assert "e.auto_created = $auto_created" in _MERGE_ENTITY_CYPHER
-    # The ON CREATE block must include the assignment (not just
-    # ON MATCH). We look for the assignment NOT preceded by `CASE`
-    # to verify it's in the ON CREATE arm.
-    on_create_section = _MERGE_ENTITY_CYPHER.split("ON MATCH")[0]
-    assert "e.auto_created = $auto_created" in on_create_section, (
-        "ON CREATE arm must set auto_created from the param"
+    return re.sub(r"//[^\n]*", "", cypher)
+
+
+def test_merge_entity_cypher_takes_auto_created_from_the_param_ON_CREATE():
+    """Regression-lock: a created node must take `$auto_created`, not `false`.
+
+    §10.1 merged the arms — AGE has no `ON CREATE SET` — so the create path is now the
+    `existed = false` leg of a CASE rather than a separate clause. The property it locks is
+    unchanged: without it an auto-created node inherits the MATCH arm's `coalesce(null, false)`
+    and lands as `false`, which is the "show auto-created" UI filter silently losing every row
+    it exists to show.
+    """
+    body = _statements(_MERGE_ENTITY_CYPHER)
+    assert "ON CREATE SET" not in body and "ON MATCH SET" not in body, (
+        "the branch keywords are back — AGE has neither (§10.1)"
+    )
+    assert "ELSE $auto_created" in body, (
+        "the create leg no longer takes $auto_created; a node minted with auto_created=True "
+        "would be stored as False"
     )
 
 
-def test_merge_entity_cypher_has_promotion_case_on_match():
-    """`_MERGE_ENTITY_CYPHER` ON MATCH SET must include the promotion CASE.
+def test_merge_entity_cypher_keeps_the_promotion_CASE_on_the_existed_leg():
+    """Regression-lock (cycle 73e M1): a legit re-extraction clears the flag.
 
-    Regression-lock (cycle 73e M1 fix): any legit re-extraction
-    (`$auto_created = false`) clears a previously-auto-created flag.
-    Removing this CASE would orphan auto-created entities permanently
-    in the "show auto-created" UI list — they'd never be promoted
-    via subsequent legitimate writes.
+    Now gated on `existed`, because the demotion must apply to a node that was ALREADY there —
+    applying it unconditionally is precisely the bug the test above locks against.
     """
-    on_match_section = _MERGE_ENTITY_CYPHER.split("ON MATCH")[1]
-    assert "e.auto_created = CASE" in on_match_section
-    assert "WHEN $auto_created = false THEN false" in on_match_section
-    assert "coalesce(e.auto_created, false)" in on_match_section
+    body = _statements(_MERGE_ENTITY_CYPHER)
+    assert "e.auto_created = CASE" in body
+    assert "WHEN existed AND $auto_created = false THEN false" in body, (
+        "the promotion leg lost its `existed` guard or its condition"
+    )
+    assert "coalesce(e.auto_created, false)" in body
+
+
+def test_the_comment_stripper_SEES_a_construct_that_is_really_there():
+    """Non-vacuity for `_statements`: if it ate the whole query, both locks above would pass
+    on an empty string. Validated on a construct the stripper was not written for."""
+    assert "SET e.a = 1" in _statements("// ON CREATE SET is gone" + chr(10) + "SET e.a = 1")
+    assert "ON CREATE SET" not in _statements("// ON CREATE SET is gone" + chr(10) + "SET e.a = 1")
 
 
 # ── _node_to_entity coalesce for legacy nodes (M2 backward-compat) ──

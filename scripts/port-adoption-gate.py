@@ -498,8 +498,32 @@ def selftest() -> int:
         print("  FAIL — a nested function docstring was kept")
         ok = False
 
+    # A CYPHER `//` comment inside the string is prose too. Derived from `ON CREATE SET`
+    # (T78 left three such notes behind); VALIDATED on `FOREACH` and `apoc.`, which the fix
+    # was NOT derived from, so a strip that only handled the motivating construct fails here.
+    commented = (
+        'q = ' + chr(34)*3 + 
+        '// this query no longer needs FOREACH or apoc.coll.union' + chr(10) +
+        'MERGE (e:E) SET e.a = 1' + chr(34)*3 + chr(10)
+    )
+    # Through `scan_dialect` ITSELF, not through the regex. A selftest that calls
+    # `_CYPHER_COMMENT.sub` directly passes even when nothing CALLS it: bite 7 removed the
+    # strip from `scan_dialect`, the ceiling breached at 42/39, and the selftest still said
+    # PASS. Injecting the fake at the chokepoint proves the chokepoint exists, not that it
+    # is wired, so the probe module goes through the real scanner.
+    if scan_dialect({"probe": commented}):
+        print("  FAIL — `scan_dialect` counted a construct from a CYPHER comment; it would "
+              "hold the ceiling above zero on a query whose branch is already GONE")
+        ok = False
+    # ...and the strip must not eat real Cypher that merely sits on the same line's right.
+    trailing = "q = " + chr(34)*3 + "MERGE (e:E) SET e.at = datetime()  // stamp it" + chr(34)*3 + chr(10)
+    if scan_dialect({"probe": trailing}).get("probe", {}).get("datetime()") != 1:
+        print("  FAIL — the comment strip ate the statement it was trailing; the backlog "
+              "would read lower than it is")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
-          f"import from a docstring and a comment, in both directions (non-vacuous)")
+          f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways")
     return 0 if ok else 1
 
 
@@ -731,7 +755,11 @@ _DIALECT_PATTERNS = (
 #: this backlog was counted rather than estimated. The 2026-08-11 probe predicted "~33
 #: anchoring rewrites + 157 renames + 14 CALL{}"; measured inside the repo layer it is 37
 #: anchoring, 106 renames, 14 CALL{}, plus 3 FOREACH and 1 apoc the probe did not look for.
-MAX_NEO4J_DIALECT_SITES = 44
+#:
+#: **The `ON CREATE SET` / `ON MATCH SET` class is CLOSED at 39** (T78). All 37 anchoring
+#: branches are gone; what is left is 25 `datetime()` renames, 11 `CALL {}` and 3 `FOREACH`.
+#: Three of the 44 that stood here were Cypher `//` comments — see `scan_dialect`.
+MAX_NEO4J_DIALECT_SITES = 39
 
 
 def _code_strings(src: str) -> str:
@@ -765,28 +793,48 @@ def _code_strings(src: str) -> str:
     )
 
 
-def scan_dialect() -> dict[str, dict[str, int]]:
+#: A Cypher line comment. Stripped before the dialect scan so that DOCUMENTING a
+#: construct — including documenting its removal — never counts as using it.
+_CYPHER_COMMENT = re.compile(r"//[^\n]*")
+
+
+def scan_dialect(sources: dict[str, str] | None = None) -> dict[str, dict[str, int]]:
     """Neo4j-only Cypher constructs per repo module, counted in CODE STRINGS only.
 
     The constructs live inside triple-quoted Cypher strings, so the match itself is textual —
     but it runs over `_code_strings`, not the raw file, so a docstring describing the
-    migration is not counted as the migration being incomplete."""
+    migration is not counted as the migration being incomplete.
+
+    ⚠️ `_code_strings` stops at the PYTHON layer, and that was not far enough. A Cypher `//`
+    comment lives INSIDE the string literal, so a note explaining why a query no longer needs
+    `ON CREATE SET` was scored as the query still having one. Measured 2026-08-22: 3 of the
+    remaining 42 sites were such comments, and the entire `ON CREATE SET` / `ON MATCH SET`
+    class read as 3 outstanding when it was actually **zero**. Same defect as the docstring
+    one, one level down — the ceiling's target is zero, and prose can never reach zero, so
+    the cure for a construct would have held the number above the floor forever.
+
+    Cypher line comments are stripped before matching. No `//` appears inside a string
+    literal anywhere in the layer (checked the same day), so this cannot eat real syntax."""
     out: dict[str, dict[str, int]] = {}
-    if not os.path.isdir(_DIALECT_ROOT):
-        return out
-    for fname in sorted(os.listdir(_DIALECT_ROOT)):
-        if not fname.endswith(".py"):
-            continue
-        try:
-            src = open(os.path.join(_DIALECT_ROOT, fname), encoding="utf-8",
-                       errors="replace").read()
-        except OSError:
-            continue
-        blob = _code_strings(src)
+    if sources is None:
+        if not os.path.isdir(_DIALECT_ROOT):
+            return out
+        sources = {}
+        for fname in sorted(os.listdir(_DIALECT_ROOT)):
+            if not fname.endswith(".py"):
+                continue
+            try:
+                sources[fname[:-3]] = open(
+                    os.path.join(_DIALECT_ROOT, fname), encoding="utf-8", errors="replace",
+                ).read()
+            except OSError:
+                continue
+    for mod, src in sorted(sources.items()):
+        blob = _CYPHER_COMMENT.sub("", _code_strings(src))
         hits = {name: len(pat.findall(blob)) for name, pat in _DIALECT_PATTERNS}
         hits = {k: v for k, v in hits.items() if v}
         if hits:
-            out[fname[:-3]] = hits
+            out[mod] = hits
     return out
 
 
