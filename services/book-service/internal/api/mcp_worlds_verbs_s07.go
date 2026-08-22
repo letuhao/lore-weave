@@ -29,7 +29,7 @@ import (
 
 // ── world_update ──────────────────────────────────────────────────────────────
 type worldUpdateIn struct {
-	WorldID     string  `json:"world_id" jsonschema:"the world to update (UUID; you must own it)"`
+	WorldID     string  `json:"world_id" jsonschema:"the world to update (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 	Name        *string `json:"name,omitempty" jsonschema:"new name; omit to leave unchanged"`
 	Description *string `json:"description,omitempty" jsonschema:"new one-line description; omit to leave unchanged (pass an empty string to clear it)"`
 }

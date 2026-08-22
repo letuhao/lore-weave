@@ -153,7 +153,7 @@ INSERT INTO world_maps(owner_user_id, world_id, name, image_object_key) VALUES($
 
 // ── world_map_add_marker ─────────────────────────────────────────────────────
 type mapAddMarkerIn struct {
-	MapID      string  `json:"map_id" jsonschema:"the map to add a marker to (UUID; you must own it)"`
+	MapID      string  `json:"map_id" jsonschema:"the map to add a marker to (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Label      string  `json:"label" jsonschema:"the marker's label, e.g. 'Ironhold'"`
 	X          float64 `json:"x" jsonschema:"horizontal position on the base image, 0.0 (left) to 1.0 (right)"`
 	Y          float64 `json:"y" jsonschema:"vertical position, 0.0 (top) to 1.0 (bottom)"`
@@ -214,7 +214,7 @@ VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
 
 // ── world_map_add_region ─────────────────────────────────────────────────────
 type mapAddRegionIn struct {
-	MapID    string      `json:"map_id" jsonschema:"the map to add a region to (UUID; you must own it)"`
+	MapID    string      `json:"map_id" jsonschema:"the map to add a region to (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Name     string      `json:"name" jsonschema:"the region's name, e.g. 'The Shattered Coast'"`
 	Polygon  [][]float64 `json:"polygon" jsonschema:"the region outline as an array of [x,y] relative points (each 0.0-1.0); at least 3 points"`
 	EntityID string      `json:"entity_id,omitempty" jsonschema:"optional glossary location entity id (UUID) this region represents"`
@@ -501,10 +501,10 @@ func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest,
 
 // ── world_map_remove_marker / world_map_remove_region ─────────────────────────
 type mapRemoveMarkerIn struct {
-	MarkerID string `json:"marker_id" jsonschema:"the marker to remove (UUID; on a map you own)"`
+	MarkerID string `json:"marker_id" jsonschema:"the marker to remove (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 }
 type mapRemoveRegionIn struct {
-	RegionID string `json:"region_id" jsonschema:"the region to remove (UUID; on a map you own)"`
+	RegionID string `json:"region_id" jsonschema:"the region to remove (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 }
 type mapRemoveOut struct {
 	Removed bool `json:"removed"`
@@ -617,7 +617,7 @@ RETURNING rg.map_id, rg.name, rg.polygon, rg.entity_id`,
 // pointer rule (spec §4.2). Owner-gated via requireMapOwner / the world_maps JOIN;
 // the SQL sets only the provided columns (mirrors patchWorld's dynamic SET).
 type mapUpdateIn struct {
-	MapID    string  `json:"map_id" jsonschema:"the map to update (UUID; you must own it)"`
+	MapID    string  `json:"map_id" jsonschema:"the map to update (UUID; you must own it). NOT a name — if you have the map's NAME, call world_map_list first and match it to get the id"`
 	Name     *string `json:"name,omitempty" jsonschema:"new map name; omit to leave unchanged"`
 	ImageRef *string `json:"image_ref,omitempty" jsonschema:"new base-image object key (from the upload route); omit to leave unchanged"`
 	// S-07 §1 — optimistic concurrency, matching the REST PATCH's If-Match. When you read the map
@@ -735,7 +735,7 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 
 // ── world_map_update_marker ──────────────────────────────────────────────────
 type mapUpdateMarkerIn struct {
-	MarkerID    string   `json:"marker_id" jsonschema:"the marker to update (UUID; on a map you own)"`
+	MarkerID    string   `json:"marker_id" jsonschema:"the marker to update (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 	X           *float64 `json:"x,omitempty" jsonschema:"new horizontal position 0.0-1.0; omit to leave unchanged (a drag sends the ABSOLUTE new x)"`
 	Y           *float64 `json:"y,omitempty" jsonschema:"new vertical position 0.0-1.0; omit to leave unchanged"`
 	Label       *string  `json:"label,omitempty" jsonschema:"new label; omit to leave unchanged"`
@@ -871,7 +871,7 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 
 // ── world_map_update_region ──────────────────────────────────────────────────
 type mapUpdateRegionIn struct {
-	RegionID    string      `json:"region_id" jsonschema:"the region to update (UUID; on a map you own)"`
+	RegionID    string      `json:"region_id" jsonschema:"the region to update (UUID; on a map you own) — obtained from world_map_get, which returns the map with all its markers + regions"`
 	Polygon     [][]float64 `json:"polygon,omitempty" jsonschema:"new outline as [x,y] relative points (>=3, each 0.0-1.0); omit to leave the shape unchanged"`
 	Name        *string     `json:"name,omitempty" jsonschema:"new name; omit to leave unchanged"`
 	EntityID    string      `json:"entity_id,omitempty" jsonschema:"rebind to this glossary/KG location entity (UUID); empty = leave unchanged unless clear_entity"`
