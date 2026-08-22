@@ -128,7 +128,7 @@ def _format_entity(
 
 
 async def _fetch_all_neighborhoods(
-    user_id: str, entities: list[ContextEntity], concurrency: int,
+    user_id: str, entities: list[ContextEntity], concurrency: int, book_id: str,
 ) -> list[WikiNeighborhood]:
     """Fetch every entity's neighbourhood in parallel (bounded). Once per chapter.
 
@@ -145,7 +145,8 @@ async def _fetch_all_neighborhoods(
         async with sem:
             try:
                 return await asyncio.wait_for(
-                    fetch_wiki_neighborhood(user_id, e.entity_id), _FETCH_TIMEOUT_S,
+                    fetch_wiki_neighborhood(user_id, e.entity_id, book_id=book_id),
+                    _FETCH_TIMEOUT_S,
                 )
             except Exception as exc:  # noqa: BLE001 — best-effort; cancel still propagates
                 log.debug(
@@ -221,7 +222,9 @@ async def build_context_brief(
     if not entities:
         return ""
 
-    neighborhoods = await _fetch_all_neighborhoods(user_id, entities, concurrency)
+    # T55/i — thread the book through: the KAL scopes the read on it, and this frame
+    # had it all along.
+    neighborhoods = await _fetch_all_neighborhoods(user_id, entities, concurrency, book_id)
 
     # X5: as-of-N canonical state, only when the caller opted in (content_hash present).
     # The KAL client's Null gate additionally no-ops this when the feature is off.

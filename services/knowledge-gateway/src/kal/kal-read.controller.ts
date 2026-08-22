@@ -354,6 +354,38 @@ export class KalReadController {
   // takes `book_id` and resolves project + owner tenant from it server-side — which is also
   // why the other three §8.6 federations do NOT land here: their callers hold a project id or
   // a glossary id and no book at all.
+  // wiki-neighborhood — one glossary entity's 1-hop neighbourhood, for the wiki renderer.
+  //
+  // T55/i, the LAST of §8.6's four. It looked like it fitted neither scope axis: its caller
+  // `fetch_wiki_neighborhood(user_id, glossary_entity_id)` holds no book and no project. But
+  // that was the wrong boundary to measure — `build_context_brief(book_id, user_id, ...)` two
+  // frames up HAS the book and simply did not thread it through.
+  //
+  // ⚠️ The owning endpoint now takes `book_id` and resolves the project from it server-side,
+  // because a guard that checks a grant on the book in the PATH while the read answers from
+  // whatever project holds the glossary id is a path segment that is checked and does not
+  // constrain.
+  @Post('wiki-neighborhood')
+  @HttpCode(200)
+  async wikiNeighborhood(
+    @Param('bookId') bookId: string,
+    @Body() body: { glossary_entity_id: string; rel_cap?: number },
+    @Req() req: InboundReq,
+  ) {
+    const ctx = ctxFromReq(req);
+    const data = (await knowledge.post(
+      `/internal/knowledge/wiki-neighborhood`,
+      {
+        user_id: ctx.userId,
+        glossary_entity_id: body?.glossary_entity_id,
+        book_id: bookId,
+        ...(body?.rel_cap !== undefined ? { rel_cap: body.rel_cap } : {}),
+      },
+      ctx,
+    )) as Record<string, unknown>;
+    return { ...data, temporal_capability: await temporalCapability(ctx) };
+  }
+
   @Post('timeline')
   @HttpCode(200)
   // `bookTimeline`, not `timeline`: `entities/:entityId/timeline` above already owns that

@@ -390,15 +390,16 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #: `glossary-semantic`, on the new project-scoped controller). Each drop lands in the
 #: same commit as the federation that caused it (rule 5).
 #:
-#: The 1 left is `wiki-neighborhood`, and it is the odd one: its caller holds a
-#: `glossary_entity_id` and NEITHER a book nor a project, so it fits neither scope axis.
-MAX_FEDERATE_OWED = 1
+#: 1 -> 0 at T55/i. `wiki-neighborhood` was recorded as fitting NEITHER axis because its
+#: caller takes only a `glossary_entity_id` — measured at the wrong boundary, since
+#: `build_context_brief(book_id, ...)` two frames up has the book and merely dropped it.
+#:
+#: ZERO is the resting state, and the ratchet still has teeth: a NEW direct read that §8.6
+#: would class `federate` raises this above 0 and reds.
+MAX_FEDERATE_OWED = 0
 
 DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     # ── federate: DECIDED (§8.6) to belong behind the KAL ────────────────────────────────
-    "/internal/knowledge/wiki-neighborhood": (
-        "federate", "§8.6: entity + capped relations — the same shape as the already-"
-        "federated `kg/neighborhood`. Two routes, one domain question."),
     # ── compute: reads knowledge, returns a rendered artefact ────────────────────────────
     "/internal/context/build": (
         "compute", "§8.6: ContextBuildResponse{mode, context, token_count, stable_context, "
@@ -687,10 +688,16 @@ def selftest() -> int:
     check("the federate ratchet matches the ledger", len(declared), MAX_FEDERATE_OWED)
     check("every federate row cites the section that decided it",
           all("8.6" in DIRECT_INTERNAL_LEDGER[p][1] for p in declared), True)
-    # A class nobody uses is a class that stopped describing anything.
+    # Every class a row USES must be a known one — a typo'd class would sort into no bucket
+    # and quietly stop being counted by the `federate` ratchet.
+    #
+    # ⚠️ NOT the converse. The first cut asserted the used set EQUALS the known set, and it
+    # went red the moment `federate` emptied out at T55/i — which is the migration SUCCEEDING.
+    # A class with no members is the resting state for `federate`, so demanding every class
+    # stay populated would have made finishing the work look like a regression.
+    KNOWN = {"admin", "compute", "federate", "meta", "ops", "read-pg", "write"}
     used = {cls for cls, _ in DIRECT_INTERNAL_LEDGER.values()}
-    check("no ledger class is empty",
-          sorted(used), ["admin", "compute", "federate", "meta", "ops", "read-pg", "write"])
+    check("every ledger class is a known one", sorted(used - KNOWN), [])
 
     # Validated on a case the scanner was NOT derived from: prose.
     commented = ('# calls "/internal/knowledge/enriched-writeback" one day' + chr(10)

@@ -66,6 +66,17 @@ router = APIRouter(
 class WikiNeighborhoodRequest(BaseModel):
     user_id: UUID
     glossary_entity_id: UUID
+    # T55/i — the BOOK the read is scoped to. Optional in the SCHEMA and always sent by the
+    # KAL: keeping the base permissive and closing the window in the caller is the shape this
+    # repo already uses for a legacy field, and it means an in-flight request during a deploy
+    # does not 422.
+    #
+    # ⚠️ Load-bearing when present. `KalAuthGuard` checks a grant on the book in the ROUTE
+    # path; without scoping the read by that same book, the guard would authorise book B while
+    # the answer came from whatever project holds the glossary id — a path segment that is
+    # checked but does not constrain. Resolved to a project server-side, exactly as
+    # `/internal/knowledge/timeline` resolves its own.
+    book_id: UUID | None = None
     # Cap on the relation payload. Mirrors ENTITIES_DETAIL_REL_CAP; a
     # caller that wants fewer (a compact wiki body) can lower it.
     rel_cap: int = Field(default=200, ge=1, le=200)
@@ -143,12 +154,27 @@ async def get_wiki_neighborhood(
 ) -> WikiNeighborhoodResponse:
     """C5 (D4-03) — read an entity's 1-hop KG neighborhood for the
     glossary wiki renderer. Read-only; never writes Neo4j (Q2)."""
+    project_id: str | None = None
+    if req.book_id is not None:
+        async with get_knowledge_pool().acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT project_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+                req.book_id,
+            )
+        if row is None:
+            # A book with no knowledge project cannot hold this entity. Empty, not an error —
+            # and NOT an unscoped read, which is the failure that would make the KAL's grant
+            # check decorative.
+            return WikiNeighborhoodResponse(glossary_entity_id=req.glossary_entity_id)
+        project_id = str(row["project_id"])
+
     async with neo4j_session() as session:
         # T17 — through the port. Same domain question as the KG-neighborhood endpoint,
         # and it was reaching past the port to the same repo function.
         detail = await get_graph_store(session).neighborhood(
             user_id=str(req.user_id),
             glossary_entity_id=str(req.glossary_entity_id),
+            project_id=project_id,
             rel_cap=req.rel_cap,
         )
 

@@ -29,7 +29,11 @@ def _patch(monkeypatch, entities, nb_by_id):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return entities
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
+        # T55/i — ASSERT the book, do not merely accept it. The KAL scopes the read on this
+        # id; a double that swallowed the kwarg would keep passing while `build_context_brief`
+        # dropped it again, which is precisely how it came to be dropped in the first place.
+        assert book_id, "book_id was not threaded through to the neighbourhood fetch"
         return nb_by_id.get(glossary_entity_id, WikiNeighborhood.empty(glossary_entity_id))
 
     monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
@@ -249,7 +253,7 @@ def _patch_with_canonical(monkeypatch, entities, nb_by_id, canon_by_id, capture=
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return entities
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
         return nb_by_id.get(glossary_entity_id, WikiNeighborhood.empty(glossary_entity_id))
 
     async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
@@ -310,7 +314,7 @@ async def test_build_brief_isolates_a_failing_canonical_fetch(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
         return WikiNeighborhood.empty(glossary_entity_id)
 
     async def fake_canon(book_id, entity_id, *, content_hash, as_of=None, user_id=None):
@@ -339,7 +343,7 @@ async def test_build_brief_isolates_a_failing_neighborhood_fetch(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def fake_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def fake_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
         if glossary_entity_id == "e2":
             raise RuntimeError("knowledge-service down")
         return _nb("e1", _rel("leader_of", "Paladins"))
@@ -363,7 +367,7 @@ async def test_build_brief_neighborhood_fetch_timeout_degrades(monkeypatch):
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def slow_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def slow_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
         await asyncio.sleep(0.2)
         return _nb("e1", _rel("leader_of", "TooLate"))
 
@@ -386,7 +390,7 @@ async def test_build_brief_neighborhood_fetch_cancellation_propagates(monkeypatc
     async def fake_entities(book_id, user_id, query, max_entities=20, max_tokens=1000):
         return ents
 
-    async def cancel_nb(user_id, glossary_entity_id, rel_cap=200):
+    async def cancel_nb(user_id, glossary_entity_id, rel_cap=200, *, book_id):
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)

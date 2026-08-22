@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `wiki-neighborhood` — the LAST federate-owed, and it fits neither scope axis (its caller holds only a `glossary_entity_id`). T54/T56 CLOSED; T46's substrate stays a PO question.**
+**RESUME: T46 — the merged store's SUBSTRATE, X1's engine choice and the one PO decision left. The whole F chain (T17 floor · T54 · T55 · T56) is CLOSED.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**61 of 69 rows done · 8 open · 68 of 115 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 62 of 109 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (6/6) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19392,7 +19392,13 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   constructed directly — that is what T42a already proves); a live smoke on lw-iso with the
   default flipped; `port-adoption-gate` floor unchanged at 2.
 
-- [~] **T55** — **INV-KAL: enforce the FULL federated read surface, derived not hand-listed**
+- [x] **T55** — **INV-KAL: enforce the FULL federated read surface, derived not hand-listed**
+  ✅ **CLOSED 2026-08-23.** The guarded set is DERIVED from the KAL's read controllers (a
+  GLOB, so a new controller is picked up the day it is written), and each of the direct
+  calls is migrated or explicitly exempted: **38 paths across 12 services, all declared**,
+  **4 federated** (§8.6), **`MAX_FEDERATE_OWED = 0`**. The row's own bite — *add a consumer
+  call to a federated read and watch the gate red WITHOUT editing the gate* — fired in both
+  directions on every federation (T55/e, T55/h, T55/i).
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.3. Unfinished, not undecided.
   🔴 **Measured 2026-08-22: the gate guards 7 endpoints; the owners expose 98 `/internal/*` route
   literals.** composition-service reads knowledge through **13** direct internal paths, three of
@@ -19888,6 +19894,69 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⛔ **One federation left, and it is the odd one.** `wiki-neighborhood`'s caller holds a
   `glossary_entity_id` and **neither a book nor a project**, so it fits neither scope axis.
   That is a third question, not a third route.
+
+
+  ---
+  ### ✅ T55/i 2026-08-23 — **the last federation: `MAX_FEDERATE_OWED` reaches ZERO**
+
+  ```
+  KAL federated reads  13 -> 14      MAX_FEDERATE_OWED  1 -> 0
+  direct-call ledger   39 -> 38 path(s), 12 consumer service(s), all declared
+  translation 1152 · knowledge 4351 · gateway 43 · tsc clean
+  ```
+
+  🔴 **§8.6 recorded this route as fitting NEITHER scope axis, and that was measured at the
+  wrong boundary — for the second time this row.** `fetch_wiki_neighborhood(user_id,
+  glossary_entity_id)` genuinely has no book. But `build_context_brief(book_id, user_id, …)`
+  **two frames up has it** and simply did not thread it through `_fetch_all_neighborhoods`.
+  The axis was never missing; a parameter was.
+
+  ⚖️ **So the book had to become load-bearing, not decorative.** `KalAuthGuard` checks a grant
+  on the book in the PATH. If the read still answered from whatever project holds the glossary
+  id, the guard would authorise book B while the answer came from elsewhere — a path segment
+  that is *checked* and does not *constrain*. The owning endpoint now takes `book_id` and
+  resolves the project from it server-side, the same pattern `/internal/knowledge/timeline`
+  already proves.
+
+  **The control, live — the same glossary id read through three books:**
+
+  ```
+  its OWN book                        found=True   name="Seraphine Vale"
+  a DIFFERENT book (other project)    found=False  name=None
+  a book with NO knowledge project    found=False  name=None
+  ```
+
+  Without the second and third rows, `found=True` would be reachable by a read that ignores
+  the book entirely — which is exactly what it did before this change.
+
+  🔬 **`book_id` is KEYWORD-ONLY and REQUIRED on the client.** A default would let a caller
+  with no book silently issue an unscoped read, which is how the parameter came to be dropped
+  in the first place. A caller that has no book now fails at the call site.
+
+  ⚠️ **Five test doubles had the old signature, and the failure mode is the interesting part.**
+  `book_id=` raised `TypeError` into the fan-out's `except Exception` isolation handler, so
+  four tests degraded to an empty neighbourhood and one — the CancelledError propagation test
+  — stopped propagating. **A double that no longer matches its subject does not error; it gets
+  swallowed by the subject's own error handling.** One fake now ASSERTS the book arrives rather
+  than merely accepting it: a double that swallows the kwarg proves nothing about threading.
+
+  🎯 **And the selftest caught me defining success as failure.** `no ledger class is empty`
+  went red the moment `federate` emptied out — which is the migration SUCCEEDING. It asserts
+  the used classes are a subset of the known ones now; bite 20 (`"compyoot"`) shows it still
+  catches a typo'd class, which was the real point.
+
+  ```
+  20  a typo'd ledger class    RED — "expected [], got ['compyoot']"
+  ```
+
+  **QC (a) gates:** translation-service **1152** passed (the 18 `test_extraction_*` failures
+  are PRE-EXISTING — verified stashed at T55/e — and untouched here), knowledge unit **4351**,
+  gateway **43** + `tsc` clean, `knowledge-http-surface-gate` PASS at **14/38/0** with
+  `--selftest` green, all repo gates green.
+  **QC (b) live smoke:** the three-book control above, both images REBUILT on `lw-iso`, backend
+  `age`; the seam is translation → gateway → knowledge-service.
+  **QC (c) real data:** the entity was written through the repo layer by
+  `enriched-writeback` and read back by name through the KAL — not a fixture.
 
 
 - [x] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
