@@ -317,6 +317,62 @@ paths:
           $ref: "#/components/responses/Problem"
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /internal/v1/space/view:
+    post:
+      operationId: spaceView
+      summary: What is here — the assembled space view for one node
+      description: |
+        `A4`. Answers *"what is here"* for one node: the node itself, its
+        ancestors nearest-first, its portal ring, and its occupants.
+
+        **A POST for a READ**, for the same reason `/actor-control/subject` is
+        one: the request names the node it asks about, so on a public edge it
+        would be an oracle over the shape of a world. Internal-gated.
+
+        **The reader chooses a BUDGET, never a set (`SDF-A26`).** The body
+        carries caps; which layers render is the layer owner's declaration, so
+        there is deliberately no way to ask for "just the occupants".
+
+        Every section is ordered explicitly on an integer key and every cap is
+        applied AFTER that ordering (`SDF-A4`), so a truncated section is a
+        PREFIX of a total order rather than a sample — two callers with the same
+        budget get the same view, and a replay gets the view the original run
+        got.
+
+        Ancestors are bounded by `DP-Ch1`'s depth `CHECK` and not by a cap of
+        this API's. `SDF-Q15` measured the default budget at 511 B over 41 nodes
+        in 14.10 ms.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SpaceViewRequest" }
+      responses:
+        "200":
+          description: |
+            The view. `truncated` is `true` when any cap elided something — a
+            truncated view must SAY it is truncated, or a reader cannot tell an
+            empty room from a crowded one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SpaceViewResponse" }
+        "400":
+          description: |
+            A budget above the per-section ceiling (200). **Refused, not
+            clamped**: answering a smaller question and labelling it as the
+            answer to the one asked is the same defect `truncated` exists to
+            prevent one layer down. Also the ordinary bad-body and
+            reality-not-bindable cases.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: |
+            The node does not exist in this reality. A statement about the
+            WORLD that the caller can act on, so it is a 404 and not a 500.
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     internalToken:
@@ -621,6 +677,82 @@ components:
         name_en:
           type: [string, "null"]
           description: Optional at V1.
+
+    SpaceViewRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, node]
+      description: Mirrors `world_service::server::handlers::space::SpaceViewRequest`.
+      properties:
+        reality_id: { type: string, format: uuid }
+        node:
+          type: integer
+          format: int64
+          description: The `channels.id` to look at.
+        portal_ring:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 200
+          description: |
+            How many portals out of this node to include. Omit for the measured
+            default (12). Above 200 the request is refused, never clamped.
+        occupants:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 200
+          description: |
+            How many occupants to include. Omit for the measured default (24).
+            Above 200 the request is refused, never clamped.
+
+    SpaceViewResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, here, ancestors, portal_ring, occupants, truncated]
+      description: |
+        Mirrors `world_service::space_view::SpaceView`, flattened under
+        `reality_id`.
+      properties:
+        reality_id: { type: string, format: uuid }
+        here: { $ref: "#/components/schemas/ViewNode" }
+        ancestors:
+          type: array
+          description: |
+            Nearest first. Bounded by `DP-Ch1`'s depth `CHECK` — an EXISTING
+            invariant — and not by a cap of this API's.
+          items: { $ref: "#/components/schemas/ViewNode" }
+        portal_ring:
+          type: array
+          description: |
+            CONNECTIVE adjacency (`SDF-A25`) — the portal graph, not the mesh. A
+            caller wanting geometric neighbours is asking a different question.
+            Ascending node ids.
+          items: { type: integer, format: int64 }
+        occupants:
+          type: array
+          description: Entity ids, ascending.
+          items: { type: integer, format: int64 }
+        truncated:
+          type: boolean
+          description: |
+            True when a cap elided something. A truncated view must SAY it is
+            truncated, or a reader cannot tell "nothing here" from "too much
+            here" — the difference between an empty room and a crowded one.
+
+    ViewNode:
+      type: object
+      additionalProperties: false
+      required: [node_id, kind, level_name]
+      properties:
+        node_id: { type: integer, format: int64 }
+        kind:
+          type: string
+          enum: [universe, world, region, locale, domain, passage, arena]
+        level_name:
+          type: string
+          description: The reality's own word for this level (`DP-A13`).
+        place_name:
+          type: [string, "null"]
+          description: '`null` unless the node is a `Domain` carrying a `place` row.'
 
     ProvisionResponse:
       type: object

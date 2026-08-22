@@ -258,7 +258,11 @@ fn invalid_body(e: JsonRejection) -> ProblemDetails {
 /// as a `500` would tell an operator the service is broken when it is working
 /// exactly as designed, which is the mistake [`ProvisionerError::ActorAlreadyDriven`]
 /// exists as its own variant to avoid.
-fn to_problem(err: ProvisionerError) -> ProblemDetails {
+/// `pub(crate)` as of `A4`: the space handler maps the SAME four
+/// client-actionable faults, and a second mapping would be a second opinion on
+/// which errors are the caller's -- the drift this function's own doc argues
+/// against one paragraph down.
+pub(crate) fn to_problem(err: ProvisionerError) -> ProblemDetails {
     match err {
         ProvisionerError::ActorAlreadyDriven(actor) => ProblemDetails::conflict(format!(
             "actor {actor} is already driven by another user; revoke first, do not blind-retry"

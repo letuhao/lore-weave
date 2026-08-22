@@ -105,7 +105,7 @@ yes. Nobody asked *"can anything reach what the rows built?"* **A board measures
 | `A1` | **MEASURE the bootstrap seam before touching it.** What does `provision_flow` → `reality_seeder` actually execute end to end, in order, on a real provision? Which phase could own space, and what does `book_reader`'s *"initial geography"* return today? | `[x]` | **DONE 2026-08-22 — §3.1 below. The answer is worse than §1 assumed: there is no space phase because THERE IS NO SEEDING PHASE.** `RealitySeeder` prod callers **0** (controls 3 and 7) |
 | `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[x]` | **DONE 2026-08-22 — §3.3.** A 12th provision step `seed_world_structure`, called BETWEEN the two transitions so it runs while the reality is in `seeding`. 181 lib tests (178 → 181), **3 bites**, 3 baselines moved in the same commit |
 | `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[x]` | **DONE 2026-08-22 — §3.4.** `spawn::site_in_cell`, atomic with actor creation, proven against real Postgres. **The orphan bite fires**: `actors 2 -> 3` when the transaction is removed. 183 lib tests + 4 live suites green |
-| `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[ ]` | |
+| `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[x]` | **DONE 2026-08-22 — §3.5.** `POST /internal/v1/space/view`, internal-gated, budget REFUSED not clamped. 187 lib tests; route conformance green in both directions; **3 bites** |
 | `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[ ]` | |
 
 #### 3.1 · `A1` — what the seam actually executes at `HEAD`
@@ -257,6 +257,36 @@ repair. A transaction is strictly stronger — nothing lands, so the re-run is s
 row at all**, three of them from the predecessor run. 23 → 27, and all four then failed the gate's
 skip-announcement rule — a suite that did nothing was reading as a pass, which is **drift 11 exactly**.
 
+#### 3.5 · `A4` — the view, over the wire
+
+**`POST /internal/v1/space/view`.** A POST for a read, for the reason the surface already gives at
+`/actor-control/subject`: the request names the thing it asks about, so on a public edge it would be
+an **oracle over the shape of a world**. `Gate::Internal` for that, not for symmetry.
+
+**`SDF-A26` is honoured structurally** — the body carries caps, never a field list. There is no way to
+ask for *"just the occupants"*, because which layers render is the layer owner's declaration.
+
+**A budget over the ceiling is REFUSED, not clamped.** Clamping would answer a smaller question and
+label it as the answer to the one asked — the same defect `SpaceView::truncated` exists to prevent one
+layer down. `MAX_SECTION = 200` is **binary capacity, not a world limit**: it bounds what one request
+costs this process and says nothing about how many doors a room may have. A world that wants a 40-door
+plaza is not asking for a bigger request.
+
+**Three bites:**
+
+| bite | red with |
+|---|---|
+| the route registered but NOT documented | the pre-existing `route_conformance` test, unforced: *"this service serves 1 operation(s) no contract documents: `[("post", "/internal/v1/space/view")]`"* — **both directions**, plus the gate-agreement arm |
+| the ceiling CLAMPS instead of refusing | `left: 500, right: 400` — clamping let the request reach a database that is not there, which is exactly what the test claims the ceiling prevents |
+| the route mounted OUTSIDE the internal layer | `left: 422, right: 401` — *"the space view must be gated"* |
+
+The second bite is the useful one to keep: the test asserts the ceiling is checked **before** a reality
+is bound, and it can only make that claim because `test_state`'s pool points at `127.0.0.1:1`. **A
+ceiling enforced after the expensive work is not a ceiling**, and the 500 is what that looks like.
+
+`to_problem` became `pub(crate)` rather than being copied: a second mapping would be a second opinion
+on which faults are the caller's, which is the drift its own doc argues against.
+
 ### Lane B — the rows other boards still hold open
 
 | # | Row | Status | Evidence |
@@ -332,7 +362,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `A4` — a caller for `space_view::assemble`, so something can ask *what is here* and get an answer over the wire. `A3` is done (§3.4): an actor can now arrive at a node atomically, so there is finally something for the view to report. Note `OR-4` before starting `B1`: `3C`/`3D` look ALREADY DONE — `crates/dp/src/ids.rs` exists with `ControlPlane` and `SessionContext` live — so `B1` verifies rather than builds.**
+**RESUME: `A5` — DECIDE `portal` / `encounter` / `layer_registry`: a producer this run, or a register row WITH A TRIGGER. `D-3` says a trigger is a legitimate outcome and `D-2` forbids a new table, so this row may correctly produce no code. Read `Q4` and `Q5` first — both name what would settle them, and `Q5` may turn out to be a citation rather than a design. Then `B1`, where `OR-4` says `3C`/`3D` look ALREADY DONE.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism

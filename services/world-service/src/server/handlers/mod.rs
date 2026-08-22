@@ -9,4 +9,5 @@
 //! which means default-ADOPTABLE, which is the safe direction.
 
 pub mod actor_control;
+pub mod space;
 pub mod realities;

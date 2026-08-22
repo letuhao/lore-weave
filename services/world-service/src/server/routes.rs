@@ -10,7 +10,7 @@ use axum::routing::post;
 use service_http::{health, require_internal};
 use tower_http::timeout::TimeoutLayer;
 
-use crate::server::handlers::{actor_control, realities};
+use crate::server::handlers::{actor_control, realities, space};
 use crate::server::state::AppState;
 
 /// 256 KiB request-body cap. A provision request is a handful of scalars;
@@ -71,6 +71,10 @@ pub const ROUTES: &[RouteSpec] = &[
     // map. Internal for the same reason the writers are: the request names the
     // user it asks about, so on a public edge `user_ref_id` would be an oracle.
     RouteSpec { method: "post", path: "/internal/v1/actor-control/subject", gate: Gate::Internal },
+    // `A4` — "what is here". A POST for a READ, for the same reason `subject`
+    // is one: the request names the node it asks about, so on a public edge it
+    // would be an oracle over the shape of a world.
+    RouteSpec { method: "post", path: "/internal/v1/space/view", gate: Gate::Internal },
 ];
 
 /// Assemble the service router.
@@ -83,6 +87,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/actor-control/grant", post(actor_control::grant_control))
         .route("/internal/v1/actor-control/revoke", post(actor_control::revoke_control))
         .route("/internal/v1/actor-control/subject", post(actor_control::resolve_subject))
+        .route("/internal/v1/space/view", post(space::view))
         .layer(from_fn_with_state(state.clone(), require_internal::<AppState>));
 
     Router::new()
@@ -152,6 +157,60 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn the_space_view_route_is_reachable_and_internal_gated() {
+        // `A4`. Two facts in one request, and the SECOND is the load-bearing
+        // one: the route exists AND it is behind the internal gate. A reachable
+        // space view on a public edge is an oracle over the shape of a world.
+        let resp = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/internal/v1/space/view")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "the space view must be gated");
+    }
+
+    #[tokio::test]
+    async fn an_over_ceiling_budget_is_refused_before_any_database_is_touched() {
+        // The pool in `test_state` points at 127.0.0.1:1 and connects lazily, so
+        // ANY database access here hangs or errors. A clean 400 therefore proves
+        // two things at once: the router dispatches to the space handler, and the
+        // ceiling is checked BEFORE a reality is bound. A ceiling enforced after
+        // the expensive work is not a ceiling.
+        let resp = build_router(test_state())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/internal/v1/space/view")
+                    .header("content-type", "application/json")
+                    .header("x-internal-token", "test-internal-token")
+                    .body(Body::from(
+                        r#"{"reality_id":"00000000-0000-0000-0000-000000000001",
+                            "node":1,"occupants":10000}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.expect("body");
+        let text = String::from_utf8_lossy(&body);
+        assert!(
+            text.contains("exceeds the per-section ceiling"),
+            "the refusal must name the ceiling, got: {text}"
+        );
+        assert!(
+            text.contains("refused rather than clamped"),
+            "the refusal must say it did not clamp, got: {text}"
+        );
     }
 
     #[tokio::test]
