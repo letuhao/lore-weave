@@ -33,11 +33,13 @@ direct unit tests; the K1 migrations test indirectly verifies it.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession
 
 from app.config import settings
+from app.db.graph_backend import configured_backend
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +149,39 @@ def get_neo4j_driver() -> AsyncDriver:
     return _driver
 
 
-def neo4j_session(**kwargs: Any) -> AsyncSession:
-    """Open a new async session against the configured driver.
-    Thin wrapper around `driver.session(...)` — exists so call
-    sites can write `async with neo4j_session() as s:` without
-    importing both the driver and the get-driver helper.
+def neo4j_session(*, engine: str | None = None, **kwargs: Any) -> Any:
+    """Open a repo-layer session against the **configured graph backend**.
 
-    Repo code must wrap the session's `run(...)` in K11.4's
-    `run_read` / `run_write` helpers, NOT call it directly.
+    Call sites write `async with neo4j_session() as s:` and get whichever engine
+    `KNOWLEDGE_GRAPH_BACKEND` names. Repo code must wrap the session's `run(...)`
+    in K11.4's `run_read` / `run_write` helpers, NOT call it directly — those are
+    also what render the dialect for the session's engine (T83).
+
+    🔴 **THIS FUNCTION IS T54's BLOCKER, AND WAS ITS CAUSE.** Flipping the backend
+    to AGE split one conceptual graph across two stores: the 19 `GraphStore`
+    adopters read AGE while the 54 `neo4j_repos` binders read Neo4j, inside a
+    single service, with AGE empty. T54b measured it live on dev — `Neo4j schema
+    applied` and `AGE pool ready` one second apart — and reverted the pin.
+
+    The split existed because this function could only ever return a Bolt session.
+    Since T83/T84 the repo layer runs on either engine, so this returns whichever
+    one is configured and BOTH halves of the service read the same store. That is
+    §10.1's second path arriving where it was always aimed: one function, not 34
+    module migrations.
+
+    `engine=` pins a call site to one backend and is for the modules §1.3 puts out
+    of port scope forever — the benchmarks, which exist to COMPARE engines and so
+    must name one, and the one-shot migration scripts, which ran against a known
+    engine. `port-adoption-gate` counts them and the count can only fall.
     """
+    if configured_backend(engine) == "age":
+        # Imported here, not at module scope: `age_session` and `age_pool` both reach for
+        # configuration, and a module-level cycle would make `db.neo4j` unimportable by
+        # anything that never touches a graph.
+        from app.db.age_pool import age_pool
+        from app.db.age_session import age_repo_session
+
+        return age_repo_session(age_pool())
     return get_neo4j_driver().session(**kwargs)
 
 

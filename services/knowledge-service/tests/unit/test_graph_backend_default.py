@@ -63,15 +63,23 @@ def test_age_without_a_DSN_REFUSES_rather_than_falling_back_to_neo4j():
         pass
 
     import os
+
+    # T54c moved the pool to `db.age_pool` — it is a database handle, and holding it in the
+    # adapter module made `neo4j_session` import an adapter to open a session. The provider
+    # re-exports the accessor, so patch the pool where it now LIVES rather than where it is
+    # re-exported from: patching the alias would leave the real module-level `_POOL` in place
+    # and the refusal below could pass for the wrong reason.
+    from app.db import age_pool as age_pool_mod
+
     prev_b = os.environ.get("KNOWLEDGE_GRAPH_BACKEND")
-    prev_pool = prov._POOL
+    prev_pool = age_pool_mod._POOL
     os.environ["KNOWLEDGE_GRAPH_BACKEND"] = "age"
-    prov._POOL = None
+    age_pool_mod._POOL = None
     try:
         with pytest.raises(RuntimeError, match="KNOWLEDGE_AGE_DB_URL"):
             prov.get_graph_store(_Sess())
     finally:
-        prov._POOL = prev_pool
+        age_pool_mod._POOL = prev_pool
         if prev_b is None:
             os.environ.pop("KNOWLEDGE_GRAPH_BACKEND", None)
         else:

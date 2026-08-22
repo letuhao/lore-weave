@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T54 — wire the AGE provider and flip the default. The repo layer now runs on it; the provider never has.**
+**RESUME: T55 — INV-KAL, the federated read surface enforced from a DERIVED list, not a hand-written one.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 63 of 112 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 64 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2551,6 +2551,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T54c 2026-08-22 — **the two-store split is closed: one backend, one store, in ONE function**
+
+  ```
+  neo4j_session()  ->  follows KNOWLEDGE_GRAPH_BACKEND      (132 service call sites)
+  engine-pinned sessions  9/9   benchmarks + one-shot scripts only  (a NEW ratchet)
+  GraphStore adopters 19 (floor held — the pool moved to `db/` rather than inflating it)
+  knowledge unit 4336 · DB integration 627 -> 631 passed, 0 failed
+  ```
+
+  🎯 **T54b's blocker was one function, and this is it.** Flipping the backend to AGE split one
+  conceptual graph across two stores — the 19 `GraphStore` adopters on AGE, the 54 `neo4j_repos`
+  binders on Neo4j, inside a single service, with AGE empty:
+
+  ```
+  18:39:50  K11.3: Neo4j schema applied successfully   <- Neo4j, 4926 entities
+  18:39:51  AGE pool ready (graph=g_shared)            <- AGE, EMPTY
+  ```
+
+  That split existed for exactly one reason: **`neo4j_session()` could only ever return a Bolt
+  session.** Since T83/T84 the repo layer runs on either engine, so the factory returns whichever
+  one is configured and both halves meet. The row's own "what must move" table said 34 modules
+  had to migrate to the port first; §10.1's second path means they do not. **One function, not
+  34 module migrations.**
+
+  ⚙️ **Nine call sites stay PINNED, and they are exactly §1.3's out-of-scope class** — the four
+  benchmarks, which exist to COMPARE engines and so must name one, and the three one-shot
+  migration scripts, which ran against a known engine. Measured, not assumed: 135 call sites
+  split 9 engine-specific / 126 service. A new ratchet holds it, and bite 3 (pinning a
+  `context/` module) fails it by name — service code that pins an engine recreates the split.
+
+  🔬 **The gate refused two designs before this one.**
+
+  * `_BACKEND_ENV` / `_DEFAULT_BACKEND` lived in `graph_store_provider`, so `neo4j_session`
+    imported an ADAPTER module to read CONFIGURATION — and `port-adoption-gate`'s GraphStore
+    floor rose 19 → 21 on two imports that touch no store. A number meaning *"modules that
+    adopted the port"* must not count modules reading an environment variable. They now live in
+    `db/graph_backend.py`, which is also the one home a duplicated `"age"` default needs: two
+    copies disagreeing puts half the service on each engine, which is the very failure.
+  * With that fixed the floor still read 20, because the session factory reached the provider
+    for the **connection pool**. A pool is a database handle; it moved to `db/age_pool.py` and
+    the provider re-exports it. The floor is back to 19 **honestly**, rather than raised to
+    cover a miscount.
+
+  ⚠️ **My own fixture reproduced the bug it tests for, twice.**
+
+  * It built the AGE pool with `asyncpg.create_pool(init=…)`. `create_age_pool`'s docstring
+    warns about precisely this — the search_path is a `server_settings` concern, not an
+    init-hook one — and the symptom was that the repo-layer half passed while the PORT half
+    failed with `cypher(unknown, unknown) does not exist`. A split, produced by the test for
+    the split.
+  * Then `graph_store_provider` does `from app.db.age_bootstrap import graph_name_for`, so
+    patching the definition left the port looking in `g_shared` while the repo layer wrote to
+    the probe graph. Two modules resolve that name; both are patched.
+
+  ```
+  1  neo4j_session ignores the backend        RED  3 tests, incl. the same-store proof
+  2  the engine= pin is ignored               RED  the pin test, by name
+  3  a service module pins an engine          RED  the new ratchet, by name
+  ```
+
+  ⛔ **What this row does NOT do: it does not flip anything.** Dev stays on `neo4j`, deliberately
+  — T54b reverted it and *"reverting a pin is not retreating from the decision; it is refusing to
+  leave a working environment half-migrated"*. What changes is that the flip is now **coherent**:
+  the thing that made it unsafe is gone, and the four tests prove one backend yields one store.
+  The flip itself remains a deploy decision, and a real cutover still needs the data moved —
+  neither is in this row.
+
+  **QC (a) gates:** unit 4336, `port-adoption-gate` PASS with the new pinned-session ratchet at
+  9/9, dialect 0/0, engine literals 0/0, GraphStore floor held at 19, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved. The
+  seam this row DOES cross is engine selection, and it is covered live below.
+  **QC (c) real data:** with the backend set to `age`, an entity written through
+  `neo4j_repos.merge_entity` was read back through the `GraphStore` port on a live AGE graph —
+  the exact read that returned nothing under the split.
 
   ### ✅ T84 2026-08-22 — **the second wave: facts, events, hierarchy and the BI-TEMPORAL CHAIN on AGE**
 

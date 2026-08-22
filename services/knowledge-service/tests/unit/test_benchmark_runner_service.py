@@ -178,7 +178,17 @@ def _patch_happy_path(monkeypatch):
     monkeypatch.setattr(runner_module, "persist_benchmark_report", _fake_persist)
     monkeypatch.setattr(runner_module, "load_golden_set", _fake_load_golden_set)
     monkeypatch.setattr(runner_module, "AsyncBenchmarkRunner", _FakeAsyncRunner)
-    monkeypatch.setattr(runner_module, "neo4j_session", lambda: _FakeSession())
+    # T54c: the benchmark PINS its engine — it exists to COMPARE engines, so it must name
+    # one rather than follow the configured backend. The double takes `**kw` so that pin
+    # is visible here instead of being swallowed, and the assertion below reads it.
+    seen_engine: dict = {}
+
+    def _fake_session(*, engine=None, **kw):
+        seen_engine["engine"] = engine
+        return _FakeSession()
+
+    monkeypatch.setattr(runner_module, "neo4j_session", _fake_session)
+    monkeypatch.setattr(runner_module, "_SEEN_ENGINE", seen_engine, raising=False)
     # Mode3QueryRunner ctor is called but the runner object is only
     # used by AsyncBenchmarkRunner which we've swapped; stub ctor.
     monkeypatch.setattr(

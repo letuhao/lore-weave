@@ -407,7 +407,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
         settings.neo4j_uri or "<unset>",
     )
     try:
-        async with neo4j_session() as session:
+        async with neo4j_session(engine="neo4j") as session:
             plan = await run_recanon_backfill(session, apply=args.apply)
     finally:
         await close_neo4j_driver()

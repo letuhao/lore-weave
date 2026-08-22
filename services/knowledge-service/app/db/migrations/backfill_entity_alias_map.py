@@ -143,7 +143,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     get_neo4j_driver()
     pool = get_knowledge_pool()
     repo = EntityAliasMapRepo(pool)
-    async with neo4j_session() as session:
+    async with neo4j_session(engine="neo4j") as session:
         result = await run_backfill(repo, session)
     logger.info(
         "C17 backfill complete: total=%d inserted=%d skipped_canonical=%d "

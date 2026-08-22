@@ -118,7 +118,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
 
     logging.basicConfig(level=logging.INFO)
     get_neo4j_driver()
-    async with neo4j_session() as session:
+    async with neo4j_session(engine="neo4j") as session:
         result = await run_backfill(session)
     logger.info(
         "C18 backfill complete: scanned=%d parsed=%d "

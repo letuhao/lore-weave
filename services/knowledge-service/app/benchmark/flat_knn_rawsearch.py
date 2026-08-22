@@ -60,13 +60,13 @@ async def _run(args: Any) -> int:
     k = args.k
 
     await init_neo4j_driver()
-    async with neo4j_session() as _s:
+    async with neo4j_session(engine="neo4j") as _s:
         _idx = await ensure_passage_vector_index(_s, args.embedding_dim)
         print(f"[flat_knn] ensured {_idx}", file=_sys.stderr)
     embed = init_embedding_client()
 
     per_query: list[dict] = []
-    async with neo4j_session() as session:
+    async with neo4j_session(engine="neo4j") as session:
         for q in queries:
             res = await embed.embed(
                 user_id=_UUID(user_id), model_source=args.model_source,

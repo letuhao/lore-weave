@@ -800,6 +800,45 @@ MAX_ENGINE_LITERALS = 0
 _ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
 
 
+#: `neo4j_session(engine="neo4j")` — call sites PINNED to one engine. Shrink-only.
+#:
+#: T54's blocker was that `neo4j_session()` could only return a Bolt session, so flipping
+#: `KNOWLEDGE_GRAPH_BACKEND` put the 19 `GraphStore` adopters on AGE and the 54 `neo4j_repos`
+#: binders on Neo4j — one conceptual graph, two stores, one empty, inside one service (T54b,
+#: measured on dev and reverted). Since T83/T84 the repo layer runs on either engine and the
+#: session follows the configured backend, so the split is closed by construction.
+#:
+#: What remains PINNED is the class §1.3 puts out of port scope forever: the benchmarks, which
+#: exist to COMPARE engines and therefore must name one, and the one-shot migration scripts,
+#: which ran against a known engine. 9 call sites across 7 modules, measured 2026-08-22. This
+#: number is not aiming at zero — it is aiming at "no SERVICE code names an engine", and it
+#: rises only if someone pins a call site that should have followed the configuration.
+MAX_PINNED_SESSIONS = 9
+
+_PINNED_SESSION = re.compile(r"""neo4j_session\(\s*engine\s*=""")
+
+
+def scan_pinned_sessions() -> dict[str, int]:
+    """`{module: count}` for call sites that pin their engine instead of following config."""
+    out: dict[str, int] = {}
+    root = os.path.join(SCAN_ROOT)
+    if not os.path.isdir(root):
+        return out
+    for dirpath, _dirs, files in os.walk(root):
+        for fname in sorted(files):
+            if not fname.endswith(".py"):
+                continue
+            path = os.path.join(dirpath, fname)
+            try:
+                src = open(path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            n = len(_PINNED_SESSION.findall(src))
+            if n:
+                out[os.path.relpath(path, SCAN_ROOT).replace(os.sep, "/")] = n
+    return out
+
+
 def scan_engine_literals() -> dict[str, list[str]]:
     """`{module: [offending source lines]}` for engine names hardcoded in the repo layer."""
     out: dict[str, list[str]] = {}
@@ -1107,6 +1146,22 @@ def main() -> int:
         return 1
     print(f"[port-adoption-gate] engine literals {n_lit}/{MAX_ENGINE_LITERALS} — the repo "
           f"layer names no engine; the session does")
+
+    pinned = scan_pinned_sessions()
+    n_pin = sum(pinned.values())
+    if n_pin != MAX_PINNED_SESSIONS:
+        verb = "GREW to" if n_pin > MAX_PINNED_SESSIONS else "fell to"
+        print(f"{chr(10)}[port-adoption-gate] FAIL — engine-pinned session call sites {verb} "
+              f"{n_pin} (recorded {MAX_PINNED_SESSIONS}).{chr(10)}")
+        for mod, n in sorted(pinned.items()):
+            print(f"    {mod}  x{n}")
+        print(f"{chr(10)}  `neo4j_session()` follows KNOWLEDGE_GRAPH_BACKEND. Only the "
+              f"benchmarks and the{chr(10)}  one-shot scripts may pin an engine — service code "
+              f"that pins one recreates{chr(10)}  the two-store split T54b measured. Move the "
+              f"number in the same commit.{chr(10)}")
+        return 1
+    print(f"[port-adoption-gate] engine-pinned sessions {n_pin}/{MAX_PINNED_SESSIONS} — "
+          f"benchmarks and one-shot scripts only; service code follows the configuration")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 

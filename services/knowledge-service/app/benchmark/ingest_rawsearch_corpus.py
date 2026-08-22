@@ -59,7 +59,7 @@ async def _run(args: Any) -> int:
     ingested = 0
     passages_total = 0
     errors: list[str] = []
-    async with neo4j_session() as session:
+    async with neo4j_session(engine="neo4j") as session:
         for ch in chapters:
             cid = ch["chapter_id"]
             idx = ch.get("chapter_index")

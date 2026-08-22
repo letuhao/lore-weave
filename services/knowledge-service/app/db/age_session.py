@@ -41,6 +41,7 @@ from typing import Any
 
 __all__ = [
     "AgeCypherSession",
+    "age_repo_session",
     "AgeTransaction",
     "AgeResult",
     "AgeVertex",
@@ -344,3 +345,60 @@ def _json_default(value: Any) -> Any:
         f"cannot bind a {type(value).__name__} as an AGE parameter: {value!r}. Convert it at "
         f"the call site rather than letting it cross as a string."
     )
+
+
+# ── the repo layer's session, over the process AGE pool ──────────────────────────────────
+
+
+class _PooledAgeSession:
+    """`async with age_repo_session() as s:` — an `AgeCypherSession` on a pooled connection.
+
+    T54's blocker was that flipping `KNOWLEDGE_GRAPH_BACKEND` split one conceptual graph across
+    two stores: the 19 `GraphStore` adopters read AGE while the 54 `neo4j_repos` binders read
+    Neo4j, **inside a single service**, with AGE empty. The measurement that stopped the row is
+    in the plan (T54b): `Neo4j schema applied` and `AGE pool ready` seconds apart, extraction
+    reading the empty one without erroring.
+
+    That split existed because `neo4j_session()` could only ever return a Bolt session. It can
+    now return this instead, so the same 135 call sites follow the configured backend and the
+    two halves of the service read the SAME store. The cure is one function, not 34 module
+    migrations — which is what §10.1 decided and what T83/T84 made true.
+    """
+
+    def __init__(self, pool: Any, graph: str) -> None:
+        self._pool = pool
+        self._graph = graph
+        self._conn: Any = None
+
+    async def __aenter__(self) -> AgeCypherSession:
+        self._conn = await self._pool.acquire()
+        # The pool's own init already loads the extension per connection; calling it again is
+        # cheap and makes this usable against a bare pool in a test.
+        await AgeCypherSession.prepare(self._conn)
+        return AgeCypherSession(self._conn, self._graph)
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        if self._conn is not None:
+            await self._pool.release(self._conn)
+            self._conn = None
+        return False
+
+
+def age_repo_session(pool: Any, project_id: Any = None) -> _PooledAgeSession:
+    """Open a repo-layer session against the process AGE pool.
+
+    Raises when no pool exists rather than falling back to Neo4j. That refusal is the same law
+    `graph_store_provider.get_graph_store` states and for the same reason: **a backend that
+    silently is not the one you selected is the defect T54 exists to fix.** Half the service
+    reading AGE and half reading Neo4j is exactly what T54b measured and reverted.
+    """
+    from app.db.age_bootstrap import graph_name_for
+
+    if pool is None:
+        raise RuntimeError(
+            "the graph backend is `age` but no AGE pool exists — `KNOWLEDGE_AGE_DB_URL` is "
+            "unset or `init_age_pool()` never ran. Refusing to fall back to Neo4j: that would "
+            "put the repo layer on one engine and the port adopters on another, which is the "
+            "split T54b measured on dev and reverted."
+        )
+    return _PooledAgeSession(pool, graph_name_for(project_id))

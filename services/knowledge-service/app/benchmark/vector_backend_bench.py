@@ -225,7 +225,7 @@ async def _from_neo4j(project_id: str, user_id: str, dim: int, limit: int):
     await init_neo4j_driver()
     probe = [0.0] * dim
     probe[0] = 1.0
-    async with neo4j_session() as session:
+    async with neo4j_session(engine="neo4j") as session:
         await ensure_passage_vector_index(session, dim)
         hits = await find_passages_by_vector(
             session, user_id=user_id, project_id=project_id, query_vector=probe, dim=dim,

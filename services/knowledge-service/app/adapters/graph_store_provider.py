@@ -45,46 +45,21 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["get_graph_store", "init_age_pool"]
 
-_BACKEND_ENV = "KNOWLEDGE_GRAPH_BACKEND"
-
-#: T54 (§8.1/§8.2, PO 2026-08-22) — **AGE is the default.** Neo4j stays selectable and is not
-#: retired: T43's shadow harness compares Neo4j↔AGE and the two backend benchmarks are the only
-#: things that can compare engines, so deleting it would remove the instrument that proves this
-#: adapter correct. `port-adoption-gate`'s floor of 2 exists for the same reason.
-_DEFAULT_BACKEND = "age"
-
-#: One pool per process, built on first use. Not at import: the DSN is configuration and a
-#: module that opens a connection at import time cannot be imported by a test, a script, or a
-#: worker that will never touch the graph.
-_POOL = None
+# T54c — one home. `db.graph_backend` owns the env name and the default; three layers read
+# them now (this provider, `neo4j_session`, the AGE session) and a duplicated default is one
+# edit away from putting half the service on each engine.
+from app.db.graph_backend import BACKEND_ENV as _BACKEND_ENV  # noqa: E402
+from app.db.graph_backend import DEFAULT_BACKEND as _DEFAULT_BACKEND  # noqa: E402
 
 
-def _age_pool():
-    """The process AGE pool, or None when no DSN is configured."""
-    return _POOL
 
-
-async def init_age_pool() -> bool:
-    """Build the AGE pool from settings. Idempotent; returns True when a pool exists.
-
-    Called from the service lifespan beside `run_neo4j_schema`, so the refusal above fires at
-    STARTUP rather than on the first graph read — a misconfigured backend should fail where
-    someone is watching, not on a user request.
-    """
-    global _POOL
-    if _POOL is not None:
-        return True
-    from app.config import settings
-    dsn = (settings.knowledge_age_db_url or "").strip()
-    if not dsn:
-        return False
-    from app.db.age_bootstrap import create_age_pool, ensure_age_extension, ensure_graph
-    _POOL = await create_age_pool(dsn)
-    await ensure_age_extension(_POOL)
-    async with _POOL.acquire() as conn:
-        await ensure_graph(conn, None)          # the shared graph, created if absent
-    logger.info("AGE pool ready (graph=%s)", graph_name_for(None))
-    return True
+# T54c — the POOL moved to `db.age_pool`. It is a database handle, and keeping it here made
+# `neo4j_session` import an adapter module to open a session, which `port-adoption-gate`
+# counted as GraphStore adoption. Re-exported so the lifespan and any existing caller keep
+# working; this module still owns WHICH store to build, which is the decision that belongs
+# to a provider.
+from app.db.age_pool import age_pool as _age_pool  # noqa: E402
+from app.db.age_pool import init_age_pool  # noqa: E402
 
 
 def get_graph_store(session: CypherSession) -> GraphStore:
