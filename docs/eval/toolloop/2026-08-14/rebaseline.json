@@ -538,9 +538,9 @@
       "falsifier_sha": "57194994db03d789",
       "ship_audit": {
         "gate": "OWED — Tier W.",
-        "absent_case": "OWED — a job_id that does not exist must be refused.",
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): an absent job_id refuses 'not found or not accessible'.",
         "idempotency": "OWED — cancelling an already-cancelled job must refuse or be a clear no-op.",
-        "tenancy": "OWED — book-scoped."
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): a foreign job_id refuses IDENTICALLY."
       },
       "defects": [],
       "runs": [
@@ -1202,7 +1202,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 4,
-      "suspended_count": 2
+      "suspended_count": 2,
+      "blocked_reason": "BLOCKED, and P11's own statement is what the evidence shows: 'surfaced, occasionally chosen — and the costly half of the enum never came up'. Re-measured K=5: SURFACED 5/5 with zero errors, CALLED 0/5 — this time not chosen at all.\n\nBoundary EXERCISED and sound: an absent job_id, a foreign one and an empty one all refuse, absent and foreign IDENTICALLY. What cannot be measured is the DISTRIBUTION the problem is about — which half of the action enum the model picks — because on these five runs it picked none. Reaching that needs a fixture with a real, running translation job the tool can act on; the seed has none, which is why the model had nothing to control."
     },
     {
       "tool": "translation_patch_block",
@@ -1212,10 +1213,10 @@
       "answer_expect": null,
       "falsifier_sha": "2bf2d16a50d739a4",
       "ship_audit": {
-        "gate": "OWED — Tier A, and the first patch makes a new human version ACTIVE.",
-        "absent_case": "OWED — a base_version_id that does not exist, or a block_index past the end, must be refused.",
-        "idempotency": "OWED — patching the same block to the same text twice must not create two human versions.",
-        "tenancy": "OWED — book-scoped."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): called 5/5 through the chat path with the OWNING STORE unchanged on every run — the only movement is the async outbox / global neo4j count, neither of which is this tool's store.",
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): an absent id refuses 'not found or not accessible'.",
+        "idempotency": "OWED — NOT EXERCISED. Patching a translation block twice needs a book with an existing translation VERSION and a block index in it; the fixture builds no translation, so a first call cannot land and a second no-op would prove nothing.",
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): a foreign id refuses IDENTICALLY — no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -1888,7 +1889,8 @@
       "surfaced_count": 5,
       "called_count": 5,
       "wrote_count": 5,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED on an IDEMPOTENCY precondition, with LIVE now SOUND — and its recorded cause is refuted. The row said D-RAIL-PINNED-TURN-NEVER-COMPLETES: 'the prompt pins translation-pass; the server drives the rail and never emits an assistant message', measured as seven arms of transport failure. Re-measured K=5 on the same scenario: SURFACED 5/5, CALLED 5/5, ZERO errors. The turn completes now.\n\nBoundary EXERCISED: absent, foreign and empty ids all refuse, absent and foreign IDENTICALLY. The owning store is unchanged on every run. What remains is idempotency: patching a block twice needs a book with an existing translation VERSION and a block index in it, and the fixture builds no translation at all — so a first call cannot land and a second no-op would prove nothing. Same shape as P4's idempotency gaps, in a different problem."
     },
     {
       "tool": "memory_timeline",
@@ -1906,8 +1908,8 @@
       "falsifier_sha": "38a8b02eb0dcfb6c",
       "ship_audit": {
         "empty_case": "EXERCISED by direct probe — a project with no extracted events returns events:[] with total 0 and count 0, not an error.",
-        "absent_case": "OWED — a project_id that does not exist must be refused.",
-        "tenancy": "OWED — project-scoped."
+        "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): an absent project refuses 'project not found'.",
+        "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): a foreign project refuses IDENTICALLY. (The empty case degenerates — required=[] means there is no field to empty — and its SUCCESS is correct for an argument-less read of the ambient project, not a boundary failure.)"
       },
       "defects": [],
       "runs": [
@@ -23975,7 +23977,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED by the SAME INTENT GATE, and it is the tool that REFUTED my own claim. I swept the denominator and reported that 46 of 48 blocked tools are ANSWERABLE, arguing that answerability forces a match onto the wire. This tool is answerable AND the only answerable tool on its prompt — and it SURFACED 0/5. Answerability does not force a tool onto the wire, because INTENT_GATED_SETUP_TOOLS are stripped from the catalogue BEFORE answerability runs. The probe's own docstring said so and I argued past it.\n\nSo its 0/5 is BY DESIGN and P9-INTENT-GATE is precisely the problem that owns it. SHIP is genuinely OWED: the tool cannot be reached through the gate, and probing it directly would measure the handler while saying nothing about the surface question P9 asks."
     },
     {
       "tool": "glossary_propose_batch",
@@ -23986,8 +23989,8 @@
       "falsifier_sha": "e9f4306c68ccaf8f",
       "ship_audit": {
         "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
-        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
-        "tenancy": "OWED — book-scoped."
+        "empty_case": "EXERCISED by TARGETED probe (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): 'book_id must be a UUID' — named. The generic sweep could not reach it: `ops` is a required typed array, so all three cases died in schema validation first.",
+        "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): a foreign book refuses IDENTICALLY to an absent one, 'book not accessible'."
       },
       "defects": [],
       "runs": [
@@ -24480,7 +24483,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED by an INTENT GATE, by design, which is exactly P9's statement. Re-measured K=5: SURFACED 5/5, CALLED 0/5. This tool is in INTENT_GATED_SETUP_TOOLS — filtered out of the turn CATALOGUE before answerability ever runs, unless the turn carries world-setup intent (glossary_shaping pinned or router-matched). The prompt asks to 'set these up together in one batch', which is a concrete request rather than a recognised setup intent, so the gate shuts.\n\nThat gate exists for a measured reason recorded in tool_discovery.py: keeping these advertised let the co-writer rebuild a newcomer's ontology on a plain 'write chapter 1' turn. So this is not a defect to fix by widening — it is the trade P9 exists to put in front of the owner.\n\nBoundary EXERCISED by targeted probe: a foreign book and an absent one refuse IDENTICALLY, empty names book_id."
     }
   ]
 }

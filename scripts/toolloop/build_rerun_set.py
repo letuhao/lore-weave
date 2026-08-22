@@ -39,10 +39,37 @@ LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 SCEN_DIR = ROOT / "scripts" / "toolloop"
 
 
+#: Files this script itself PRODUCES. They must never be read back in, or the generator sources its
+#: own output and a scenario chosen once is chosen forever.
+GENERATED = ("scenarios-rebaseline.json", "scenarios-c3-run.json", "scenarios-c3-close.json",
+             "scenarios-c2-motif.json")
+
+
 def scenario_index() -> dict[str, tuple[str, dict]]:
-    """tool -> (file, scenario). Later files win, so a carried-over copy beats the original."""
+    """tool -> (file, scenario). Later files win, so a carried-over copy beats the original.
+
+    🔴 TWO WAYS THIS PICKED THE WRONG SCENARIO, both measured 2026-08-23 on `tool_load`.
+
+    (1) IT READ ITS OWN OUTPUT. scenarios-rebaseline.json sorts last, so once generated it became
+    the source for the next build — `_carried_from: scenarios-rebaseline.json`, a scenario chosen
+    once and then chosen forever, with the original file unable to correct it.
+
+    (2) "LAST FILE WINS" IS ALPHABETICAL, NOT SEMANTIC. `scenarios-dqt3.json` sorts after
+    `scenarios-batch3.json`, so tool_load was carried with the DQ-T3 prompt — "Load the tool called
+    glossary_book_sync_apply BY NAME and tell me exactly what arguments it takes" — which instructs
+    the model to use tool_load. P10-TOOL-LOAD asks the opposite question: "What exactly do you need
+    from me to add a new character? Check the real requirements, don't guess", where the whole point
+    is whether the model reaches for the schema UNPROMPTED. The re-run measured 5/5 called and it
+    says nothing about the problem, because the prompt gave the answer away.
+
+    A tie-break that decides WHICH QUESTION gets asked is not a tie-break. Generated files are
+    excluded here; choosing between two genuine scenarios for one tool still needs a human, and the
+    file each tool was taken from is stamped on it so the choice is visible.
+    """
     idx: dict[str, tuple[str, dict]] = {}
     for f in sorted(SCEN_DIR.glob("scenarios-*.json")):
+        if f.name in GENERATED:
+            continue
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except Exception:

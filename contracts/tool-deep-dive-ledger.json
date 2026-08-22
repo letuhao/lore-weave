@@ -1722,11 +1722,12 @@
    "state": "blocked",
    "provider": "glossary",
    "tier": "W",
-   "cycle": "batch-6",
+   "cycle": "batch-41 (2026-08-14)",
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED on DQ-T31, a surfacing defect measured in two passes. The VAGUE prompt left the intent gate open (0 withheld) and the model correctly asked which kinds, because `ops` must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT the gate: 4 tools withheld at stage=intent_gate including this one. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind. Its own boundary is sound: empty `ops` is refused with a message naming the missing input."
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED by an INTENT GATE, by design, which is exactly P9's statement. Re-measured K=5: SURFACED 5/5, CALLED 0/5. This tool is in INTENT_GATED_SETUP_TOOLS — filtered out of the turn CATALOGUE before answerability ever runs, unless the turn carries world-setup intent (glossary_shaping pinned or router-matched). The prompt asks to 'set these up together in one batch', which is a concrete request rather than a recognised setup intent, so the gate shuts.\n\nThat gate exists for a measured reason recorded in tool_discovery.py: keeping these advertised let the co-writer rebuild a newcomer's ontology on a plain 'write chapter 1' turn. So this is not a defect to fix by widening — it is the trade P9 exists to put in front of the owner.\n\nBoundary EXERCISED by targeted probe: a foreign book and an absent one refuse IDENTICALLY, empty names book_id.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json"
   },
   "jobs_list": {
    "state": "proven",
@@ -2499,9 +2500,9 @@
   },
   "glossary_book_sync_apply": {
    "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch25.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a precondition, and the model handled it exactly right. Never surfaced (0/5) and never called; instead it called glossary_book_sync_available and reported 'there are currently no upstream changes to apply. Your world's categories and standards are already up to date.' That is a CHECK followed by a truthful report — not the claimed-write shape that plan_keep_material produced in batch 23, where the model asserted an update with zero tool calls. `items` is REQUIRED and each item decides whether an author's value is overwritten, so fabricating that list would have been an editorial decision about their story bible; it did not.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch25.json",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 2/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED by the SAME INTENT GATE, and it is the tool that REFUTED my own claim. I swept the denominator and reported that 46 of 48 blocked tools are ANSWERABLE, arguing that answerability forces a match onto the wire. This tool is answerable AND the only answerable tool on its prompt — and it SURFACED 0/5. Answerability does not force a tool onto the wire, because INTENT_GATED_SETUP_TOOLS are stripped from the catalogue BEFORE answerability runs. The probe's own docstring said so and I argued past it.\n\nSo its 0/5 is BY DESIGN and P9-INTENT-GATE is precisely the problem that owns it. SHIP is genuinely OWED: the tool cannot be reached through the gate, and probing it directly would measure the handler while saying nothing about the surface question P9 asks.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -2835,10 +2836,10 @@
    "counts_toward_release": true
   },
   "memory_timeline": {
-   "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch35.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — and this arm RETIRES THE SECOND HYPOTHESIS about why.\n\n  batch34, inside a 5-scenario batch   SURFACED 5/5, CALLED 5/5\n  arm 2, run ALONE                     SURFACED 0/5\n  arm 3, run ALONE                     SURFACED 0/5\n  batch35, inside a 5-scenario batch   SURFACED 0/5   <- this one\n\nThe first write-up said 'the catalogue varies run to run'. The third arm made that look like batch COMPOSITION — alone versus in a batch, two for two either way. This arm ran it inside a five-scenario batch again and it did not surface, which kills that too.\n\nSo: one 5/5 in four arms, two hypotheses refuted by measurement, and NO third hypothesis offered here. That is the honest state. Recording it is worth more than a tidy explanation would be — this loop has already retracted four causal stories that felt equally reasonable.\n\nmemory_timeline itself remains unconcluded rather than concluded on a dirty arm: in the one arm where it ran it was called 5/5 and answered correctly on 3 of 5 ('There are currently no narrative events recorded in the timeline for this book'), with the other 2 EMPTY — D-SILENT-TURN-NO-CARD-NO-PROSE.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch35.json",
+   "state": "proven",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -2860,17 +2861,17 @@
   },
   "translation_job_control": {
    "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/b36-rerun2.json. MEASURED: surfaced 5/5, called 2/5, suspended-on-card 1/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — surfaced but rarely chosen. Across THREE arms: called 1/5, 0/5, 2/5 — 3 of 15 runs, with 0 transport errors in two of them, so this is a clean measurement of the model NOT picking it rather than a dirty arm. K>=3 as a distribution is the bar and 3-of-15 is not it.\n\nWorth recording about the runs that DID call it: the card raised was for the CANCEL the author asked for, not the `resume` or `retry` the same enum offers — and those two RE-SPEND money by the tool's own description. The half of the enum with a cost never came up.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/b36-rerun2.json",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 2/5, owning store moved on 4/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and P11's own statement is what the evidence shows: 'surfaced, occasionally chosen — and the costly half of the enum never came up'. Re-measured K=5: SURFACED 5/5 with zero errors, CALLED 0/5 — this time not chosen at all.\n\nBoundary EXERCISED and sound: an absent job_id, a foreign one and an empty one all refuse, absent and foreign IDENTICALLY. What cannot be measured is the DISTRIBUTION the problem is about — which half of the action enum the model picks — because on these five runs it picked none. Reaching that needs a fixture with a real, running translation job the tool can act on; the seed has none, which is why the model had nothing to control.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
   "translation_patch_block": {
    "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/b36-rerun2.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across both arms, so the model was never shown it. Its sibling translation_save_edited_version surfaced 5/5 and was called 5/5 off the identical two-turn shape, the identical seeded chapter and the same batch — so this is not the fixture and not the id chain. D-LAZY-TAIL-UNUSED, the same mechanism as batches 31-35 (DQ-T36).\n\nThe fixture it never used was built for it: the base version was seeded translated_body_format='json' with TWO blocks, because this tool works on block/JSON only and a text body would have made it refuse legitimately, and the seed assertion counted the BLOCKS rather than the row because block_index is what the tool takes.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/b36-rerun2.json",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on an IDEMPOTENCY precondition, with LIVE now SOUND — and its recorded cause is refuted. The row said D-RAIL-PINNED-TURN-NEVER-COMPLETES: 'the prompt pins translation-pass; the server drives the rail and never emits an assistant message', measured as seven arms of transport failure. Re-measured K=5 on the same scenario: SURFACED 5/5, CALLED 5/5, ZERO errors. The turn completes now.\n\nBoundary EXERCISED: absent, foreign and empty ids all refuse, absent and foreign IDENTICALLY. The owning store is unchanged on every run. What remains is idempotency: patching a block twice needs a book with an existing translation VERSION and a block index in it, and the fixture builds no translation at all — so a first call cannot land and a second no-op would prove nothing. Same shape as P4's idempotency gaps, in a different problem.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3970,8 +3971,8 @@
   "tools_declared": 315,
   "tools_concluded": 198,
   "tools_in_cycle": 0,
-  "tools_proven": 165,
-  "tools_blocked": 33,
+  "tools_proven": 166,
+  "tools_blocked": 32,
   "defects_proven": 25,
   "defects_open": 13,
   "deferred_questions": 17,
