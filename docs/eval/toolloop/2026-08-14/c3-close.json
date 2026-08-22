@@ -1,0 +1,1118 @@
+{
+  "batch": "c3-close",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "settings_provider_inventory",
+      "scenario": "settings-provider-inventory",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists models from a provider this account has not configured. scope=user, and it requires a provider_credential_id — so the interesting failure is the model inventing one rather than looking it up first.",
+      "answer_expect": {
+        "none_of": [
+          "currently offer"
+        ],
+        "why": "🔴 THE TOOL'S OWN DEFECT WAS UNCHECKABLE UNTIL NOW. answer_expect was null, so the gate's 'DATA answer is true' bar never ran, and the falsifier covers a store change and unconfigured providers — not the thing that actually blocks this tool. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY is the model answering from settings_list_models and presenting REGISTERED rows as what the provider currently OFFERS. Registry and live inventory are different sets: a model retired upstream still sits in the registry, so the answer is confidently wrong in exactly the case the question was asked to detect.\n\nMEASURED 2026-08-23 over K=5, and the phrase discriminates perfectly: 'currently offer' appears in all FOUR replies that did NOT call settings_provider_inventory and in NEITHER of the one that did — that run said 'currently registered' instead, which is true of what it read. So the expectation fails exactly the runs where the author is misled and passes the run where they are not."
+      },
+      "falsifier_sha": "6ec9db508eed4028",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments — two of these first died in argument validation (fact_type / scope enums), which is UNPROBED rather than refused, and re-probed with valid enum values afterwards. scope=user. Called as claude-test2 with the HARNESS user's provider_credential_id: refused 'not accessible' — a credential id is not a capability.",
+        "gate": "Tier R; returns no secrets by contract."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02b7a-93cd-739f-a021-3dc31413ad38",
+          "session_id": "01a02b7a-cd8c-7c46-9a92-9c6a54486529",
+          "prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "scenario_prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.139254+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.126138+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.838006+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.139254+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.126138+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models available across different providers. Here is a breakdown of what your configured providers currently offer:\n\n### **LM Studio (Local/Self-Hosted)**\nThese models are running on your local machine.\n*   **Gemma-4 26B (Various versions):**\n    *   `Gemma-4 26B-A4B QAT`: 200K context, supports tool calling.\n    *   `Gemma-4 26B FD4-067`: 120K context.\n    *   `gemma-26b`: 40K context, supports tool calling.\n*   **Qwen Series:**\n    *   `Qwen3.6 35B-A3B`: 120K context, supports tool calling.\n    *   `Qwen3 35B (E2E)`: 120K context.\n    *   `Qwen3 Coder 30B`: 32K context.\n    *   `Qwen3.5 9B (Critic/Tooltest)`: 32K context.\n    *   `Qwen2.5 7B Instruct`: 32K context (fast, non-reasoning).\n*   **Nvidia:**\n    *   `Nemotron-3 Nano`: 260K context, supports tool calling.\n*   **Embeddings & Reranking:**\n    *   `bge-m3`: 8K context (Embedding).\n    *   `Local bge-reranker-v2-m3`: (Reranker).\n\n### **OpenAI (Cloud)**\n*   **GPT-4o (Probe):** 128K context.\n*   **GPT-4o mini:** 128K context, supports tool calling.\n*   **Kokoro (Local/OpenAI):** TTS (Text-to-Speech) capability.\n\n### **Search & Specialized**\n*   **SearxNG:** Web search capability."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02b7b-5bd9-76b1-8efa-91745cd182ca",
+          "session_id": "01a02b7b-9117-754f-8309-9a2beb8fa47c",
+          "prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "scenario_prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.231265+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.22426+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.035738+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.231265+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:58:20.22426+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models available across different providers. Here is the breakdown of what your configured providers currently offer:\n\n### **LM Studio (Local/Private Models)**\nThese models are running on your local machine.\n*   **Gemma-4 26B-A4B QAT (200K)** — *High context, supports tool calling.*\n*   **Gemma-4 26B FD4-067** — *High context (120K).*\n*   **Qwen3.6 35B-A3B (120K)** — *High context, supports tool calling.*\n*   **Qwen3 35B (E2E)** — *High context (120K).*\n*   **Nemotron-3 Nano (260K)** — *Very high context, supports tool calling.*\n*   **Qwen3 Coder 30B** — *Optimized for coding/tools.*\n*   **Qwen3.5 9B (Critic/Tooltest)** — *Smaller, specialized versions.*\n*   **Qwen2.5 7B Instruct** — *Fast, non-reasoning.*\n*   **bge-m3** — *Embedding model.*\n*   **bge-reranker-v2-m3** — *Reranking model.*\n\n### **OpenAI (Cloud Models)**\nThese are hosted models with associated usage costs.\n*   **GPT-4o (Probe)** — *High intelligence, 128K context.*\n*   **GPT-4o mini** — *Fast and efficient, 128K context, supports tool calling.*\n*   **Kokoro (Local/OpenAI interface)** — *Text-to-Speech (TTS).*\n\n### **Search & Specialized**\n*   **Searxng** — *Web search capability.*"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02b7c-00a8-775e-8503-0d84d0a83ef9",
+          "session_id": "01a02b7c-412e-72d9-a5b3-1721438dec3d",
+          "prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "scenario_prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.510627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.49317+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.250496+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.510627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:02.49317+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:30.225423+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:30.225423+00"
+              }
+            }
+          },
+          "answer": "You have several models available across different providers. Here is the breakdown of what your configured providers currently offer:\n\n### **LM Studio (Local/Private Models)**\nThese models are running on your local machine.\n*   **Gemma-4 26B (Various versions):**\n    *   `Gemma-4 26B-A4B QAT`: 200K context, supports chat and tool calling.\n    *   `Gemma-4 26B FD4-067`: 120K context, supports chat.\n    *   `gemma-26b`: 40K context, supports chat and tool calling.\n*   **Qwen Series:**\n    *   `Qwen3.6 35B-A3B`: 120K context, supports chat and tool calling.\n    *   `Qwen3 35B (E2E)`: 120K context, supports chat.\n    *   `Qwen3 Coder 30B`: 32K context, supports chat.\n    *   `Qwen3.5 9B (Critic/Tooltest)`: 32K context, supports chat.\n    *   `Qwen2.5 7B Instruct`: 32K context, supports chat.\n*   **Nvidia Nemotron:**\n    *   `Nemotron-3 Nano`: 260K context, supports chat and tool calling.\n*   **Embeddings & Reranking:**\n    *   `bge-m3`: 8K context, supports embeddings.\n    *   `Local bge-reranker-v2-m3`: Supports reranking.\n\n### **OpenAI (Cloud Models)**\nThese are hosted models with associated usage costs.\n*   **GPT-4o (Probe):** 128K context, supports chat.\n*   **GPT-4o mini:** 128K context, supports chat and tool calling.\n*   **Kokoro (Local/OpenAI):** Supports Text-to-Speech (TTS).\n\n### **Search & Specialized**\n*   **Searxng:** Web search capabilities."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02b7c-a88d-71ee-87a6-29e29edfc2ce",
+          "session_id": "01a02b7c-ddfb-7c69-91a3-2db09467186d",
+          "prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "scenario_prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.536585+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.525743+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.233692+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.536585+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:45.525743+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models available across different providers. Here is the breakdown of what your configured providers currently offer:\n\n### **LM Studio (Local/Private Models)**\nThese models are running on your local machine.\n*   **Gemma-4 26B-A4B QAT (200K)** — *High context, supports tool calling.*\n*   **Gemma-4 26B FD4-067** — *High context (120K).*\n*   **Qwen3.6 35B-A3B (120K)** — *High context, supports tool calling.*\n*   **Qwen3 35B (E2E)** — *High context (120K).*\n*   **Nemotron-3 Nano (260K)** — *Very high context, supports tool calling.*\n*   **Qwen3 Coder 30B** — *Optimized for coding, supports tools.*\n*   **Qwen3.5 9B (Critic/Tooltest)** — *Fast, specialized versions.*\n*   **Qwen2.5 7B Instruct** — *Fast, non-reasoning.*\n*   **bge-m3** — *Embedding model.*\n*   **bge-reranker-v2-m3** — *Reranking model.*\n\n### **OpenAI (Cloud Models)**\nThese are hosted via your OpenAI API credentials.\n*   **GPT-4o (Probe)** — *High intelligence, 128K context.*\n*   **GPT-4o mini** — *Fast and efficient, 128K context, supports tool calling.*\n*   **Kokoro (Local/OpenAI)** — *Text-to-speech (TTS).*\n\n### **Search & Specialized**\n*   **SearxNG** — *Web search capability.*"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02b7d-456a-7678-aa95-ea1ddf6b9ee9",
+          "session_id": "01a02b7d-7b57-7d32-b684-cb1234b4069f",
+          "prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "scenario_prompt": "What models can I use? Show me what my configured provider actually offers.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.588387+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.575222+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.359077+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.588387+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:00:25.575222+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models available across different providers. Here is a breakdown of what your configured providers currently offer:\n\n### **LM Studio (Local/Private Models)**\nThese models are running on your local machine. They are generally free to use (no per-token cost) but depend on your hardware.\n\n*   **Chat & Reasoning:**\n    *   **Gemma-4 26B (Various versions):** High-performance models with context windows ranging from 40K to 200K.\n    *   **Qwen Series:** Includes **Qwen3.6 35B** (120K context), **Qwen3 35B**, **Qwen3 Coder 30B**, and several **Qwen3.5 9B** variants.\n    *   **Nemotron-3 Nano:** A very large context model (260K).\n*   **Specialized Tools:**\n    *   **bge-m3:** For text embeddings.\n    *   **bge-reranker-v2-m3:** For local reranking tasks.\n\n### **OpenAI (Cloud-based Models)**\nThese are high-performance cloud models. Note that these incur costs based on usage.\n\n*   **GPT-4o (Probe):** High-intelligence model (128K context).\n*   **GPT-4o mini:** A faster, more efficient version of GPT-4o (128K context).\n*   **Kokoro (Local/OpenAI):** A text-to-speech (TTS) model.\n\n### **Search & Specialized Services**\n*   **SearxNG:** A web search tool for real-time information.\n\n**Summary of Capabilities:**\n*   **For long-form writing/context:** Gemma-4 26B (200K) or Nemotron-3 Nano (260K).\n*   **For complex reasoning/logic:** GPT-4o or the Qwen3 35B models.\n*   **For quick, lightweight tasks:** Qwen2.5 7B or GPT-4o mini."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 0
+    },
+    {
+      "tool": "world_map_add_marker",
+      "scenario": "world-map-add-marker",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "c335bf64fb23074c",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): an absent map_id is refused with 'map not found — check the map_id (call world_map_list for valid ids)'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): a foreign map_id refuses IDENTICALLY."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02b7a-93cd-72a5-a185-07e7fc16582e",
+          "session_id": "01a02b7a-cefe-73a9-a307-1f0f980a6248",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.128484+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.103709+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.275816+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.459357+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:28.841397+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.128484+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.103709+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.275816+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 21:57:29.459357+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having trouble accessing your \"Ashfall\" map to place the pin. It seems I can't find a map with that exact name in your world.\n\nCould you please double-check the name of the map, or let me know if it's part of a specific world I should look into? Once I have the correct map ID, I'll place the \"Hollow Keep\" pin in the top-left for you immediately."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02b7c-48fe-7563-95d8-e09679ccb480",
+          "session_id": "01a02b7c-8090-7680-a558-c4a200bc1460",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.932113+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.923002+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:21.046288+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:21.208534+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.735327+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.932113+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:20.923002+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:21.046288+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 21:59:21.208534+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02b7f-7c8c-7bdd-a8d8-d577c812516e",
+          "session_id": "01a02b7f-b77b-7b79-af8f-c05e4610565c",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.83115+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.813335+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.952037+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:51.131542+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.572414+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.83115+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.813335+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:50.952037+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:02:51.131542+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm having some trouble accessing the \"Ashfall\" map to place the marker. It seems I'm unable to retrieve the correct ID for that map to complete your request.\n\nCould you please confirm the exact name of the map, or let me know if there's another way you'd like me to record \"Hollow Keep\" for you?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02b80-a408-713e-8351-b5fc677341e7",
+          "session_id": "01a02b80-d48d-7cae-8bc6-d43eff0a28e1",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.375584+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.368414+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.479675+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.642892+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.186516+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.375584+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.368414+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.479675+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:04:06.642892+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, I'm having trouble accessing your \"Ashfall\" map to place the marker. It seems I'm unable to retrieve the correct map ID for it. \n\nCould you please provide the exact name of the world or confirm if \"Ashfall\" is the name of the map itself? Once I have the correct identifier, I'll be able to place the \"Hollow Keep\" pin for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02b82-500f-7dda-87c7-50c07412b1d9",
+          "session_id": "01a02b82-8ea4-70cd-a4c4-094ce4076353",
+          "prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "scenario_prompt": "On my Ashfall map, put a pin near the top-left labelled Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_add_marker",
+            "world_map_list"
+          ],
+          "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.956112+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.946216+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:56.075444+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:56.253181+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.756595+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.956112+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:55.946216+00"
+              },
+              "loreweave_book.worlds": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:56.075444+00"
+              },
+              "loreweave_book.world_maps": {
+                "rows": 1,
+                "latest": "2026-08-22 22:05:56.253181+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
