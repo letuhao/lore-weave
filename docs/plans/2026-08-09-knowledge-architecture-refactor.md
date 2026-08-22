@@ -19483,6 +19483,48 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   them visible on every gate run; it does not authorise them.
 
 
+  ---
+  ### 🟡 T55/c 2026-08-22 — **my own `read-owed` count claimed more than I could measure**
+
+  ```
+  read-owed   10, "a genuine bi-temporal read"   ->  9, "reaches the GRAPH; a candidate"
+  ```
+
+  The ledger shipped hours earlier called ten paths *"READS the KAL does not yet federate"*.
+  Checked rather than re-read, that is not derivable at this granularity. **Two probes over
+  the same ten paths disagree, and both are wrong in a knowable way:**
+
+  ```
+  3 of 10   scan the route handler's own body
+            MISSES delegation. `/internal/context/build` shows only `ProjectsRepo` for 60
+            lines and reaches the graph TWO hops down, via `app.context.modes.full`.
+
+  9 of 10   follow the module's import closure
+            Attributes any graph use ANYWHERE in the closure to EVERY route in the module,
+            and resolved `/internal/knowledge/jobs` "via app.routers.internal_wiki" — which
+            is nonsense on its face.
+  ```
+
+  🎯 **So the honest artifact records what is established and stops there:** the call is
+  direct, and the graph is reachable from it. Whether each belongs behind the KAL is the
+  per-route judgement §8.3 actually asks for — not something an import graph settles.
+
+  ⚖️ **One path moved on evidence, and only one.** `/internal/books/{}/kg-state` is the single
+  case where BOTH probes agree: the handler reads `get_knowledge_pool` and the closure reaches
+  no graph symbol at all. It is a Postgres-backed read despite the name, reclassified
+  `read-pg`. The other nine stay candidates because nothing yet distinguishes them.
+
+  🔴 **This is the same defect this plan keeps finding in other people's numbers** — T88's
+  denominator over deleted modules, T91's *"0/0 ENGINE-AGNOSTIC"* over a family it could not
+  see, A13's hand-classified 28. A count that reads as settled when it is not is worse than no
+  count, because the next reader spends the debt against it. It applied to mine within the
+  hour, which is the useful part of the record.
+
+  **QC (a) gates:** `--selftest` unchanged and green, gate PASS at 42/13/9, all repo gates
+  green. **QC (b):** N/A — no service seam crossed. **QC (c):** both probe outputs above are
+  real runs over `app/routers/**`, which is why they could be compared at all.
+
+
 - [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.4. Unfinished, not undecided.
   The PO asked what to audit so the migration does not rot. §8.4 tabulates eight rot patterns,

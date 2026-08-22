@@ -330,9 +330,24 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #:   compute      the consumer sends its own payload and gets a derived answer back; no
 #:                bi-temporal entity state is returned
 #:   admin        an operator/erasure path, deliberately not user-facing
-#:   read-owed    a genuine bi-temporal read that the KAL does NOT yet federate. THE DEBT.
-#:                §8.3 owes each of these a federated route; the entry records it where a
-#:                reader will look rather than leaving the call invisible.
+#:   read-owed    reaches knowledge-service on a path that touches the GRAPH, and the KAL
+#:                does not federate it. A CANDIDATE for federation, not a verdict.
+#:
+#: ⚠️ `read-owed` deliberately claims less than it first did. The first cut called these
+#: "a genuine bi-temporal read", and that is not mechanically derivable at this granularity —
+#: two probes over the same ten paths disagree, and BOTH are wrong in a known way:
+#:
+#:     3 of 10   scanning the route handler's own body. MISSES delegation: `/internal/
+#:               context/build` shows only `ProjectsRepo` for 60 lines and reaches the graph
+#:               two hops down, through `app.context.modes.full`.
+#:     9 of 10   following the module's import closure. Attributes any graph use ANYWHERE in
+#:               the closure to EVERY route in the module, and resolved `/internal/knowledge/
+#:               jobs` "via app.routers.internal_wiki", which is nonsense.
+#:
+#: So the ledger records what is established — the call is direct, and the graph is reachable
+#: from it — and leaves "is this a bi-temporal read that belongs behind the KAL" to the
+#: per-route judgement §8.3 actually asks for. A count that reads as settled when it is not is
+#: the defect this plan keeps finding in other people's numbers; it applies to mine.
 DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     # ── read-owed: the actual INV-KAL gap this check exists to make visible ──────────────
     "/internal/context/build": (
@@ -344,7 +359,9 @@ DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
         "read-owed", "resolves a project's book — reads owned state"),
     "/internal/projects/{}/fact-for-check": (
         "read-owed", "bi-temporal fact read; watched firing live while this gate said PASS"),
-    "/internal/books/{}/kg-state": ("read-owed", "per-book KG state read"),
+    # The ONE case both probes agree on: handler reads `get_knowledge_pool` and the import
+    # closure reaches no graph symbol at all. A Postgres-backed read despite the name.
+    "/internal/books/{}/kg-state": ("read-pg", "per-book KG state, served from Postgres"),
     "/internal/knowledge/timeline": ("read-owed", "event timeline read"),
     "/internal/knowledge/wiki-neighborhood": (
         "read-owed", "the GraphStore port's neighborhood, via HTTP"),
@@ -617,7 +634,8 @@ def main() -> int:
                           if cls == "read-owed" and p in reached)
             print(f"[knowledge-http-surface-gate] direct-call ledger {len(reached)} path(s) "
                   f"across {len({s for v in reached.values() for s in v})} consumer service(s), "
-                  f"all declared; {len(owed)} are READS the KAL does not yet federate (§8.3):")
+                  f"all declared; {len(owed)} reach the GRAPH and are candidates for "
+                  f"federation (§8.3 — a per-route call, not derivable from imports):")
             for path in owed:
                 print(f"    read-owed  {path}")
         print(f"[knowledge-http-surface-gate] PASS — no consumer hits the "
