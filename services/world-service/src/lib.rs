@@ -70,6 +70,7 @@ pub mod rebuild;
 pub mod replay_aggregate;
 pub mod server;
 pub mod space_view;
+pub mod spawn;
 pub mod world_seed;
 
 pub use capacity_glue::{live_snapshot, place_reality, LIVE_STATES};

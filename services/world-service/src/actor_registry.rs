@@ -22,6 +22,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::errors::ProvisionerError;
+use crate::spawn::Siting;
 
 /// One row of the registry: the platform's identity, and the island's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,17 +46,36 @@ pub struct ActorRow {
 pub async fn create_actor(
     reality_pool: &PgPool,
     reality: &RealityId,
+    siting: Option<&Siting>,
 ) -> Result<ActorRow, ProvisionerError> {
     let actor_id = Uuid::new_v4();
+
+    // ONE TRANSACTION, and `A3` is the reason. An actor row that exists with
+    // nowhere to be is the half-written state `world_seed` refuses on the world
+    // side -- and there the repo at least has `orphan_scan` to collect the
+    // wreckage. An actor with no binding has no collector at all, so the two
+    // writes commit together or neither does.
+    let mut tx = reality_pool
+        .begin()
+        .await
+        .map_err(|e| ProvisionerError::Bridge(format!("begin: {e}")))?;
+
     let row = sqlx::query(
         "INSERT INTO actors (reality_id, actor_id) VALUES ($1, $2) RETURNING entity_id",
     )
     .bind(reality.as_uuid())
     .bind(actor_id)
-    .fetch_one(reality_pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| ProvisionerError::Bridge(format!("create actor: {e}")))?;
-    Ok(ActorRow { actor_id, entity_id: row.get::<i64, _>("entity_id") })
+    let entity_id = row.get::<i64, _>("entity_id");
+
+    if let Some(s) = siting {
+        crate::spawn::site_in_cell(&mut tx, reality.as_uuid(), entity_id, s).await?;
+    }
+
+    tx.commit().await.map_err(|e| ProvisionerError::Bridge(format!("commit: {e}")))?;
+    Ok(ActorRow { actor_id, entity_id })
 }
 
 /// Adopt an entity the island already has, under an explicit `entity_id`.
@@ -68,6 +88,7 @@ pub async fn create_actor(
 pub async fn adopt_actor(
     reality_pool: &PgPool,
     reality: &RealityId,
+    siting: Option<&Siting>,
     entity_id: i64,
 ) -> Result<ActorRow, ProvisionerError> {
     // REFUSE AN ID THE ISLAND CANNOT HOLD, at the edge that can still say no —
@@ -76,13 +97,28 @@ pub async fn adopt_actor(
     let entity_id = checked_island_id(reality, entity_id)?;
 
     let actor_id = Uuid::new_v4();
+
+    // ONE TRANSACTION -- `A3`. Same reason as `create_actor`, plus one this path
+    // already documented below: the row and the sequence advance are one fact,
+    // and committing the row without the advance is the collision that comment
+    // predicts. A transaction is strictly stronger than the "re-run the adopt"
+    // repair it currently offers.
+    let mut tx = reality_pool
+        .begin()
+        .await
+        .map_err(|e| ProvisionerError::Bridge(format!("begin: {e}")))?;
+
     sqlx::query("INSERT INTO actors (reality_id, actor_id, entity_id) VALUES ($1, $2, $3)")
         .bind(reality.as_uuid())
         .bind(actor_id)
         .bind(entity_id)
-        .execute(reality_pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| ProvisionerError::Bridge(format!("adopt actor {entity_id}: {e}")))?;
+
+    if let Some(s) = siting {
+        crate::spawn::site_in_cell(&mut tx, reality.as_uuid(), entity_id, s).await?;
+    }
 
     // ADVANCE THE SEQUENCE PAST WHAT WE JUST ADOPTED.
     //
@@ -102,14 +138,16 @@ pub async fn adopt_actor(
         "SELECT setval(pg_get_serial_sequence('actors', 'entity_id'), \
          GREATEST((SELECT COALESCE(MAX(entity_id), 1) FROM actors), 1))",
     )
-    .execute(reality_pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         ProvisionerError::Bridge(format!(
-            "adopt actor {entity_id}: the row landed but the identity sequence did not \
-             advance ({e}) — the next allocation will collide; re-run the adopt"
+            "adopt actor {entity_id}: the identity sequence did not \
+             advance ({e}); the transaction rolled back, so a re-run is safe"
         ))
     })?;
+
+    tx.commit().await.map_err(|e| ProvisionerError::Bridge(format!("commit: {e}")))?;
     Ok(ActorRow { actor_id, entity_id })
 }
 

@@ -75,6 +75,15 @@ pub struct CreateActorRequest {
     /// every existing island undrivable by this feature.
     #[serde(default)]
     pub entity_id: Option<i64>,
+    /// `A3` — WHERE the actor arrives, and as what.
+    ///
+    /// Optional, and its absence is a real answer rather than a default: an
+    /// actor with no siting exists and is nowhere, which is what every actor in
+    /// this repo was until now. Supplying it makes the actor row and its
+    /// `entity_binding` land in ONE transaction, so the actor cannot exist with
+    /// nowhere to be.
+    #[serde(default)]
+    pub siting: Option<crate::spawn::Siting>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,9 +106,15 @@ pub async fn create_actor(
     body: Result<Json<CreateActorRequest>, JsonRejection>,
 ) -> Result<(StatusCode, Json<CreateActorResponse>), ProblemDetails> {
     let Json(req) = body.map_err(invalid_body)?;
-    let row = flow::create_actor(&state.meta, &state.effects, req.reality_id, req.entity_id)
-        .await
-        .map_err(to_problem)?;
+    let row = flow::create_actor(
+        &state.meta,
+        &state.effects,
+        req.reality_id,
+        req.entity_id,
+        req.siting.as_ref(),
+    )
+    .await
+    .map_err(to_problem)?;
     Ok((
         StatusCode::CREATED,
         Json(CreateActorResponse {

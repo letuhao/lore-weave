@@ -129,6 +129,9 @@ struct Args {
     expected_user_ref_id: Option<Uuid>,
     /// Optional on `create-actor`: adopt this island id instead of allocating.
     entity_id: Option<i64>,
+    /// `A3` — optional on `create-actor`: site the new actor in this node.
+    /// All three of `--at` / `--entity-type` / `--lifecycle-state` or none.
+    siting: Option<world_service::spawn::Siting>,
     reason: String,
     dry_run: bool,
 }
@@ -144,6 +147,9 @@ impl Args {
         let mut actor_id: Option<Uuid> = None;
         let mut expected_user_ref_id: Option<Uuid> = None;
         let mut entity_id: Option<i64> = None;
+        let mut at: Option<i64> = None;
+        let mut entity_type: Option<world_service::spawn::EntityType> = None;
+        let mut lifecycle_state: Option<i16> = None;
         let mut reason: Option<String> = None;
         let mut dry_run = false;
 
@@ -166,6 +172,26 @@ impl Args {
                 "--expected-user-ref-id" => expected_user_ref_id = Some(uuid_arg(flag, val)?),
                 "--entity-id" => {
                     entity_id = Some(val.parse().map_err(|e| format!("--entity-id: {e}"))?);
+                }
+                "--at" => {
+                    at = Some(val.parse().map_err(|e| format!("--at: {e}"))?);
+                }
+                "--entity-type" => {
+                    entity_type = Some(match val.as_str() {
+                        "pc" => world_service::spawn::EntityType::Pc,
+                        "npc" => world_service::spawn::EntityType::Npc,
+                        "item" => world_service::spawn::EntityType::Item,
+                        "env_object" => world_service::spawn::EntityType::EnvObject,
+                        other => {
+                            return Err(format!(
+                                "--entity-type {other}: one of pc, npc, item, env_object"
+                            ));
+                        }
+                    });
+                }
+                "--lifecycle-state" => {
+                    lifecycle_state =
+                        Some(val.parse().map_err(|e| format!("--lifecycle-state: {e}"))?);
                 }
                 "--reason" => reason = Some(val.clone()),
                 other => return Err(format!("unknown flag {other}")),
@@ -203,8 +229,27 @@ impl Args {
                 }
             }
         }
+
+        // `A3` -- a siting is THREE facts and there is no default for any of
+        // them. `lifecycle_state` in particular is the reality's declared
+        // vocabulary (`0025`'s `D-12`), so a partial siting cannot be completed
+        // by this binary without inventing one. All three or none.
+        let siting = match (at, entity_type, lifecycle_state) {
+            (None, None, None) => None,
+            (Some(node), Some(entity_type), Some(lifecycle_state)) => {
+                if !matches!(op, Op::CreateActor) {
+                    return Err("--at is only accepted for --op create-actor".to_string());
+                }
+                Some(world_service::spawn::Siting { node, entity_type, lifecycle_state })
+            }
+            _ => {
+                return Err("--at, --entity-type and --lifecycle-state go together: a                             partial siting has no default to complete it, because                             `lifecycle_state` is the reality's declared vocabulary and                             not the engine's to choose"
+                    .to_string());
+            }
+        };
         Ok(Args {
             op,
+            siting,
             reality_id,
             user_ref_id,
             actor_id,
@@ -388,7 +433,14 @@ async fn execute(args: &Args, meta: &PgPool, cfg: &Config) -> Result<Value, Prov
         }
         Op::CreateActor => {
             let row =
-                flow::create_actor(meta, &cfg.effects, args.reality_id, args.entity_id).await?;
+                flow::create_actor(
+                    meta,
+                    &cfg.effects,
+                    args.reality_id,
+                    args.entity_id,
+                    args.siting.as_ref(),
+                )
+                .await?;
             Ok(json!({
                 "mode": "live",
                 "outcome": "actor_created",

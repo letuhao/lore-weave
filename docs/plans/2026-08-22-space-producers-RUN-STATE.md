@@ -104,7 +104,7 @@ yes. Nobody asked *"can anything reach what the rows built?"* **A board measures
 |---|---|---|---|
 | `A1` | **MEASURE the bootstrap seam before touching it.** What does `provision_flow` → `reality_seeder` actually execute end to end, in order, on a real provision? Which phase could own space, and what does `book_reader`'s *"initial geography"* return today? | `[x]` | **DONE 2026-08-22 — §3.1 below. The answer is worse than §1 assumed: there is no space phase because THERE IS NO SEEDING PHASE.** `RealitySeeder` prod callers **0** (controls 3 and 7) |
 | `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[x]` | **DONE 2026-08-22 — §3.3.** A 12th provision step `seed_world_structure`, called BETWEEN the two transitions so it runs while the reality is in `seeding`. 181 lib tests (178 → 181), **3 bites**, 3 baselines moved in the same commit |
-| `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[ ]` | |
+| `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[x]` | **DONE 2026-08-22 — §3.4.** `spawn::site_in_cell`, atomic with actor creation, proven against real Postgres. **The orphan bite fires**: `actors 2 -> 3` when the transaction is removed. 183 lib tests + 4 live suites green |
 | `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[ ]` | |
 | `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[ ]` | |
 
@@ -208,6 +208,55 @@ the compiler complained.
 `the_wire_spelling_of_every_kind_and_scale_is_pinned` asserts all thirteen strings in Rust — renaming
 a variant is a source-compatible edit that would otherwise break every external caller in silence.
 
+#### 3.4 · `A3` — spawn, and the property that makes it worth having
+
+**`spawn::site_in_cell` takes a `&mut PgConnection`, not a `&PgPool`, and that is the whole design.**
+The actor row and its `entity_binding` land together or neither does. A pool would let the binding
+commit independently of whatever created the entity, which is the orphan this module exists to make
+impossible — and an actor with no binding has **no collector at all**: `orphan_scan` does not look at
+this table, so it is strictly worse than the half-provisioned reality the repo already designed
+against.
+
+**`Q1` answered by copying, not deciding.** `entity_binding` is a join between two owners — the
+registry knows what an entity IS, the space tree knows where a place is — which is exactly why it had
+no producer. `actor_registry::create_actor` already holds both facts in the reality's own database, so
+spawn rides the same path, same database, same transaction. **`Q2`: spawn is an ADMIN act.** An actor
+is created by an operator or a bootstrap, never by itself, so the act that puts it somewhere is the
+same kind of act that brought it into being. A player-initiated MOVE is a proposal; **arriving is not**.
+
+**What spawn refuses to choose.** `lifecycle_state` is a declared ordinal (`0025`'s `D-12`: *"ONE
+REALITY'S VOCABULARY, not the engine's"*), and no reality has declared one —
+`contracts/meta/transitions.yaml` carries `reality` and nothing for entities. So the caller supplies
+it and the CLI takes **all three of `--at`/`--entity-type`/`--lifecycle-state` or none**: a partial
+siting has no default to complete it.
+
+**Measured, against real Postgres, in a throwaway that dropped:**
+
+```
+A3 SPAWN (real Postgres)
+  unsited actor          : entity 1 , 0 bindings
+  sited actor            : entity 2 -> cell 1
+  refused siting         : actors 2 -> 2 (no orphan)
+  double siting          : refused
+```
+
+**The bite** — commit the actor row before siting, as the code did before `A3`:
+
+```
+THE ORPHAN IS REAL: the binding was refused but 1 actor row(s) survived (2 -> 3).
+An actor that exists with nowhere to be has no collector -- `orphan_scan` does not
+look at this table
+```
+
+Restored byte-identical (`cmp` rc=0), green again. **`adopt_actor` got the same transaction**, and
+that is a second fix rather than symmetry: its own comment already warned that a committed row with an
+un-advanced identity sequence collides on the next allocation and offered *"re-run the adopt"* as the
+repair. A transaction is strictly stronger — nothing lands, so the re-run is safe by construction.
+
+**Found while registering the suite, and it is `C4`:** four live suites were on disk in **no registry
+row at all**, three of them from the predecessor run. 23 → 27, and all four then failed the gate's
+skip-announcement rule — a suite that did nothing was reading as a pass, which is **drift 11 exactly**.
+
 ### Lane B — the rows other boards still hold open
 
 | # | Row | Status | Evidence |
@@ -223,6 +272,7 @@ a variant is a source-compatible edit that would otherwise break every external 
 |---|---|---|---|
 | `C1` | **`goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards | `[ ]` | |
 | `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[ ]` | |
+| `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
 | `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[ ]` | |
 
 ---
@@ -261,6 +311,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 | id | what | mechanism / what would settle it |
 |---|---|---|
 | **OUT-1** | **The 26 Writing Studio / Work Assistant / Book-Package boards are out of scope and NOT closed.** Live open rows: `studio-tool-gui` **192 slices, every one `TODO`, never started** · `book-package` 11 open + 3 half-built (`B1` blocked on `M6.1`, *registered but not implemented*) · `work-assistant` `E1`/`E2`/`E7` 🅿 and two rows marked `✅ partial` · `all-tracks-clear` `M2`/`M7`/`M8`/`M10` · S2/S4/S5/S8 residue | A PO decision to resume that product. Recorded here **only** so the 2026-08-22 overview cannot be misread as "44 of 51 closed, nothing left" |
+| **OR-4** | **`3C`/`3D` appear to be ALREADY DONE.** `A3` needed a `dp::RealityId` and found `crates/dp/src/ids.rs:89` present with a crate-private `new_verified`, plus `ControlPlane`, `SessionContext`, `VerifiedBind` and `BindRequest` all live and used by `tests/support/mod.rs`. The reality-layer board still marks `3C` *"⬜ blocked on a PRODUCER"* | `B1` verifies rather than assumes — if true it is `B3`'s shape a second time: the work shipped and the register was never told |
 | **OR-3** | **`A2` makes `seed_world` reachable but nothing yet DECLARES a world.** Every in-repo caller passes an empty `Vec` today, so the step is `Skipped` on every existing path; the reality that gets a world is one an operator or a test provisions with `--world`. That is a genuine caller and not a fake one — but a producer with no author is `A5`'s warning pointed at lane A itself | `A3` sites an actor, which needs a node to site it in. If `A3` ends up hand-writing a declaration to test against, that declaration is the missing author and belongs in the repo |
 | **OR-2** | **Two components both own the `Seeding → Active` transition** — `provisioner.rs:296-298` (runs) and `reality_seeder/mod.rs:495-500` (does not). The background orchestrator L5.G designed for the `seeding` stage was never started, and the provisioner closes the stage it was meant to occupy | **DECIDED 2026-08-22 by `A2` (`D-6`): the orchestrator is NOT resurrected this run.** The `seeding` stage now does its work synchronously, which is consistent with step 5 already applying 67 migrations synchronously in the same request. `reality_seeder` keeps its 1008 lines and its zero callers, and that is now a NAMED debt rather than an unnoticed one — it wakes when seeding work outgrows an HTTP request, and `A5` is not the row that decides it |
 | **OUT-2** | **`3E` is 🅿 PARKED behind reality-layer slice 5** and stays parked — `B1` does not unpark it. Its own board measured **880 across 99 files** against a plan that still says 457 | A production `ControlPlane` implementor exists |
@@ -281,14 +332,14 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `A3` — SPAWN. `entity_binding` gets a producer, which is the row the predecessor run existed to make writable. `A2` is done (§3.3): a reality can now be provisioned WITH a world, so there is somewhere to site an actor. Read `OR-3` first — every in-repo caller still declares an empty world, so `A3` will need a real declaration, and where that declaration LIVES is the question `A3` decides rather than works around.**
+**RESUME: `A4` — a caller for `space_view::assemble`, so something can ask *what is here* and get an answer over the wire. `A3` is done (§3.4): an actor can now arrive at a node atomically, so there is finally something for the view to report. Note `OR-4` before starting `B1`: `3C`/`3D` look ALREADY DONE — `crates/dp/src/ids.rs` exists with `ControlPlane` and `SessionContext` live — so `B1` verifies rather than builds.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
 lanes: |
   A producers = A1, A2, A3, A4, A5
   B boards    = B1, B2, B3, B4
-  C tooling   = C1, C2, C3
+  C tooling   = C1, C2, C3, C4
 rules: |
   1 A check that cannot fail is not a check. Prove every one with a bite.
   2 Measure before building; re-measure rather than recall.

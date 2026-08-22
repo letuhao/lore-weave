@@ -350,6 +350,56 @@ components:
           description: |
             Omit to let the registry allocate. Supply only to adopt an entity
             the island already has.
+        siting:
+          type: [object, "null"]
+          description: |
+            `A3` — WHERE the actor arrives, and as what.
+
+            Optional, and its absence is a real answer rather than a default: an
+            actor with no siting exists and is nowhere, which is what every actor in
+            this repo was until `A3`. When present, the `actors` row and the
+            `entity_binding` row land in ONE transaction — a bad `node` refuses the
+            whole call, so an actor cannot exist with nowhere to be.
+
+            Siting an entity that is already sited is refused. Arriving is not
+            moving; letting the same write do both would make them
+            indistinguishable in the log.
+          $ref: "#/components/schemas/Siting"
+
+    Siting:
+      type: object
+      additionalProperties: false
+      required: [node, entity_type, lifecycle_state]
+      description: |
+        Mirrors `world_service::spawn::Siting`. Only the `in_cell` variant of
+        `EntityLocation` is expressible: `held_by`, `in_container` and `embedded`
+        are real and belong to an inventory owner that does not exist yet, and
+        adding their fields here would decide that owner by accident.
+      properties:
+        node:
+          type: integer
+          format: int64
+          description: |
+            The `channels.id` to site the entity in. `0025`'s foreign key is
+            `ON DELETE RESTRICT`, so a node that does not exist refuses the call
+            rather than being silently nulled.
+        entity_type:
+          type: string
+          enum: [pc, npc, item, env_object]
+          description: |
+            The discriminator `EF_001` §3.1 stores denormalised. Closed in SQL by
+            `entity_binding_type_closed` and closed again in Rust, because an
+            enumerated set of call sites is default-uncovered (`NV-3`).
+        lifecycle_state:
+          type: integer
+          description: |
+            The reality's DECLARED lifecycle ordinal, and there is deliberately no
+            default. `0025`'s `D-12`: *"Existing / Suspended / Destroyed / Removed
+            is ONE REALITY'S VOCABULARY, not the engine's."* No reality has declared
+            one yet — `contracts/meta/transitions.yaml` carries the `reality`
+            resource and nothing for entities — so the caller supplies it. A
+            hardcoded default here would be the engine choosing a reality's words.
+
     CreateActorResponse:
       type: object
       required: [reality_id, actor_id, entity_id]

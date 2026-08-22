@@ -252,12 +252,13 @@ pub async fn create_actor(
     cfg: &EffectsConfig,
     reality_id: Uuid,
     entity_id: Option<i64>,
+    siting: Option<&crate::spawn::Siting>,
 ) -> Result<ActorRow, ProvisionerError> {
     let reality = bind_reality(meta, &cfg.meta_allowlist, reality_id).await?;
     let pool = open_reality_pool(meta, cfg, &reality).await?;
     match entity_id {
-        None => actor_registry::create_actor(&pool, &reality).await,
-        Some(e) => actor_registry::adopt_actor(&pool, &reality, e).await,
+        None => actor_registry::create_actor(&pool, &reality, siting).await,
+        Some(e) => actor_registry::adopt_actor(&pool, &reality, siting, e).await,
     }
 }
 

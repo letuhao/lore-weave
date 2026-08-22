@@ -205,7 +205,9 @@ impl ExecuteManyCompat for sqlx::PgPool {
 #[tokio::test]
 async fn world_seed_writes_a_world_and_refuses_without_writing() {
     let Some(admin) = admin_dsn() else {
-        eprintln!("LOREWEAVE_TEST_PG_ADMIN_URL unset - skipping");
+        eprintln!(
+            "SKIP: LOREWEAVE_TEST_PG_ADMIN_URL unset -- this suite did NOTHING. \n             A silent skip reads as a pass, which is how a green run once certified \n             an empty one."
+        );
         return;
     };
     let db = format!("ws_worldseed_{}_test", std::process::id());

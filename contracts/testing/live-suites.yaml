@@ -331,6 +331,63 @@ suites:
         kind: postgres
         schema: per_reality
 
+  # ── the space spine ─────────────────────────────────────────────────────
+  # These four were on disk and in NO row. The gate walks registry -> disk, so it
+  # reported "23 suites, ALL run" and was telling the truth about the 23 it could
+  # see; nothing walks disk -> registry. Found by `A3` while registering its own
+  # suite. The missing direction is board row `C4`.
+  - id: world-world-seed
+    package: world-service
+    target: world_seed_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. It creates and drops its own throwaway
+      database, so it needs an admin DSN and no CI-provisioned schema.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-writer-state-validate
+    package: world-service
+    target: writer_state_validate_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. Proves `FLOW-19`'s owed `VALIDATE CONSTRAINT`
+      discharge against its own throwaway database.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-space-view-measure
+    package: world-service
+    target: space_view_measure_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. `SDF-Q15`'s measurement; its wall-clock number
+      is reported, never asserted, so a slow runner cannot red it.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
+  - id: world-spawn-atomic
+    package: world-service
+    target: spawn_atomic_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Runs under the registry leg. `A3`'s atomicity proof: an actor row and its
+      `entity_binding` land together or neither does.
+    needs:
+      - env: LOREWEAVE_TEST_PG_ADMIN_URL
+        kind: postgres-admin
+        schema: none
+        ci_db: postgres
+
   # ── roleplay-service ────────────────────────────────────────────────────
   - id: roleplay-integration
     package: roleplay-service
