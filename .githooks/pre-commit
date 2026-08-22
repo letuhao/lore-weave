@@ -28,6 +28,7 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ingress-admission-gate.py"
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
+"$PY" "$ROOT/scripts/adapter-selectability-gate.py"
 
 # T16 — Cypher belongs in an adapter. Staged-scoped: unlike the invariants above this one
 # is about the file you are touching, and the tree already carries a baselined backlog

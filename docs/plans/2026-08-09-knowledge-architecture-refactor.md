@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T56 — the anti-rot audit set: every check earned by a defect this plan actually hit.**
+**RESUME: T56 (b) — every gate prints its number unconditionally; generalise the port-adoption floor bug.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 65 of 114 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 66 of 115 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (1/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2551,6 +2551,72 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T56a 2026-08-22 — **built-but-unselectable now has a gate, and it found one live**
+
+  ```
+  adapter-selectability-gate   NEW · --selftest 11/11 · wired to pre-commit AND CI
+  5 adapters exercised by a conformance/parity/shadow suite
+  3 declared evaluation-only, WITH reasons · 2 reachable from a provider
+  gate-wiring-gate  108 -> 109 gates, all wired
+  ```
+
+  📐 §8.4's sharpest rot pattern, in the plan's own words: *"T42/T43 closed green with 30
+  conformance tests passing while the thing they built could not be selected — which is T54's
+  entire existence."* `AgeGraphStore` was written, conformance-tested against a real AGE
+  database, compared in a shadow differential, and `KNOWLEDGE_GRAPH_BACKEND=age` **raised**.
+  Every suite was green.
+
+  **A suite cannot see this, and the reason is structural: a suite constructs the adapter
+  itself.** That is what makes it a suite. Reachability is a property of the *provider*, which
+  no conformance test touches.
+
+  🎯 **THE GATE FOUND A LIVE ONE.** `KuzuGraphStore` is conformance-tested against a real Kuzu
+  database and compared in the shadow differential — and **no provider can construct it**;
+  `KNOWLEDGE_GRAPH_BACKEND` accepts `neo4j` and `age` only. The same defect T42/T43 hit with
+  AGE, still live for Kuzu, a year of plan later.
+
+  ⚖️ **It is declared, not fixed, and the distinction is the whole design.** Kuzu is an X1 engine
+  candidate: it is EMBEDDED with a single write handle per database file, which the plan records
+  as *"the single biggest input to the engine choice"*. It is measured, not deployed. So the
+  rule has two arms — **constructible from a provider, OR declared evaluation-only with a
+  reason** — because *"deliberately not selectable"* and *"nobody remembered"* are
+  indistinguishable from outside, and only one of them should pass. `FakeGraphStore` (a provider
+  returning it would serve an empty graph that answers every read) and `ShadowGraphStore` (it
+  WRAPS two stores; selecting it would run every production read twice) are declared for their
+  own reasons.
+
+  ⚠️ **An empty reason is not a declaration** — the selftest checks that, because a
+  reason-string field is otherwise one keystroke from being a silent allowlist.
+
+  🔬 **Both halves are DERIVED**, off disk: the suites (by filename —
+  conformance/parity/shadow/differential) and what the providers can construct (by AST — a
+  CALL, not an import, so `from x import Foo` does not count as reachability). A hand-list of
+  "adapters with suites" would go stale the day someone adds one, which is exactly the failure
+  `knowledge-http-surface-gate` had for four federated reads (T55a, the previous row).
+
+  ```
+  1  AGE built, tested, unselectable — the FOUNDING CASE   RED, naming all 3 suites
+  2  Kuzu's declaration emptied to ""                      RED, and the selftest reds too
+  ```
+
+  Bite 1 is the row's own requirement — *"each gate mutated to the shape of the defect it was
+  written from; a check that cannot red on its own founding case is not a check."* Reverting the
+  provider to T42/T43's state fails the gate by name, listing the three suites that were green
+  while it was unreachable.
+
+  ⛔ **Scope guard honoured.** The row says *"this row is a GATE set, not a refactor"*. Nothing
+  in production code changed: Kuzu is recorded as evaluation-only, not wired. §8.4's other two
+  items — (b) every gate prints its number unconditionally, (c) an acceptance criterion carries
+  a control arm — are separate units and are not claimed here.
+
+  **QC (a) gates:** `--selftest` 11/11 and provably red under bite 2, live scan OK,
+  `gate-wiring-gate` 109/109 with the new gate in `.githooks/pre-commit` and `foundation-ci.yml`
+  (both the scan and the selftest), four plan gates green.
+  **QC (b) live smoke:** N/A — a static gate; nothing runtime moved.
+  **QC (c) real data:** the finding is the real tree — `KuzuGraphStore` in
+  `test_graph_store_conformance.py` and `test_shadow_differential.py`, absent from both
+  providers.
 
   ### ✅ T55a 2026-08-22 — **the KAL guard is DERIVED from the KAL, and the hand-list was four reads behind**
 

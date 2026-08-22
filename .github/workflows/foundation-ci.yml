@@ -226,6 +226,8 @@ jobs:
       # 2026-08-11 incident in the script's docstring.
       - run: python scripts/migration-drift-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
+      - run: python scripts/adapter-selectability-gate.py
+      - run: python scripts/adapter-selectability-gate.py --selftest
       - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
