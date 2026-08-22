@@ -1,0 +1,146 @@
+[
+ {
+  "tool": "translation_set_active_version",
+  "args": {
+   "book_id": "01a02995-bab1-723c-a3b3-5846a009dd5a",
+   "chapter_id": "01a02995-bb90-7dad-a690-c8a74dd44522",
+   "target_language": "vi",
+   "version_id": "01a02995-bd7e-7b72-b625-dc2ac371b4ed"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "chapter_id": "01a02995-bb90-7dad-a690-c8a74dd44522",
+    "target_language": "vi",
+    "active_id": "01a02995-bd7e-7b72-b625-dc2ac371b4ed",
+    "_meta": {
+     "undo_hint": {
+      "available": false
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "chapter_id": "01a02995-bb90-7dad-a690-c8a74dd44522",
+    "target_language": "vi",
+    "active_id": "01a02995-bd7e-7b72-b625-dc2ac371b4ed",
+    "_meta": {
+     "undo_hint": {
+      "tool": "translation_set_active_version",
+      "args": {
+       "book_id": "01a02995-bab1-723c-a3b3-5846a009dd5a",
+       "chapter_id": "01a02995-bb90-7dad-a690-c8a74dd44522",
+       "version_id": "01a02995-bd7e-7b72-b625-dc2ac371b4ed"
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_translation.active_chapter_translation_versions": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "-"
+    }
+   }
+  },
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "book_id": "01a02995-bab1-723c-a3b3-5846a009dd5a",
+   "title": "LOOP-THROWAWAY-idem-translation_set_active_version-ccd7f3f8",
+   "tables": {
+    "composition(project)": "01a02995-bc49-7ee0-ae0a-4e70a95b7226"
+   }
+  }
+ },
+ {
+  "tool": "translation_update_settings",
+  "args": {
+   "book_id": "01a02996-8538-7ced-8a61-c85749579f02",
+   "target_language": "vi"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "settings": {
+     "target_language": "vi",
+     "model_source": "platform_model",
+     "model_ref": null
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "translation_update_settings",
+      "args": {
+       "book_id": "01a02996-8538-7ced-8a61-c85749579f02",
+       "target_language": "en",
+       "model_source": "user_model",
+       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179"
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "settings": {
+     "target_language": "vi",
+     "model_source": "platform_model",
+     "model_ref": null
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "translation_update_settings",
+      "args": {
+       "book_id": "01a02996-8538-7ced-8a61-c85749579f02",
+       "target_language": "vi",
+       "model_source": "platform_model",
+       "model_ref": null
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_translation.book_translation_settings": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:09:02.296755+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_translation.book_translation_settings": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:09:02.296755+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:09:17.097848+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "book_id": "01a02996-8538-7ced-8a61-c85749579f02",
+   "title": "LOOP-THROWAWAY-idem-translation_update_settings-d76da651",
+   "tables": {
+    "composition(project)": "01a02996-86fe-7fd0-89ec-5d0fe6043df8"
+   }
+  }
+ }
+]

@@ -1,0 +1,33 @@
+[
+ {
+  "tool": "kg_ontology_propose",
+  "args": {
+   "project_id": "01a0299a-54ff-7e3c-9004-dd3adede8d33",
+   "op": "schema_edit",
+   "level": "edge_type",
+   "verb": "add",
+   "code": "allied_with",
+   "label": "Allied With"
+  },
+  "first": [
+   "refused",
+   "MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"this project has no adopted ontology to edit \\u2014 call kg_list_templates to pick one, then kg_adopt_template (or"
+  ],
+  "second": [
+   "refused",
+   "MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"this project has no adopted ontology to edit \\u2014 call kg_list_templates to pick one, then kg_adopt_template (or"
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "book_id": "01a0299a-534e-792a-bec3-4e39064ea0fb",
+   "title": "LOOP-THROWAWAY-idem-kg_ontology_propose-7ccf7585",
+   "tables": {
+    "composition(project)": "01a0299a-54ff-7e3c-9004-dd3adede8d33"
+   }
+  }
+ }
+]

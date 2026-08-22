@@ -2077,7 +2077,7 @@
     "gate": "EXERCISED by this run — the tool was called 0/5 and left SUSPENDED on its own Tier-A approval card 5/5, with the owning store UNCHANGED on all 5 runs. The gate held: nothing was written without a click. What is NOT shown is that approving the card makes the write land — that needs an approval arm, which the 2026-08-22 owner decision now permits against a throwaway fixture.",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}\"",
     "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}\"",
-    "idempotency": "OWED — adopting the same template twice must not duplicate the ontology.",
+    "idempotency": "OWED, and now for a NAMED reason rather than an unexamined one. A direct idempotency probe with schema-correct arguments (op=schema_edit, level=edge_type, verb=add) is refused: 'this project has no adopted ontology to edit — call kg_adopt_template first'. So idempotency sits behind a PRECONDITION CHAIN, not behind the tool. Closing it needs a fixture that adopts a template first, which is P4-PRECONDITION's work, not cycle 1's.",
     "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording."
    },
    "defects": [],
@@ -3241,7 +3241,8 @@
     "gate": "OWED — Tier W and schema-mutating.",
     "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}\"",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"invalid arguments: signature: String should have at least 1 character\"}\"",
-    "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording."
+    "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording.",
+    "idempotency": "OWED for a named reason. `signature` is required and comes from kg_triage_list — a real triage item the fixture does not create. Same precondition-chain shape as kg_ontology_propose."
    },
    "defects": [],
    "runs": [
@@ -7921,7 +7922,7 @@
    "ship_audit": {
     "gate": "EXERCISED by this run — the tool was called 5/5 and left SUSPENDED on its own Tier-A approval card 5/5, with the owning store UNCHANGED on all 5 runs. The gate held: nothing was written without a click. What is NOT shown is that approving the card makes the write land — that needs an approval arm, which the 2026-08-22 owner decision now permits against a throwaway fixture.",
     "absent_case": "EXERCISED by direct probe — refused 'not found or not accessible'.  [CARRIED FORWARD from batch36.json. That probe exercised the tool's HANDLER; cycle 1 changed only its declared synonyms, so the handler behaviour it measured is unchanged. Not re-run here.]",
-    "idempotency": "OWED — activating the already-active version must be a clear no-op.",
+    "idempotency": "EXERCISED by direct probe (2026-08-22). STRICTLY IDEMPOTENT: the first call created the row in `active_chapter_translation_versions` (absent -> 1) and the second touched nothing at all. 🔴 THAT TABLE IS KEYED (chapter_id, target_language) AND HAS NO book_id, so the first attempt measured two no-ops and said so; it became visible only after the sweep gained a chapter_id key. The probe's own 'the FIRST call changed nothing either' warning is what caught it.",
     "tenancy": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible', the same wording an absent id gets, so it is no existence oracle.  [CARRIED FORWARD from batch36.json. That probe exercised the tool's HANDLER; cycle 1 changed only its declared synonyms, so the handler behaviour it measured is unchanged. Not re-run here.]",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP translation_set_active_version error: Error executing tool translation_set_active_version: not found or not accessible\""
    },
@@ -8309,7 +8310,7 @@
     "gate": "EXERCISED by this run — the tool was called 5/5 and left SUSPENDED on its own Tier-A approval card 5/5, with the owning store UNCHANGED on all 5 runs. The gate held: nothing was written without a click. What is NOT shown is that approving the card makes the write land — that needs an approval arm, which the 2026-08-22 owner decision now permits against a throwaway fixture.",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP translation_update_settings error: Error executing tool translation_update_settings: not found or not accessible\"",
     "absent_case": "EXERCISED by direct probe — another owner's book is refused 'not found or not accessible'.",
-    "idempotency": "OWED — setting the language it already has must be a clear no-op.",
+    "idempotency": "EXERCISED by direct probe (2026-08-22). IDEMPOTENT IN EFFECT: the first call created `book_translation_settings` (absent -> 1 row), the second re-wrote the same row in place (updated_at moved, no row added). Visible only after `loreweave_translation` was added to the swept databases — it had never been one.",
     "tenancy": "EXERCISED by direct probe — refused with the same wording an absent id gets."
    },
    "defects": [],
@@ -9119,7 +9120,7 @@
     "gate": "EXERCISED by this run — the tool was called 5/5 and left SUSPENDED on its own Tier-A approval card 5/5, with the owning store UNCHANGED on all 5 runs. The gate held: nothing was written without a click. What is NOT shown is that approving the card makes the write land — that needs an approval arm, which the 2026-08-22 owner decision now permits against a throwaway fixture.",
     "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP world_map_update_marker error: marker not found\"",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP world_map_update_marker error: marker_id must be a UUID\"",
-    "idempotency": "OWED — relabelling to the current label must be a clear no-op.",
+    "idempotency": "EXERCISED by direct probe (2026-08-22). Same relabel twice: map_markers rows 2 -> 2 -> 2, `latest` moved. IDEMPOTENT IN EFFECT, same shape as its region sibling.",
     "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP world_map_update_marker error: marker not found\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording."
    },
    "defects": [],
@@ -9579,7 +9580,7 @@
     "gate": "EXERCISED by this run — the tool was called 5/5 and left SUSPENDED on its own Tier-A approval card 5/5, with the owning store UNCHANGED on all 5 runs. The gate held: nothing was written without a click. What is NOT shown is that approving the card makes the write land — that needs an approval arm, which the 2026-08-22 owner decision now permits against a throwaway fixture.",
     "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP world_map_update_region error: region not found\"",
     "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP world_map_update_region error: region_id must be a UUID\"",
-    "idempotency": "OWED — renaming to the current name must be a clear no-op.",
+    "idempotency": "EXERCISED by direct probe (scripts/toolloop/idempotency_probe.py, 2026-08-22). The same rename called TWICE against one fixture: map_regions rows 2 -> 2 -> 2, only `latest` (max updated_at) moved. IDEMPOTENT IN EFFECT — no row added or removed; the row is re-written in place with identical content. Recorded rather than flagged: duplicating what the author asked for once would be damage, bumping a timestamp is not.",
     "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP world_map_update_region error: region not found\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording."
    },
    "defects": [],

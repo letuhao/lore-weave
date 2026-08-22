@@ -14,10 +14,25 @@ A tool's own response cannot settle either case, and neither can the model's nar
 store can. So this is snapshotted before and after every scenario, and `gate.py` refuses to
 conclude a read-intent tool whose snapshot CHANGED.
 
-**Tool-independent by construction.** It needs no per-tool knowledge: 67 tables across the four
-owning databases carry a `book_id`, so the scope key is the book. Composition additionally scopes
-by `project_id`, resolved from the book through `composition_work`. That is the whole contract —
-which is why one snapshot covers all 285 tools.
+**Tool-independent by construction.** It needs no per-tool knowledge: the scope keys are the
+fixture's own ids, and every table carrying one is swept.
+
+🔴 THIS PARAGRAPH USED TO READ "67 tables across the four owning databases carry a `book_id`, so
+the scope key is the book", AND THAT SENTENCE WAS THE DEFECT. A count derived once and then
+trusted forever — services landed afterwards and nobody re-derived it. Measured 2026-08-22: four
+more databases hold 30 book-scoped tables, 17 tables are CHAPTER-scoped with no book_id, and the
+whole world/map store keys on map_id/world_id and carries neither. For every tool writing to any
+of those, "the store did not change" was a sentence about a place the snapshot never looked.
+
+So the scope is now four keys, and each exists because a real tool was invisible without it:
+
+    book_id      the original sweep, across every owning database
+    chapter_id   tables like `active_chapter_translation_versions`, keyed (chapter_id, language)
+    project_id   composition, resolved from the book through `composition_work`
+    world_id     `world_maps`/`map_regions`/`map_markers`, which have no book column at all
+
+and `scripts/test_the_snapshot_sweeps_every_book_scoped_store_gate.py` fails when a database with
+book-scoped tables is missing from DATABASES, so the list cannot silently go stale again.
 
 **It counts rows AND the latest `updated_at`.** A count alone misses an in-place edit: overwriting
 chapter 1's body (which this loop did to the author's real book on 2026-07-11, silently, under a
@@ -38,11 +53,35 @@ import sys
 #: The owning stores. A tool that writes outside these is out of scope for the book-scoped diff —
 #: and that gap is stated rather than hidden, because a snapshot whose silence is read as "nothing
 #: happened" is exactly the failure this file exists to prevent.
+#:
+#: 🔴 THIS LIST WAS FOUR ENTRIES LONG AND SILENTLY WRONG. It was true when written; then services
+#: landed and nobody re-derived it. Measured 2026-08-22 against the live databases, FOUR MORE carry
+#: book-scoped tables and none was swept:
+#:
+#:     loreweave_translation       9 tables with a book_id
+#:     loreweave_agent_registry   10
+#:     loreweave_lore_enrichment  10
+#:     loreweave_sharing           1
+#:
+#: Thirty book-scoped tables invisible to the bar that exists to see them. It surfaced because the
+#: idempotency probe reported "the FIRST call changed nothing either" for two translation tools
+#: that had plainly just written — the warning was there to stop a two-no-op probe being read as
+#: proof, and it caught the store instead.
+#:
+#: This file's own docstring said "67 tables across the four owning databases carry a book_id, so
+#: the scope key is the book" — a count derived once and then trusted forever, which is the exact
+#: class this loop keeps finding. The list stays EXPLICIT so a sweep is predictable, and
+#: `scripts/test_the_snapshot_sweeps_every_book_scoped_store_gate.py` fails when a database with
+#: book-scoped tables is missing from it. The list is the decision; the gate is the derivation.
 DATABASES = (
     "loreweave_book",
     "loreweave_composition",
     "loreweave_glossary",
     "loreweave_knowledge",
+    "loreweave_translation",
+    "loreweave_agent_registry",
+    "loreweave_lore_enrichment",
+    "loreweave_sharing",
 )
 
 CONTAINER = "infra-postgres-1"
@@ -197,7 +236,7 @@ def _world_counts(world_id: str) -> dict:
 
 
 def snapshot(book_id: str, project_id: str | None = None,
-             world_id: str | None = None) -> dict:
+             world_id: str | None = None, chapter_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
     itself the signal that something was created.
@@ -210,6 +249,19 @@ def snapshot(book_id: str, project_id: str | None = None,
         got = _counts(db, tables, "book_id", book_id)
         for k, v in got.items():
             snap[f"{db}.{k}"] = v
+        # 🔴 A CHAPTER-SCOPED TABLE IS NOT A BOOK-SCOPED ONE, and 17 of them were invisible.
+        # `translation_set_active_version` is the case that found it: the active version lives in
+        # `active_chapter_translation_versions`, keyed (chapter_id, target_language, …) with NO
+        # book_id, so the tool wrote, the probe reported "the FIRST call changed nothing either",
+        # and its idempotency was unmeasurable. Counted across the swept databases: 7 such tables
+        # in book, 4 in translation, 3 each in composition and glossary.
+        #
+        # Only tables the book sweep did NOT already cover — a table carrying both keys would
+        # otherwise be counted twice under the same name and read as a phantom change.
+        if chapter_id:
+            chap = [t for t in _scoped_tables(db, "chapter_id") if t not in set(tables)]
+            for k, v in _counts(db, chap, "chapter_id", chapter_id).items():
+                snap[f"{db}.{k}"] = v
     # composition also scopes by project_id; resolve it from the book rather than being told.
     proj = _psql("loreweave_composition",
                  f"select project_id from composition_work where book_id='{book_id}' limit 1;")

@@ -2681,18 +2681,18 @@
    "counts_toward_release": true
   },
   "world_map_update_marker": {
-   "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch31.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and the reason is the most serious answer in this batch: THE WRITE TOOL WAS NEVER ADVERTISED, AND THE MODEL REPORTED THE WRITE AS DONE ANYWAY.\n\nCalled 0/5 and SURFACED 0/5 across 5 clean runs of a four-turn chain in which the model successfully walked world_list -> world_map_list -> world_map_get and had the map's markers in front of it.\n\n🔴 RANKING IS NOT THE CAUSE, WHICH IS WHY THE RAW SURFACE WAS CAPTURED. Measured offline with the shipped scorer on the exact measured prompt, world_map_update_marker ranks **#1 of all 315 tools** (0.571) — the single best match in the catalogue — and was advertised on none of the runs. So a surface probe was run with --out to record what the turn was actually shown (b31-surface-probe-raw.json). The advertised set contained exactly four world tools:\n    world_get, world_list, world_map_get, world_map_list\nALL READS. Not one world WRITE tool — no update_marker, no update_region, no remove_*, no world_update. The surface payload also shows find_tools_call_count: 0, so the model never reached for the lazy tail that holds them. That is D-LAZY-TAIL-UNUSED, already settled as 'make discovery a rail step'.\n\nWHAT IT DID INSTEAD IS THE DEFECT. Having called only world_map_get (a READ), the model answered \"I've updated the label for the pin. **Ironhold** is now **Ironhold Keep**.\" — on 5 of 5 runs. The store is unchanged and the pin is still Ironhold. A missing write tool does not produce 'I can't'; it produces a FALSE SUCCESS, which is the worst failure mode this loop has a name for: D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS, now measured at 5/5 rather than as a one-off.\n\nThe TOOL is sound — it simply never ran through chat.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch31.json",
+   "state": "proven",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c1-rerun.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c1-rerun.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
   "world_map_update_region": {
-   "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch31.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED for the same cause as its marker sibling: the advertised surface for the measured turn held only world READS (world_get, world_list, world_map_get, world_map_list) and find_tools_call_count was 0, so no world write tool was reachable. Ranked #2 of 315 for its own prompt (0.429), so ranking is not the cause here either.\n\nTHE SPLIT IN ITS ANSWERS IS THE INTERESTING PART. 4 of 5 runs were HONEST about the gap — \"I don't have a tool to rename regions on a map. I can create new regions or markers, but I cannot rename existing ones\" — which is exactly right about the surface it was given, and one of those offered to CREATE a new region called The Frozen North instead, which would have left the author with a duplicate area. The remaining run claimed the rename was done. So the same missing-tool condition produces an honest refusal or a fabricated success depending on the run: 1/5 here against 5/5 on world_map_update_marker.\n\nThe TOOL is sound; it never ran through chat.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch31.json",
+   "state": "proven",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c1-rerun.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c1-rerun.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -2833,10 +2833,10 @@
    "counts_toward_release": true
   },
   "translation_set_active_version": {
-   "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch36.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 0/5 across 5 clean runs, so the model was never shown it. Its sibling in the SAME batch, translation_save_edited_version, surfaced 5/5 and was called 5/5 off the identical two-turn shape and the identical seeded versions — so this is not the fixture and not the id chain. D-LAZY-TAIL-UNUSED, the same mechanism as batches 31-35, and which tools get advertised is still unexplained by tier, scope, family or id depth (DQ-T36).\n\nThe seeded state was correct and verified: two completed Vietnamese versions of the chapter with neither active, so 'make version 2 active' had a real wrong answer available.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch36.json",
+   "state": "proven",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c1-rerun.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c1-rerun.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -2961,10 +2961,10 @@
    "counts_toward_release": true
   },
   "translation_update_settings": {
-   "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/b41-norail.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — and after SEVEN arms of calling it 'transport errors', the cause is now diagnosed and it was never the transport.\n\nWHAT SEVEN ARMS LOOKED LIKE: surfaced 5/5 every time, and 5, 1, 4, 4, 5, 5 then 4 of 5 runs ending in \"upstream sent 'error' with no error message (response id '', status '')\". I recorded that as a provider fault and as a tool that 'cannot be measured on this turn shape'. That was a description of the symptom, not a diagnosis, and it was wrong about the cause.\n\nWHAT THE SERVER LOG SAYS, for this exact prompt:\n    intent pinned workflow(s) ['translation-pass'] from the user's request\n    rail translation-pass: 0/3 steps done, next=translation_coverage\n    rail vision-to-book: 0/9 steps done, next=glossary_list_system_standards\n    interrupt-persist detached ... (write continues after cancel)\n    CP-0.4 orphaned turn: no assistant row, outcome 'abandoned_by_user' stamped\n\nThe request PINS A RAIL. The server drives the rail's steps and the turn NEVER EMITS AN ASSISTANT MESSAGE — no assistant row is ever written. The client waits until its budget runs out and reports whatever it has, which is an empty upstream error.\n\n🔴 THE TIMEOUT WAS NOT THE CAUSE EITHER, WHICH IS WHY THE CONTROL MATTERED. The harness's turn budget was a hard-coded 180s, so the obvious story was 'a rail is slow and the client gives up'. Raising it to 900s changed the error from STREAM_ERROR to ReadTimeout and nothing else: the turn still never completed. Slowness would have been fixed by more time. This is not slowness.\n\nTHE CONTROL THAT PROVED IT. Same tool, same fixture, same batch machinery — the ONLY change is phrasing that does not pin the rail, and still from this tool's own declared synonyms ('change model' / 'update settings' instead of 'set target language ... translation'):\n    'Set the target language for this book's translation to Vietnamese.'  -> turn never completes\n    'Change this book's translation model to my default one.'            -> 5/5 CLEAN, 0 errors\nA rail-pinned turn hangs; the same request phrased past the rail completes normally.\n\nNAMING IT: D-RAIL-PINNED-TURN-NEVER-COMPLETES. It is worth an owner's attention beyond this tool, because the words that pin the rail are ordinary ones an author would use — and the failure is not a visible error to them, it is a chat turn that simply never answers.\n\nTHE TOOL ITSELF remains unproven: it was never called on a clean turn, so there is no evidence about it. That is what `blocked` means here, and it is concluded from the CLEAN control arm (0 errors) rather than from any of the seven dirty ones.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/b41-norail.json",
+   "state": "proven",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c1-rerun.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c1-rerun.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3878,8 +3878,8 @@
   "tools_declared": 315,
   "tools_concluded": 198,
   "tools_in_cycle": 0,
-  "tools_proven": 141,
-  "tools_blocked": 57,
+  "tools_proven": 145,
+  "tools_blocked": 53,
   "defects_proven": 25,
   "defects_open": 11,
   "deferred_questions": 15,

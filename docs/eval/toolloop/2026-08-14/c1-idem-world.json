@@ -1,0 +1,215 @@
+[
+ {
+  "tool": "world_map_update_region",
+  "args": {
+   "region_id": "01a0298c-4edc-77d7-a43a-5014438d6b30",
+   "name": "The Frozen North"
+  },
+  "first": [
+   "ok",
+   {
+    "region": {
+     "entity_id": null,
+     "name": "The Frozen North",
+     "polygon": [
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       0.6,
+       0.5
+      ],
+      [
+       0.5,
+       1
+      ]
+     ],
+     "region_id": "01a0298c-4edc-77d7-a43a-5014438d6b30",
+     "updated_at": "2026-08-22T12:57:43.869469Z"
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "region": {
+     "entity_id": null,
+     "name": "The Frozen North",
+     "polygon": [
+      [
+       0,
+       0
+      ],
+      [
+       1,
+       0
+      ],
+      [
+       0.6,
+       0.5
+      ],
+      [
+       0.5,
+       1
+      ]
+     ],
+     "region_id": "01a0298c-4edc-77d7-a43a-5014438d6b30",
+     "updated_at": "2026-08-22T12:57:50.939101Z"
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_book.map_regions": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 12:57:36.384389+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 12:57:43.869469+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_book.map_regions": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 12:57:43.869469+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 12:57:50.939101+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [
+    "01a0298c-4d9c-7e2a-8161-5ee15836d9d3"
+   ],
+   "book_id": "01a0298c-4b67-7792-a6e9-fb76e6f212ea",
+   "title": "LOOP-THROWAWAY-idem-world_map_update_region-b329d3a6",
+   "tables": {
+    "composition(project)": "01a0298c-4d1c-7403-b305-e0a984041aef"
+   }
+  }
+ },
+ {
+  "tool": "world_map_update_marker",
+  "args": {
+   "marker_id": "01a0298c-b0f4-7991-9731-5f1c835a318f",
+   "label": "Ironhold Keep"
+  },
+  "first": [
+   "ok",
+   {
+    "marker": {
+     "entity_id": null,
+     "label": "Ironhold Keep",
+     "marker_id": "01a0298c-b0f4-7991-9731-5f1c835a318f",
+     "marker_type": "city",
+     "updated_at": "2026-08-22T12:58:10.085809Z",
+     "x": 0.25,
+     "y": 0.4
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "marker": {
+     "entity_id": null,
+     "label": "Ironhold Keep",
+     "marker_id": "01a0298c-b0f4-7991-9731-5f1c835a318f",
+     "marker_type": "city",
+     "updated_at": "2026-08-22T12:58:17.288356Z",
+     "x": 0.25,
+     "y": 0.4
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_book.map_markers": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 12:58:01.480465+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 12:58:10.085809+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_book.map_markers": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 12:58:10.085809+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-22 12:58:17.288356+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [
+    "01a0298c-afc2-777d-8372-b3a682c566c3"
+   ],
+   "book_id": "01a0298c-adef-7b0b-8c2c-021ec0146cd3",
+   "title": "LOOP-THROWAWAY-idem-world_map_update_marker-d70eca75",
+   "tables": {
+    "composition(project)": "01a0298c-af4c-738a-8cff-ea22ae0684c6"
+   }
+  }
+ },
+ {
+  "tool": "world_map_remove_region",
+  "args": {
+   "region_id": "01a0298d-1835-78dd-9223-c01da14defe7"
+  },
+  "first": [
+   "ok",
+   {
+    "removed": true
+   }
+  ],
+  "second": [
+   "refused",
+   "MCP world_map_remove_region error: region not found"
+  ],
+  "diff_first": {
+   "loreweave_book.map_regions": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-22 12:58:27.917565+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 12:58:27.917565+00"
+    }
+   }
+  },
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [
+    "01a0298d-1702-70b2-a980-c93e35b796e8"
+   ],
+   "book_id": "01a0298d-14d9-74ec-9775-febf3c6c3caf",
+   "title": "LOOP-THROWAWAY-idem-world_map_remove_region-a0d4a3a4",
+   "tables": {
+    "composition(project)": "01a0298d-1675-7334-80f4-eba36d506906"
+   }
+  }
+ }
+]
