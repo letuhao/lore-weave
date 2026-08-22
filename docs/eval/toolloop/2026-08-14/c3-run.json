@@ -1016,7 +1016,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED on the cause registered BEFORE any of this evidence existed (ae2a69cb9): a three-way synonym TIE. Surfaced 5/5, called 0/5, ZERO errors — the tool is on the wire and the model picks something else. On its own prompt FIVE tools are answerable and THREE tie at synonym length 13: book_chapter_create, book_chapter_save_draft and composition_generate. The domain tool declares 'write chapter'; the generic declares 'write the chapter' and 'write chapter prose'. No precedence exists between them.\n\nThis is P5's clearest instance and its worst outcome: when the model breaks the tie toward book_chapter_save_draft it supplies prose it wrote ITSELF (D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, open). Unchanged by cycle 2's arming, and that is structural rather than incidental: the arming is REACTIVE and fires on a refusal, so a tool the model never CALLS never produces one. See DQ-T35 for the other half — whether model_ref should be optional with a server-resolved default, as 16 of its 19 siblings already declare."
     },
     {
       "tool": "glossary_deep_research",
@@ -2349,7 +2350,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 1,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, and the model is RIGHT. Surfaced 5/5, called 0/5, zero errors: it chose workflow_list every time and answered well. workflow_list is a CONSUMER-LOCAL tool that returns the same shape — slug, title, description — and is the half of the pair wired to workflow_load(slug), which is how a workflow is actually run. Nothing is broken for the author.\n\nAnswerability cannot be the fix: registry_list_workflows is the ONLY answerable tool on that prompt (set size 1), while workflow_list reaches the wire as a consumer-local tool answerability never sees. This is catalogue DEDUPLICATION, registered as DQ-T39 with a recommendation, and the owner decides which of two live implementations is canonical — agent-registry cannot declare itself superseded by a tool it does not own.\n\nSHIP is genuinely incomplete and is NOT waved through: with required=[] there is no id to make absent or foreign, so ship_probe's cases degenerate and its '🔴 SUCCEEDED' lines are a false alarm. The real boundary is tenancy of the RESULT — whether it returns another account's workflows — which needs a SECOND ACCOUNT and has not been run."
     },
     {
       "tool": "settings_provider_inventory",
