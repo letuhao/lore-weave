@@ -179,7 +179,19 @@ class FakeGraphStore:
         # The cap is applied, not ignored: it is what stops a hub entity's neighbourhood
         # eating a prompt budget, and a fake that returned everything would let an
         # unbounded context block pass every test.
-        return EntityDetail(entity=anchor, relations=edges[:rel_cap])
+        #
+        # ⚠️ And the cap must be REPORTED. Returning the capped list while leaving
+        # `total_relations` at its 0 default told every caller "nothing was cut" on exactly
+        # the hub entities where something was — the same defect the AGE adapter carried, in
+        # a second independent implementation, because no conformance rule read these two
+        # fields back.
+        capped = edges[:rel_cap]
+        return EntityDetail(
+            entity=anchor,
+            relations=capped,
+            relations_truncated=len(edges) > len(capped),
+            total_relations=len(edges),
+        )
 
     async def archive_entity(
         self, *, user_id: str, canonical_id: str, reason: str,
@@ -686,8 +698,15 @@ class FakeGraphStore:
                 (order, status) for order, status, evidence in rows
                 if order <= at_order and evidence >= min_evidence
             ]
-            if applicable:
-                out[eid] = max(applicable, key=lambda t: t[0])[1]
+            # ⚠️ FAIL OPEN, and the key is ALWAYS present. Omitting the entity entirely —
+            # what this did — is not the same answer as `'active'`: a caller that iterates
+            # the result, or that supplies its own `.get()` default, silently diverges from
+            # both real adapters, which spell this `coalesce(latest.status, 'active')`. The
+            # asymmetry is why it matters: a wrongly-`gone` entity vanishes from a panel,
+            # while a wrongly-`active` one un-kills a character. Every consumer unit-tested
+            # against this fake was testing the wrong shape.
+            out[eid] = (
+                max(applicable, key=lambda t: t[0])[1] if applicable else "active")
         return out
 
     # ── the project as a whole ───────────────────────────────────────

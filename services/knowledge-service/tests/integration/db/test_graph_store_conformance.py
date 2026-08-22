@@ -117,6 +117,11 @@ async def store(request):
             return None
 
         fake._mk_source = _mk_fake_source                 # type: ignore[attr-defined]
+
+        async def _set_fake_glossary(u, eid, gid):
+            fake._entities[eid].glossary_entity_id = gid
+
+        fake._set_glossary = _set_fake_glossary           # type: ignore[attr-defined]
         yield fake
         return
 
@@ -143,6 +148,13 @@ async def store(request):
                     f"MERGE (s:ExtractionSource {{id: '{sid}', user_id: '{u}'}}) RETURN s")
 
             age._mk_source = _mk_age_source                # type: ignore[attr-defined]
+
+            async def _set_age_glossary(u, eid, gid):
+                await age._run(
+                    f"MATCH (e:Entity {{id: '{eid}', user_id: '{u}'}}) "
+                    f"SET e.glossary_entity_id = '{gid}' RETURN e")
+
+            age._set_glossary = _set_age_glossary          # type: ignore[attr-defined]
             yield age
         finally:
             await pool.close()
@@ -173,6 +185,13 @@ async def store(request):
                     {"s": sid, "u": u})
 
             kz._mk_source = _mk_kuzu_source            # type: ignore[attr-defined]
+
+            async def _set_kuzu_glossary(u, eid, gid):
+                await kz._run(
+                    "MATCH (e:Entity {id: $i}) SET e.glossary_entity_id = $g",
+                    {"i": eid, "g": gid})
+
+            kz._set_glossary = _set_kuzu_glossary      # type: ignore[attr-defined]
             yield kz
         finally:
             close_kuzu(db, conn)
@@ -206,6 +225,13 @@ async def store(request):
                     {"sid": sid, "u": u})
 
             n4j._mk_source = _mk_neo_source                # type: ignore[attr-defined]
+
+            async def _set_neo_glossary(u, eid, gid):
+                await session.run(
+                    "MATCH (e:Entity {id: $i, user_id: $u}) SET e.glossary_entity_id = $g",
+                    {"i": eid, "u": u, "g": gid})
+
+            n4j._set_glossary = _set_neo_glossary          # type: ignore[attr-defined]
             yield n4j
     finally:
         await driver.close()
@@ -1288,3 +1314,129 @@ async def test_the_rename_still_CHANGES_what_the_reader_sees(store):
     after = await _an_event(store, u, p, title="Kai duels Zhao", event_order=12_000)
     assert after.title == "The Duel at Dawn", (
         f"the author's rename was overwritten by a re-extraction: {after.title!r}")
+
+
+# ── neighborhood + status_at_order ───────────────────────────────────────────
+#
+# T89. These two were the ONLY port methods with no rule here, and a live run on the AGE
+# backend found `neighborhood` returning HTTP 500 from `/internal/knowledge/wiki-neighborhood`
+# on the first call it ever received:
+#
+#     ValidationError: 1 validation error for EntityDetail
+#     entity  Field required [input_value={'id': 'b0a88a54...', 'relations': []}]
+#
+# The adapter spread the entity across the top level instead of nesting it. Nineteen of
+# twenty-one port methods were conformed against four adapters; the twentieth had never been
+# called by any test, against any adapter, and shipped unable to return at all.
+#
+# Writing the missing rules then found two MORE defects behind the crash, and neither was in
+# the module the crash pointed at — see each rule.
+
+
+async def _anchored(store, u, p, gid, name="Kai"):
+    """An entity reachable by `glossary_entity_id`.
+
+    The hook exists because the port can READ by `glossary_entity_id` and has no method that
+    WRITES one — which is the structural reason nobody wrote these rules. It follows the
+    `_mk_source` precedent rather than inventing a second escape-hatch style.
+    """
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name=name, kind="character", source_type="chapter")
+    await store._set_glossary(u, e.id, gid)               # type: ignore[attr-defined]
+    return e
+
+
+@pytest.mark.asyncio
+async def test_neighborhood_nests_the_entity_and_scopes_to_the_owner(store):
+    """The shape is the contract: `EntityDetail.entity` is a nested `Entity`, not the entity's
+    fields spread across the top level. An adapter that flattens does not return a wrong
+    answer — it raises, on every call, which is how this reached a live 500."""
+    u, p, other = _ids()
+    gid = f"gl-{uuid.uuid4().hex[:12]}"
+    e = await _anchored(store, u, p, gid)
+
+    detail = await store.neighborhood(user_id=u, glossary_entity_id=gid)
+    assert detail is not None, "the anchored entity was not found by its glossary id"
+    assert detail.entity.id == e.id, "the entity is not nested under `.entity`"
+
+    assert await store.neighborhood(user_id=other, glossary_entity_id=gid) is None, (
+        "another user read this neighbourhood — the glossary id is not owner-scoped")
+    assert await store.neighborhood(
+        user_id=u, glossary_entity_id=f"gl-{uuid.uuid4().hex[:12]}") is None
+
+
+@pytest.mark.asyncio
+async def test_neighborhood_REPORTS_the_cap_it_applied(store):
+    """`total_relations` is the UNCAPPED count and `relations_truncated` is derived from it.
+
+    ⚠️ Found in TWO independent adapters at once — AGE and the Fake both capped the list and
+    left `total_relations` at its `0` default, so every caller was told "nothing was cut"
+    on exactly the hub entities where something was. The Fake's own comment read *"The cap is
+    applied, not ignored"* directly above the line that failed to report it. Neither could be
+    caught by a rule that only counts `len(relations)` — the cap itself worked."""
+    u, p, _ = _ids()
+    gid = f"gl-{uuid.uuid4().hex[:12]}"
+    anchor = await _anchored(store, u, p, gid)
+    for i in range(4):
+        peer = await store.resolve_or_merge_entity(
+            user_id=u, project_id=p, name=f"Peer{i}", kind="character", source_type="chapter")
+        await store.upsert_relation(
+            user_id=u, subject_id=anchor.id, object_id=peer.id,
+            predicate="ally_of", confidence=0.9)
+
+    full = await store.neighborhood(user_id=u, glossary_entity_id=gid, rel_cap=50)
+    assert full.total_relations == 4, f"uncapped total is wrong: {full.total_relations}"
+    assert full.relations_truncated is False, "reported truncated when nothing was cut"
+
+    cut = await store.neighborhood(user_id=u, glossary_entity_id=gid, rel_cap=2)
+    assert len(cut.relations) == 2, "the cap was not applied"
+    assert cut.total_relations == 4, (
+        f"the cap overwrote the total: total_relations={cut.total_relations}, so the caller "
+        "cannot tell a 2-edge entity from a truncated 4-edge one")
+    assert cut.relations_truncated is True, (
+        "two of four edges were dropped and the answer says it is complete")
+
+
+@pytest.mark.asyncio
+async def test_neighborhood_does_NOT_apply_a_confidence_floor(store):
+    """A neighbourhood filters on `valid_until IS NULL` and nothing else.
+
+    ⚠️ The AGE adapter delegated to `relations_for`, whose DEFAULTS are `min_confidence=0.8`
+    plus an archived-peer exclusion. Both read plausibly — they are the right filters for
+    "this entity's relations" — and neither belongs to this query. The effect was a silent
+    under-report on one backend only: a low-confidence edge simply was not in the context
+    block, with no error anywhere. This rule fails on the delegating shape and passes on the
+    dedicated one, which is the only difference between them."""
+    u, p, _ = _ids()
+    gid = f"gl-{uuid.uuid4().hex[:12]}"
+    anchor = await _anchored(store, u, p, gid)
+    weak = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Rumoured", kind="character", source_type="chapter")
+    await store.upsert_relation(
+        user_id=u, subject_id=anchor.id, object_id=weak.id,
+        predicate="rumoured_ally_of", confidence=0.3)
+
+    detail = await store.neighborhood(user_id=u, glossary_entity_id=gid)
+    assert [r.predicate for r in detail.relations] == ["rumoured_ally_of"], (
+        f"a confidence-0.3 edge was dropped from the neighbourhood: {detail.relations}")
+    assert detail.total_relations == 1
+
+
+@pytest.mark.asyncio
+async def test_status_at_order_fails_OPEN_to_active(store):
+    """An entity with no qualifying transition is `active`, and the asymmetry is the point:
+    a wrongly-`gone` entity vanishes from a panel, a wrongly-`active` one silently un-kills a
+    character. Neo4j spells this `coalesce(latest.status, 'active')`; every adapter must
+    agree, including for an entity id that does not exist at all."""
+    u, p, _ = _ids()
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    ghost = f"e-{uuid.uuid4().hex[:12]}"
+
+    got = await store.status_at_order(
+        user_id=u, project_id=p, entity_ids=[e.id, ghost], at_order=10_000)
+    assert got == {e.id: "active", ghost: "active"}, (
+        f"an entity with no transition was not reported active: {got}")
+
+    assert await store.status_at_order(
+        user_id=u, project_id=p, entity_ids=[], at_order=10_000) == {}

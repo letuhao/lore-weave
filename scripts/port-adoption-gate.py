@@ -522,8 +522,42 @@ def selftest() -> int:
               "would read lower than it is")
         ok = False
 
+    # ── T89: the port-conformance scanner, driven on FIXTURES ────────────────────────
+    # Injected rather than run against the repo, because a scanner checked only against a
+    # tree that currently passes reports PASS for the tree's reason, not its own.
+    _port = (
+        "class GraphStore(Protocol):" + chr(10) +
+        "    async def neighborhood(self): ..." + chr(10) +
+        "    async def relations_for(self): ..." + chr(10) +
+        "    async def _private(self): ..." + chr(10)
+    )
+    covered_suite = "await store.neighborhood(u)" + chr(10) + "await store.relations_for(u)"
+    missing, total = scan_port_conformance(port=_port, suite=covered_suite)
+    if missing or total != 2:
+        print(f"  FAIL — the port scanner miscounted a fully-covered port: "
+              f"missing={missing} total={total} (a leading-underscore method is not "
+              f"port surface and must not be demanded)")
+        ok = False
+    # The case it exists for, and the one it was blind to in production: a method the
+    # suite never calls.
+    missing, _ = scan_port_conformance(
+        port=_port, suite="await store.relations_for(u)")
+    if missing != ["neighborhood"]:
+        print(f"  FAIL — the port scanner did not SEE an unconformed method: {missing}")
+        ok = False
+    # A mention that is not a CALL is not coverage. Validated on a case the scanner was not
+    # derived from: the real suite names methods in its prose constantly.
+    missing, _ = scan_port_conformance(
+        port=_port,
+        suite="# store.neighborhood is covered elsewhere" + chr(10) +
+              "await store.relations_for(u)")
+    if missing != ["neighborhood"]:
+        print(f"  FAIL — a method named only in a COMMENT counted as conformed: {missing}")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
-          f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways")
+          f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways; and "
+          f"an unconformed port method from a covered one")
     return 0 if ok else 1
 
 
@@ -893,6 +927,56 @@ _AGE_PROOF = os.path.join(
 )
 
 
+#: T89 — port methods with NO rule in the adapter-parameterised conformance suite.
+#:
+#: The suite runs every rule against four adapters, which reads as thorough and says nothing
+#: about the methods no rule ever calls. It stood at 19 of 21 while `neighborhood` was
+#: unable to return at all on AGE: it raised `ValidationError` on EVERY call, and a live
+#: `/internal/knowledge/wiki-neighborhood` request was the first thing to ever invoke it.
+#:
+#: Both sides are DERIVED — the port's methods from the Protocol, the covered set from the
+#: suite's own `store.<method>(` calls. A hand-kept list of "methods we test" is the artifact
+#: that was already wrong; this is the same cure as the KAL guard and the adapter set.
+MAX_UNCONFORMED_PORT_METHODS = 0
+
+_PORT = os.path.join(SCAN_ROOT, "ports", "graph_store.py")
+_CONFORMANCE = os.path.join(
+    SCAN_ROOT, "..", "tests", "integration", "db", "test_graph_store_conformance.py",
+)
+
+
+def scan_port_conformance(port=None, suite=None) -> tuple[list[str], int]:
+    """`(uncovered_method_names, total_port_methods)`, both derived from source.
+
+    `port`/`suite` are injectable so the selftest drives it with fixtures rather than with
+    the repository's own files — a gate validated only against the tree it lives in is green
+    by construction the moment that tree is correct.
+    """
+    try:
+        ptree = ast.parse(
+            open(_PORT, encoding="utf-8", errors="replace").read() if port is None else port)
+    except (OSError, SyntaxError):
+        return [], 0
+    methods: list[str] = []
+    for cls in ptree.body:
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        for n in cls.body:
+            if (isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and not n.name.startswith("_")):
+                methods.append(n.name)
+    try:
+        text = (open(_CONFORMANCE, encoding="utf-8", errors="replace").read()
+                if suite is None else suite)
+    except OSError:
+        return methods, len(methods)
+    # `store.<name>(` is the suite's single idiom for reaching the adapter under test. A
+    # mention in a comment or a docstring does not count as coverage, so the paren is
+    # required rather than a bare name match.
+    covered = set(re.findall(r"store\.([a-z_]+)\(", text))
+    return [m for m in methods if m not in covered], len(methods)
+
+
 def scan_age_proven() -> tuple[set[str], int]:
     """`({module.function}, total public repo functions)` — both derived, neither listed.
 
@@ -1198,6 +1282,19 @@ def main() -> int:
     print(f"[port-adoption-gate] AGE coverage {len(proven)}/{total_fns} repo functions "
           f"({pct}%) proven on AGE, floor {MIN_AGE_PROVEN_FUNCTIONS} — DISTINCT functions, "
           f"not invocations")
+
+    unconformed, port_total = scan_port_conformance()
+    if len(unconformed) > MAX_UNCONFORMED_PORT_METHODS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(unconformed)} port method(s) have "
+              f"NO rule in the conformance suite (ceiling {MAX_UNCONFORMED_PORT_METHODS}):"
+              f"{chr(10)}  " + ", ".join(unconformed) + chr(10) +
+              f"  A method no rule calls is unconformed against EVERY adapter at once. "
+              f"`neighborhood`{chr(10)}  sat here while it raised on every AGE call, and a "
+              f"live 500 was what found it.{chr(10)}")
+        return 1
+    print(f"[port-adoption-gate] port conformance {port_total - len(unconformed)}/"
+          f"{port_total} methods have a rule (ceiling {MAX_UNCONFORMED_PORT_METHODS} "
+          f"unconformed)")
     dialect = scan_dialect()
     dsites = sum(sum(v.values()) for v in dialect.values())
 

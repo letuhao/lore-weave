@@ -179,20 +179,33 @@ async def test_status_is_a_step_function_the_latest_one_at_or_before_n_wins():
     store.set_status(user_id=_U, project_id=_P, entity_id="e", from_order=10, status="alive")
     store.set_status(user_id=_U, project_id=_P, entity_id="e", from_order=40, status="gone")
 
-    assert await store.status_at_order(user_id=_U, project_id=_P, entity_ids=["e"], at_order=9) == {}
+    # T89 — BEFORE the first transition the entity is `active`, not ABSENT. This line read
+    # `== {}` and was wrong: `_STATUS_AT_ORDER_CYPHER` is an `UNWIND` + `coalesce(latest.status,
+    # 'active')` whose docstring reads "Every requested id appears in the result (no silent
+    # drop)", and the OPTIONAL MATCH above it is commented as chosen specifically so the row
+    # survives. The fake dropped the key, this test asserted the drop, and the two agreed with
+    # each other while disagreeing with all three real adapters.
+    assert (await store.status_at_order(
+        user_id=_U, project_id=_P, entity_ids=["e"], at_order=9)) == {"e": "active"}
     assert (await store.status_at_order(user_id=_U, project_id=_P, entity_ids=["e"], at_order=39))["e"] == "alive"
     assert (await store.status_at_order(user_id=_U, project_id=_P, entity_ids=["e"], at_order=40))["e"] == "gone"
 
 
 @pytest.mark.asyncio
 async def test_min_evidence_suppresses_a_single_mention_guess():
-    """A status derived from one mention is a guess, and the canon guard acts on it."""
+    """A status derived from one mention is a guess, and the canon guard acts on it.
+
+    Suppressed means the transition does not COUNT, so the entity falls back to `active` —
+    it does not mean the entity vanishes from the answer. Getting that distinction wrong is
+    the dangerous direction: a caller iterating the result would silently skip the entity
+    the guard was protecting.
+    """
     store = FakeGraphStore()
     store.set_status(user_id=_U, project_id=_P, entity_id="e", from_order=10,
                      status="gone", evidence=1)
     assert await store.status_at_order(
         user_id=_U, project_id=_P, entity_ids=["e"], at_order=20, min_evidence=2,
-    ) == {}
+    ) == {"e": "active"}
 
 
 # ── events ───────────────────────────────────────────────────────────

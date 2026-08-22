@@ -404,14 +404,47 @@ class AgeGraphStore:
         if project_id is not None:
             where.append(f"e.project_id = {_lit(project_id)}")
         rows = await self._run(
-            f"MATCH (e:Entity) WHERE {' AND '.join(where)} RETURN e")
+            f"MATCH (e:Entity) WHERE {' AND '.join(where)} "
+            f"RETURN e ORDER BY e.project_id ASC")
         if not rows:
             return None
+        # Neo4j's `ORDER BY e.project_id ASC` + take-the-first: without a project scope the
+        # glossary FK can legitimately match one node per project, and both adapters must
+        # pick the SAME one or an unscoped read silently depends on the engine.
         entity = _to_entity(_props(rows[0]["v"]))
-        rels = await self.relations_for(
-            user_id=user_id, entity_id=entity.id, project_id=project_id, limit=rel_cap)
-        return EntityDetail.model_validate(
-            {**entity.model_dump(), "relations": [r.model_dump() for r in rels]})
+
+        # ⚠️ NOT `self.relations_for(...)`, which was the original delegate and is a
+        # DIFFERENT query. Its defaults apply `confidence >= 0.8` and exclude edges to an
+        # archived peer; `_GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER` filters on
+        # `r.valid_until IS NULL` alone. Delegating dropped every low-confidence edge and
+        # every edge to an archived peer from this adapter's answer only — a silent
+        # under-report, not an error, and invisible to a suite that never called it.
+        erows = await self._run(
+            f"MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity) "
+            f"WHERE (subj.id = {_lit(entity.id)} OR obj.id = {_lit(entity.id)}) "
+            f"AND r.user_id = {_lit(user_id)} AND r.valid_until IS NULL "
+            f"RETURN r, subj, obj ORDER BY r.confidence DESC, r.created_at DESC",
+            columns="r agtype, subj agtype, obj agtype",
+        )
+        relations: list[Relation] = []
+        for row in erows:
+            rel = _to_relation(_props(row["r"]))
+            sp, op_ = _props(row["subj"]), _props(row["obj"])
+            rel.subject_name, rel.subject_kind = sp.get("name"), sp.get("kind")
+            rel.object_name, rel.object_kind = op_.get("name"), op_.get("kind")
+            relations.append(rel)
+
+        # `total` is the UNCAPPED count and the cap is applied after it — the pair is what
+        # tells a caller its neighbourhood was cut. Computing the cap without the total
+        # (the original shape) reports `relations_truncated=False` on every hub entity.
+        total = len(relations)
+        capped = relations[:rel_cap]
+        return EntityDetail(
+            entity=entity,
+            relations=capped,
+            relations_truncated=total > len(capped),
+            total_relations=total,
+        )
 
     # ── relations ────────────────────────────────────────────────────
 

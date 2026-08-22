@@ -15474,6 +15474,11 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   to create not only exists, it has grown from 40 rules to 82 across A1–A8 and every skip is
   asserted rather than assumed. The only *"not yet"* in the block below is narrative about a
   git incident, not owed work.
+  ⚠️ **Amended by T89 (2026-08-22): every sentence above counts RULES, and two port methods
+  had none.** `neighborhood` was unconformed against all four adapters and raised on every
+  AGE call until a live run found it. The row stays `[x]` — the suite was built and the
+  parameterisation is real — but "re-verified against all three adapters" was never a
+  statement about COVERAGE. `port-adoption-gate` now derives that number (21/21, ceiling 0).
   ---
   ### 🔴 A0 2026-08-13 — **the batch was already done, and I nearly destroyed it proving that**
 
@@ -15616,6 +15621,101 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | Give the port a way to CLOSE an interval — either `valid_to_ordinal` on `upsert_relation` or a separate close operation — then extend `test_as_of_respects_the_interval_start` to assert the upper bound through the port. Alternatively declare the relation WRITE path out of port scope deliberately and say so, so the gap is a decision rather than an omission. |
   | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
   | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
+  ---
+  ### ✅ T89 2026-08-22 — **a live run on AGE returned HTTP 500 from the port, and 19-of-21 was why**
+
+  ```
+  port conformance   19/21 methods have a rule  ->  21/21   ceiling 0, moved in this commit
+  defects found       4, in 3 adapters + 1 unit suite       all invisible to a green suite
+  knowledge unit  4336 -> 4338 · DB integration 634 -> 650 · conformance 165 -> 181
+  ```
+
+  🔴 **The first thing that ever called `neighborhood` on AGE was a live HTTP request, and it
+  could not return at all.** `POST /internal/knowledge/wiki-neighborhood`, backend `age`,
+  rebuilt image:
+
+  ```
+  ValidationError: 1 validation error for EntityDetail
+  entity   Field required [input_value={'id': 'b0a88a54…', 'relations': []}]
+  ```
+
+  The adapter spread the entity across the top level instead of nesting it under `.entity`.
+  Not a wrong answer — a raise, on **every** call.
+
+  📐 **The suite was parameterised over four adapters and silent about two methods.** T42a's
+  closure reads *"grown from 40 rules to 82 … every skip is asserted rather than assumed"*,
+  and all of that was true. It counted RULES. `neighborhood` and `status_at_order` had none,
+  so they were unconformed against four adapters at once, and the arithmetic that would have
+  shown it — port methods vs. methods any rule calls — was never done.
+
+  🔬 **Writing the four missing rules found three more defects, none in the module the crash
+  pointed at, and each in a different implementation:**
+
+  ```
+  age    delegated to `relations_for`, whose DEFAULTS are min_confidence=0.8 + exclude
+         archived peers. The neighbourhood query filters on `valid_until IS NULL` ALONE.
+         Every low-confidence edge was silently missing from the context block — one
+         backend only, no error.
+  age    `total_relations` / `relations_truncated` never computed
+  fake   the SAME pair never computed — capped the list, reported "nothing was cut", with
+         the comment "The cap is applied, not ignored" directly above the omission
+  fake   `status_at_order` OMITTED the key for an entity with no transition instead of
+         failing open to 'active'
+  ```
+
+  ⚖️ **And two unit tests asserted the fourth defect.** `test_graph_store_port.py` read
+  `== {}` for exactly the case the production Cypher has a hand-written comment defending:
+
+  ```
+  RETURN eid AS entity_id, coalesce(latest.status, 'active') AS status
+  # OPTIONAL MATCH + collect-inside (NOT a CALL subquery) so an entity with NO
+  # status transition survives the row and defaults to 'active'
+  """…Every requested id appears in the result (no silent drop)."""
+  ```
+
+  The fake dropped the key and the tests written against the fake asserted the drop, so the
+  two agreed with each other while disagreeing with all three real adapters. Which side was
+  wrong was settled **from the workload** — the Cypher, its comment, its docstring — not by
+  preferring the majority.
+
+  🎯 **The ratchet is derived on both sides.** `MAX_UNCONFORMED_PORT_METHODS = 0`: port
+  methods from the Protocol's AST, covered methods from the suite's own `store.<m>(` calls.
+  A hand-kept list of "methods we test" is the artifact that was already wrong. Its selftest
+  runs on FIXTURES, including a method named only in a comment — not on this repo's tree,
+  which passes for its own reason.
+
+  ```
+  1  the flattened shape returns          RED — the IDENTICAL live ValidationError, [age] only
+  2  nesting kept, cap-reporting dropped  RED — assert 0 == 4, the silent "nothing was cut"
+  3  the neighborhood rules deleted       RED — the ratchet NAMES `neighborhood` at 1 > 0
+  4  the fake omits the key again         RED — "not reported active: {}", [fake] only
+  ```
+
+  Bite 2 matters most: it keeps bite 1's fix in place, so it proves the truncation rule is
+  not just re-catching the crash.
+
+  **QC (a) gates:** unit 4338, DB integration 650, conformance **181 passed across four
+  adapters** (fake · neo4j · age · kuzu), `port-adoption-gate` PASS at 21/21 with the ceiling
+  moved in this commit, `--selftest` PASS, four plan gates green.
+  **QC (b) live smoke:** the engine seam IS the subject. Image rebuilt, `lw-iso` only,
+  `KNOWLEDGE_GRAPH_BACKEND=age`; the call that 500'd now returns `found: true`,
+  `name: "Aurelia Vane"`, `source_types: ["enriched:livesmoke"]`.
+  **QC (c) real data:** and the two halves read ONE store —
+
+  ```
+  WRITE  /internal/knowledge/enriched-writeback  -> repo layer (enrichment.upsert_*)
+  READ   /internal/knowledge/wiki-neighborhood   -> GraphStore PORT (AgeGraphStore)
+
+  AGE g_shared   "Aurelia Vane" | "person" | "5f9a2aaa-bfce-4f8a-9ad4-8b610c572620"
+  iso Neo4j      0
+  ```
+
+  T54b's split — *"one conceptual graph, two stores, one of them empty"* — measured closed
+  end-to-end through the service, on a rebuilt image, with the backend flipped. Dev is
+  untouched and stays on `neo4j`: the flip was an env override on the `lw-iso` invocation,
+  never a write to `infra/.env`.
+
+
 - [x] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
   verify: bash scripts/postgres-knowledge-image-smoke.sh
   ✅ **TICKED 2026-08-14, two days late — re-verified by RUNNING it, not by reading the block:**
