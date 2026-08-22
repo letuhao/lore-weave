@@ -151,7 +151,12 @@ def _mint_jwt(secret: str, user_id: str) -> str:
 def run(args) -> int:
     base = args.base_url.rstrip("/")
     internal = {"X-Internal-Token": args.internal_token}
-    user_id = str(uuid.uuid4())
+    # A fresh user by default — the smoke owns everything it creates. `--user-id` exists for
+    # the axis check ONLY: that needs a book, books belong to book-service, and the grant check
+    # (rightly) refuses a book this user does not own. Supplying the book's OWNER is the
+    # smallest thing that makes the check runnable without turning this into a book-service
+    # client.
+    user_id = args.user_id or str(uuid.uuid4())
     bearer = {"Authorization": f"Bearer {_mint_jwt(args.jwt_secret, user_id)}"}
 
     # ── the engine must be the one we were told to prove ────────────────────────────────
@@ -178,9 +183,21 @@ def run(args) -> int:
     print(f"[graph-backend-smoke] backend confirmed from /health: {running!r}")
 
     # ── setup: a real project row, or every read 404s at the grant check ────────────────
-    st, proj = _req(f"{base}/v1/knowledge/projects", headers=bearer,
-                    body={"name": "graph-backend live smoke", "project_type": "book"})
-    if st != 201 or not isinstance(proj, dict) or "project_id" not in proj:
+    # ⚠️ The window check needs a BOOK, and this smoke cannot mint one: books belong to
+    # book-service, and creating a project against a fabricated `book_id` is refused by the
+    # grant check with the very `{"detail": "not found"}` this script documents as trap #2.
+    # So `--book-id` is supplied by the caller or the check is SKIPPED — and the skip is
+    # announced, because a check that quietly vanishes is the one nobody notices is gone.
+    book_id = args.book_id
+    body = {"name": "graph-backend live smoke", "project_type": "book"}
+    if book_id:
+        body["book_id"] = book_id
+    st, proj = _req(f"{base}/v1/knowledge/projects", headers=bearer, body=body)
+    # 200 OR 201. A second run against the same `--book-id` gets the EXISTING project back
+    # with a 200, and demanding 201 turned that into "could not create the project (200)" —
+    # a success reported as a failure, which is the mirror of the trap this script exists to
+    # refuse. Found by running it twice, not by reading it.
+    if st not in (200, 201) or not isinstance(proj, dict) or "project_id" not in proj:
         print(f"[graph-backend-smoke] FAIL — could not create the project ({st}): {proj}")
         return 1
     project_id = proj["project_id"]
@@ -285,6 +302,49 @@ def run(args) -> int:
          "why": "the RELATION — T90 had no edge in it at all"},
     ]
 
+    # ── the reading-axis WINDOW (T93b) ───────────────────────────────────────────────────
+    #
+    # The last of T90's three named gaps, and the one that needs a control rather than a
+    # marker: `count` alone proves nothing, because a store that returns everything and a
+    # store that windows correctly both answer 2 at a late position. The discriminator is
+    # that the SAME query at an EARLIER position returns fewer.
+    #
+    # The event above sits at chapter 7 (ordinal 7_000_000). Ask after it and before it.
+    def _timeline_count(chapter_order: int):
+        st_, body_ = _req(f"{base}/internal/knowledge/timeline", headers=internal,
+                          body={"book_id": book_id, "chapter_order": chapter_order,
+                                "limit": 20})
+        if st_ != 200 or not isinstance(body_, dict):
+            return None, f"HTTP {st_}"
+        titles = [e.get("title") for e in body_.get("events", []) if isinstance(e, dict)]
+        return titles, ""
+
+    if not book_id:
+        print("  SKIP  axis: reading window        no --book-id given, so the windowed read "
+              "cannot resolve a project; the axis is NOT proven by this run")
+        after = before = None
+    else:
+        after, err_a = _timeline_count(9)
+        before, err_b = _timeline_count(5)
+    if book_id and (after is None or before is None):
+        print(f"[graph-backend-smoke] FAIL — the windowed read did not answer "
+              f"({err_a or err_b})")
+        return 1
+    if book_id and ev_title not in after:
+        print(f"[graph-backend-smoke] FAIL — the event written at chapter 7 is NOT visible at "
+              f"chapter 9: {after}. Either the write did not land on the reading axis or the "
+              f"window is excluding what it should include.")
+        return 1
+    if book_id and ev_title in before:
+        print(f"[graph-backend-smoke] FAIL — the event at chapter 7 IS visible at chapter 5: "
+              f"{before}. The reading-axis window is not applied, so a reader would be shown "
+              f"events from ahead of their position — the spoiler leak the ordinal exists to "
+              f"prevent.")
+        return 1
+    if book_id:
+        print(f"  OK    axis: reading window        chapter 9 sees it, chapter 5 does NOT "
+              f"({len(after)} vs {len(before)})")
+
     results = []
     for p in probes:
         headers = internal if p["auth"] == "internal" else bearer
@@ -368,12 +428,23 @@ def main() -> int:
     ap.add_argument("--internal-token")
     ap.add_argument("--jwt-secret")
     ap.add_argument("--expect-backend", default="age", choices=["age", "neo4j"])
+    ap.add_argument("--user-id", default="",
+                    help="run as this user instead of a fresh one. Only needed with "
+                         "--book-id, which must be a book this user OWNS.")
+    ap.add_argument("--book-id", default="",
+                    help="a REAL book id (book-service owns them). Enables the reading-axis "
+                         "window check; without it that check is skipped, loudly.")
     ap.add_argument("--min-data", type=int, default=4,
                     help="probes that must carry a written row, not merely answer 2xx")
     ap.add_argument("--selftest", action="store_true", help="prove this smoke can go red")
     args = ap.parse_args()
     if args.selftest:
         return selftest()
+    if args.book_id and not args.user_id:
+        print("[graph-backend-smoke] FAIL — --book-id needs --user-id: the smoke mints a fresh "
+              "user by default, and the grant check will refuse a book that user does not own. "
+              "That refusal is correct; passing the owner is the fix.")
+        return 2
     if not args.internal_token or not args.jwt_secret:
         print("[graph-backend-smoke] FAIL — --internal-token and --jwt-secret are required "
               "for a live run (read them off the running container).")

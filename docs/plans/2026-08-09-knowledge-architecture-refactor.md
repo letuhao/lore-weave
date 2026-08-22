@@ -16022,6 +16022,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   ---
   ---
+  ---
+  ### ✅ T93b 2026-08-23 — **the reading-axis window is MECHANISED, and running it twice found a bug**
+
+  ```
+  T90's three named gaps   extraction ✓ (T93) · relation edges ✓ (T93) · WINDOW ✓ (here)
+  axis: reading window     chapter 9 sees it, chapter 5 does NOT  (1 vs 0)
+  ```
+
+  🎯 **The window is the one that needed a CONTROL, not a marker.** A count proves nothing on
+  its own: a store that returns everything and a store that windows correctly both answer 2 at
+  a late position. The discriminator is the SAME query at an EARLIER position returning fewer —
+  so the check asks chapter 9 and chapter 5 against an event written at chapter 7.
+
+  ⚖️ **It is OPT-IN, and the reason is a refusal that is CORRECT.** The check needs a book;
+  books belong to book-service; and the smoke mints a fresh user, so the grant check rightly
+  404s on a book that user does not own. Three attempts to work around that each hit a real
+  coupling:
+
+  ```
+  fabricate a book_id            -> 404 grant check. The book must exist.
+  create one via book-service    -> 404 grant check. The SMOKE's user does not own it.
+  --book-id alone                -> refused UP FRONT, with the reason, rather than 404ing
+                                    three calls later
+  ```
+
+  So `--book-id` requires `--user-id`, and without them the check **SKIPS LOUDLY** — printed,
+  not silent, because a check that quietly vanishes is the one nobody notices is gone.
+
+  🔴 **And running it a second time found a bug in my own script.** Against a book that already
+  had a project, `POST /v1/knowledge/projects` returns **200** with the existing row rather
+  than 201. The smoke demanded 201 and reported *"could not create the project (200)"* — **a
+  success reported as a failure**, the exact mirror of the trap this script exists to refuse.
+  Found by re-running, not by reading; it accepts 200 or 201 now.
+
+  ```
+  29  ask the SAME position twice, so the control collapses
+      RED — "the event at chapter 7 IS visible at chapter 5: [...]. The reading-axis window
+             is not applied, so a reader would be shown events from ahead of their position
+             — the spoiler leak the ordinal exists to prevent."
+  ```
+
+  The bite removes the *earlier* position rather than breaking the query, so what it proves is
+  that the discrimination is doing the work — not that the endpoint can fail.
+
+  **QC (a) gates:** `--selftest` 13/13 green, all repo gates green.
+  **QC (b) live smoke:** the subject. `lw-iso`, backend `age`, a real book created through
+  book-service and owned by the run's user; the axis check executes and discriminates.
+  **QC (c) real data:** `1 vs 0` on the first run and `2 vs 0` on a later one — the second
+  number moving is the accumulated events from earlier runs, and the window still excludes
+  every one of them at chapter 5.
+
+
   ### ✅ T93 2026-08-23 — **the WORKLOAD half of the live proof: extraction lands on AGE, and the reading axis holds**
 
   ```
@@ -16080,9 +16132,10 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   merged nothing would let every probe below it pass against an empty graph — so the guard
   asserts the COUNTS, and the bite had to produce real zeroes rather than delete the check.
 
-  ⛔ **Honest about what is still hand-proven:** the chapter-9/chapter-5 window is measured
-  above but is NOT in the script — it needs a book-linked project, which the smoke does not
-  create. Two of T90's three gaps are now mechanised; the third is evidence, not a test.
+  ⛔ ~~**Honest about what is still hand-proven:** the chapter-9/chapter-5 window is measured
+  above but is NOT in the script~~ — **DISCHARGED the same day by T93b**, which mechanises it
+  as an opt-in check (`--book-id` + `--user-id`) that skips LOUDLY when it cannot run. All
+  three of T90's gaps are now in the script.
 
   **QC (a) gates:** `--selftest` 13/13 green, all repo gates green.
   **QC (b) live smoke:** the subject — rebuilt images, `lw-iso`, and the same script PASSES on
