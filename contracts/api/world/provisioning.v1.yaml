@@ -373,6 +373,46 @@ paths:
             WORLD that the caller can act on, so it is a 404 and not a 500.
           $ref: "#/components/responses/Problem"
 
+  /internal/v1/space/where-is:
+    post:
+      operationId: spaceWhereIs
+      summary: Where is this entity
+      description: |
+        `A4`. Answers *"where is entity N"*. `/space/view` answers the other
+        half — *"what is at node X"* — and a caller that wants to render an
+        actor's surroundings needs both.
+
+        Internal-gated for the same reason as `/space/view` and
+        `/actor-control/subject`: the request names the thing it asks about.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WhereIsRequest" }
+      responses:
+        "200":
+          description: |
+            The answer, as one of THREE distinct facts — `unbound`, `in_cell`,
+            or `not_in_a_cell`. **`unbound` is a 200, not a 404**: the resource
+            being described is the binding relation, and "this entity is
+            nowhere" is a fact about it rather than its absence. It is also the
+            ordinary state — until a world exists to be sited in, every actor is
+            unbound.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WhereIsResponse" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500":
+          description: |
+            Includes `node-not-on-the-map`: the entity is bound to a channel
+            that has no `map_layout` row. `0025`'s foreign key guarantees the
+            CHANNEL exists, not that it is on the map, so this is reachable and
+            is a fault rather than a shrug.
+          $ref: "#/components/responses/Problem"
+
 components:
   securitySchemes:
     internalToken:
@@ -754,6 +794,64 @@ components:
           type: [string, "null"]
           description: '`null` unless the node is a `Domain` carrying a `place` row.'
 
+    WhereIsRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, entity_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        entity_id:
+          type: integer
+          format: int64
+          description: The island entity id, as `actors.entity_id` allocates it.
+
+    WhereIsResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, whereabouts]
+      properties:
+        reality_id: { type: string, format: uuid }
+        whereabouts: { $ref: "#/components/schemas/Whereabouts" }
+
+    Whereabouts:
+      type: object
+      required: [kind]
+      description: |
+        Three DISTINCT facts, discriminated by `kind`, and deliberately not an
+        optional location. Collapsing them would merge two different truths into
+        one silence: an entity with no binding at all and an entity held in
+        someone's hand would both read as null. `0025` models location as a sum
+        type with a `CHECK` enforcing exactly one arm, and flattening it here
+        would undo that at the edge.
+      properties:
+        kind:
+          type: string
+          enum: [unbound, in_cell, not_in_a_cell]
+        entity_id:
+          type: integer
+          format: int64
+          description: '`in_cell` only.'
+        node:
+          type: integer
+          format: int64
+          description: '`in_cell` only — the `channels.id` the entity occupies.'
+        kind_of_node:
+          type: string
+          description: 'Serialised as `kind` inside the `in_cell` payload; the node''s `MapKind`.'
+        level_name:
+          type: string
+          description: '`in_cell` only — the reality''s own word for the level (`DP-A13`).'
+        place_name:
+          type: [string, "null"]
+          description: '`in_cell` only — present when the node is a `Domain` carrying a `place`.'
+        location_kind:
+          type: string
+          enum: [held_by, in_container, embedded]
+          description: |
+            `not_in_a_cell` only. WHERE it is is then its holder, which is a
+            different question this endpoint deliberately does not answer: an
+            inventory owner does not exist yet, and traversing to one here would
+            decide that owner by accident.
     ProvisionResponse:
       type: object
       required: [outcome, reality_id, shard_id, db_name]

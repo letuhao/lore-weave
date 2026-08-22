@@ -226,3 +226,97 @@ mod tests {
         assert_eq!(MAX_DEPTH_WALK, 17);
     }
 }
+
+/// Where an entity is, as three DISTINCT facts.
+///
+/// `A4`. `assemble` answers *"what is at node X"*; nothing answered *"where is
+/// entity N"*, and the room needs the second to render the first.
+///
+/// Three variants and not an `Option`, because collapsing them would merge two
+/// different truths into one silence: an entity with no binding at all and an
+/// entity held in someone's hand would both read as `None`. `0025` models
+/// location as a **sum type** with a `CHECK` that enforces exactly one arm; a
+/// reader that flattened it back to nullable would be undoing that at the edge.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Whereabouts {
+    /// No `entity_binding` row. The ordinary state for every actor that has
+    /// never been sited — which, until `A3`, was all of them.
+    Unbound,
+    /// Bound, and in a cell. The only arm that has a node.
+    InCell(EntityLocation),
+    /// Bound, but not to a cell — `held_by`, `in_container` or `embedded`.
+    /// **Where it is** is then its holder, which is a different question and one
+    /// this row deliberately does not answer: an inventory owner does not exist
+    /// yet, and inventing the traversal here would decide that owner by accident.
+    NotInACell {
+        /// The `location_kind` column, verbatim.
+        location_kind: String,
+    },
+}
+
+/// The `in_cell` arm's payload.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct EntityLocation {
+    pub entity_id: i64,
+    /// The `channels.id` the entity occupies.
+    pub node: i64,
+    /// The node's `MapKind`.
+    pub kind: String,
+    /// The reality's own word for the level (`DP-A13`).
+    pub level_name: String,
+    /// `None` unless the node is a `Domain` carrying a `place` row.
+    pub place_name: Option<String>,
+}
+
+/// Answer *"where is entity N"* for one reality.
+///
+/// ONE query. The join is the point: a binding names a `cell_id`, and a cell is
+/// a `channels` row whose `map_layout` gives it a kind and whose `place` — if it
+/// is a `Domain` — gives it a name. Three tables, one round trip; the N+1 that
+/// `C2` removed from the ancestor walk is not reintroduced here.
+pub async fn where_is(
+    pool: &PgPool,
+    reality: &RealityId,
+    entity_id: i64,
+) -> Result<Whereabouts, ViewError> {
+    let row: Option<(String, Option<i64>, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT eb.location_kind, eb.cell_id, m.kind, c.level_name, p.name_vi \
+               FROM entity_binding eb \
+               LEFT JOIN channels c \
+                 ON c.reality_id = eb.reality_id AND c.id = eb.cell_id \
+               LEFT JOIN map_layout m \
+                 ON m.reality_id = eb.reality_id AND m.channel_id = eb.cell_id \
+               LEFT JOIN place p \
+                 ON p.reality_id = eb.reality_id AND p.place_id = eb.cell_id \
+              WHERE eb.reality_id = $1 AND eb.entity_id = $2",
+        )
+        .bind(reality.as_uuid())
+        .bind(entity_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(ViewError::Db)?;
+
+    let Some((location_kind, cell_id, kind, level_name, place_name)) = row else {
+        return Ok(Whereabouts::Unbound);
+    };
+    match (location_kind.as_str(), cell_id, kind, level_name) {
+        ("in_cell", Some(node), Some(kind), Some(level_name)) => {
+            Ok(Whereabouts::InCell(EntityLocation {
+                entity_id,
+                node,
+                kind,
+                level_name,
+                place_name,
+            }))
+        }
+        // `in_cell` with no joined node means the binding points at a channel
+        // that has no `map_layout` row -- a tree node that was never given a
+        // kind. `0025`'s foreign key guarantees the CHANNEL exists, not that it
+        // is on the map, so this is reachable and is a real fault rather than a
+        // shrug.
+        ("in_cell", ..) => Err(ViewError::NotFound(cell_id.unwrap_or(entity_id))),
+        _ => Ok(Whereabouts::NotInACell { location_kind }),
+    }
+}

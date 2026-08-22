@@ -27,6 +27,7 @@
 use std::path::PathBuf;
 
 use world_service::actor_registry;
+use world_service::space_view::{self, Whereabouts};
 use world_service::spawn::{EntityType, Siting};
 use world_service::world_seed::{self, MapKind, NodeDecl};
 
@@ -45,20 +46,43 @@ fn migrations_dir() -> PathBuf {
 
 /// The minimum chain: the skeleton, the tree, the actors table, the map row and
 /// the binding.
-const NEEDED: [&str; 5] =
-    ["0001_initial", "0019_channels", "0022_actors", "0024_map_layout", "0025_entity_binding"];
+const NEEDED: [&str; 6] =
+    ["0001_initial", "0019_channels", "0022_actors", "0024_map_layout", "0025_entity_binding", "0026_place"];
 
+/// A World, and a Domain under it that CARRIES A PLACE.
+///
+/// The second node is not decoration: `where_is` reads `place.name_vi`, and a
+/// fixture of one placeless `World` would exercise the query while leaving its
+/// most interesting column permanently `None`. That is how a join rots -- it
+/// keeps working and stops being checked.
 fn one_world() -> Vec<NodeDecl> {
-    vec![NodeDecl {
-        id: 1,
-        parent: None,
-        level_name: "thien-gioi".into(),
-        kind: MapKind::World,
-        pos_x: 500,
-        pos_y: 500,
-        place: None,
-        scale: None,
-    }]
+    vec![
+        NodeDecl {
+            id: 1,
+            parent: None,
+            level_name: "thien-gioi".into(),
+            kind: MapKind::World,
+            pos_x: 500,
+            pos_y: 500,
+            place: None,
+            scale: None,
+        },
+        NodeDecl {
+            id: 2,
+            parent: Some(1),
+            level_name: "yen-vu-lau".into(),
+            kind: MapKind::Domain,
+            pos_x: 480,
+            pos_y: 520,
+            place: Some(world_service::world_seed::PlaceDecl {
+                place_type: "tavern".into(),
+                canon_ref: serde_json::json!({ "kind": "BookChapter", "path": "ch1" }),
+                name_vi: "Yen Vu Lau".into(),
+                name_en: None,
+            }),
+            scale: None,
+        },
+    ]
 }
 
 async fn actors_count(pool: &sqlx::PgPool) -> i64 {
@@ -95,7 +119,7 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
     }
 
     // ── 2. WITH a siting, both rows land.
-    let siting = Siting { node: 1, entity_type: EntityType::Pc, lifecycle_state: 0 };
+    let siting = Siting { node: 2, entity_type: EntityType::Pc, lifecycle_state: 0 };
     let sited = actor_registry::create_actor(pool, &reality, Some(&siting))
         .await
         .map_err(|e| format!("create sited actor: {e}"))?;
@@ -110,7 +134,7 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
     .fetch_one(pool)
     .await
     .map_err(|e| format!("read binding: {e}"))?;
-    if where_is != 1 {
+    if where_is != 2 {
         return Err(format!("the actor was sited at {where_is}, not the node asked for"));
     }
     if sited.entity_id == bare.entity_id {
@@ -148,6 +172,49 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
         return Err("an already-sited entity was sited a second time -- spawn is \
                     silently acting as move"
             .into());
+    }
+
+    // ── 5. `A4` — WHERE IS IT. Three DISTINCT facts, and the point of the test
+    //       is that they stay distinct: collapsing `Unbound` and `NotInACell`
+    //       into one silence is exactly what `0025`'s sum-type CHECK exists to
+    //       prevent one layer down.
+    match space_view::where_is(pool, &reality, sited.entity_id).await {
+        Ok(Whereabouts::InCell(loc)) => {
+            if loc.node != 2
+                || loc.kind != "domain"
+                || loc.place_name.as_deref() != Some("Yen Vu Lau")
+            {
+                return Err(format!("sited actor resolved to {loc:?}"));
+            }
+        }
+        other => return Err(format!("a sited actor must be InCell, got {other:?}")),
+    }
+    match space_view::where_is(pool, &reality, bare.entity_id).await {
+        Ok(Whereabouts::Unbound) => {}
+        other => return Err(format!("an unsited actor must be Unbound, got {other:?}")),
+    }
+
+    //       The third arm needs a binding that is NOT a cell. Without it the
+    //       enum would have two reachable variants and one that no test ever
+    //       produced -- which is how a variant rots into being wrong.
+    sqlx::query(
+        "INSERT INTO entity_binding \
+         (reality_id, entity_id, entity_type, location_kind, holder_entity, lifecycle_state) \
+         VALUES ($1, 4242, 'item', 'held_by', $2, 0)",
+    )
+    .bind(raw)
+    .bind(sited.entity_id)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("bind a held item: {e}"))?;
+    match space_view::where_is(pool, &reality, 4242).await {
+        Ok(Whereabouts::NotInACell { location_kind }) if location_kind == "held_by" => {}
+        other => {
+            return Err(format!(
+                "a HELD item must be NotInACell -- reporting Unbound would say it does \
+                 not exist, got {other:?}"
+            ));
+        }
     }
 
     eprintln!("A3 SPAWN (real Postgres)");

@@ -75,6 +75,9 @@ pub const ROUTES: &[RouteSpec] = &[
     // is one: the request names the node it asks about, so on a public edge it
     // would be an oracle over the shape of a world.
     RouteSpec { method: "post", path: "/internal/v1/space/view", gate: Gate::Internal },
+    // `A4` — "where is entity N". Internal for the same reason: the request
+    // names the entity it asks about.
+    RouteSpec { method: "post", path: "/internal/v1/space/where-is", gate: Gate::Internal },
 ];
 
 /// Assemble the service router.
@@ -88,6 +91,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/actor-control/revoke", post(actor_control::revoke_control))
         .route("/internal/v1/actor-control/subject", post(actor_control::resolve_subject))
         .route("/internal/v1/space/view", post(space::view))
+        .route("/internal/v1/space/where-is", post(space::where_is))
         .layer(from_fn_with_state(state.clone(), require_internal::<AppState>));
 
     Router::new()

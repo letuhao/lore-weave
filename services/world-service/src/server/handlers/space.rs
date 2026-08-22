@@ -34,7 +34,7 @@ use uuid::Uuid;
 
 use crate::actor_control_flow::{bind_reality, open_reality_pool};
 use crate::server::state::AppState;
-use crate::space_view::{self, SpaceView, ViewBudget, ViewError};
+use crate::space_view::{self, SpaceView, ViewBudget, ViewError, Whereabouts};
 use service_http::ProblemDetails;
 
 /// The largest budget this surface will accept, per section.
@@ -125,6 +125,67 @@ pub async fn view(
     }
 }
 
+/// `POST /internal/v1/space/where-is`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WhereIsRequest {
+    pub reality_id: Uuid,
+    /// The island entity id, as `actors.entity_id` allocates it.
+    pub entity_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WhereIsResponse {
+    pub reality_id: Uuid,
+    /// Three distinct facts, never flattened to a nullable. See [`Whereabouts`].
+    pub whereabouts: Whereabouts,
+}
+
+/// Answer *"where is entity N"*.
+///
+/// **`Unbound` is a 200, not a 404**, for the same reason
+/// `/actor-control/subject` answers `self: null` with a 200: the resource being
+/// described is the BINDING RELATION, and *"this entity is nowhere"* is a fact
+/// about it rather than its absence. It is also the ordinary state -- until a
+/// world exists to be sited in, every actor is unbound.
+pub async fn where_is(
+    State(state): State<AppState>,
+    body: Result<Json<WhereIsRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<WhereIsResponse>), ProblemDetails> {
+    let Json(req) = body.map_err(|e| {
+        ProblemDetails::new(e.status(), "invalid-body", "Invalid request body", e.body_text())
+    })?;
+
+    let reality = bind_reality(&state.meta, &state.effects.meta_allowlist, req.reality_id)
+        .await
+        .map_err(crate::server::handlers::actor_control::to_problem)?;
+    let pool = open_reality_pool(&state.meta, &state.effects, &reality)
+        .await
+        .map_err(crate::server::handlers::actor_control::to_problem)?;
+
+    let found = space_view::where_is(&pool, &reality, req.entity_id).await;
+    pool.close().await;
+
+    match found {
+        Ok(whereabouts) => Ok((
+            StatusCode::OK,
+            Json(WhereIsResponse { reality_id: req.reality_id, whereabouts }),
+        )),
+        // A binding pointing at a channel with no `map_layout` row. `0025`'s
+        // foreign key guarantees the CHANNEL exists, not that it is on the map.
+        Err(ViewError::NotFound(n)) => Err(ProblemDetails::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "node-not-on-the-map",
+            "The entity is bound to a channel that has no map_layout row",
+            format!("channel {n} in reality {} is not on the map", req.reality_id),
+        )),
+        Err(ViewError::Db(e)) => Err(ProblemDetails::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "database-error",
+            "Could not resolve the entity's whereabouts",
+            e.to_string(),
+        )),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
