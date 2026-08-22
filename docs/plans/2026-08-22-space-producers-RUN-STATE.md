@@ -342,7 +342,7 @@ that file is ungoverned history, and a third copy is the drift this run keeps fi
 |---|---|---|---|
 | `B1` | **reality-layer `3C` + `3D` as ONE commit** — `ids.rs` re-added, `CapabilityToken`, `trait ControlPlane`, `SessionContext`, the `#[cfg(test)]` double. The producer `3C` was waiting for is the control-plane seam, and `3D` *is* that seam | `[x]` | **DONE 2026-08-22 — §3.7. ALREADY BUILT; the board was never told.** Verified by the rows' OWN criteria: `clippy -p dp -D warnings` **rc=0**, and the field → `pub` bite reds `forged_reality_id`. Both boards updated |
 | `B2` | **kernel-state `G5` automated.** Its status cell ticks the MANUAL leg and leaves the AUTOMATED leg unticked — the browser render is proven by hand and by nothing that runs again | `[x]` | **DONE 2026-08-22 — §3.8. The suite was already written and had never been RUN.** 2 passed on chromium in ~1.9 s against the real stack; bite `XLEN 1→0` reds both. `FLOW-19`'s shape a second time |
-| `B3` | **game-tier `1b5-*` — eight rows marked `⬜ OPEN` at `:1700`–`:1707` that a discharge table at `:1787` closes.** The work shipped; the register was never told | `[ ]` | |
+| `B3` | **game-tier `1b5-*` — eight rows marked `⬜ OPEN` at `:1700`–`:1707` that a discharge table at `:1787` closes.** The work shipped; the register was never told | `[x]` | **DONE 2026-08-22 — §3.9. All eight verified against the CODE, not the discharge table, then ticked.** Bite: deleting `channels_id_positive` reds `dp-channels-schema-gate`. One row (`L3`/`L4`) is prose-discharged and says so |
 | `B4` | **lore-bible `LB1`/`LB2`/`LB3` — unpark or park with a trigger.** `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep. A board parked for a *good* reason still needs the reason written where the next reader looks | `[ ]` | |
 
 #### 3.7 · `B1` — verified, not built
@@ -416,6 +416,28 @@ been replaced with the ones that were actually executed, including `--project=ch
 playwright launches firefox and webkit too, and **a missing browser BINARY reads exactly like a
 failing assertion** — 4 "failures" that were nothing of the kind.
 
+#### 3.9 · `B3` — verified against the code, not against the table that claimed it
+
+**A table saying "discharged" is the same kind of claim the rows themselves were**, so each of the
+eight was checked against what shipped:
+
+| row | result |
+|---|---|
+| `H1` | the only surviving `channel_id UUID` is a **deliberately quoted superseded declaration**, with a reasoned `schema-gate: ok` pragma and the corrected table below it |
+| `H2`/`H3` | `parent_depth SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED`, **inside the composite foreign key** |
+| `H4` | the gate's own self-test: **11 schema mutations each VISIBLE** |
+| `M4` | both constraints present **and enforced** — see the bite |
+| `M5` | the gate's own self-test: **6 formatting changes each INVISIBLE** |
+| `L3`/`L4` | **prose only.** A decision written down; nothing reds if it is forgotten. Recorded as such rather than counted as mechanised |
+| `L5`/`L6` | `channels_lifecycle_guard` + `channels_dissolve_order_guard` exist; the idempotency validator covers **142 files across 2 trees**, against the **2** `L6` complained of |
+
+**The bite, because presence is not enforcement.** Deleting `CONSTRAINT channels_id_positive` reds
+`dp-channels-schema-gate` with `only in DP-Ch2: ['CHANNELS_ID_POSITIVE']`. Restored byte-identical.
+
+**Three instances of one shape in a single day** — `SPG-Q6`, reality-layer `3C`/`3D` (`B1`), and now
+these eight. And `goal-prompt.py` could not have caught any of them: all eight are marked `⬜`, which
+`C1`'s second gap makes invisible.
+
 ### Lane C — the tooling that hid the work
 
 | # | Row | Status | Evidence |
@@ -483,7 +505,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `B3` — the game-tier `1b5-*` register drift: eight rows marked open that a discharge table below them closes. Then `B4`. Both are rows `C1`'s second gap makes invisible to tooling, so verify them by reading, not by a tool, until `C1` lands.**
+**RESUME: `B4` — lore-bible `LB1`/`LB2`/`LB3`: unpark or park with a trigger. `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep, and the board says it is parked rather than deleted — so the question is whether the park has a reason a reader can find, not whether to build it. Then lane C, where `C1` now carries THREE measured gaps.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism

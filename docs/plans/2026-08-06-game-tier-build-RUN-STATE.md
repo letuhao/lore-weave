@@ -1697,14 +1697,14 @@ throwaway database dropped.** 4 HIGH, 5 MEDIUM, 7 LOW.
 
 | id | sev | finding | state |
 |---|---|---|---|
-| `1b5-H1` | 🔴 | **`REC-103`/`REC-105` reached ONE of FOUR locked SQL sites.** `13_channel_ordering_and_writer.md:209` — **the document `0019`'s own header cites by name** — still declares `channel_id UUID PRIMARY KEY REFERENCES channels(id)`. So does `16_bubble_up_aggregator.md:339`. And `17_channel_lifecycle.md:63` holds a **second locked `ALTER TABLE channels`** (four columns + a constraint) that Phase 0 never found. `dp-channels-schema-gate.py` reads `12_channel_primitives.md` **only** — *the gate built to stop `FLOW-2` is scoped to the one file where `FLOW-2` did not happen this time.* | ⬜ OPEN |
-| `1b5-H2` | 🔴 | **`DP-Ch1`'s *"strict tree, not a DAG"* / *"No cycles"* is asserted, not enforced.** A 2-cycle takes one `UPDATE` and is accepted; delete the root and the reality is a pure cycle with **zero roots**. Any consumer walking `parent` to build an ancestor chain hangs. `channels_no_self_parent` covers length 1 only. | ⬜ OPEN — needs a decision: a trigger/recursive check in the DB, or an explicit *"SDK-enforced"* statement. |
-| `1b5-H3` | 🔴 | **`depth` is a free-floating column.** `DP-Ch1:97` names the mechanism — *"no cycles, enforced by `depth` (children = parent.depth + 1)"* — and the schema never relates `depth` to the parent. A child of the root can declare `depth 16`; a 100-node chain can sit entirely at `depth 1`. `H2` and `H3` are one defect: the spec's stated anti-cycle mechanism IS the depth relation, and neither half is implemented. | ⬜ OPEN |
-| `1b5-H4` | 🔴 | **The schema gate is blind to `PRIMARY KEY`, `NOT NULL`, `DEFAULT`, FK bodies/actions and every index but one.** A four-way mutant — `ON DELETE CASCADE`, `level_name` losing `NOT NULL`, `metadata` losing its `DEFAULT`, an extra `UNIQUE` — applies cleanly and the gate says OK. **The primary key is `REC-105`'s entire subject** and the gate does not look at it. With the mutant applied, one `DELETE` of the root silently wiped the tree. | ⬜ OPEN |
-| `1b5-M4` | 🟠 | `id <= 0` is accepted. `REC-103` cites the wire contract's unsigned `Uint64String` as a ground for `BIGINT` and carried the **width** but not the **domain**. Empty `level_name` likewise. | ⬜ OPEN |
-| `1b5-M5` | 🟠 | **The gate cries wolf on formatting.** Lowercasing a type, or deleting one space in `ON channels (reality_id)`, reds it — and reports `channels_root_single ... None`, which reads as *"`REC-104` has regressed"*. **The no-space style is what the spec itself uses for its other three indexes**, so an author normalising them gets that message. The *"switched off within a day"* failure, arriving through formatting rather than through `CHECK` bodies. | ⬜ OPEN |
-| `1b5-L3`/`L4` | 🟡 | A **dissolved root forecloses the reality permanently** (the index ignores lifecycle; `DP-Ch33` keeps the row indefinitely). And the index gives *at most* one root, not *exactly* one — zero-root realities are legal. The refuter answered the brief's question directly: **"one root" is correct, not "one ACTIVE root"**, because ids are never reissued — but the foreclosure is a consequence nobody wrote down. | ⬜ OPEN |
-| `1b5-L5`/`L6` | 🟡 | `DP-Ch31`'s terminal-Dissolved and `DP-Ch33`'s descendants-first both fall to a plain `UPDATE`; `DP-Ch31:77` claims a *"row-level rule"* that does not exist. And **`0019` is default-uncovered by `scripts/migration-idempotency-validator.sh`**, whose target list is an enumerated `0001_initial` — `NV-3`'s named shape, pre-existing, and this commit added the 19th uncovered file. | ⬜ OPEN |
+| `1b5-H1` | 🔴 | **`REC-103`/`REC-105` reached ONE of FOUR locked SQL sites.** `13_channel_ordering_and_writer.md:209` — **the document `0019`'s own header cites by name** — still declares `channel_id UUID PRIMARY KEY REFERENCES channels(id)`. So does `16_bubble_up_aggregator.md:339`. And `17_channel_lifecycle.md:63` holds a **second locked `ALTER TABLE channels`** (four columns + a constraint) that Phase 0 never found. `dp-channels-schema-gate.py` reads `12_channel_primitives.md` **only** — *the gate built to stop `FLOW-2` is scoped to the one file where `FLOW-2` did not happen this time.* | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-H2` | 🔴 | **`DP-Ch1`'s *"strict tree, not a DAG"* / *"No cycles"* is asserted, not enforced.** A 2-cycle takes one `UPDATE` and is accepted; delete the root and the reality is a pure cycle with **zero roots**. Any consumer walking `parent` to build an ancestor chain hangs. `channels_no_self_parent` covers length 1 only. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) — needs a decision: a trigger/recursive check in the DB, or an explicit *"SDK-enforced"* statement. |
+| `1b5-H3` | 🔴 | **`depth` is a free-floating column.** `DP-Ch1:97` names the mechanism — *"no cycles, enforced by `depth` (children = parent.depth + 1)"* — and the schema never relates `depth` to the parent. A child of the root can declare `depth 16`; a 100-node chain can sit entirely at `depth 1`. `H2` and `H3` are one defect: the spec's stated anti-cycle mechanism IS the depth relation, and neither half is implemented. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-H4` | 🔴 | **The schema gate is blind to `PRIMARY KEY`, `NOT NULL`, `DEFAULT`, FK bodies/actions and every index but one.** A four-way mutant — `ON DELETE CASCADE`, `level_name` losing `NOT NULL`, `metadata` losing its `DEFAULT`, an extra `UNIQUE` — applies cleanly and the gate says OK. **The primary key is `REC-105`'s entire subject** and the gate does not look at it. With the mutant applied, one `DELETE` of the root silently wiped the tree. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-M4` | 🟠 | `id <= 0` is accepted. `REC-103` cites the wire contract's unsigned `Uint64String` as a ground for `BIGINT` and carried the **width** but not the **domain**. Empty `level_name` likewise. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-M5` | 🟠 | **The gate cries wolf on formatting.** Lowercasing a type, or deleting one space in `ON channels (reality_id)`, reds it — and reports `channels_root_single ... None`, which reads as *"`REC-104` has regressed"*. **The no-space style is what the spec itself uses for its other three indexes**, so an author normalising them gets that message. The *"switched off within a day"* failure, arriving through formatting rather than through `CHECK` bodies. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-L3`/`L4` | 🟡 | A **dissolved root forecloses the reality permanently** (the index ignores lifecycle; `DP-Ch33` keeps the row indefinitely). And the index gives *at most* one root, not *exactly* one — zero-root realities are legal. The refuter answered the brief's question directly: **"one root" is correct, not "one ACTIVE root"**, because ids are never reissued — but the foreclosure is a consequence nobody wrote down. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
+| `1b5-L5`/`L6` | 🟡 | `DP-Ch31`'s terminal-Dissolved and `DP-Ch33`'s descendants-first both fall to a plain `UPDATE`; `DP-Ch31:77` claims a *"row-level rule"* that does not exist. And **`0019` is default-uncovered by `scripts/migration-idempotency-validator.sh`**, whose target list is an enumerated `0001_initial` — `NV-3`'s named shape, pre-existing, and this commit added the 19th uncovered file. | ✅ **DISCHARGED — verified 2026-08-22 by `B3`** (see §`B3` note below) |
 
 #### Fixed here — the ones that were FALSE, plus two absent mechanisms
 
@@ -1791,6 +1791,38 @@ past `REC-106`, `depth 17` is not reachable by declaration, only by digging.
 | `1b5-L3` | Written down rather than left to be discovered: a dissolved root **forecloses its reality permanently**, and that is correct — `DP-Ch11` never reissues an id, and a `lifecycle <> 'dissolved'` predicate would let a reality be re-rooted while the old tree's events still reference the old root. |
 | `1b5-L5` | A `BEFORE UPDATE OF lifecycle` trigger. `DP-Ch31`'s terminal-Dissolved and `DP-Ch33`'s descendants-first are statements about a **transition**, which no `CHECK` can see — and `17_channel_lifecycle.md:77` attributed them to a *"row-level rule"* that existed nowhere. In the DB and not only in the SDK, because the spec says *"row-level rule **+** SDK transition validator"*. Children rather than descendants, which is not a weakening: a child may only dissolve when its own children have, so by induction the subtree is dissolved. Both rules bitten — drop the trigger and the forbidden transition goes through, with `pg_trigger 1 -> 0` printed. |
 | `1b5-L6` | `scripts/migration-idempotency-validator.sh`'s default target list was **two files while the directory held 38**, so 36 migrations were default-uncovered — `NV-3`'s named shape, and the answer to *"what happens to a file created tomorrow?"* was measured rather than guessed: `0019` was written, committed and checked by a pre-commit hook that never looked at it, the 19th file to which that happened. Now a glob. Bitten by appending a bare `CREATE INDEX` to `0019` — **red at line 218**, and green again when removed. |
+
+#### `B3` — the eight rows were discharged and the register was never told
+
+**Verified 2026-08-22 by the space-producers board's `B3`, and verified against the CODE rather than
+against the discharge table below** — a table that says "discharged" is the same kind of claim the
+rows themselves were.
+
+| row | how it was checked | result |
+|---|---|---|
+| `1b5-H1` | do the other locked SQL sites still declare `channel_id UUID`? | the only remaining occurrence is a **deliberately quoted superseded declaration**, carrying a reasoned `schema-gate: ok` pragma and the corrected table in the fence below it |
+| `1b5-H2`/`H3` | is `depth` related to the parent? | `parent_depth SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED`, **in the composite foreign key** — `REC-106` |
+| `1b5-H4` | is the gate structural? | its own self-test: **11 schema mutations each VISIBLE** (PK, NOT NULL, DEFAULT, FK body, FK actions, deferrability, type, name, GENERATED expr, an added UNIQUE) |
+| `1b5-M4` | the two domain constraints | both present **and ENFORCED** — see the bite below |
+| `1b5-M5` | does the gate still cry wolf on formatting? | its own self-test: **6 formatting changes each INVISIBLE** |
+| `1b5-L3`/`L4` | — | a **decision written down**, not a mechanism. Recorded plainly: this one is discharged by prose and nothing reds if it is forgotten |
+| `1b5-L5`/`L6` | the trigger, and the validator's reach | `channels_lifecycle_guard` + `channels_dissolve_order_guard` exist; the idempotency validator now covers **142 files across 2 trees** (60 `per_reality` + 82 `meta`), against the **2** `L6` complained of |
+
+**The bite, because presence is not enforcement.** Deleting `CONSTRAINT channels_id_positive` from
+`0019_channels.up.sql` reds `dp-channels-schema-gate`:
+
+```
+only in DP-Ch2      : ['CHANNELS_ID_POSITIVE']
+only in 0019_channels: []
+```
+
+Restored byte-identical. **`1b5-M4`'s discharge is enforced by a gate, not merely present in a file.**
+
+**Why this sat here.** The work shipped and the `state` column never moved — the same shape as
+`SPG-Q6`, and as reality-layer `3C`/`3D`, which the same run found done-but-marked-blocked on the
+same day. `goal-prompt.py` could not have caught it either: these rows are marked `⬜`, which is not
+in its vocabulary at all, so all eight were invisible to the tool that decides what a session works
+on.
 
 #### Found while fixing, and it was in the gate itself
 
