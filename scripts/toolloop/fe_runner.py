@@ -695,8 +695,12 @@ def main():
     ap.add_argument("--turn-timeout", type=float, default=TURN_TIMEOUT,
                     help="seconds a single turn may take; raise it for a prompt that pins a RAIL, "
                          "which the server drives step by step (see TURN_TIMEOUT)")
-    ap.add_argument("--approvals", default="none", choices=("none", "standing", "as-is"),
-                    help="standing tool approvals for this batch; 'none' clears and restores")
+    ap.add_argument("--approvals", default="none",
+                    choices=("none", "standing", "as-is", "allow-under-test"),
+                    help="standing tool approvals for this batch; 'none' clears and restores; "
+                         "'allow-under-test' grants `allow` to exactly the batch's tools_under_test "
+                         "so their WRITES LAND WITHOUT A CARD (owner decision 2026-08-22, throwaway "
+                         "fixtures only) — the second half of the pair whose first half is 'none'")
     a = ap.parse_args()
     scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
     globals()["TURN_TIMEOUT"] = a.turn_timeout
@@ -711,7 +715,9 @@ def main():
             print(f"  {b}", file=sys.stderr)
         return 2
 
-    with ApprovalState(a.approvals):
+    with ApprovalState(a.approvals,
+                       tools=[s.get("tool_under_test") for s in scenarios
+                              if s.get("tool_under_test")]):
         results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency, a.approvals))
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(results, indent=2, ensure_ascii=False),
