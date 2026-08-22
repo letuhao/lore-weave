@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: §10.3's whole-map `ON CREATE SET e2 = props` — the last branch shape; 54 dialect sites left.**
+**RESUME: the 53 remaining dialect sites are `CALL {}` (14) + the `datetime()` tail; no ON CREATE SET is left.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,61 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T74 2026-08-22 — **the whole-map branch, and it had NO COVERAGE AT ALL**
+
+  ```
+  entities::_MERGE_REWIRE_EVIDENCED_BY_CYPHER      dialect 54 -> 53
+  ALL 17 ON CREATE SET branches now translated — 16 per-property + this one.
+  knowledge unit 4310 · DB integration 605 -> 606 passed, 0 failed
+  ```
+
+  §10.3's exception: `ON CREATE SET e2 = props` assigns a whole property MAP, and `coalesce`
+  takes a value. The naive unconditional `SET e2 = props` turns first-writer-wins into
+  last-writer-wins **on Neo4j as well as on AGE**, so two source edges sharing a `job_id` onto
+  one `:ExtractionSource` would have their order decide the winner.
+
+  📐 **Rebuilt as three statements in one transaction** (the caller already holds `tx`): read
+  the source's edges, read what the target already has, create only what is missing.
+  First-writer-wins expressed as a fact about the data rather than as a branch keyword —
+  identical on both engines. The in-loop `existing.add(...)` matters: two source edges sharing
+  a `(source, job_id)` must not both be created, which the old `MERGE` prevented structurally.
+
+  🔴 **BITES 42 AND 43 FOUND THE OPERATION WAS ENTIRELY UNTESTED.** Emptying the loop
+  (`for … in []`) and disabling the dedup **both left the whole integration suite green**. I
+  could have deleted this rewire outright and nothing would have complained — while merging two
+  entities would silently drop the loser's `:EVIDENCED_BY` edges. Those edges are load-bearing:
+  `cleanup_zero_evidence_nodes` deletes any node whose last one goes, so the loss is not merely
+  a missing citation, it is a node that disappears on the next sweep.
+
+  `test_merge_rewires_evidenced_by.py` now covers it, and the fixture is built around the
+  **overlapping** case — the winner already holds `(ch-1, job-1)` — because a disjoint merge
+  passes under first-writer-wins and last-writer-wins alike.
+
+  **BITE ×2, re-run against the new test:**
+
+  ```
+  42. the rewire creates NOTHING
+        FAILED — "the loser's (ch-2, job-2) evidence was NOT moved onto the winner:
+                  [('ebbfe9a8…', 'job-1')]"
+  43. first-writer-wins dropped
+        FAILED — "duplicate EVIDENCED_BY edges after merge: [… ('e8ea3c48…','job-1'),
+                  ('e8ea3c48…','job-1')] — the rewire must not recreate one the winner
+                  already had"
+  ```
+
+  🎯 **Fourth consecutive cycle where a bite found MISSING coverage rather than confirming
+  present coverage** (T70 the enrichment re-run, T71 the ordinal argument order, T73 the
+  never-assign set, this). The shape is consistent enough to name: **the operations that go
+  untested are the ones whose failure is a SILENT ABSENCE** — a fact frozen, an edge not moved,
+  a position not held — rather than a wrong value someone would notice in a response body.
+
+  **QC (a) gates:** unit **4310**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **54 → 53** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ full DB integration on a fresh throwaway Neo4j with AGE live — **606
+  passed**, 0 failed.
+  **QC (c) real data:** two entities merged in a real Neo4j with overlapping evidence, and the
+  resulting edge set read back through `list_evidence_for_target`.
 
   ### ✅ T73 2026-08-22 — **`facts` + `events`: all 16 branches done, and the never-assign rule finally exists**
 

@@ -2988,16 +2988,67 @@ RETURN count(r) AS rewired
 """
 
 
-_MERGE_REWIRE_EVIDENCED_BY_CYPHER = """
-MATCH (s:Entity {id: $source_id})-[e:EVIDENCED_BY]->(ext:ExtractionSource)
-WHERE s.user_id = $user_id
-WITH e, ext, properties(e) AS props
-MATCH (t:Entity {id: $target_id})
-WHERE t.user_id = $user_id
-MERGE (t)-[e2:EVIDENCED_BY {job_id: props.job_id}]->(ext)
-ON CREATE SET e2 = props
-RETURN count(e2) AS rewired
+# §10.3 — the ONE whole-map `ON CREATE SET` in the repo layer, and the only branch shape the
+# 2026-08-11 recipe cannot express. `coalesce` takes a VALUE, not a property map, so
+# `SET e2 = coalesce(e2, props)` is not a thing; and the naive unconditional `SET e2 = props`
+# changes the semantics ON NEO4J AS WELL AS ON AGE — first-writer-wins becomes
+# last-writer-wins, so two source edges sharing a `job_id` onto one `:ExtractionSource` would
+# have their ORDER decide the winner.
+#
+# So this one is three statements in one transaction (the caller already holds `tx`): read the
+# source's edges, read what the target already has, and CREATE only what is missing. That is
+# first-writer-wins expressed as a fact about the data rather than as a branch keyword, and it
+# is identical on both engines.
+_REWIRE_EVIDENCED_READ_SOURCE_CYPHER = """
+MATCH (s:Entity {id: $source_id, user_id: $user_id})-[e:EVIDENCED_BY]->(ext:ExtractionSource)
+RETURN ext.id AS ext_id, properties(e) AS props
 """
+
+_REWIRE_EVIDENCED_READ_TARGET_CYPHER = """
+MATCH (t:Entity {id: $target_id, user_id: $user_id})-[x:EVIDENCED_BY]->(ext:ExtractionSource)
+RETURN ext.id AS ext_id, x.job_id AS job_id
+"""
+
+_REWIRE_EVIDENCED_CREATE_CYPHER = """
+MATCH (t:Entity {id: $target_id, user_id: $user_id})
+MATCH (ext:ExtractionSource {id: $ext_id})
+CREATE (t)-[e2:EVIDENCED_BY]->(ext)
+SET e2 = $props
+RETURN 1 AS created
+"""
+
+
+async def _rewire_evidenced_by(tx, *, user_id: str, source_id: str, target_id: str) -> int:
+    """Move the source entity's `:EVIDENCED_BY` edges onto the target, FIRST-WRITER-WINS.
+
+    An edge is identified by `(ExtractionSource, job_id)`. If the target already has one for
+    that pair it is left exactly as it is — which is what `ON CREATE SET` meant, and what an
+    unconditional `SET` would silently reverse.
+    """
+    src = await run_read(
+        tx, _REWIRE_EVIDENCED_READ_SOURCE_CYPHER,
+        user_id=user_id, source_id=source_id,
+    )
+    source_rows = [(r["ext_id"], dict(r["props"])) async for r in src]
+    tgt = await run_read(
+        tx, _REWIRE_EVIDENCED_READ_TARGET_CYPHER,
+        user_id=user_id, target_id=target_id,
+    )
+    existing = {(r["ext_id"], r["job_id"]) async for r in tgt}
+
+    rewired = 0
+    for ext_id, props in source_rows:
+        if (ext_id, props.get("job_id")) in existing:
+            continue
+        await run_write(
+            tx, _REWIRE_EVIDENCED_CREATE_CYPHER,
+            user_id=user_id, target_id=target_id, ext_id=ext_id, props=props,
+        )
+        # Guard against two source edges sharing a (source, job_id): the second must see the
+        # first, or this loop would reintroduce the duplicate the MERGE used to prevent.
+        existing.add((ext_id, props.get("job_id")))
+        rewired += 1
+    return rewired
 
 
 _MERGE_UPDATE_TARGET_CYPHER = """
@@ -3244,12 +3295,8 @@ async def merge_entities(
             )
 
         # 5. Rewire EVIDENCED_BY edges.
-        await run_write(
-            tx,
-            _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
-            user_id=user_id,
-            source_id=source_id,
-            target_id=target_id,
+        await _rewire_evidenced_by(
+            tx, user_id=user_id, source_id=source_id, target_id=target_id,
         )
 
         # 5b. T2.1 — re-point (:Fact)-[:ABOUT]-> edges onto target (before delete).
