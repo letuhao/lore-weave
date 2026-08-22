@@ -754,6 +754,15 @@ _DIALECT_PATTERNS = (
     # cure: the value it builds is compared and discarded, never stored, so there is no type
     # to preserve. The cutoff is computed in Python and bound instead.
     ("duration(", re.compile(r"\bduration\s*\(")),
+    # T87 — two more Neo4j-only families the scan did not look for until a live AGE run found
+    # them, exactly as `duration(` was missed until T79:
+    #   * a PATTERN comprehension `[(a)-[r]->(b) WHERE … | expr]` — AGE rejects it outright;
+    #     the portable form is an OPTIONAL MATCH plus an aggregation.
+    #   * the list PREDICATES `any/all/none/single(x IN xs WHERE p)` — the portable form is
+    #     `size([x IN xs WHERE p]) > 0`, which is a LIST comprehension and does parse.
+    ("pattern comprehension", re.compile(r"\[\s*\(")),
+    ("any/all/none/single", re.compile(
+        r"\b(any|all|none|single)\s*\([^)]*\bIN\b[^)]*\bWHERE\b", re.I)),
     ("apoc.", re.compile(r"\bapoc\.")),
 )
 
@@ -874,10 +883,10 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: number carrying a claim it no longer supports is worse than no number.
 #:
 #: What DOES track engine readiness is coverage: how much of the repo layer has been RUN
-#: against AGE. 21 -> 50 of 152 when T86's third wave landed, and the ratchet is what
+#: against AGE. 21 -> 50 -> 104 of 152 across waves 3 and 4, and the ratchet is what
 #: made the rise visible — it FAILED on the increase and demanded the floor move in the
 #: same commit, which is rule 5 working rather than being remembered.
-MIN_AGE_PROVEN_FUNCTIONS = 50
+MIN_AGE_PROVEN_FUNCTIONS = 104
 
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",

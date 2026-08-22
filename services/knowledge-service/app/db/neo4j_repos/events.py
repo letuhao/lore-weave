@@ -1001,7 +1001,11 @@ WHERE e.user_id = $user_id
   AND ($before_chronological IS NULL OR e.chronological_order < $before_chronological)
   AND ($event_date_from IS NULL OR e.event_date_iso >= $event_date_from)
   AND ($event_date_to IS NULL OR e.event_date_iso <= $event_date_to)
-  AND ($participant_candidates IS NULL OR ANY(c IN $participant_candidates WHERE c IN e.participants))
+  // §10.1 — a list COMPREHENSION, not `ANY(… WHERE …)`. AGE does not parse the list
+  // predicates and rejects the whole block with `syntax error at or near "WHERE"`.
+  // Same construct and same cure as `entities._LIST_ENTITIES_FILTER_WHERE` (T87).
+  AND ($participant_candidates IS NULL
+       OR size([c IN $participant_candidates WHERE c IN e.participants]) > 0)
   AND (
     $q IS NULL OR $q = ''
     OR toLower(coalesce(e.title, '')) CONTAINS toLower($q)

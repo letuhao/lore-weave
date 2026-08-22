@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: wave 4 — 102 repo functions still unproven on AGE; entities (36) and facts (12) are the bulk.**
+**RESUME: the last 48 — `passages` (17) and `vector_indexes` (8) are mostly §3.1 deletions; measure what is really left.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,78 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T87 2026-08-22 — **wave 4: AGE coverage 50 → 104 of 152, and two construct families the ratchet never scanned**
+
+  ```
+  AGE coverage    50/152 (32%)  ->  104/152 (68%)   floor moved in this commit
+  wave 4          54 functions — entities (36), facts (12), events (12)
+  dialect scan    +2 families: pattern comprehension · any/all/none/single
+  knowledge unit 4336 · DB integration 632 -> 633 passed, 0 failed
+  ```
+
+  📐 The bulk, and the modules T77–T82 rewrote most heavily. **50 of 54 ran on the first
+  attempt** — the first wave where most failures were my own wrong kwargs rather than the
+  engine. The rate of real findings is falling, which is what one would hope after four waves.
+
+  🔴 **But two more Neo4j-only construct families, and neither was in the dialect scan** —
+  exactly the shape of `duration(` in T79, found only by executing the function:
+
+  ```
+  size([(e)<-[:ABOUT]-(wf:Fact) WHERE … | 1])    a PATTERN comprehension
+  any(alias IN e.aliases WHERE …)                a list PREDICATE (any/all/none/single)
+  ```
+
+  AGE rejects both with `syntax error at or near "WHERE"`. Three sites across three modules —
+  `entities`' entity list, `events`' event list, `fact_for_check`'s participant match.
+
+  ⚙️ **The cures, and why each is the shape it is.**
+
+  * The pattern comprehension became an `OPTIONAL MATCH` plus an aggregation. **The OPTIONAL is
+    load-bearing**: an entity with no windowed fact must still reach the `$before_order IS NULL`
+    arm, and a plain `MATCH` drops it before the predicate is ever read. Bite 2 confirms —
+    making it plain reds six integration tests.
+  * The list predicates became `size([x IN xs WHERE p]) > 0`, which is a **list** comprehension
+    and does parse on AGE (T84's chain fix relies on the same thing).
+
+  🎯 **The one that mattered is the spoiler window.** `size([(e)<-[:ABOUT]-(wf:Fact) …])` is what
+  stops a reader seeing characters they have not met yet, and it sits in the middle of the
+  entity list every reader surface calls. On AGE that query did not return a wrong answer — it
+  did not run at all.
+
+  🔬 **Both families are in `port-adoption-gate`'s scan as of this commit**, validated in both
+  directions so the cures are not themselves flagged:
+
+  ```
+  size([(e)<-[:ABOUT]-(f) WHERE f.x | 1])     pattern comprehension  -> flagged
+  [o IN ordinals WHERE o > cur.x]             pattern comprehension  -> NOT flagged
+  any(a IN e.aliases WHERE a = $x)            any/all/none/single    -> flagged
+  size([a IN e.aliases WHERE a = $x]) > 0     any/all/none/single    -> NOT flagged
+  ```
+
+  ```
+  1  the ANY() list predicate comes back     RED — the fourth wave AND the dialect ratchet
+  2  the spoiler window's OPTIONAL dropped   RED — 6 integration tests
+  ```
+
+  Bite 1 reddening **both** is the point: the run finds it, and the scan then stops it returning.
+
+  ⚖️ **The ratchet demanded its own number twice this session.** Adding wave 4 made
+  `port-adoption-gate` FAIL — *"ROSE to 104 (floor 50)"* — and refuse the commit until the floor
+  moved with it, as it did for wave 3 at 21 → 50.
+
+  ⛔ **68%, and 48 functions still unmet.** What remains is `passages` (17, largely the vector
+  layer §3.1 deletes), `enrichment` (4), `vector_indexes` (8, deleted), and the residue. Two
+  functions are recorded as structurally out of reach rather than untested:
+  `project_graph.purge_project` (reaches `SHOW VECTOR INDEXES`, a Neo4j admin command in a
+  module §3.1 deletes) and `graph_state.project_has_embedded_passages` (takes no session at all).
+
+  **QC (a) gates:** unit 4336, DB integration 633, `port-adoption-gate` PASS at the new floor of
+  104 with dialect still 0/0 after adding two families, engine literals 0/0, four plan gates
+  green.
+  **QC (b) live smoke:** N/A — no service seam crossed.
+  **QC (c) real data:** 54 functions executed against a live AGE 1.7.0 graph; the same suite
+  green against a throwaway Neo4j.
 
   ### ✅ T86 2026-08-22 — **wave 3: AGE coverage 21 → 50 of 152, and a rewrite I never ran on the other engine**
 

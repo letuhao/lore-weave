@@ -2349,7 +2349,12 @@ WHERE e.user_id = $user_id
   AND (
     $search IS NULL
     OR toLower(e.name) CONTAINS toLower($search)
-    OR any(alias IN e.aliases WHERE toLower(alias) CONTAINS toLower($search))
+    // §10.1 — a list COMPREHENSION, not `any(… WHERE …)`. AGE does not parse the list
+    // predicates (`any`/`all`/`none`/`single`) and rejects the whole block with
+    // `syntax error at or near "WHERE"`; `size([x IN xs WHERE p])` says the same thing
+    // and runs on both. Found by running `list_entities_filtered` on AGE (T87).
+    OR size([alias IN e.aliases
+             WHERE toLower(alias) CONTAINS toLower($search)]) > 0
   )
   // W11 spoiler window (reader surface): when $before_order is set, an entity is
   // only visible if the reader has actually MET it — i.e. it carries at least one
@@ -2361,17 +2366,28 @@ WHERE e.user_id = $user_id
   // position resolves to $before_order = -1 (never NULL), and no fact has from_order
   // <= -1, so the list is EMPTY — never the full cast. $before_order IS NULL means the
   // caller did NOT ask for a window (editor / curation surfaces) → unfiltered, as before.
-  AND (
-    $before_order IS NULL
-    OR size([(e)<-[:ABOUT]-(wf:Fact)
-             WHERE wf.from_order IS NOT NULL AND wf.from_order <= $before_order | 1]) > 0
-  )
+
+// §10.1 — an OPTIONAL MATCH + count, not a pattern comprehension. `size([(e)<-[:ABOUT]-(wf)
+// WHERE … | 1])` is a Neo4j-only construct and AGE rejects it outright with
+// `syntax error at or near "WHERE"`. Found by RUNNING `list_entities_filtered` against AGE
+// (T87) — it is the SIXTH construct family these waves have turned up, and like `duration(`
+// in T79 the dialect ratchet did not scan for it until it was found.
+//
+// The OPTIONAL is load-bearing: an entity with no windowed fact must still reach the
+// `$before_order IS NULL` arm, and a plain MATCH would drop it before the predicate is read.
+OPTIONAL MATCH (e)<-[:ABOUT]-(wf:Fact)
+WHERE wf.user_id = $user_id
+  AND wf.from_order IS NOT NULL
+  AND ($before_order IS NULL OR wf.from_order <= $before_order)
+WITH e, count(wf) AS windowed_facts
+WHERE $before_order IS NULL OR windowed_facts > 0
 """
-# NB: the window uses a pattern COMPREHENSION (`[...]`), NOT `EXISTS { ... }`. This WHERE
-# is shared by both the count query (plain concat) AND the page query, which is `.format(
-# sort_key=...)`-ed — a literal `{` from an EXISTS block would make str.format() treat it
-# as a replacement field and raise KeyError (a live-smoke 500 the mock-only unit tests could
-# not see). Brackets are format-safe. Same lesson as facts.py's "concatenation, not format()".
+# NB: the window is an aggregation, NOT `EXISTS { ... }`. This WHERE is shared by both the
+# count query (plain concat) AND the page query, which is `.format(sort_key=...)`-ed — a
+# literal `{` from an EXISTS block would make str.format() treat it as a replacement field
+# and raise KeyError (a live-smoke 500 the mock-only unit tests could not see). Neither
+# brackets nor this aggregation carry a `{`. Same lesson as facts.py's "concatenation, not
+# format()".
 
 _LIST_ENTITIES_COUNT_CYPHER = _LIST_ENTITIES_FILTER_WHERE + """
 RETURN count(e) AS total

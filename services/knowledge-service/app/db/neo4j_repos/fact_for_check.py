@@ -131,7 +131,8 @@ WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND e.event_order IS NOT NULL
   AND e.event_order <= $at_order
-  AND any(p IN coalesce(e.participants, []) WHERE toLower(p) = nm)
+  // §10.1 — see `entities._LIST_ENTITIES_FILTER_WHERE`: AGE does not parse `any(… WHERE …)`.
+  AND size([p IN coalesce(e.participants, []) WHERE toLower(p) = nm]) > 0
 WITH DISTINCT e
 RETURN e.id AS id, e.title AS title, e.summary AS summary,
        e.event_order AS event_order, e.participants AS participants

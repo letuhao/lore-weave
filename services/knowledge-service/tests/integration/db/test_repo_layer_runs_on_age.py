@@ -43,7 +43,8 @@ pytestmark = pytest.mark.asyncio
 _WAVE_1 = 12   # entities / relations / provenance          (T83)
 _WAVE_2 = 13   # facts / events / entity_status / hierarchy / maintenance / the chain  (T84)
 _WAVE_3 = 29   # the READ/DERIVE surface across nine more modules              (T86)
-_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3
+_WAVE_4 = 54   # the BULK: entities (36), facts (12), events (12)              (T87)
+_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4
 
 _GRAPH = "repo_conformance"
 
@@ -383,4 +384,163 @@ async def test_the_THIRD_WAVE_covers_the_read_and_derive_surface(age_session):
     assert ran >= _WAVE_3, (
         f"only {ran} third-wave repo functions were exercised against AGE; the floor is "
         f"{_WAVE_3} of {_PROVEN_ON_AGE} total."
+    )
+
+
+async def test_the_FOURTH_WAVE_covers_the_bulk(age_session):
+    """entities (36), facts (12), events (12) — the modules T77-T82 rewrote most heavily.
+
+    ⚠️ **Two more Neo4j-only construct families, both invisible to the dialect ratchet until a
+    live run hit them** — the same shape as `duration(` in T79:
+
+        size([(e)<-[:ABOUT]-(wf:Fact) WHERE … | 1])   a PATTERN comprehension
+        any(alias IN e.aliases WHERE …)               a list PREDICATE
+
+    AGE rejects both with `syntax error at or near "WHERE"`. The pattern comprehension became an
+    `OPTIONAL MATCH` plus an aggregation (the OPTIONAL is load-bearing: an entity with no
+    windowed fact must still reach the `$before_order IS NULL` arm); the list predicates became
+    `size([x IN xs WHERE p]) > 0`, which is a LIST comprehension and does parse. Both families
+    are in `port-adoption-gate`'s scan as of this row, so neither can return unnoticed.
+
+    The spoiler-window predicate is the one that mattered: it is what stops a reader seeing
+    characters they have not met, and it sits in the middle of the entity list every reader
+    surface calls.
+    """
+    from app.db.neo4j_repos import entities as en, events as ev, facts as fx
+    from app.db.neo4j_repos import provenance as pv
+
+    ran = 0
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    proj = f"p-{uuid.uuid4().hex[:8]}"
+    gid = f"gl-{uuid.uuid4().hex[:8]}"
+    s = age_session
+
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai", kind="person",
+                                source_type="chapter")
+    rin = await en.merge_entity(s, user_id=uid, project_id=proj, name="Rin", kind="person",
+                                source_type="chapter")
+    src = await pv.upsert_extraction_source(s, user_id=uid, project_id=proj,
+                                            source_type="chapter", source_id="ch-1")
+    await pv.add_evidence(s, user_id=uid, target_label="Entity", target_id=kai.id,
+                          source_id=src.id, job_id="j1", extraction_model="m", confidence=0.9)
+    kai2 = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai2", kind="person",
+                                 source_type="chapter")
+    f1 = await fx.merge_fact(s, user_id=uid, project_id=proj, type="attribute",
+                             content="Kai2 is brave", confidence=0.8,
+                             source_type="chapter", subject_id=kai2.id)
+    e1 = await ev.merge_event(s, user_id=uid, project_id=proj, title="The Oath",
+                              chapter_id="ch-1", event_order=1)
+
+    await en.existing_entity_node_ids(s, user_id=uid, ids=[kai.id])
+    ran += 1
+    await en.get_entities_by_ids(s, user_id=uid, ids=[kai.id])
+    ran += 1
+    await en.get_entity_by_id_any_owner(s, canonical_id=kai.id)
+    ran += 1
+    await en.list_user_entities(s, user_id=uid)
+    ran += 1
+    await en.list_project_entity_names(s, user_id=uid, project_id=proj)
+    ran += 1
+    await en.get_most_connected_entity(s, user_id=uid, project_id=proj)
+    ran += 1
+    await en.resolve_participant_anchors(s, user_id=uid, project_id=proj, names=['Kai'])
+    ran += 1
+    await en.list_entities_filtered(s, user_id=uid, project_id=proj, kind=None, search=None, limit=10, offset=0)
+    ran += 1
+    await en.load_entity_details_by_ids(s, user_id=uid, project_id=proj, entity_ids=[kai.id])
+    ran += 1
+    await en.find_gap_candidates(s, user_id=uid, project_id=proj)
+    ran += 1
+    await en.find_alias_collision(s, user_id=uid, project_id=proj, kind='person', candidate_canonicals=['kai'], source_id=kai.id, target_id=rin.id)
+    ran += 1
+    await en.find_entities_needing_embedding(s, user_id=uid, project_id=proj, embedding_model='m')
+    ran += 1
+    await en.upsert_glossary_anchor(s, user_id=uid, project_id=proj, glossary_entity_id=gid, name='Kai', kind='person', aliases=['Kai'])
+    ran += 1
+    await en.upsert_glossary_anchor_counted(s, user_id=uid, project_id=proj, glossary_entity_id=gid, name='Kai', kind='person', aliases=['Kai'])
+    ran += 1
+    await en.resolve_kg_entity_id_by_glossary_id(s, user_id=uid, project_id=proj, glossary_entity_id=gid)
+    ran += 1
+    await en.get_entity_by_glossary_id(s, user_id=uid, project_id=proj, glossary_entity_id=gid)
+    ran += 1
+    await en.get_neighborhood_by_glossary_id(s, user_id=uid, glossary_entity_id=gid, project_id=proj)
+    ran += 1
+    await en.load_promotion_signals(s, user_id=uid, project_id=proj, glossary_entity_ids=[gid])
+    ran += 1
+    await en.get_glossary_anchor_id(s, user_id=uid, entity_id=kai.id)
+    ran += 1
+    await en.sync_glossary_entity_node(s, user_id=uid, project_id=proj, glossary_entity_id=gid, name='Kai', canonical_name='kai', kind='person', aliases=['Kai'], short_description='a person')
+    ran += 1
+    await en.recompute_anchor_score(s, user_id=uid, project_id=proj)
+    ran += 1
+    await en.merge_entity_at_id(s, user_id=uid, id=kai.id, project_id=proj, name='Kai', kind='person', source_type='chapter')
+    ran += 1
+    await en.update_entity_fields(s, user_id=uid, entity_id=rin.id, name='Rin Zhou', kind=None, aliases=None, expected_version=1)
+    ran += 1
+    await en.unlock_entity_user_edited(s, user_id=uid, entity_id=rin.id)
+    ran += 1
+    await en.user_archive_entity(s, user_id=uid, canonical_id=rin.id)
+    ran += 1
+    await en.restore_entity(s, user_id=uid, canonical_id=rin.id)
+    ran += 1
+    await en.link_to_glossary(s, user_id=uid, canonical_id=rin.id, glossary_entity_id=f'{gid}-2', name='Rin', kind='person', aliases=['Rin'])
+    ran += 1
+    await en.unlink_from_glossary(s, user_id=uid, canonical_id=rin.id)
+    ran += 1
+    await en.restore_entity_by_glossary_id(s, user_id=uid, project_id=proj, glossary_entity_id=gid, reason_prefix='restored')
+    ran += 1
+    await en.merge_entities(s, user_id=uid, source_id=rin.id, target_id=kai.id)
+    ran += 1
+    await en.delete_entities_with_zero_evidence(s, user_id=uid, project_id=proj)
+    ran += 1
+    await en.erase_entity_subgraph(s, user_id=uid, entity_id=kai.id, project_id=proj)
+    ran += 1
+    await en.purge_entity_by_glossary_id(s, user_id=uid, project_id=proj, glossary_entity_id=gid)
+    ran += 1
+    await en.reset_glossary_anchors(s, user_id=uid)
+    ran += 1
+    await fx.get_fact(s, user_id=uid, fact_id=f1.id)
+    ran += 1
+    await fx.list_facts_by_type(s, user_id=uid, project_id=proj, type='attribute')
+    ran += 1
+    await fx.recall_facts(s, user_id=uid, project_id=proj)
+    ran += 1
+    await fx.facts_for_subject(s, user_id=uid, subject_id=kai2.id)
+    ran += 1
+    await fx.fact_coverage_for_entity(s, user_id=uid, entity_id=kai2.id, as_of_ordinal=100)
+    ran += 1
+    await fx.export_facts_for_project(s, user_id=uid, project_id=proj)
+    ran += 1
+    await fx.invalidate_facts_for_day(s, user_id=uid, project_id=proj, event_date='0184-01-01')
+    ran += 1
+    await fx.invalidate_all_facts_for_project(s, user_id=uid, project_id=proj)
+    ran += 1
+    await fx.delete_facts_with_zero_evidence(s, user_id=uid, project_id=proj)
+    ran += 1
+    await ev.get_event(s, user_id=uid, event_id=e1.id)
+    ran += 1
+    await ev.list_events_for_chapter(s, user_id=uid, chapter_id='ch-1')
+    ran += 1
+    await ev.list_events_in_order(s, user_id=uid, project_id=proj)
+    ran += 1
+    await ev.list_events_filtered(s, user_id=uid, project_id=proj, after_order=None, before_order=None, limit=10, offset=0)
+    ran += 1
+    await ev.rerank_chronological_order(s, user_id=uid, project_id=proj)
+    ran += 1
+    await ev.set_narrative_threads(s, user_id=uid, assignments={e1.id: 't1'})
+    ran += 1
+    await ev.set_realized_motifs(s, user_id=uid, assignments={e1.id: 'm1'})
+    ran += 1
+    await ev.set_mined_motif_codes(s, user_id=uid, assignments={e1.id: 'm2'})
+    ran += 1
+    await ev.merge_causal_edges(s, user_id=uid, pairs=[])
+    ran += 1
+    await ev.get_causal_motif_pairs(s, user_id=uid, project_id=proj)
+    ran += 1
+    await ev.delete_events_with_zero_evidence(s, user_id=uid, project_id=proj)
+    ran += 1
+
+    assert ran >= _WAVE_4, (
+        f"only {ran} fourth-wave repo functions were exercised against AGE; the floor is "
+        f"{_WAVE_4} of {_PROVEN_ON_AGE} total."
     )
