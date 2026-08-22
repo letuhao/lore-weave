@@ -290,7 +290,22 @@ type listModelsIn struct {
 }
 type listModelsOut struct {
 	Models []map[string]any `json:"models"`
+	// 🔴 THE CORRECTION HAS TO ARRIVE WITH THE RESULT, NOT ONLY IN THE SCHEMA. Measured twice:
+	// telling settings_provider_inventory what it is (0/5 -> 1/5 called) and then telling THIS tool
+	// what it is NOT (1/5 -> 0/5, and 5 of 5 replies still said "what your configured providers
+	// currently offer") both failed. The model reads a description when it CHOOSES a tool and reads
+	// the RESULT when it composes the answer, and the false statement is made at composition time.
+	// So the disclaimer rides on the payload the model is about to summarise.
+	Note string `json:"note"`
 }
+
+//: What every settings_list_models result carries. Registry and live inventory are different sets —
+//: a model retired upstream still sits here — so an answer built from this list must not be
+//: presented as what a provider currently offers. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.
+const listModelsNote = "These are the models REGISTERED in this account, not what a provider " +
+	"currently offers. A model retired upstream still appears here, and one the provider newly " +
+	"offers is absent until registered. If the user asked what their provider actually offers, or " +
+	"what they COULD register, this list cannot answer it — call settings_provider_inventory."
 
 func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in listModelsIn) (*mcp.CallToolResult, listModelsOut, error) {
 	uid, err := callerID(ctx)
@@ -335,7 +350,7 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 		ids = append(ids, id)
 	}
 	rows.Close()
-	out := listModelsOut{Models: []map[string]any{}}
+	out := listModelsOut{Models: []map[string]any{}, Note: listModelsNote}
 	// readUserModel SELECTs an explicit column list; a credential SECRET is never
 	// in it — and user_models never holds a secret anyway (secrets live only in
 	// provider_credentials). So this read is secret-free by construction. (It DOES
