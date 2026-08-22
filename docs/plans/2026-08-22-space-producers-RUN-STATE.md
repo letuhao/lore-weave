@@ -102,11 +102,68 @@ yes. Nobody asked *"can anything reach what the rows built?"* **A board measures
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `A1` | **MEASURE the bootstrap seam before touching it.** What does `provision_flow` → `reality_seeder` actually execute end to end, in order, on a real provision? Which phase could own space, and what does `book_reader`'s *"initial geography"* return today? | `[ ]` | |
+| `A1` | **MEASURE the bootstrap seam before touching it.** What does `provision_flow` → `reality_seeder` actually execute end to end, in order, on a real provision? Which phase could own space, and what does `book_reader`'s *"initial geography"* return today? | `[x]` | **DONE 2026-08-22 — §3.1 below. The answer is worse than §1 assumed: there is no space phase because THERE IS NO SEEDING PHASE.** `RealitySeeder` prod callers **0** (controls 3 and 7) |
 | `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[ ]` | |
 | `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[ ]` | |
 | `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[ ]` | |
 | `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[ ]` | |
+
+#### 3.1 · `A1` — what the seam actually executes at `HEAD`
+
+**`provision_reality` runs 11 frozen steps** (`PROVISION_STEPS`, *"frozen so external observers can
+pin metric labels against them"*). Steps 9 and 10 are these, and they are **consecutive statements**:
+
+```rust
+// provisioner.rs:291-298
+let seeding = effects.transition_to(req.reality_id, "provisioning", "seeding", &req.reason)?;
+steps.push(io(seeding, "transition_to_seeding"));
+let active  = effects.transition_to(req.reality_id, "seeding",      "active", &req.reason)?;
+steps.push(io(active, "transition_to_active"));
+```
+
+**Nothing runs in the `seeding` stage. It is entered and left in two lines.**
+
+`services/world-service/src/lib.rs:29` describes `reality_seeder` as the *"Background orchestrator: seeding → active flow"*, and
+it is 1008 lines plus seven submodules. **It has zero production constructors** — all eleven
+`RealitySeeder::new` sites are at or below `#[cfg(test)]` (`reality_seeder/mod.rs:573`); no bin, no
+`main.rs`, no handler mentions it. Measured with a caller split that **takes controls**, because
+"found no callers" and "the query is broken" look identical:
+
+```
+RealitySeeder::new         prod=0   test=11   [expect NONE]
+world_seed::seed_world     prod=0   test=4    [expect NONE]
+space_view::assemble       prod=0   test=1    [expect NONE]
+place_and_provision        prod=3   test=0    [CONTROL expect SOME]   <- services/world-service/src/lib.rs:97, server/handlers/realities.rs:16, :118
+existing_registration      prod=7   test=0    [CONTROL expect SOME]
+```
+
+**Two components both own `Seeding → Active`** — `provisioner.rs:296-298` and the seeder's final
+phase at `reality_seeder/mod.rs:495-500` — **and the one that runs does no seeding.** A reality
+reaches `active` synchronously inside the provision HTTP request (`server/handlers/realities.rs:118`).
+
+**`book_reader`'s *"initial geography"* returns nothing.** `BookReader::list_regions` defaults to an
+empty `Vec` (*"V1: regions are not seeded by the canon path ... geography is per-book SSOT"*), and
+`Region` carries `region_id` + a name — **no coordinates and no `MapKind`**, so it could not feed
+`map_layout` even if it were populated.
+
+**What this DISCHARGES, and it narrows lane A.** `apply_migrations` was rewritten 2026-08-08
+(`1b12-05`) from *"run `0001_initial.up.sql`"* to *"apply every migration the manifest registers, in
+order, skipping those already in the ledger"*. **So `0024`–`0030` DO reach a provisioned reality.**
+The tables are there. Only the writers are missing — which is exactly the plan's thesis and not one
+step worse.
+
+#### 3.2 · The decision `A1` forces on `A2`
+
+**`A2` may NOT simply call `seed_world` from `reality_seeder`.** That would attach a caller to a
+module that itself has no caller — **`I-1` violated one level up**, which is the failure `A5`'s note
+names in advance. Whatever `A2` does must be reachable by something that RUNS today.
+
+That leaves the seam question open in a specific, decidable way, and `Q3` now has teeth it did not
+have when it was written: the provision path is **synchronous inside an HTTP request**
+(`run_steps_blocking` → `spawn_blocking`), so provision-time world generation lengthens that request
+by however long generation takes. Either the background orchestrator is resurrected (`OR-2`), or the
+world is built on first entry, or `world_seed` is driven by an operator path. **`A2` decides and
+writes the decision down; it does not get to leave it open.**
 
 ### Lane B — the rows other boards still hold open
 
@@ -160,6 +217,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 | id | what | mechanism / what would settle it |
 |---|---|---|
 | **OUT-1** | **The 26 Writing Studio / Work Assistant / Book-Package boards are out of scope and NOT closed.** Live open rows: `studio-tool-gui` **192 slices, every one `TODO`, never started** · `book-package` 11 open + 3 half-built (`B1` blocked on `M6.1`, *registered but not implemented*) · `work-assistant` `E1`/`E2`/`E7` 🅿 and two rows marked `✅ partial` · `all-tracks-clear` `M2`/`M7`/`M8`/`M10` · S2/S4/S5/S8 residue | A PO decision to resume that product. Recorded here **only** so the 2026-08-22 overview cannot be misread as "44 of 51 closed, nothing left" |
+| **OR-2** | **Two components both own the `Seeding → Active` transition** — `provisioner.rs:296-298` (runs) and `reality_seeder/mod.rs:495-500` (does not). The background orchestrator L5.G designed for the `seeding` stage was never started, and the provisioner closes the stage it was meant to occupy | `A2`'s decision. Resurrecting it is one of the three candidate seams and is NOT presumed — it may equally be that the synchronous path is now the design and L5.G's orchestrator is rot |
 | **OUT-2** | **`3E` is 🅿 PARKED behind reality-layer slice 5** and stays parked — `B1` does not unpark it. Its own board measured **880 across 99 files** against a plan that still says 457 | A production `ControlPlane` implementor exists |
 
 ---
@@ -170,13 +228,14 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 | id | what happened |
 |---|---|
+| **PD-2** | **`world_seed.rs:5-6` asserts that `reality_seeder` *"already runs in the `seeding` lifecycle stage that `provisioner` step 9 transitions into"*. It does not, and I wrote that line eight commits ago.** The paragraph it opens is headed *"What was missing, measured rather than assumed"* — and the half of it that WAS measured (*"every `INSERT INTO channels` in the repository is in a test"*) is still true, which is exactly why the unmeasured half read as credible. **One sentence in a measured paragraph inherits the paragraph's authority without earning it** |
 | **PD-1** | **The overview that produced this plan was wrong on its first pass, and wrong in the safe-looking direction.** Reading the boards with `goal-prompt.py`'s row parser reported **0 rows for 30 boards**, and *a board whose rows are invisible is indistinguishable from a board with none open*. It very nearly shipped as **"49 of 51 closed"**. Caught only because `space-substrate` reported 5 rows and the session had just ticked 24 of them. **The disagreement between a tool and a thing I had just done is the whole detection**, and on any board I had not personally worked it would not have existed. This is `C1`'s real severity |
 
 ---
 
 ## 8 · RESUME
 
-**RESUME: `A1` — measure the `provision_flow` → `reality_seeder` seam end to end before touching it. Nothing in lane A may be written against a bootstrap path that has not been read at `HEAD`. `Q3` (provision-time vs first-entry seeding) is answered by that measurement plus `SDF-R1`'s existing numbers — re-read them, do not re-derive them.**
+**RESUME: `A2` — `seed_world` gets a caller that itself RUNS. `A1` is done (§3.1) and it moved the target: `reality_seeder` has zero production constructors, so wiring `world_seed` into it would violate `I-1` one level up (§3.2). Decide the seam — resurrect the background orchestrator (`OR-2`), build on first entry, or drive it from an operator path — and write the decision down; `Q3` is now answerable because the provision path is synchronous inside an HTTP request.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
