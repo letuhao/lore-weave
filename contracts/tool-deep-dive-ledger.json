@@ -3459,6 +3459,11 @@
       "what": "A phrase-level answer_expect calibrated on the broken population can go RED on the FIXED one. none_of:['currently offer'] discriminated 9/10 before the fix and failed 4 of 5 correct replies after it, because the corrected answer must NAME the thing it is not in order to disclaim it.",
       "rule": "Assert the PROPOSITION, not a symptom of its absence, and measure the phrase over both the broken and the fixed population before adopting it. A gate that has only ever seen the broken population is untested in the only direction that matters.",
       "found_by": "settings_provider_inventory, c3-note vs c3-close/c3-run, 2026-08-23"
+    },
+    "D-EXCLUSIVITY-PROBE-BLIND-TO-THE-PLATFORM": {
+      "status": "FIXED 2026-08-23",
+      "what": "`ps aux | grep fe_runner` under Git Bash does not enumerate native Windows processes. It printed 0 while two runners were live, the kill built on it was a no-op, and the empty output read as 'stopped'. Two runners on one account means each one's store diff sees the other's writes and each one's provider calls contend with the other's - the exact confound the cleanup was being performed to remove.",
+      "fix": "fe_runner refuses to start when another fe_runner is live, detecting via Win32_Process on win32, excluding its own pid, and returning [] (no signal, run permitted) when it cannot tell - so 'nothing found' can never masquerade as 'nothing there'."
     }
   },
   "deferred_questions": {
