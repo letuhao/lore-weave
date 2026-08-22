@@ -490,41 +490,42 @@ OPTIONAL MATCH (byAnchor:Entity {user_id: $user_id, project_id: $project_id,
 RETURN coalesce(byId.id, byAnchor.id, $canonical_id) AS eid
 """
 
+_ANCHOR_EXISTS_CYPHER = """
+MATCH (e:Entity {id: $id, user_id: $user_id})
+RETURN count(e) AS n
+"""
+
+
 _UPSERT_ANCHOR_CYPHER = """
 
-MERGE (e:Entity {id: $id})
-ON CREATE SET
-  e.__was_created = true,
-  e.user_id = $user_id,
-  e.project_id = $project_id,
-  e.name = $name,
-  e.canonical_name = $canonical_name,
-  e.kind = $kind,
-  e.aliases = $aliases,
-  e.canonical_version = $canonical_version,
-  e.source_types = ['glossary'],
-  e.confidence = 1.0,
-  e.glossary_entity_id = $glossary_entity_id,
-  e.anchor_score = 1.0,
-  e.archived_at = NULL,
-  e.evidence_count = 0,
-  e.mention_count = 0,
-  e.created_at = {NOW},
-  e.updated_at = {NOW}
-ON MATCH SET
-  e.name = $name,
-  e.canonical_name = $canonical_name,
-  e.kind = $kind,
-  e.aliases = $aliases,
-  e.glossary_entity_id = $glossary_entity_id,
-  e.anchor_score = 1.0,
-  e.archived_at = NULL,
-  e.updated_at = {NOW}
-WITH e, coalesce(e.__was_created, false) AS was_created
-REMOVE e.__was_created
-WITH e, was_created
-WHERE e.user_id = $user_id
-RETURN e, was_created
+// §10.1/§10.2 — engine-neutral, and the SECOND `__was_created` marker in the layer after
+// `add_evidence` (T75). The old query set `e.__was_created = true` on one arm, read it, and
+// `REMOVE`d it. `$was_created` is now an ordinary parameter, computed by a pre-MATCH count in
+// the same transaction — the exact form the 2026-08-11 probe established for AGE, where a
+// one-statement CTE has no guaranteed evaluation order.
+//
+// 🔴 `archived_at = NULL` IS assigned here, and that is NOT the mistake T73 guards against.
+// It was in BOTH arms: re-syncing a glossary anchor deliberately UN-ARCHIVES it, because the
+// glossary is asserting the entity exists. `_GLOSSARY_ANCHOR_SYNC_CYPHER` next door has it on
+// the CREATE arm only and must not touch it (T76). Two adjacent queries, one field, opposite
+// policies — which is why the never-assign list is per-query rather than per-field.
+MERGE (e:Entity {id: $id, user_id: $user_id})
+SET e.project_id        = coalesce(e.project_id, $project_id),
+    e.canonical_version = coalesce(e.canonical_version, $canonical_version),
+    e.source_types      = coalesce(e.source_types, ['glossary']),
+    e.confidence        = coalesce(e.confidence, 1.0),
+    e.evidence_count    = coalesce(e.evidence_count, 0),
+    e.mention_count     = coalesce(e.mention_count, 0),
+    e.created_at        = coalesce(e.created_at, {NOW}),
+    e.name              = $name,
+    e.canonical_name    = $canonical_name,
+    e.kind              = $kind,
+    e.aliases           = $aliases,
+    e.glossary_entity_id = $glossary_entity_id,
+    e.anchor_score      = 1.0,
+    e.archived_at       = NULL,
+    e.updated_at        = {NOW}
+RETURN e, $was_created AS was_created
 """
 
 
@@ -644,10 +645,19 @@ async def upsert_glossary_anchor_counted(
     if name not in aliases_with_display:
         aliases_with_display.insert(0, name)
 
+    # §10.2/§10.3 — the pre-MATCH count that replaces the `__was_created` marker, in the same
+    # transaction as the write (T75, and the 2026-08-11 probe before it).
+    exists = await run_read(
+        session, _ANCHOR_EXISTS_CYPHER, user_id=user_id, id=canonical_id,
+    )
+    exists_row = await exists.single()
+    was_created = (exists_row is None) or int(exists_row["n"]) == 0
+
     result = await run_write(
         session,
         render(_UPSERT_ANCHOR_CYPHER, "neo4j"),
         user_id=user_id,
+        was_created=was_created,
         id=canonical_id,
         project_id=project_id,
         name=name,

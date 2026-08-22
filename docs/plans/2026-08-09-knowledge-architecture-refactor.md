@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `entities`' last 3 merge branches — `_MERGE_ENTITY_CYPHER`, `_UPSERT_ANCHOR_CYPHER`, `_MERGE_REWIRE_RELATES_TO_CYPHER`.**
+**RESUME: `_MERGE_ENTITY_CYPHER` (21/7, the largest) + `_MERGE_REWIRE_RELATES_TO_CYPHER` — the last two branches.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,69 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T77 2026-08-22 — **`_UPSERT_ANCHOR_CYPHER`, the second `__was_created` — and the never-assign rule's MIRROR**
+
+  ```
+  entities::_UPSERT_ANCHOR_CYPHER            dialect 46 -> 44
+  knowledge unit 4311 · DB integration 606 -> 607 passed, 0 failed
+  ON CREATE SET branches remaining: 2, both in `entities`
+  ```
+
+  📐 **The second `__was_created` marker in the layer**, after `add_evidence` (T75). The old
+  query set `e.__was_created = true` on one arm, read it through a `WITH`, and `REMOVE`d it.
+  `$was_created` is now an ordinary parameter from a pre-MATCH count in the same transaction —
+  the 2026-08-11 probe's exact form, and the caller already did a resolve-read, so the shape
+  was already there.
+
+  🔴 **`archived_at = NULL` IS assigned here, and that is NOT T73's mistake.** It was in **both**
+  arms: re-syncing a glossary anchor deliberately **un-archives** it, because the glossary
+  asserting an entity exists is a statement that it is live again. Its neighbour
+  `_GLOSSARY_ANCHOR_SYNC_CYPHER` has the same field on the CREATE arm only and must never touch
+  it (T76).
+
+  ```
+  _GLOSSARY_ANCHOR_SYNC_CYPHER   archived_at ON CREATE ONLY  ->  must NOT assign   (T76)
+  _UPSERT_ANCHOR_CYPHER          archived_at in BOTH arms    ->  MUST assign       (T77)
+  ```
+
+  **Two adjacent queries, one field, opposite policies** — which is exactly why
+  `_NEVER_ASSIGN` is keyed per QUERY and not per FIELD. A rule stated over "every merge query"
+  would have been wrong, and would have been wrong in the direction that looks tidier.
+
+  🔴 **BITE 49 SHOWED THE UN-ARCHIVE HAD NO TEST.** Deleting `e.archived_at = NULL` — so a
+  re-synced anchor stays archived forever, invisible to every read that filters archived nodes
+  out — **left the whole suite green**. `test_glossary_anchor_unarchives.py` now covers it, and
+  it is the deliberate MIRROR of the never-assign file: that one pins the queries which must
+  never assign the field, this one pins the query that must.
+
+  🎯 **Fifth consecutive cycle where a bite found MISSING coverage** (T70, T71, T73, T74, this).
+  Every one has been the same shape — **a failure that is a silent absence**: a fact frozen, an
+  edge not moved, a position not held, evidence not rewired, and now a node that stays invisible.
+  None has been a wrong value in a response body. That asymmetry is now consistent enough that
+  it is worth treating as a search strategy rather than an observation.
+
+  **BITE ×2:**
+
+  ```
+  48. the pre-MATCH probe always answers "new"
+        FAILED  test_the_anchor_PRELOADER_does_not_mint_a_duplicate_on_rename
+  49. archived_at dropped from the anchor upsert
+        BEFORE the test: whole suite green
+        AFTER : FAILED — "a glossary re-sync left the anchor ARCHIVED — the upsert must clear
+                          `archived_at`, or an entity the glossary still asserts stays
+                          invisible to every read that filters archived nodes out"
+  ```
+
+  Bite 48 is worth noting for what caught it: `..._does_not_mint_a_duplicate_on_rename`, a T35
+  identity test with no obvious connection to this translation. The `was_created` flag feeds
+  the preloader's duplicate check, so lying about it mints duplicates one layer up.
+
+  **QC (a) gates:** unit **4311**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **46 → 44** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ full DB integration on a fresh throwaway Neo4j with AGE live — **607
+  passed**, 0 failed.
+  **QC (c) real data:** an anchor created, archived, re-synced and read back in a real Neo4j.
 
   ### ✅ T76 2026-08-22 — **the glossary sync, and the never-assign rule earns its fourth entry**
 
