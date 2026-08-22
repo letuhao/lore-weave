@@ -60,7 +60,7 @@ The previous board proved the producers are reachable: `seed_world` ← `provisi
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `A1` | **MEASURE the migrate path before touching a real reality.** What does `migration-orchestrator/cmd/migrate` do to an existing reality — which migrations, in what order, with what dry-run? Does it read the manifest, and does it refuse a reality it cannot reach? **Read-only.** | `[x]` | **DONE 2026-08-22 — §3.1. Read-only throughout; nothing was written.** Two of `D-1`'s assumptions are NOT expressible with this CLI — see `§3.2` |
-| `A2` | **The ten realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[~]` | **STOPPED FOR AUTHORISATION — §3.3, and that is `D-2` working, not a failure.** Option **(b)** taken: `--reality` and a fleet-resolving `--dry-run` are built, tested (6 arms), bitten, and REHEARSED against an exact copy of a real reality — **9 of 9 applied clean**. The live write is the only step left |
+| `A2` | **The ten realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[x]` | **DONE 2026-08-22 — §3.3, §3.3b, §3.3c. AUTHORISED BY THE PO AND APPLIED: all ten realities are at `0030_encounter`, 26 migrations each, seven tables each, 0 failed.** The authorisation gap it waited in found **four** further defects, one of which would have holed seven of the ten |
 #### 3.3 · `A2` — built, rehearsed, and stopped at the live write
 
 **Decision: option (b) from §3.2 — add `--reality`.** The other two were worse. **(a)** narrowing the
@@ -144,6 +144,73 @@ table is absent is `1b12-05`'s shape, found once already.
 `` from python's CRLF output on Windows, and `migrate` answered
 `ERROR: migration "0022_actors" not found`. **The fifth escaping failure of this session**, and the
 first one a dry run caught rather than a test.
+
+#### 3.3c · `A2` — authorised, and the four defects the wait uncovered
+
+**The PO authorised the live write on 2026-08-22** (*"continue and complete the runstate"*, after
+`/goal clear`), which is `I-1`'s *"unless the PO authorises otherwise"* and `D-2` discharged rather
+than bypassed. What follows is what the authorised path found before it was allowed to run.
+
+**Four defects, and the first one is the reason this row was worth waiting in.**
+
+| # | defect | who it would have hurt |
+|---|---|---|
+| 1 | **the pending list was hardcoded `id >= '0022'`** | the SEVEN realities at `0019_channels`. They would have reached `0030_encounter` with `0020` and `0021` missing and nothing saying so — `1b12-05`'s shape and `1b5-H1`'s in one line |
+| 2 | **`migrate` never wrote the reality's OWN `schema_migrations`** | every reality, permanently. See below |
+| 3 | **`--allowlist` / `--sql-dir` resolved against the wrong directory** — the script `cd`s into the module and only `--manifest` was overridden | the first `--confirm` run, which is where it fired |
+| 4 | **the after-check compared a boolean against `t`** while `::text` renders `true` | nobody — it could only ever say ABSENT. **A check that cannot pass is as broken as one that cannot fail** |
+
+**Defects 3 and 4 share a cause worth naming: plan mode does not execute the apply, and does not
+execute the verify.** Nine successful plans proved the plan and nothing downstream of it. That is not
+an argument against planning first; it is the boundary of what a plan is evidence for.
+
+**Defect 2 is the one that outlives this run.** There are two ledgers and only one had a writer:
+
+```
+  instance_schema_migrations  (META)     <- written by the orchestrator
+  schema_migrations           (REALITY)  <- written ONLY by the provisioner
+```
+
+So a migration applied through `migrate` left the reality's own ledger UNMOVED — **the tables were
+there and the database said they were not** — and `apply_pending`, which reads exactly that table to
+decide what a resume still owes, would have re-applied all eleven. Survivable only because the SQL
+happens to be `IF NOT EXISTS`-shaped, which is a property of the files and not a guarantee of the
+mechanism. Fixed in `SQLApplier.Apply`, where the schema change happens, so the pair cannot desync.
+
+**The bite, on a fresh copy of a `0019`-cohort reality, with the ledger write removed:**
+
+```
+  !! 0020_turn_boundary  applied but ABSENT from the reality's ledger     (x11)
+     ledger: 15 migrations, newest 0019_channels
+     actors true  map_layout true  entity_binding true  place true
+     portal true  layer_registry true  encounter true
+  !! 11 check(s) FAILED after a run that reported success.
+```
+
+All seven tables present, ledger frozen at `0019_channels`. **That is the defect in one screen**, and
+it is the state that would have shipped to all ten. Restored byte-identical, and the restore was then
+re-run against a fifth fresh copy to prove it was live and not merely on disk — `WD-1`'s lesson, that
+a mutation must be proven applied rather than assumed.
+
+**The permanent guard is `realityLedgerCount` in `migrate-drill`**, asserted separately from
+`probeCount`. The pair is the point: one asks *"did the schema change"*, the other *"does the
+database say so"*. `probes == n && ledgers == 0` is a real state and was the state at `HEAD`.
+
+**The live run — all ten, through the orchestrator (`I-3`), one reality at a time:**
+
+```
+  lw_reality_00c7e2c5cabc   9 applied      (0021 cohort, 3 realities)
+  lw_reality_1ec91442100c  11 applied      (0019 cohort, 7 realities)
+  ...
+  10 of 10 OK, 0 failures
+
+  every reality: 26 migrations, newest 0030_encounter, 7 of 7 tables
+  meta: 104 instance_schema_migrations rows, 10 realities, 0 failed   (7x11 + 3x9 = 104)
+```
+
+**Both ledgers agree, and they are independent producers** — that agreement is the check, not the
+104 itself. Verified by re-measuring the fleet directly rather than by re-reading the script's own
+output. Five throwaway rehearsal databases were created and all five dropped; `lw_rehearse%` is empty.
 #### 3.4 · `A3` — the declaration, and the defect only a database could see
 
 **`contracts/world/` is the home.** A declaration is **data an author edits**, so it is a contract
