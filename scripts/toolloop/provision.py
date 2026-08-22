@@ -421,6 +421,10 @@ class Throwaway:
             out["models"] = self._purge_models()
         except Exception as e:  # noqa: BLE001 — same rule: never mask the book teardown
             out["models_error"] = f"{type(e).__name__}: {e}"
+        try:
+            out["arc_templates"] = self._purge_arc_templates()
+        except Exception as e:  # noqa: BLE001 — same rule: never mask the book teardown
+            out["arc_templates_error"] = f"{type(e).__name__}: {e}"
         if not self.book_id:
             out.update({"deleted": 0, "reason": "no book was created"})
             return out
@@ -469,6 +473,44 @@ class Throwaway:
                         "the leak this method exists to prevent.")
             gone.append(str(mid))
         return gone
+
+    def _purge_arc_templates(self) -> list[str]:
+        """Remove the arc templates this fixture's seed created. THE THIRD ACCOUNT-SCOPED LEAK.
+
+        🔴 MEASURED 2026-08-23: 51 of 57 arc_template rows carry book_id NULL, so `purge_book`
+        cannot see them and nothing else ever did. The cost was not theoretical. Batch 15's
+        template `throwaway-loop-skeleton-b15` was created 2026-08-20, ARCHIVED by the model on a
+        later run — archiving is what that scenario asks for — and never restored. Every run after
+        that failed its own seed assertion (`status <> 'archived'` reading 0) and the whole
+        scenario provision-failed 5 of 5, which read in the report as a surfacing failure of
+        `composition_arc_template_edit` rather than as fixture debris.
+
+        SQL, BECAUSE THE CATALOGUE HAS NO DELETE. The family ships create/update/archive/restore
+        and no `composition_arc_template_delete` — archiving would leave the row, and the row is
+        what collides on `code`. So the removal is a DELETE by id through the same oracle path the
+        seeds already use for their own SQL steps.
+
+        PROVENANCE, NOT A NAME PREFIX — the lesson `_purge_worlds` paid 35 leaked worlds for. The
+        ids come from THIS run's own seed results, so a renamed fixture cannot slip the guard and
+        the sweep can never reach a row this fixture did not make.
+        """
+        ids: list[str] = []
+        for r in self.seeded:
+            if r.get("tool") not in ("composition_arc_extract_template",
+                                     "composition_arc_template_create"):
+                continue
+            res = r.get("result")
+            if not isinstance(res, dict):
+                continue
+            tid = res.get("arc_id") or res.get("id")
+            if tid:
+                ids.append(str(tid))
+        if not ids:
+            return []
+        quoted = ",".join("'" + i.replace("'", "''") + "'" for i in ids)
+        oracle.db_query("loreweave_composition",
+                        f"DELETE FROM arc_template WHERE id IN ({quoted})")
+        return ids
 
     def _purge_worlds(self) -> list[str]:
         """Delete the worlds this fixture's seed created.
