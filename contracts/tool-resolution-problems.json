@@ -489,5 +489,17 @@
       "P11-DISTRIBUTION": 1,
       "note": "22 of 41. P7-FALSE-ABSENCE is 2 of 2 and P11 is 1 of 1 — every tool in those problems surfaces and none is called, so their statements are now testable against clean surfacing for the first time."
     }
+  },
+  "stale_conclusions_2026_08_23": {
+    "finding": "🔴 'EVERY TOOL IN A FINAL STATE' IS TRUE OF THE STATE FIELD AND MISLEADING ABOUT THE MEASUREMENT. All 13 problems now read 0 tools not-final. But FIVE of those states were carried over from the ORIGINAL loop and were never re-concluded on this cycle's evidence, because gate.py refused them every time — on LIVE clean for four of them (a transport failure is not a model result) and on a measured false statement for the fifth.",
+    "the_five": {
+      "composition_motif_link_edit": "evidence_file batch19-v5.json — 17 of 35 runs died in transport (~49%)",
+      "composition_reference_update": "evidence_file batch21-v3.json — 1 of 5 runs errored",
+      "registry_set_skill_enabled": "evidence_file b41-skill.json — 5 of 5 errored AND surfaced 0/5",
+      "settings_provider_inventory": "NO evidence_file at all — the newly declared answer_expect fails 4-5 of 5",
+      "world_map_add_marker": "NO evidence_file at all — 2 of 5 runs died in transport"
+    },
+    "why_it_matters": "A `blocked` carried from an older batch says nothing about how the tool behaves now, and two of these have no evidence file whatsoever. The per-cycle counter cannot see the difference, which is the same shape as the defect this loop opened with: a progress number that agrees with itself. Three of the five are being re-run for a transport-clean batch; settings_provider_inventory cannot be closed by a re-run because its blocker is a REAL, reproduced false statement, and composition_motif_link_edit cannot because its failure rate is ~49% and thirteen hypotheses for it are refuted.",
+    "recommendation": "gate.py audit should refuse a conclusion whose evidence_file predates the problem's own re-measurement, or is empty. Not implemented here: it would change the loop's evidence standard while that standard is blocking my own cycles, which is the same reason DQ-T40 was registered rather than acted on."
   }
 }
