@@ -3665,7 +3665,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. The model was RIGHT not to call it: it called composition_arc_template_list and asked which template to apply, because the prompt says 'use one of my library arc templates' and names none. The scenario cannot supply the choice without making the prompt name a template, which would test a different thing.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "composition_arc_import_analyze",
@@ -7119,7 +7120,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A PRECONDITION CHAIN that cannot be broken by design: editing a derivative needs one to exist, and the only way to make one is composition_create_derivative, whose card this loop never approves because deriving is only archivable, not undoable.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "composition_entity_override_edit",
@@ -7947,7 +7949,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A PRECONDITION CHAIN, and the scenario's premise was wrong — the tool said so: 'NOT_A_DERIVATIVE — overrides exist only on a dị bản'. An entity override exists only on a what-if derivative, never on the canonical Work, so the fixture is asking for something that cannot exist where it is looking.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "composition_glossary_build",
@@ -8462,7 +8465,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A missing precondition the model identified correctly: on every run it read the standards and the book ontology, then asked the author for the material it needs. There is nothing to build a glossary FROM in the fixture.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "composition_motif_adopt",
@@ -8979,7 +8983,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 1,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. Same shape as composition_arc_apply: the prompt asks to copy 'one of the built-in tropes' without naming one, so the model called composition_motif_search, listed them and asked which. Declining to guess is the correct behaviour.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "composition_reference_update",
@@ -10891,7 +10896,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A precondition chain: the model called glossary_propose_entities instead, re-proposing an entity that already exists rather than linking it. The link needs an entity AND a chapter the fixture has not put in the right relation.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "glossary_create_evidence",
@@ -11705,7 +11711,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A precondition the model was visibly working toward: it called glossary_entity_set_attributes, because evidence attaches to an attr_value_id and the fixture has none.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "jobs_cancel",
@@ -12339,7 +12346,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 4,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. 🔴 ITS RECORDED CAUSE IS NOW STALE AND IS CORRECTED HERE. The row said 'SURFACED 0/5 ... D-LAZY-TAIL-UNUSED'; this batch measures 5/5 surfaced, so that is no longer true. The live cause is the one its own row named second: the FIXTURE IS IN THE WRONG STORE — the seed INSERTs a pending row into translation_jobs while jobs-service's tools read a CROSS-SERVICE PROJECTION. The model said so itself: 'I couldn't find any translation jobs currently running.'\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "jobs_pause",
@@ -12985,7 +12993,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. 🔴 ITS RECORDED CAUSE IS NOW STALE AND IS CORRECTED HERE, exactly as for jobs_cancel: 'SURFACED 0/5' is refuted by 5/5 here. The live cause is the fixture writing to translation_jobs while jobs-service reads a cross-service projection, so there is no job the tool can see to pause.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "kg_add_nodes",
@@ -14903,7 +14912,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A named fixture gap: asked to record that two characters know each other, the model called kg_project_create and suspended on THAT card — it bootstrapped the graph rather than proposing the edge, because the fixture has no kg project. The edge cannot be proposed into a graph that does not exist yet.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "plan_bootstrap_apply",
@@ -15454,7 +15464,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "blocked_reason": "BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A precondition chain the model identified correctly: proposal_id comes from plan_bootstrap_propose, which has not run, and the seeded plan run is at status='proposed' rather than compiled — so there is no preview to materialise.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure."
     },
     {
       "tool": "registry_set_skill_enabled",

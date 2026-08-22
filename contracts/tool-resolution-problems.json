@@ -270,6 +270,31 @@
         "composition_arc_apply": "the prompt said 'use one of my library arc templates' and named none — the model correctly asked which. A vague ask cannot exercise a tool that needs an explicit choice.",
         "composition_motif_adopt": "same shape — 'copy one of the built-in tropes' named none.",
         "composition_entity_override_edit": "the premise was WRONG and the tool said so: an entity override exists only on a derivative, never on the canonical Work."
+      },
+      "fixture_classification_2026_08_23": {
+        "why_this_matters": "P4's invariant is not 'every tool is blocked with a reason' — it is 'every tool must have a fixture that can reach its happy path, OR A WRITTEN STATEMENT OF WHY ONE CANNOT EXIST'. All 21 now have a measured written cause, but that only CLEARS the problem for the ones where a fixture genuinely cannot exist. For the rest the honest position is that the fixture has not been built yet, and saying 'blocked' about those would be filing unbuilt work as impossible.",
+        "cannot_exist_by_design": {
+          "composition_derivative_edit": "Editing a derivative needs one to exist; the only way to make one is composition_create_derivative, whose card this loop never approves because deriving is only archivable, not undoable. A fixture would have to approve a card the safety rule forbids.",
+          "composition_entity_override_edit": "The tool itself says 'NOT_A_DERIVATIVE — overrides exist only on a dị bản'. An override cannot exist on the canonical Work, so no book-scoped fixture can produce one; it inherits composition_derivative_edit's blocker."
+        },
+        "cannot_be_fixed_by_a_FIXTURE_at_all": {
+          "composition_arc_apply": "The prompt says 'use one of my library arc templates' and names none, so the model correctly lists them and asks which. No fixture changes that — only rewriting the PROMPT would, and a prompt that names the template measures a different question.",
+          "composition_motif_adopt": "Identical shape: 'copy one of the built-in tropes' names none, the model searches and asks. Declining to guess is the behaviour we want."
+        },
+        "fixture_is_BUILDABLE_and_has_not_been_built": {
+          "jobs_cancel": "seed into the store jobs-service actually reads, not translation_jobs",
+          "jobs_pause": "same fixture as jobs_cancel",
+          "kg_propose_edge": "seed a kg project so an edge has a graph to be proposed into",
+          "plan_bootstrap_apply": "run plan_bootstrap_propose in the seed to produce a proposal_id",
+          "glossary_create_evidence": "seed an attribute VALUE so evidence has an attr_value_id to attach to",
+          "glossary_create_chapter_link": "seed an entity and a chapter in the relation the link needs",
+          "composition_glossary_build": "seed source material for a glossary to be built FROM",
+          "kg_ontology_propose": "kg_adopt_template first, so there is an ontology to edit",
+          "composition_decompile_arcs": "arcs WITH chapters assigned, not a bare arc",
+          "composition_scene_link_edit": "an outline with SCENE nodes, not arc nodes",
+          "composition_authoring_run_manage": "a real plan run to supply plan_run_id"
+        },
+        "consequence": "4 cannot be fixed by a fixture (2 impossible by design, 2 prompt-shaped) and 11 are BUILDABLE. So P4 is NOT cleared by the write-ups alone: eleven fixtures are outstanding work, and recording them as 'blocked' states the cause honestly without pretending the problem is finished."
       }
     },
     {
