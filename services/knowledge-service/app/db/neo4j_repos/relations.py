@@ -500,53 +500,42 @@ ORDER BY r.confidence DESC, r.predicate ASC, peer.name ASC
 LIMIT $limit
 """
 
-# UNION of the two single-direction queries. Each arm runs against
-# its own template so the planner can use the directional traversal.
-# UNION (not UNION ALL) deduplicates a self-loop edge that would
-# otherwise appear twice.
+# §10.1 — one MATCH over both directions, not `CALL { … UNION … }`. AGE has no subquery, and
+# Cypher cannot `ORDER BY` after a top-level `UNION`, so the OR is the only shape that keeps
+# the ranking — the same collapse T81 measured on `_FIND_BY_NAME_CYPHER_*` (identical planner
+# operators, 0.01% more work).
+#
+# ⚠️ The old comment said `UNION` (not `UNION ALL`) was there to deduplicate a self-loop that
+# would otherwise appear twice. The collapsed form needs no dedup at all: one relationship
+# yields exactly one row, whichever endpoint is the anchor, so a self-loop simply matches once.
+#
+# ⚠️ `subj`/`obj` are NOT anchor/peer. The old arms swapped their return aliases so that `subj`
+# was always the relationship's START and `obj` its END; naming them after the pattern says the
+# same thing without the swap being a thing you have to notice.
+#
+# The peer's archived filter is the one asymmetry worth spelling out: it applies to whichever
+# endpoint is NOT the anchor, which is why it reads as two disjuncts rather than one predicate.
+# On a self-loop BOTH disjuncts reduce to the anchor's own `archived_at`, which is exactly what
+# both of the old arms did.
 _FIND_RELATIONS_1HOP_BOTH_CYPHER = """
-CALL {
-  WITH $user_id AS user_id, $entity_id AS entity_id,
-       $project_id AS project_id, $min_confidence AS min_confidence,
-       $exclude_pending AS exclude_pending,
-       $include_archived_peer AS include_archived_peer
-  MATCH (anchor:Entity {id: entity_id})-[r:RELATES_TO]->(peer:Entity)
-  WHERE anchor.user_id = user_id
-    AND peer.user_id = user_id
-    AND (project_id IS NULL OR anchor.project_id = project_id)
-    AND (project_id IS NULL OR peer.project_id = project_id)
-    AND r.confidence >= min_confidence
-    AND r.valid_until IS NULL
-    AND ($as_of_ordinal IS NULL
-         OR (r.valid_from_ordinal <= $as_of_ordinal
-             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
-    AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
-    AND (include_archived_peer OR peer.archived_at IS NULL)
-  RETURN properties(r) AS rel,
-         properties(anchor) AS subj,
-         properties(peer) AS obj
-  UNION
-  WITH $user_id AS user_id, $entity_id AS entity_id,
-       $project_id AS project_id, $min_confidence AS min_confidence,
-       $exclude_pending AS exclude_pending,
-       $include_archived_peer AS include_archived_peer
-  MATCH (peer:Entity)-[r:RELATES_TO]->(anchor:Entity {id: entity_id})
-  WHERE anchor.user_id = user_id
-    AND peer.user_id = user_id
-    AND (project_id IS NULL OR anchor.project_id = project_id)
-    AND (project_id IS NULL OR peer.project_id = project_id)
-    AND r.confidence >= min_confidence
-    AND r.valid_until IS NULL
-    AND ($as_of_ordinal IS NULL
-         OR (r.valid_from_ordinal <= $as_of_ordinal
-             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
-    AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
-    AND (include_archived_peer OR peer.archived_at IS NULL)
-  RETURN properties(r) AS rel,
-         properties(peer) AS subj,
-         properties(anchor) AS obj
-}
-RETURN rel, subj, obj
+MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+WHERE (subj.id = $entity_id OR obj.id = $entity_id)
+  AND subj.user_id = $user_id
+  AND obj.user_id = $user_id
+  AND ($project_id IS NULL OR subj.project_id = $project_id)
+  AND ($project_id IS NULL OR obj.project_id = $project_id)
+  AND r.confidence >= $min_confidence
+  AND r.valid_until IS NULL
+  AND ($as_of_ordinal IS NULL
+       OR (r.valid_from_ordinal <= $as_of_ordinal
+           AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
+  AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
+  AND ($include_archived_peer
+       OR (subj.id = $entity_id AND obj.archived_at IS NULL)
+       OR (obj.id = $entity_id AND subj.archived_at IS NULL))
+RETURN properties(r) AS rel,
+       properties(subj) AS subj,
+       properties(obj) AS obj
 ORDER BY rel.confidence DESC, rel.predicate ASC
 LIMIT $limit
 """
@@ -840,19 +829,19 @@ class Subgraph(BaseModel):
 # cross-user and no cross-project bleed. valid_until IS NULL +
 # confidence >= $min_confidence + archived_at IS NULL match the L2
 # loader's active-edge filters so the canvas shows the live graph.
+# §10.1 — the subquery here was doing nothing a plain `WITH … ORDER BY … LIMIT` cannot do.
+# It selects the top-N seed nodes and then keeps processing them, which is exactly what a
+# `WITH` is for; `CALL { }` only added a parameter-rebinding preamble.
 _PROJECT_SUBGRAPH_CYPHER = """
-CALL {
-  WITH $user_id AS user_id, $project_id AS project_id
-  MATCH (n:Entity)
-  WHERE n.user_id = user_id
-    AND n.project_id = project_id
-    AND n.archived_at IS NULL
-  RETURN n
-  ORDER BY coalesce(n.anchor_score, 0.0) DESC,
-           coalesce(n.mention_count, 0) DESC,
-           n.id ASC
-  LIMIT $limit
-}
+MATCH (n:Entity)
+WHERE n.user_id = $user_id
+  AND n.project_id = $project_id
+  AND n.archived_at IS NULL
+WITH n
+ORDER BY coalesce(n.anchor_score, 0.0) DESC,
+         coalesce(n.mention_count, 0) DESC,
+         n.id ASC
+LIMIT $limit
 WITH collect(n) AS seeds
 WITH seeds, [s IN seeds | s.id] AS seed_ids
 UNWIND seeds AS node

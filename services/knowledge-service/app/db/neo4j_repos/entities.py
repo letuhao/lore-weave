@@ -2480,35 +2480,44 @@ async def list_entities_filtered(
 # Filters `valid_until IS NULL` so superseded relations don't pollute
 # the detail view — same convention as the L2 context loader.
 
+# §10.1 — ONE aggregation, not two `CALL { }` subqueries. AGE has no subquery, and the two
+# blocks were the same OPTIONAL MATCH written twice: once to collect the capped page, once to
+# count the total. They can be the same scan.
+#
+# The old comment said each subquery had to aggregate internally "so the outer row isn't
+# dropped when there are zero related edges". That is still the requirement; it is just not
+# what a subquery is for. `OPTIONAL MATCH` + `collect()` keeps the row by itself, and
+# `collect()` over a miss collects a `null`, which is why the list is filtered afterwards
+# rather than before — filtering with `WHERE r IS NOT NULL` before the aggregation would drop
+# the row again.
+#
+# ⚠️ The `LIMIT` moves from inside the subquery to a LIST SLICE, so the ORDER has to be
+# established BEFORE the aggregation and survive it. Measured on both engines 2026-08-22, four
+# edges with confidences [0.1, 0.9, 0.5, 0.7] and one entity with none:
+#
+#   Neo4j   e1 -> top [0.9, 0.7]  total 4   |   lonely -> top []  total 0
+#   AGE     e1 -> top [0.9, 0.7]  total 4   |   lonely -> top []  total 0
+#
+# ...and the negative control that makes those readable: aggregating WITHOUT a preceding
+# `ORDER BY` returns the edges in storage order on BOTH engines ([0.7, 0.5, 0.9, 0.1] on Neo4j,
+# [0.1, 0.9, 0.5, 0.7] on AGE). The ordering is not incidental to `collect()` — it has to be
+# asked for, and then it is kept.
+#
+# `total` is the FULL count, not the capped length: the FE shows "all N relations" and hides
+# that row when the real number exceeds the cap.
 _GET_ENTITY_WITH_RELATIONS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-// Two CALL subqueries. Each must `collect()` / `count()` internally
-// so the outer row isn't dropped when there are zero related edges
-// (Neo4j's CALL semantics are join-like; an inner 0-row result kills
-// the outer row). OPTIONAL MATCH + filter-null keeps the "no
-// relations" case returning entity-only.
-CALL {
-  WITH e
-  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-  WHERE (subj = e OR obj = e)
-    AND r.user_id = $user_id
-    AND r.valid_until IS NULL
-  WITH r, subj, obj
-  WHERE r IS NOT NULL
-  ORDER BY r.confidence DESC, r.created_at DESC
-  LIMIT $rel_cap
-  RETURN collect({r: r, subj: subj, obj: obj}) AS edges
-}
-CALL {
-  WITH e
-  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-  WHERE (subj = e OR obj = e)
-    AND r.user_id = $user_id
-    AND r.valid_until IS NULL
-  RETURN count(r) AS total
-}
-RETURN e, edges, total
+OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+WHERE (subj = e OR obj = e)
+  AND r.user_id = $user_id
+  AND r.valid_until IS NULL
+WITH e, r, subj, obj
+ORDER BY r.confidence DESC, r.created_at DESC
+WITH e,
+     collect(CASE WHEN r IS NULL THEN NULL ELSE {r: r, subj: subj, obj: obj} END) AS raw,
+     count(r) AS total
+RETURN e, [x IN raw WHERE x IS NOT NULL][0..$rel_cap] AS edges, total
 """
 
 
@@ -2597,32 +2606,31 @@ async def get_entity_with_relations(
 # matched. Today exactly one node carries a given FK per user, so behaviour is
 # unchanged; the ordering + warning make the ambiguity explicit if a second project
 # ever anchors the same entity.
+# The glossary-FK twin of `_GET_ENTITY_WITH_RELATIONS_CYPHER`, collapsed the same way and for
+# the same reasons — see that query's note for the cross-engine measurement.
+#
+# ⚠️ One extra thing to keep here: `ORDER BY e.project_id ASC` is the deterministic tie-break
+# for the project-less lookup (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE — one node per project, and the
+# wiki caller knows a book rather than a project). It has to come BEFORE the aggregation, and
+# it has to survive it: the caller takes the first row and warns if more than one matched, so
+# an order that changed here would make the wiki show a different project's neighbourhood
+# without anything looking wrong. Ordering by `e.project_id` in the SAME `WITH` that aggregates
+# is what keeps the row order, since the edge ordering is applied to the edge list only.
 _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
 WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
-WITH e ORDER BY e.project_id ASC
-CALL {
-  WITH e
-  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-  WHERE (subj = e OR obj = e)
-    AND r.user_id = $user_id
-    AND r.valid_until IS NULL
-  WITH r, subj, obj
-  WHERE r IS NOT NULL
-  ORDER BY r.confidence DESC, r.created_at DESC
-  LIMIT $rel_cap
-  RETURN collect({r: r, subj: subj, obj: obj}) AS edges
-}
-CALL {
-  WITH e
-  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-  WHERE (subj = e OR obj = e)
-    AND r.user_id = $user_id
-    AND r.valid_until IS NULL
-  RETURN count(r) AS total
-}
-RETURN e, edges, total
+OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+WHERE (subj = e OR obj = e)
+  AND r.user_id = $user_id
+  AND r.valid_until IS NULL
+WITH e, r, subj, obj
+ORDER BY r.confidence DESC, r.created_at DESC
+WITH e,
+     collect(CASE WHEN r IS NULL THEN NULL ELSE {r: r, subj: subj, obj: obj} END) AS raw,
+     count(r) AS total
+ORDER BY e.project_id ASC
+RETURN e, [x IN raw WHERE x IS NOT NULL][0..$rel_cap] AS edges, total
 """
 
 
@@ -2966,43 +2974,54 @@ RETURN s, t
 """
 
 
-_MERGE_COLLECT_EDGES_CYPHER = """
+# §10.1 — TWO statements, not two `CALL { }` subqueries. Unlike the detail queries above, this
+# one collects two DIFFERENT patterns, so a single aggregation would cross-product them: the
+# outgoing edges and the incoming edges are separate scans and stay separate reads. That is the
+# same shape `_rewire_evidenced_by` uses (§10.3), and the caller was already unpacking two
+# independent lists.
+#
+# ⚠️ The two are NOT symmetric and must not be merged into one direction-tagged pattern. The
+# incoming arm carries `AND sub <> s`, so a self-relation `(s)-[r]->(s)` appears in the OUTGOING
+# list only — exactly once. A combined `(a = s OR b = s)` pattern returns it twice unless that
+# asymmetry is reproduced by hand, and the caller's step 3 would then plan the same rewire
+# twice.
+_MERGE_COLLECT_OUT_EDGES_CYPHER = """
 MATCH (s:Entity {id: $source_id})
 WHERE s.user_id = $user_id
-CALL {
-  WITH s
-  OPTIONAL MATCH (s)-[r:RELATES_TO]->(o:Entity)
-  WHERE r.user_id = $user_id AND o.user_id = $user_id
-  RETURN collect({
+OPTIONAL MATCH (s)-[r:RELATES_TO]->(o:Entity)
+WHERE r.user_id = $user_id AND o.user_id = $user_id
+WITH collect(CASE WHEN r IS NULL THEN NULL ELSE {
     direction: 'out',
-    predicate: r.predicate,
     other_id: o.id,
-    confidence: r.confidence,
-    source_event_ids: coalesce(r.source_event_ids, []),
-    source_chapter: r.source_chapter,
-    valid_from: r.valid_from,
-    valid_until: r.valid_until,
-    pending_validation: r.pending_validation
-  }) AS out_edges
-}
-CALL {
-  WITH s
-  OPTIONAL MATCH (sub:Entity)-[r:RELATES_TO]->(s)
-  WHERE r.user_id = $user_id AND sub.user_id = $user_id
-    AND sub <> s
-  RETURN collect({
-    direction: 'in',
     predicate: r.predicate,
-    other_id: sub.id,
     confidence: r.confidence,
     source_event_ids: coalesce(r.source_event_ids, []),
     source_chapter: r.source_chapter,
     valid_from: r.valid_from,
     valid_until: r.valid_until,
     pending_validation: r.pending_validation
-  }) AS in_edges
-}
-RETURN out_edges, in_edges
+  } END) AS raw
+RETURN [x IN raw WHERE x IS NOT NULL] AS edges
+"""
+
+_MERGE_COLLECT_IN_EDGES_CYPHER = """
+MATCH (s:Entity {id: $source_id})
+WHERE s.user_id = $user_id
+OPTIONAL MATCH (sub:Entity)-[r:RELATES_TO]->(s)
+WHERE r.user_id = $user_id AND sub.user_id = $user_id
+  AND sub <> s
+WITH collect(CASE WHEN r IS NULL THEN NULL ELSE {
+    direction: 'in',
+    other_id: sub.id,
+    predicate: r.predicate,
+    confidence: r.confidence,
+    source_event_ids: coalesce(r.source_event_ids, []),
+    source_chapter: r.source_chapter,
+    valid_from: r.valid_from,
+    valid_until: r.valid_until,
+    pending_validation: r.pending_validation
+  } END) AS raw
+RETURN [x IN raw WHERE x IS NOT NULL] AS edges
 """
 
 
@@ -3298,13 +3317,20 @@ async def merge_entities(
     # 2. Collect source's edges.
     edges_result = await run_read(
         session,
-        _MERGE_COLLECT_EDGES_CYPHER,
+        _MERGE_COLLECT_OUT_EDGES_CYPHER,
         user_id=user_id,
         source_id=source_id,
     )
-    edges_row = await edges_result.single()
-    out_edges = edges_row["out_edges"] if edges_row else []
-    in_edges = edges_row["in_edges"] if edges_row else []
+    out_row = await edges_result.single()
+    out_edges = out_row["edges"] if out_row else []
+    in_result = await run_read(
+        session,
+        _MERGE_COLLECT_IN_EDGES_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+    )
+    in_row = await in_result.single()
+    in_edges = in_row["edges"] if in_row else []
 
     # 3. Compute new relation_ids pinned to target, build UNWIND payload.
     #    Edges to skip:

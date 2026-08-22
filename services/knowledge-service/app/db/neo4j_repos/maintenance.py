@@ -319,29 +319,24 @@ async def delete_project_nodes_by_label(
     return int(record["deleted"]) if record else 0
 
 
-# One round trip for four counts. The UNION ALL shape looks odd but is deliberate: four
-# separate `count()` queries would be four round trips for a stats card, and a single
-# `MATCH (n) WHERE n:Entity OR n:Fact …` cannot use the label indexes.
+# §10.1 — one round trip for four counts, without `CALL { … UNION ALL … }`. AGE has no
+# subquery, and the four `sum()`s over a padded union were only ever a way to get four
+# independent aggregations into one row. Chained `OPTIONAL MATCH` + `count()` does that
+# directly, and each label still gets its own index lookup — which is the reason a single
+# `MATCH (n) WHERE n:Entity OR n:Fact …` was rejected in the first place.
+#
+# ⚠️ OPTIONAL, not plain MATCH. A plain `MATCH` for a label with zero rows drops the row and
+# the whole query returns NOTHING — a project with no passages would report no stats at all
+# rather than `passage_count: 0`. `count()` over an OPTIONAL miss is 0 on both engines.
 _GRAPH_STATS_CYPHER = """
-CALL {
-  MATCH (e:Entity {user_id: $user_id, project_id: $project_id})
-  RETURN count(e) AS entity_count, 0 AS fact_count,
-         0 AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, count(f) AS fact_count,
-         0 AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, 0 AS fact_count,
-         count(ev) AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, 0 AS fact_count,
-         0 AS event_count, count(p) AS passage_count
-}
-RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
-       sum(event_count) AS event_count, sum(passage_count) AS passage_count
+OPTIONAL MATCH (e:Entity {user_id: $user_id, project_id: $project_id})
+WITH count(e) AS entity_count
+OPTIONAL MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
+WITH entity_count, count(f) AS fact_count
+OPTIONAL MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
+WITH entity_count, fact_count, count(ev) AS event_count
+OPTIONAL MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
+RETURN entity_count, fact_count, event_count, count(p) AS passage_count
 """
 
 

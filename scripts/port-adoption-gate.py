@@ -773,10 +773,11 @@ _DIALECT_PATTERNS = (
 #: found the OCC gate the construct implemented was not atomic on NEO4J either. The last
 #: class is 11 `CALL {}`, which the probe DID measure (`LATERAL`/CTE).
 #:
-#: **T81 collapsed the two `CALL { … UNION … }` sites to 9.** They were the only ones using the
-#: subquery for a UNION rather than a per-row aggregation; the remaining 9 are all the
-#: correlated `collect()`/`count()` shape.
-MAX_NEO4J_DIALECT_SITES = 9
+#: **ZERO as of T82.** Every Neo4j-only construct in `neo4j_repos` is gone: 37 anchoring
+#: branches, 25 `datetime()`, 1 `duration(`, 3 `FOREACH` and 14 `CALL {}`. The ceiling stays
+#: here as a RATCHET — its job now is to refuse the next one, not to record a backlog. A
+#: non-zero reading is a regression, not progress in the wrong direction.
+MAX_NEO4J_DIALECT_SITES = 0
 
 
 def _code_strings(src: str) -> str:
@@ -1036,8 +1037,15 @@ def main() -> int:
         print("  Lower it in the same commit (rule 5). This is the SECOND path to class (d)")
         print("  zero and the one §10.1 chose; a stale ceiling is how the first one sat at 28.")
         return 1
-    print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in the "
-          f"repo layer — §10.1's second path to class (d) zero")
+    if MAX_NEO4J_DIALECT_SITES == 0:
+        # The line above prints one of two very different facts and they must not read alike.
+        # A backlog at its ceiling is progress; a CLOSED class is a ratchet whose only
+        # remaining job is to refuse the next one. "It can only fall" is false at zero.
+        print("[port-adoption-gate] Neo4j-only dialect 0/0 — the repo layer is ENGINE-AGNOSTIC "
+              "(§10.1). This number is now a RATCHET: any reading above zero is a regression.")
+    else:
+        print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
+              f"the repo layer — §10.1's second path to class (d) zero")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 

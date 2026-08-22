@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the last 9 dialect sites — all one shape, the correlated `collect()`/`count()` subquery. Measure AGE's collect ordering first.**
+**RESUME: class (d) 34 — the modules needing a port operation that does not exist. The dialect path is closed; this is the other one.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,93 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T82 2026-08-22 — **the dialect backlog reaches ZERO: `neo4j_repos` is engine-agnostic**
+
+  ```
+  5 queries, the last 9 CALL {} sites   ->  0
+  Neo4j-only dialect   161 (T62) -> 44 (T77) -> 39 -> 14 -> 11 -> 9 -> 0
+  knowledge unit 4329 · DB integration 621 -> 624 passed, 0 failed
+  ```
+
+  📐 **Measured on BOTH engines before a line was written** (rule 8). All 9 remaining sites were
+  one shape — a `CALL { }` doing a correlated `collect()`/`count()`, wrapped that way because
+  Neo4j's `CALL` semantics are join-like and an inner zero-row result kills the outer row. The
+  cure is to aggregate in the main query, which depends on three things AGE had never been
+  asked to do. Four edges with confidences `[0.1, 0.9, 0.5, 0.7]`, plus one entity with none:
+
+  ```
+                                              NEO4J                  AGE
+  OPTIONAL MATCH keeps the lonely row         n=0                    n=0
+  ORDER BY survives collect()                 [0.9, 0.7, 0.5, 0.1]   [0.9, 0.7, 0.5, 0.1]
+  the shipped shape, capped at 2              top [0.9,0.7] total 4  top [0.9,0.7] total 4
+  ...the lonely entity, same query            top [] total 0         top [] total 0
+  ── the CONTROL ────────────────────────────────────────────────────────────────────────
+  aggregating with NO preceding ORDER BY      [0.7, 0.5, 0.9, 0.1]   [0.1, 0.9, 0.5, 0.7]
+  ```
+
+  The control is what makes the rest readable: **both engines keep an order they were asked for
+  and neither invents one.** This was never a Neo4j-vs-AGE difference — it is a property that
+  has to be asked for on both, and the `LIMIT` moving from inside a subquery to a list slice is
+  what makes asking for it load-bearing.
+
+  🎯 **BITE 1: NOTHING VERIFIED THE RELATION CAP KEPT THE STRONGEST EDGES.** Deleting the
+  `ORDER BY` — so the detail panel's 200-relation cap keeps whatever order storage yielded —
+  left the whole suite green. An author looking at a heavily-connected character would see 200
+  arbitrary relations, and the total above them would still be right. The same silent-absence
+  shape as every hole this run has found.
+
+  ```
+  1  the edge ORDER BY dropped              ✅GREEN  <- the cap kept an arbitrary subset
+  2  the null filter dropped                   RED  entity_detail_truncates_at_rel_cap
+  3  the stats query's last OPTIONAL -> MATCH  RED  13 tests
+  4  the 1hop-both anchor OR made one-way      RED  3 tests, incl. adapter parity
+  5  the subgraph seed LIMIT dropped           RED  2 tests
+  6  one datetime() reintroduced               RED  the gate itself, at the new ceiling
+  ```
+
+  ⚙️ **The five rewrites, and what each subquery was really for:**
+
+  | query | the subquery was doing | now |
+  |---|---|---|
+  | `get_entity_with_relations` | collect the capped page + count the total, twice over the same scan | one aggregation, one scan |
+  | `get_neighborhood_by_glossary_id` | the same, plus a project-order tie-break | ditto, order kept |
+  | `merge_entities`' edge collect | two DIFFERENT patterns (out, in) | two statements |
+  | `find_relations_for_entity(both)` | `UNION` of two directional legs | one MATCH, anchor on either end |
+  | `project_graph_stats` | `UNION ALL` of four label counts + `sum()` | chained `OPTIONAL MATCH` + `count()` |
+
+  Two of those carry an asymmetry worth naming. The merge collect is the only one that stayed
+  two statements: its incoming arm has `AND sub <> s`, so a **self-relation appears in the
+  outgoing list only** — a combined direction-tagged pattern returns it twice and the caller
+  plans the same rewire twice. And `project_graph_stats` needs `OPTIONAL MATCH`, not `MATCH`:
+  a plain match for a label with zero rows drops the row and the query returns **nothing**, so
+  a project with no passages would report no stats at all rather than `passage_count: 0`.
+
+  🔒 **The ceiling is now a RATCHET, and it says so.** At zero, *"it can only fall"* is false;
+  the number's only remaining job is to refuse the next construct. Bite 6 reintroduced one
+  `datetime()` and the gate failed at 1/0, so the refusal is live rather than assumed, and the
+  PASS line prints a different sentence at zero than at a backlog — a closed class and a class
+  at its ceiling must not read alike.
+
+  **The whole backlog, from the first time it was counted rather than estimated:**
+
+  ```
+  T62  161   the first real count (the 2026-08-11 probe estimated ~204 and missed FOREACH + apoc)
+  T77   44   the anchoring branches, one query at a time
+  T78   39   ON CREATE SET / ON MATCH SET closed — and 3 of the 44 were Cypher COMMENTS
+  T79   14   datetime() closed, plus the duration( the ratchet never scanned for
+  T80   11   FOREACH closed — and the OCC gate it implemented was not atomic on Neo4j either
+  T81    9   the CALL{}+UNION pair
+  T82    0
+  ```
+
+  **QC (a) gates:** unit 4329, `port-adoption-gate` PASS at 0/0 — ceiling moved in this commit —
+  `--selftest` PASS, gate proven red by bite 6, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved. 624
+  DB-integration tests ran on a throwaway Neo4j with AGE live, including the adapter-parity and
+  shadow-differential sets that exercise both engines.
+  **QC (c) real data:** the cross-engine table above is real-run output from a live Neo4j and a
+  live AGE graph; the committed tests build a five-edge fixture and read the cap back.
 
   ### ✅ T81 2026-08-22 — **the `CALL { … UNION … }` pair, and a name-resolution arm nothing tested**
 

@@ -62,8 +62,24 @@ def test_templates_that_do_not_bind_as_of_must_not_reference_it(name):
     )
 
 
-def test_the_both_template_applies_the_clause_to_each_union_branch():
-    """`_FIND_RELATIONS_1HOP_BOTH_CYPHER` is a UNION of an outgoing and an incoming leg.
-    A clause on only one leg filters half the edges and returns the other half unfiltered —
-    the kind of half-correct answer that reads as correct."""
-    assert _template("_FIND_RELATIONS_1HOP_BOTH_CYPHER").count(_MARKER) == 2
+def test_the_both_template_applies_the_clause_to_edges_in_BOTH_directions():
+    """`_FIND_RELATIONS_1HOP_BOTH_CYPHER` covers outgoing and incoming edges. A clause applied
+    to only one direction filters half the edges and returns the other half unfiltered — the
+    kind of half-correct answer that reads as correct.
+
+    T82 collapsed the query from `CALL { … UNION … }` into one MATCH with an OR on the anchor,
+    so the count that used to say "once per leg" is now "once, over one pattern". The rule is
+    the same and the shape is what makes it hold: there is a SINGLE `WHERE` and both directions
+    pass through it, so a clause cannot be applied to one direction and not the other.
+    """
+    cypher = _template("_FIND_RELATIONS_1HOP_BOTH_CYPHER")
+    assert cypher.count(_MARKER) == 1, (
+        "the as-of clause appears more than once — the query is one pattern with one WHERE, "
+        "so a second occurrence means the union shape crept back in and the two copies can "
+        "drift apart again"
+    )
+    assert "UNION" not in cypher, "the UNION shape is back — §10.1, and AGE has no CALL { }"
+    assert "subj.id = $entity_id OR obj.id = $entity_id" in cypher, (
+        "the anchor is no longer matched in BOTH directions, so `direction=both` silently "
+        "became a one-direction query"
+    )
