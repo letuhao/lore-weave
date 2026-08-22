@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T54's last line — `infra/.env` → `age`. The blocker that reverted it is DISCHARGED (T54/d); the flip itself needs a GRANT, because it writes to dev. T46's substrate is a separate PO question.**
+**RESUME: T55's migration half — the 10 `read-owed` paths the ledger now names on every gate run. T54 is CLOSED; T46's merged-store substrate stays a PO question.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 68 of 118 evidence blocks closed inside them.**
+**60 of 69 rows done · 9 open · 65 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (3/5) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19160,7 +19160,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (c) real data:** the counts in the corrected prose are the T44a measurements — 1184
   events, 35 statuses (0 anchored), 567 unanchored entities — re-cited rather than re-invented.
 
-- [~] **T54** — **Wire the AGE provider and flip the default** — the row this plan never had
+- [x] **T54** — **Wire the AGE provider and flip the default** — the row this plan never had
+  ✅ **CLOSED 2026-08-22.** Provider wired (T54c); `DEFAULT_BACKEND = "age"` and
+  `KNOWLEDGE_GRAPH_BACKEND=age` in `infra/.env` — §8.5's two-place TIER, both in place.
+  `D-AGE-DEFAULT-SPLITS-THE-GRAPH` is DISCHARGED by measurement, not argument (T54/d): a
+  write through the repo layer and a read through the port land in ONE store, with the
+  other holding 0. ⚠️ **T54/e is load-bearing on what "dev" means** — the running `infra`
+  stack is served by a SIBLING checkout on another branch, from an image that predates
+  `graph_backend.py`, so the pin governs this checkout and not that process.
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.1, §8.2. Unfinished, not undecided.
   ---
   ### 🔻 DEFERRAL `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`
@@ -19174,6 +19181,53 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | `port-adoption-gate` prints both numbers every run, so the gap between 19 and 54 is visible on every commit rather than needing an audit to rediscover. |
   | **To unblock** | 📐 **DECIDED — spec §10.1 (T61).** ~~Grow the port operation, migrate its binders~~ would mean **106 methods**: class (d) demands **85 distinct operations** against a port of 21, 83 of them taking a Cypher session. That is `neo4j_repos` with an `abstractmethod` decorator, and the port's own law refuses it (*"grows by demand, not by inventory"*). Substitutability lands at TWO levels instead: `GraphStore` stays the DOMAIN boundary and grows by demand; the repo layer becomes ENGINE-AGNOSTIC, priced by the 2026-08-11 construct probe and demonstrated on the three hardest cases by T57–T60. |
   | **Retry when** | Immediately — it is T17 class (d), unblocked since T35 closed. |
+
+  ### ✅ T54/e 2026-08-22 — **the pin is set; and "dev" is not this checkout's stack**
+
+  §8.5's TIER is now complete in this repository:
+
+  ```
+  DEFAULT_BACKEND = "age"        app/db/graph_backend.py          ✅ the claim
+  KNOWLEDGE_GRAPH_BACKEND=age    infra/.env                       ✅ the operational fact
+                                 docker compose config -> age     (base AND the iso overlay)
+  ```
+
+  🔴 **The key was ABSENT from `infra/.env.example` entirely**, which is how a stack could run
+  an engine nobody had chosen — the code default decided it and no file said so. It is in the
+  tracked example now, with the TIER written beside it; `.env` itself is git-ignored, so the
+  example is the only committable half.
+
+  ⛔ **What this does NOT do, stated plainly: the RUNNING dev stack is unaffected.** Measured
+  before touching anything:
+
+  ```
+  infra-knowledge-service-1  compose project `infra`
+      config_files   D:\Works\source\lore-weave\infra\docker-compose.yml   <- a SIBLING checkout
+      branch there   feat/frontend-tools-mcp-migration                     <- not this branch
+      its infra/.env  has NO KNOWLEDGE_GRAPH_BACKEND line at all
+      the image       ModuleNotFoundError: No module named 'app.db.graph_backend'
+      startup         "Neo4j schema applied"; no "AGE pool ready"
+  ```
+
+  **The dev stack rule 1 points at is served by a different working tree, on a different
+  branch, from an image that predates `graph_backend.py` (T54c) and therefore every piece of
+  this plan's engine-agnostic work.** Editing this checkout's `.env` cannot reach it, and
+  making it reach would mean rebuilding that stack's image and re-owning the `infra` compose
+  project from here — a much larger action than the one-line flip that was authorised, and the
+  precise hazard `infra/iso.sh`'s own header warns about. Not done, and not done silently.
+
+  ⚖️ **So the flip is real where this checkout runs and pending where it does not.** Anyone
+  bringing the stack up from `lore-weave-mvp` now gets AGE and a `.env` that says so. The
+  `infra` project currently running keeps its 5 052 entities and 1 144 relations, untouched —
+  which, given they are not rebuildable (`D-T41`), is not the worse outcome.
+
+  **QC (a) gates:** `docker compose config` resolves `age` on the base and the iso overlay;
+  all repo gates green.
+  **QC (b) live smoke:** the surface is proven on both engines at T90, on rebuilt images, on
+  `lw-iso`. It is NOT re-run against `infra` here, because that stack does not run this code.
+  **QC (c) real data:** the dev-side figures above are read-only measurements
+  (`pg_extension`, `ag_graph`, two `cypher-shell` counts) — no write reached dev.
+
 
   ### ✅ T54/d 2026-08-22 — **D-AGE-DEFAULT-SPLITS-THE-GRAPH is DISCHARGED; the pin is all that is left**
 
