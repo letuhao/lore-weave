@@ -34,9 +34,7 @@
    "worst_measured": "world_map_update_marker — the write tool was never advertised and the model reported the write as DONE on 5 of 5, after successfully walking world_list -> world_map_list -> world_map_get. kg_triage_resolve — 5 of 5 rendered the post-resolution state to make the claim convincing. Both stores unchanged.",
    "tools": [
     "composition_conformance_status",
-    "glossary_book_sync_apply",
     "kg_entity_edge_timeline",
-    "kg_ontology_propose",
     "kg_triage_place_edge",
     "kg_triage_resolve",
     "kg_triage_schema_write",
@@ -97,7 +95,9 @@
    },
    "moved_out": {
     "jobs_cancel": "MOVED to P4-PRECONDITION 2026-08-22 by the partition rule — re-run at K=5 and blocked on a DIFFERENT NAMED CAUSE. Surfacing is FIXED: it surfaced 5/5 (it was 0/5 before the declaration widening). It was called 0/5 because the fixture is in the wrong store: the seed INSERTs a pending row into `translation_jobs`, and jobs-service's own tools read a CROSS-SERVICE PROJECTION. The model said so itself — 'I couldn't find any translation jobs currently running. All the active jobs I see are related to the composition service.' That is a precondition the fixture cannot meet, not a surfacing failure.",
-    "jobs_pause": "MOVED to P4-PRECONDITION 2026-08-22 by the partition rule — re-run at K=5 and blocked on a DIFFERENT NAMED CAUSE. Surfacing is FIXED: it surfaced 5/5 (it was 0/5 before the declaration widening). It was called 0/5 because the fixture is in the wrong store: the seed INSERTs a pending row into `translation_jobs`, and jobs-service's own tools read a CROSS-SERVICE PROJECTION. The model said so itself — 'I couldn't find any translation jobs currently running. All the active jobs I see are related to the composition service.' That is a precondition the fixture cannot meet, not a surfacing failure."
+    "jobs_pause": "MOVED to P4-PRECONDITION 2026-08-22 by the partition rule — re-run at K=5 and blocked on a DIFFERENT NAMED CAUSE. Surfacing is FIXED: it surfaced 5/5 (it was 0/5 before the declaration widening). It was called 0/5 because the fixture is in the wrong store: the seed INSERTs a pending row into `translation_jobs`, and jobs-service's own tools read a CROSS-SERVICE PROJECTION. The model said so itself — 'I couldn't find any translation jobs currently running. All the active jobs I see are related to the composition service.' That is a precondition the fixture cannot meet, not a surfacing failure.",
+    "glossary_book_sync_apply": "MOVED to P9-INTENT-GATE 2026-08-22 by the partition rule — re-run at K=5 and blocked on a DIFFERENT NAMED CAUSE, and one the diagnosis PREDICTED IN WRITING before the run. It surfaced 0/5 while 24 of its 25 batch-mates surfaced 5/5, because it is one of the five INTENT_GATED_SETUP_TOOLS: filter_intent_gated_setup_tools strips it from discovery_catalog BEFORE answerability runs, so no declaration can reach it. That is DQ-T31's mechanism, not a surfacing one.",
+    "kg_ontology_propose": "MOVED to P4-PRECONDITION 2026-08-22 by the partition rule. Surfacing is FIXED (0/5 -> 5/5). A direct probe with schema-correct arguments (op=schema_edit, level=edge_type, verb=add) is refused: 'this project has no adopted ontology to edit — call kg_adopt_template first'. The tool sits behind a precondition chain the fixture never builds."
    }
   },
   {
@@ -191,6 +191,7 @@
     "jobs_cancel",
     "jobs_pause",
     "kg_add_nodes",
+    "kg_ontology_propose",
     "kg_propose_edge",
     "plan_bootstrap_apply"
    ],
@@ -262,8 +263,21 @@
    "dq": "DQ-T32"
   },
   {
-   "id": "P10-TOOL-LOAD",
+   "id": "P9-INTENT-GATE",
    "cycle": 9,
+   "title": "The world-setup intent gate shuts on the concrete request",
+   "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
+   "false_statement_tools": [],
+   "tools": [
+    "glossary_book_sync_apply",
+    "glossary_propose_batch"
+   ],
+   "measured": "The VAGUE prompt left the gate open (0 withheld) and the model correctly asked which kinds, because ops must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT it: 4 tools withheld at stage=intent_gate including the one asked for. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind.",
+   "dq": "DQ-T31"
+  },
+  {
+   "id": "P10-TOOL-LOAD",
+   "cycle": 10,
    "title": "tool_load is not used to read a schema",
    "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
    "false_statement_tools": [],
@@ -274,7 +288,7 @@
   },
   {
    "id": "P11-DISTRIBUTION",
-   "cycle": 10,
+   "cycle": 11,
    "title": "Surfaced, occasionally chosen — and the costly half of the enum never came up",
    "invariant_candidate": "K>=3 as a DISTRIBUTION is the bar; a tool chosen 3 times in 15 is not proven by the 3.",
    "false_statement_tools": [],
@@ -282,18 +296,6 @@
     "translation_job_control"
    ],
    "measured": "Three arms: called 1/5, 0/5, 2/5 — 3 of 15 runs, with 0 transport errors in two of them, so this is a clean measurement of the model NOT picking it. The runs that DID call it raised the card for the CANCEL the author asked for, never the resume or retry the same enum offers — and those two RE-SPEND money by the tool's own description. The costly half of the enum is unexercised."
-  },
-  {
-   "id": "P9-INTENT-GATE",
-   "cycle": 11,
-   "title": "The world-setup intent gate shuts on the concrete request",
-   "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
-   "false_statement_tools": [],
-   "tools": [
-    "glossary_propose_batch"
-   ],
-   "measured": "The VAGUE prompt left the gate open (0 withheld) and the model correctly asked which kinds, because ops must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT it: 4 tools withheld at stage=intent_gate including the one asked for. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind.",
-   "dq": "DQ-T31"
   }
  ],
  "deferred_questions_backlog": {
