@@ -16,6 +16,23 @@ services:
   postgres:
     restart: unless-stopped
     image: postgres:18-alpine
+    # 🔴 max_connections RAISED FROM THE DEFAULT 100, 2026-08-22. Measured: this stack IDLES at
+    # 96 of 100 — 87 of them idle pool connections spread across ~30 databases, 2-7 each, with no
+    # single culprit. It is simply what ~25 services each holding a pool costs. That left FOUR
+    # connections for anything else, so the tool-loop harness (which opens its own psql for each
+    # store snapshot and seed assertion) exhausted the server mid-batch: 125 runs died, no
+    # evidence was written, and 95 fixtures survived teardown because the teardown ITSELF could
+    # not connect. A leaked fixture becomes a book the model can find via book_list and write
+    # into on the next batch.
+    #
+    # 300 is a dev-stack figure, not a production one: ~9MB of shared memory per slot at these
+    # settings, and the point is headroom for tooling rather than throughput. The real answer for
+    # a deployment with this service count is the pgbouncer overlay that already ships beside this
+    # file (docker-compose.pgbouncer.yml), which pools on the server side instead.
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=300"
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
