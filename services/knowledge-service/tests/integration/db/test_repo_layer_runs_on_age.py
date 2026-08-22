@@ -45,7 +45,8 @@ _WAVE_2 = 13   # facts / events / entity_status / hierarchy / maintenance / the 
 _WAVE_3 = 29   # the READ/DERIVE surface across nine more modules              (T86)
 _WAVE_4 = 54   # the BULK: entities (36), facts (12), events (12)              (T87)
 _WAVE_5 = 12   # enrichment, hierarchy summaries, the last janitors            (T88)
-_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5
+_WAVE_6 = 1    # set_entity_embedding — NOT a vector-procedure function        (T91)
+_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5 + _WAVE_6
 
 _GRAPH = "repo_conformance"
 
@@ -608,3 +609,47 @@ async def test_the_FIFTH_WAVE_closes_the_live_surface(age_session):
         f"only {ran} fifth-wave repo functions were exercised against AGE; the floor is "
         f"{_WAVE_5} of {_PROVEN_ON_AGE} total."
     )
+
+
+@pytest.mark.asyncio
+async def test_wave_6_the_embedding_WRITE_is_not_a_vector_procedure(age_session):
+    """T91 — `set_entity_embedding` was filed as unprovable on AGE. It is not.
+
+    T88 named three functions as unproven and attributed all three to "the vector layer",
+    and that grouping was carried forward into a hand-back. Two of them earn it: they reach
+    `CALL db.index.vector.queryNodes` / `SHOW VECTOR INDEXES`, which are hard syntax errors
+    on AGE with no portable equivalent (`port-adoption-gate`'s procedure ratchet counts
+    exactly those sites). **This one reaches neither.** It is a plain `MATCH … SET` of a
+    property that happens to hold a list of floats, and a list of floats is not a vector
+    index — the module it sits in was what put it in the group.
+
+    Being adjacent to the vector layer is not the same as being part of it, and the
+    difference is one function of coverage that was written off without being run.
+    """
+    s = age_session
+    from app.db.neo4j_repos import entities as en
+
+    uid, proj = f"u-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}"
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai",
+                                kind="person", source_type="chapter")
+
+    wrote = await en.set_entity_embedding(
+        s, user_id=uid, entity_id=kai.id, embedding=[0.25] * 384,
+        embedding_dim=384, embedding_model="probe-model", embedding_version=7)
+    assert wrote is True, "the embedding write reported no row updated on AGE"
+
+    # `it did not raise` is not `it wrote` — read the properties back off the node.
+    rows = await s._conn.fetch(
+        f"""SELECT * FROM cypher('{s._graph}', $q$ MATCH (e:Entity {{id: '{kai.id}'}})
+            RETURN e.embedding_model AS m, e.embedding_version AS v,
+                   size(e.embedding_384) AS n $q$) AS t(m agtype, v agtype, n agtype)""")
+    assert rows, "the entity vanished after the embedding write"
+    got = {k: str(v).strip('"') for k, v in dict(rows[0]).items()}
+    assert got == {"m": "probe-model", "v": "7", "n": "384"}, (
+        f"the embedding write landed wrong on AGE: {got}")
+
+    # The tenancy guard is the half a silent no-op would still satisfy.
+    assert await en.set_entity_embedding(
+        s, user_id="someone-else", entity_id=kai.id, embedding=[0.5] * 384,
+        embedding_dim=384, embedding_model="x", embedding_version=9) is False, (
+        "another user stamped an embedding onto this entity")

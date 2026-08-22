@@ -15792,6 +15792,82 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   merged store (T46, X1) remains a PO decision and nothing here decides it.
 
 
+  ---
+  ### ✅ T91 2026-08-22 — **"0/0, ENGINE-AGNOSTIC" was counting a family it could not see**
+
+  ```
+  Neo4j procedures  UNCOUNTED  ->  6/6   NEW ratchet, the vector layer only
+  AGE coverage      116/119    ->  117/119 (98%)   floor moved in this commit
+  unprovable set    3 named    ->  2      one was written off without being run
+  knowledge unit 4342 · DB integration 650 -> 651
+  ```
+
+  🔴 **The gate printed a claim its scanner could not support.** `scan_dialect` knew
+  `apoc.` and eight construct families, but nothing about `db.*`. So
+  `CALL db.index.vector.queryNodes` — the whole of semantic search — sat inside
+  `neo4j_repos` while the headline read *"0/0 — the repo layer is ENGINE-AGNOSTIC (§10.1)"*.
+
+  Measured against AGE 1.7.0 rather than reasoned about:
+
+  ```
+  CALL db.index.vector.queryNodes     PostgresSyntaxError: syntax error at or near "."
+  CALL db.index.fulltext.queryNodes   PostgresSyntaxError: syntax error at or near "."
+  SHOW VECTOR INDEXES                 PostgresSyntaxError: syntax error at or near "SHOW"
+  ```
+
+  ⚖️ **Counted SEPARATELY, and that is a judgement worth stating.** These are not a dialect
+  backlog: there is nothing portable to rewrite them into. Every site is the vector layer,
+  which §3.1 moves to Postgres wholesale — `entities` 2, `passages` 2, `vector_indexes` 2.
+  Folding them into a number meaning *"rewrite this in portable Cypher"* would misdescribe
+  the work; leaving them uncounted is what was already happening. The dialect line now says
+  **PORTABLE** construct, which is what it always measured.
+
+  📐 **6, not the 8 a grep returns** — one `SHOW VECTOR INDEXES` is in a docstring, one
+  `CALL` in a Python comment describing the migration. Both are excluded by the
+  `_code_strings` + `//`-strip T87 had to correct twice, and counting prose would put the
+  ceiling beyond reach of deleting code.
+
+  🔬 **And the "three unproven functions" was wrong by one.** T88 named three and attributed
+  all three to *"the vector layer"*; that grouping was then carried into a hand-back as a
+  reason the goal could not be met. Two earn it — they reach a procedure above.
+  **`set_entity_embedding` reaches none.** It is a plain `MATCH … SET` of a property that
+  holds a list of floats, and a list of floats is not a vector index. Run on AGE:
+
+  ```
+  set_entity_embedding(dim=384)  -> True     read back: {m: "probe-model", v: 7, n: 384}
+  set_entity_embedding(dim=1024) -> True     cross-user write -> False (guard holds)
+  ```
+
+  **Adjacency to the vector layer was doing the work a measurement should have done.**
+  Coverage 116 → 117 of 119 (98%), and the ratchet again refused the commit until the floor
+  moved with it.
+
+  ```
+  6  the `\b` in the procedure pattern    RED — selftest AND the ratchet ("FELL to 1")
+  7  the embedding write as a silent      RED — read-back: {m: None, v: None, n: None}
+     no-op returning True
+  ```
+
+  ⚠️ **Bite 6 is a bug I actually shipped, not a hypothetical.** The first cut of both
+  patterns carried a literal backspace (`0x08`) where `\b` was meant — a heredoc ate the
+  escape. The regexes matched nothing, the new ratchet read 0/0, and **it would have passed
+  its own bite green.** The selftest now asserts the pattern carries a word boundary rather
+  than whatever byte survived, and the ratchet caught it independently as *"FELL to 1"* —
+  two detections, neither relying on my having remembered.
+
+  Bite 7 is the other half: a write that returns `True` and stores nothing. The proof reads
+  the properties back off the node, because *it did not raise* is not *it wrote*.
+
+  **QC (a) gates:** unit **4342**, DB integration **651**, `port-adoption-gate` PASS with
+  AGE coverage 117/119, procedures 6/6, conformance 21/21, dialect 0/0, `--selftest` PASS,
+  four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; this row moves a scanner and a
+  proof, and the surface it describes was smoked at T90.
+  **QC (c) real data:** `set_entity_embedding` executed against a live AGE 1.7.0 graph, its
+  written properties read back off the node, and its tenancy guard exercised from the wrong
+  user.
+
+
 - [x] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
   verify: bash scripts/postgres-knowledge-image-smoke.sh
   ✅ **TICKED 2026-08-14, two days late — re-verified by RUNNING it, not by reading the block:**

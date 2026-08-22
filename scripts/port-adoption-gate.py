@@ -555,6 +555,44 @@ def selftest() -> int:
         print(f"  FAIL — a method named only in a COMMENT counted as conformed: {missing}")
         ok = False
 
+    # ── T91: the procedure scanner, on fixtures ──────────────────────────────────────
+    # ⚠️ The FIRST cut of these two patterns shipped with a literal backspace (0x08) where
+    # `\\b` was meant — a heredoc ate the escape. The regexes then matched
+    # NOTHING, the new ratchet read 0/0, and it would have passed its own bite green. So the
+    # first case here is not "does it find one" but "does it find the REAL construct", and
+    # the pattern is asserted to carry a word boundary rather than whatever byte survived.
+    for _name, _pat in _PROCEDURE_PATTERNS:
+        if "\x08" in repr(_pat.pattern) or chr(8) in _pat.pattern:
+            print(f"  FAIL — the {_name!r} pattern carries a literal backspace, not a word "
+                  f"boundary. It will match nothing and the ceiling will read 0.")
+            ok = False
+    vec = 'Q = "CALL db.index.vector.queryNodes($i, $n, $v) YIELD node"' + chr(10)
+    if scan_procedures({"probe": vec}).get("probe", {}).get("CALL db.*") != 1:
+        print("  FAIL — the procedure scanner missed `CALL db.index.vector.queryNodes`, the "
+              "construct it exists for")
+        ok = False
+    show = 'Q = "SHOW VECTOR INDEXES YIELD name"' + chr(10)
+    if scan_procedures({"probe": show}).get("probe", {}).get("SHOW ... INDEX") != 1:
+        print("  FAIL — the procedure scanner missed `SHOW VECTOR INDEXES`")
+        ok = False
+    # Validated on cases it was NOT derived from — both are how the number would be held
+    # above zero by prose that describes the removal.
+    docstring = ('def f():' + chr(10) + '    """Uses `SHOW VECTOR INDEXES` (Neo4j 5+)."""'
+                 + chr(10) + '    return 1' + chr(10))
+    if scan_procedures({"probe": docstring}):
+        print("  FAIL — a procedure named in a DOCSTRING was counted; the ceiling could "
+              "never be closed by deleting code")
+        ok = False
+    commented = ('Q = ' + chr(34)*3 + '// no longer needs CALL db.index.vector.queryNodes'
+                 + chr(10) + 'MATCH (e:E) RETURN e' + chr(34)*3 + chr(10))
+    if scan_procedures({"probe": commented}):
+        print("  FAIL — a procedure named in a CYPHER comment was counted")
+        ok = False
+    # A property access is not a procedure call. `self.db.execute(...)` must not count.
+    if scan_procedures({"probe": 'x = "MATCH (n) RETURN n"' + chr(10) + 'self.db.execute(q)'}):
+        print("  FAIL — `self.db.execute` counted as a Neo4j procedure call")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways; and "
           f"an unconformed port method from a covered one")
@@ -776,6 +814,52 @@ def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list
 # for, and they are the ones with teeth. This number exists so the translation cannot stall
 # silently, the way class (d) sat at "28" for eight days.
 _DIALECT_ROOT = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
+#: T91 — Neo4j SERVER-SIDE procedures and admin commands, counted SEPARATELY from the
+#: dialect families above.
+#:
+#: 🔴 They were not counted at all, and the gate's headline said so wrongly. `scan_dialect`
+#: knew `apoc.` but not `db.*`, so `CALL db.index.vector.queryNodes` — the whole of semantic
+#: search — sat inside `neo4j_repos` while the gate printed *"0/0 — the repo layer is
+#: ENGINE-AGNOSTIC"*. Measured against AGE 1.7.0 on 2026-08-22, all three shapes are hard
+#: syntax errors, not degraded behaviour:
+#:
+#:     CALL db.index.vector.queryNodes     PostgresSyntaxError: syntax error at or near "."
+#:     CALL db.index.fulltext.queryNodes   PostgresSyntaxError: syntax error at or near "."
+#:     SHOW VECTOR INDEXES                 PostgresSyntaxError: syntax error at or near "SHOW"
+#:
+#: They are a SEPARATE number rather than added to `MAX_NEO4J_DIALECT_SITES` because they are
+#: not a dialect backlog: there is no AGE equivalent to port them to. Every one is the vector
+#: layer, which §3.1 moves to Postgres wholesale — `entities` (2), `passages` (2),
+#: `vector_indexes` (2). Folding them into a backlog that means "rewrite this in portable
+#: Cypher" would misdescribe the work; hiding them entirely is what was happening before.
+#:
+#: This is also the honest answer to "why are three repo functions unproven on AGE"
+#: (T88): `find_entities_by_vector`, `set_entity_embedding` and `purge_project` reach one of
+#: these. It is not a gap in the proof — it is a Neo4j-only capability with a scheduled exit.
+#: 6, not the 8 a naive `grep` returns: one `SHOW VECTOR INDEXES` is in a DOCSTRING and one
+#: `CALL db.index.vector.queryNodes` is in a PYTHON comment describing the migration. Both
+#: are excluded by the same `_code_strings` + `//`-strip that T87 had to add twice, and
+#: counting them would make the number un-closable by prose alone.
+MAX_VECTOR_PROCEDURE_SITES = 6
+
+_PROCEDURE_PATTERNS = (
+    # `db.<anything>` as a CALL target. NOT a bare `db.` match: `self.db.execute` and a
+    # docstring saying "the db.index one" must not count, which is why the CALL is required.
+    ("CALL db.*", re.compile(r"\bCALL\s+db\.[a-zA-Z_.]+", re.I)),
+    # Admin commands. Neo4j-only by definition; AGE rejects the keyword outright.
+    ("SHOW ... INDEX", re.compile(r"\bSHOW\s+[A-Z ]*INDEX(ES)?\b", re.I)),
+)
+
+
+def scan_procedures(sources=None) -> dict:
+    """`{module: {family: count}}` for Neo4j server-side procedures and admin commands.
+
+    Shares `_CYPHER_COMMENT` stripping with `scan_dialect` for the same reason: a construct
+    named in a comment describing its own removal must not hold the number up.
+    """
+    return _scan_families(_PROCEDURE_PATTERNS, sources)
+
+
 _DIALECT_PATTERNS = (
     ("ON CREATE SET", re.compile(r"ON\s+CREATE\s+SET", re.I)),
     ("ON MATCH SET", re.compile(r"ON\s+MATCH\s+SET", re.I)),
@@ -919,8 +1003,16 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: What DOES track engine readiness is coverage: how much of the repo layer has been RUN
 #: against AGE. 21 -> 50 -> 104 -> 116 across waves 3-5, and the ratchet is what
 #: made the rise visible — it FAILED on the increase and demanded the floor move in the
-#: same commit, which is rule 5 working rather than being remembered.
-MIN_AGE_PROVEN_FUNCTIONS = 116
+#: same commit, which is rule 5 working rather than being remembered. 116 -> 117 at T91,
+#: which the ratchet again refused to let land without this line moving.
+#:
+#: The remaining 2 are `find_entities_by_vector` and `purge_project`, and both are accounted
+#: for by `MAX_VECTOR_PROCEDURE_SITES` — they reach a Neo4j-only procedure. T88 named THREE
+#: and grouped `set_entity_embedding` with them as "the vector layer"; it reaches no
+#: procedure at all, and running it (T91) showed it writes and enforces tenancy on AGE
+#: unchanged. Adjacency to the vector layer was doing the work that a measurement should
+#: have.
+MIN_AGE_PROVEN_FUNCTIONS = 117
 
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",
@@ -1084,6 +1176,16 @@ def scan_dialect(sources: dict[str, str] | None = None) -> dict[str, dict[str, i
 
     Cypher line comments are stripped before matching. No `//` appears inside a string
     literal anywhere in the layer (checked the same day), so this cannot eat real syntax."""
+    return _scan_families(_DIALECT_PATTERNS, sources)
+
+
+def _scan_families(patterns, sources=None) -> dict[str, dict[str, int]]:
+    """The shared body of `scan_dialect` and `scan_procedures`.
+
+    Extracted rather than copied: the docstring/`//`-comment stripping above took two
+    separate corrections to get right, and a second hand-copied loop would have inherited
+    whichever version existed the day it was written and then drifted from it silently.
+    """
     out: dict[str, dict[str, int]] = {}
     if sources is None:
         if not os.path.isdir(_DIALECT_ROOT):
@@ -1100,7 +1202,7 @@ def scan_dialect(sources: dict[str, str] | None = None) -> dict[str, dict[str, i
                 continue
     for mod, src in sorted(sources.items()):
         blob = _CYPHER_COMMENT.sub("", _code_strings(src))
-        hits = {name: len(pat.findall(blob)) for name, pat in _DIALECT_PATTERNS}
+        hits = {name: len(pat.findall(blob)) for name, pat in patterns}
         hits = {k: v for k, v in hits.items() if v}
         if hits:
             out[mod] = hits
@@ -1325,11 +1427,35 @@ def main() -> int:
         # The line above prints one of two very different facts and they must not read alike.
         # A backlog at its ceiling is progress; a CLOSED class is a ratchet whose only
         # remaining job is to refuse the next one. "It can only fall" is false at zero.
-        print("[port-adoption-gate] Neo4j-only dialect 0/0 — the repo layer is ENGINE-AGNOSTIC "
-              "(§10.1). This number is now a RATCHET: any reading above zero is a regression.")
+        print("[port-adoption-gate] Neo4j-only dialect 0/0 — every PORTABLE construct is gone "
+              "from the repo layer (§10.1). A RATCHET: any reading above zero is a "
+              "regression.")
     else:
         print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
               f"the repo layer — §10.1's second path to class (d) zero")
+    # ── Neo4j server-side procedures, counted apart from the dialect backlog ────────────
+    procs = scan_procedures()
+    n_proc = sum(sum(v.values()) for v in procs.values())
+    detail = "; ".join(
+        f"{mod} {sum(h.values())}" for mod, h in sorted(procs.items())) or "none"
+    if n_proc > MAX_VECTOR_PROCEDURE_SITES:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — Neo4j server-side procedure sites GREW "
+              f"to {n_proc} (ceiling {MAX_VECTOR_PROCEDURE_SITES}): {detail}.{chr(10)}"
+              f"  `CALL db.*` and `SHOW … INDEX` are hard syntax errors on AGE and have no "
+              f"portable equivalent.{chr(10)}  A NEW one is a new Neo4j-only capability in "
+              f"the repo layer, which §10.1 forbids.{chr(10)}")
+        return 1
+    if n_proc < MAX_VECTOR_PROCEDURE_SITES:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — procedure sites FELL to {n_proc} "
+              f"(ceiling {MAX_VECTOR_PROCEDURE_SITES}). Lower the ceiling in this commit "
+              f"(rule 5).{chr(10)}")
+        return 1
+    print(f"[port-adoption-gate] Neo4j procedures {n_proc}/{MAX_VECTOR_PROCEDURE_SITES} — "
+          f"the VECTOR layer only ({detail}); §3.1 moves it to Postgres. These sites are "
+          f"why `find_entities_by_vector` and `purge_project` are unproven on AGE: a "
+          f"Neo4j-only capability, not a gap in the proof. NOT `set_entity_embedding`, "
+          f"which reaches no procedure and was proven at T91.")
+
     literals = scan_engine_literals()
     n_lit = sum(len(v) for v in literals.values())
     if n_lit > MAX_ENGINE_LITERALS:
