@@ -38,7 +38,17 @@ because it is recorded as evidence.
 Until this takes an explicit argument override, an op-dispatch tool must be probed by hand with a
 concrete op plus the id under test (see docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt),
 and its ledger row must say WHICH op was exercised. 15 catalogue tools declare `op` as their only
-required argument (measured, 2026-08-22).
+required argument (measured, 2026-08-22). Read the op ENUM from the schema first: probing
+composition_arc_edit with op=archive got a validation refusal that looks like a boundary result and
+is not one — its enum is create|update|delete|restore|move|assign_chapters.
+
+🔴 AND A ZERO-ARGUMENT TOOL CANNOT FAIL THESE CASES, SO ITS "SUCCESS" IS NOT A FINDING. With
+`required=[]` there is no id to make absent, no id to make foreign and no field to empty: all three
+cases degenerate to the same argument-less call, and succeeding is CORRECT. The probe still prints
+"🔴 SUCCEEDED — a boundary that does not hold", which is a false alarm it has no way to detect —
+measured on registry_list_workflows, 2026-08-23. For such a tool the real boundary is tenancy of the
+RESULT (does it return another account's rows?), which needs a second account and is not what this
+measures. Do not record a zero-arg tool's SUCCEEDED lines as a defect.
 """
 from __future__ import annotations
 
