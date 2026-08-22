@@ -211,6 +211,19 @@ class Gate:
 
     def code(self, t: dict) -> None:
         for d in t.get("defects") or []:
+            # 🔴 A MALFORMED ENTRY MUST REFUSE, NOT CRASH. `defects` is a list of OBJECTS naming a
+            # test file and its RED proof. One scenario carried `["DQ-T3"]` — a bare deferred-
+            # question reference — and `d.get` raised AttributeError on the str, which aborted the
+            # whole run: 41 tools in one batch went un-evaluated because of one entry in one of
+            # them. A gate that dies on bad input is strictly worse than one that reports it, and
+            # this gate is the authority a conclusion rests on.
+            if not isinstance(d, dict):
+                self._check(
+                    False, f"[{t['tool']}] defects entry is not an object",
+                    f"got {type(d).__name__} {str(d)[:40]!r} — a defect must name its test file and "
+                    "its RED proof. A deferred question belongs in the ledger's "
+                    "`deferred_questions`, not here, because the CODE bar cannot check it")
+                continue
             n = d.get("id", "?")
             self._check(bool(d.get("test_file")) and (ROOT / d.get("test_file", "x")).exists(),
                         f"[{t['tool']}] {n} test exists", "no regression test on disk")
