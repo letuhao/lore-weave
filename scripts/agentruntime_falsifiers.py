@@ -1561,9 +1561,13 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     # Drop the already-active filter and a tool the model can already see is re-armed, spending
     # surface budget on a tool that needed none.
     "test_a_tool_ALREADY_on_the_surface_is_not_rearmed": [
+        # ANCHOR MOVED 2026-08-22, intent unchanged: still "drop the already-active filter". The
+        # predicate gained `and name != exclude` (a refusal was arming the tool that had just
+        # failed — it names itself in its own first sentence), which reflowed this line. The
+        # anchor check caught it without running a suite, which is exactly its job.
         (f"{CS}/app/services/stream_service.py",
-         "        if name not in already_active and re.search(",
-         "        if re.search("),
+         "        if name not in already_active and name != exclude",
+         "        if name != exclude"),
     ],
     # The substring control: matching without word boundaries arms `kg_build` off `kg_build_wiki`.
     "test_a_SUBSTRING_of_a_tool_name_does_not_arm_it": [

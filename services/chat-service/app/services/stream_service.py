@@ -2637,7 +2637,9 @@ def _unwrap_single_element_scalar_args(args_obj: dict, tool_def: dict | None) ->
 _RECOVERY_ARM_CAP = 3
 
 
-def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> list[str]:
+def _tools_named_in_refusal(
+    error_text: str, catalog: dict, already_active, *, exclude: str | None = None,
+) -> list[str]:
     """Catalogue tools a REFUSAL told the caller to use, and that it cannot currently see.
 
     🔴 **A REFUSAL THAT NAMES AN UNREACHABLE TOOL IS AN INSTRUCTION THE CALLER CANNOT FOLLOW.**
@@ -2659,12 +2661,32 @@ def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> l
     Whole-word matching, never substring: `kg_build` occurs inside `kg_build_wiki`, so a substring
     test would arm the wrong tool off its own refusal -- the `mrows.Err()`/`rows.Err()` shape that
     kept a guard green while the check it named was gone.
+
+    🔴 **`exclude` IS THE TOOL THAT JUST FAILED, AND OMITTING IT ARMED THE FAILURE ITSELF.** Caught
+    live 2026-08-22 by this function's own log line, on the first batch after the missing-argument
+    arm was wired in:
+
+        armed recovery tool(s) ['composition_arc_template_edit'] named in
+        composition_arc_template_edit's missing-argument refusal
+
+    Every refusal `_missing_args_message` builds OPENS with the failing tool's name — *"'x' is
+    missing required argument(s)"* — so the tool is always a candidate against its own refusal.
+    Arming it is not merely a no-op: candidates are ranked longest-name-first into a cap of 3, and a
+    tool name is usually among the longest strings in its own refusal, so the failure reliably takes
+    a top slot and can push out the supplier the sentence is actually steering toward. The
+    instruction says *call world_map_list first*; the arming would spend a slot re-arming
+    world_map_delete.
+
+    Passing the failing tool here rather than relying on `already_active` is deliberate: a tool
+    dispatched off-surface (the chokepoint one step below auto-loads a catalogue tool the model
+    named) is NOT in the active set at the moment its refusal is read.
     """
     if not error_text or not catalog:
         return []
     found = [
         name for name in catalog
-        if name not in already_active and re.search(rf"\b{re.escape(name)}\b", error_text)
+        if name not in already_active and name != exclude
+        and re.search(rf"\b{re.escape(name)}\b", error_text)
     ]
     # Longest first: when a refusal names both `kg_build` and `kg_build_wiki`, the specific tool is
     # the one it is steering toward. Then a stable order so the armed set is reproducible.
@@ -6255,7 +6277,8 @@ async def _stream_with_tools(
                     # The model walks the chain exactly when it can see the supplier.
                     if discovery:
                         _ma_recovery = _tools_named_in_refusal(
-                            _ma_msg or "", cat_index, active_tool_names)
+                            _ma_msg or "", cat_index, active_tool_names,
+                            exclude=c["name"])
                         if _arm_tools(
                             _ma_recovery, active_tool_names=active_tool_names,
                             activation_state=activation_state,
@@ -6972,7 +6995,8 @@ async def _stream_with_tools(
                 # chokepoint makes for an off-surface tool the model DID call, one step earlier.
                 if not ok and discovery:
                     _recovery = _tools_named_in_refusal(
-                        envelope.get("error") or "", cat_index, active_tool_names)
+                        envelope.get("error") or "", cat_index, active_tool_names,
+                        exclude=c["name"])
                     if _recovery:
                         _arm_tools(
                             _recovery, active_tool_names=active_tool_names,

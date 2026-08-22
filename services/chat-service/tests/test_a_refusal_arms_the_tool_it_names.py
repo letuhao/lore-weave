@@ -60,6 +60,55 @@ def test_a_refusal_naming_a_catalogue_tool_yields_it():
     assert "world_map_list" in got
 
 
+def test_a_refusal_never_arms_the_tool_that_just_failed():
+    """🔴 CAUGHT LIVE, by this feature's own log line, on the first batch after it shipped:
+
+        armed recovery tool(s) ['composition_arc_template_edit'] named in
+        composition_arc_template_edit's missing-argument refusal
+
+    Every message `_missing_args_message` builds OPENS with the failing tool's name, so the tool is
+    always a candidate against its own refusal. That is not a harmless no-op: candidates are ranked
+    longest-name-first into `_RECOVERY_ARM_CAP` = 3, and a tool's own name is usually among the
+    longest strings in its own refusal — so the failure takes a top slot and can push out the
+    supplier the sentence is steering toward.
+
+    Built from the REAL refusal rather than a hand-written string, because the hand-written string
+    is what hid this: I wrote the fixture with only the supplier in it, and the message the platform
+    actually emits contains both names.
+    """
+    msg = _missing_args_message(
+        "world_map_delete", ["map_id"], {},
+        {"map_id": {"description": "NOT a name — call world_map_list first to get the id."}},
+    )
+    assert "world_map_delete" in msg, "the refusal names the failing tool — that is the trap"
+    catalog = {"world_map_list": {}, "world_map_delete": {}}
+
+    unguarded = _tools_named_in_refusal(msg, catalog, set())
+    assert "world_map_delete" in unguarded, (
+        "the fixture no longer reproduces the trap, so the guard below proves nothing"
+    )
+
+    guarded = _tools_named_in_refusal(msg, catalog, set(), exclude="world_map_delete")
+    assert guarded == ["world_map_list"], (
+        f"a refusal must arm the supplier it names and never the call that just failed: {guarded}"
+    )
+
+
+def test_both_refusal_call_sites_exclude_the_failing_tool():
+    """CALL-SITE GUARD. The parameter above defaults to None, so the helper stays green while every
+    caller keeps arming the failure — which is exactly the state this feature shipped in."""
+    src = SRC.read_text(encoding="utf-8")
+    # `def _tools_named_in_refusal(` matches the same pattern — its own signature is not a call
+    # site, and counting it made this gate red against correct code on its first run.
+    sites = [m for m in re.finditer(r"(?<!def )_tools_named_in_refusal\(\s*\n", src)]
+    assert len(sites) >= 2, f"expected both refusal call sites, found {len(sites)}"
+    for m in sites:
+        call = src[m.start():m.start() + 260]
+        assert 'exclude=c["name"]' in call, (
+            "a refusal call site does not exclude the failing tool:\n" + call[:200]
+        )
+
+
 def test_arming_reports_only_what_it_actually_armed():
     """A caller that announces a tool it did not arm makes the same false claim, reversed."""
     active = {"world_map_list"}
