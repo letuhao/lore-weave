@@ -2940,6 +2940,22 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch39.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "lore_enrichment_auto_enrich": {
+   "state": "proven",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch40.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch40.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "catalog_get_book": {
+   "state": "blocked",
+   "cycle": "batch-17 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch40.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED — SURFACED 5/5 and CALLED 0/5, and the model was RIGHT not to call it.\n\nIt answered \"there are no public books in the catalogue to open\" and ended the turn. That is true about the tool it was given: catalog_list_public_books returns {\"items\": [], \"total\": 0}.\n\n🔴 BUT THE STORE SAYS OTHERWISE. loreweave_sharing.sharing_policies holds 44 rows with visibility='public' (against 13 private and 1 unlisted). So 44 books are marked public and the public catalogue lists none of them.\n\nA direct probe pins it further: catalog_get_book returns 'book not found' for the fixture's own private book, for an unknown id, AND for a book_id that IS marked public in sharing_policies. The refusal is uniform — which is correct, it is no existence oracle — and the catalogue projection is simply empty of everything.\n\nTHIS IS THE THIRD INSTANCE OF ONE SHAPE IN THIS STRETCH, and that is why it is worth naming rather than filing as a quirk:\n  * kg_add_nodes answers 'node ready'; kg_graph_query reports zero nodes (it projects nodes FROM EDGES, so an edgeless node is invisible)\n  * memory_remember stores a fact; memory_search cannot find it until the project is indexed ('degraded': {'semantic': 'not_indexed'})\n  * sharing_policies marks 44 books public; catalog_list_public_books returns 0\nIn all three the write side confirms and the read side that surfaces it returns nothing, and in all three THE MODEL'S 'it isn't there' WAS TRUE. The false absence belongs to the platform, and an author asking 'what public books are there' is told none while 44 are marked public.\n\nWhether the catalogue is a projection that was never populated, or one that needs an explicit publish step beyond the sharing policy, is not established here — loreweave_catalog holds only catalog_runtime_state, so the listing is built elsewhere. Recorded as DQ-T38 rather than guessed at.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch40.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -3706,10 +3722,10 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 194,
+  "tools_concluded": 196,
   "tools_in_cycle": 0,
-  "tools_proven": 132,
-  "tools_blocked": 62,
+  "tools_proven": 133,
+  "tools_blocked": 63,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
@@ -3724,7 +3740,7 @@
   "remaining_in_release_surface": 158,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 199,
+  "tools_concluded_including_deprecated": 201,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
  },
  "observations": [
