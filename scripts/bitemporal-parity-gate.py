@@ -87,7 +87,18 @@ PARITY: list[tuple[str, str, str, bool, bool, str]] = [
     (
         "strictly-greater next bound",
         r"valid_from_ordinal\s*>\s*ef\.valid_from_ordinal",
-        r"valid_from_ordinal\s*>\s*cur\.valid_from_ordinal",
+        # T84 moved the KG probe. The comparison list used to hold NODES —
+        # `[x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal | …]` — and AGE
+        # cannot read a property off a vertex bound inside a list comprehension
+        # (`could not find properties for x`), so the maintainers now collect the ordinals
+        # alongside the nodes and compare plain integers. **The capability did not change and
+        # neither side lost anything**: the bound is still STRICTLY greater, on both engines.
+        # What changed is the text this probe reads, and the gate correctly refused the commit
+        # until it was pointed at the new text rather than at a shape nobody executes.
+        #
+        # Still non-vacuous by construction: `o >= cur.valid_from_ordinal` does not match,
+        # because the regex requires `cur.` immediately after the `>`.
+        r"\bo\s*>\s*cur\.valid_from_ordinal",
         True, True,
         "equal ordinals must NOT close each other into a zero-width [base, base) interval, "
         "invisible at every as-of read. Both sides state it; if either stops, the merge would "

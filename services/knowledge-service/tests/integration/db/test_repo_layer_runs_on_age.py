@@ -37,8 +37,12 @@ import pytest_asyncio
 pytestmark = pytest.mark.asyncio
 
 #: Shrink-only. Every function below has been observed to run against a live AGE graph and
-#: return a domain object the repo layer's own model accepts.
-_PROVEN_ON_AGE = 12
+#: return a domain object the repo layer's own model accepts. T83 proved 12 across
+#: entities/relations/provenance; T84 added facts, events, entity_status, hierarchy,
+#: maintenance and the bi-temporal chain.
+_WAVE_1 = 12   # entities / relations / provenance          (T83)
+_WAVE_2 = 13   # facts / events / entity_status / hierarchy / maintenance / the chain  (T84)
+_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2
 
 _GRAPH = "repo_conformance"
 
@@ -149,8 +153,9 @@ async def test_the_repo_layer_runs_against_AGE_unchanged(age_session):
     ran += 1
     assert archived is not None and archived.archived_at is not None
 
-    assert ran >= _PROVEN_ON_AGE, (
-        f"only {ran} repo functions were exercised against AGE; the floor is {_PROVEN_ON_AGE}. "
+    assert ran >= _WAVE_1, (
+        f"only {ran} first-wave repo functions were exercised against AGE; the floor is "
+        f"{_WAVE_1} of {_PROVEN_ON_AGE} total. "
         f"This number is shrink-only — a function that stops being proven is a regression in "
         f"the claim, not a smaller test."
     )
@@ -169,4 +174,121 @@ async def test_a_session_that_forgets_to_declare_its_engine_is_caught_here(age_s
     assert engine_of(age_session) == "age", (
         "the AGE session does not declare its engine, so every template renders as Neo4j "
         "Cypher and this file proves nothing about AGE"
+    )
+
+
+async def test_the_SECOND_WAVE_runs_on_AGE_too(age_session):
+    """facts, events, entity_status, hierarchy, maintenance — and the bi-temporal chain.
+
+    ⚠️ **Three more things only a live run could find**, all in code that passed every Neo4j
+    test:
+
+    1. `RETURN DISTINCT f … ORDER BY` in TWO `facts` queries — the same construct T83 fixed in
+       `entities`, in queries T83 never executed. The pattern was systemic, not a pair of
+       one-offs.
+    2. `AgeCypherSession` had **no `begin_transaction`**, so the whole optimistic-concurrency
+       path (T80) could not run on AGE at all — the transaction is not decoration there,
+       statement 2 depends on the lock statement 1 took.
+    3. `[x IN chain WHERE x.valid_from_ordinal > …]` — **AGE cannot read a property off a vertex
+       bound inside a list comprehension** (`could not find properties for x`). The chain
+       maintainer collects the ordinals alongside the nodes and compares plain integers, which
+       says the same thing on both engines. Four templates carried the construct.
+
+    The chain is the sharpest of the three: it is the bi-temporal machinery every as-of read
+    depends on, and it was the last thing anyone would have guessed differed.
+    """
+    from app.db.neo4j_repos import entities as en
+    from app.db.neo4j_repos import entity_status as es
+    from app.db.neo4j_repos import events as ev
+    from app.db.neo4j_repos import facts as fx
+    from app.db.neo4j_repos import hierarchy as hi
+    from app.db.neo4j_repos import maintenance as mt
+
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    proj = f"p-{uuid.uuid4().hex[:8]}"
+    s = age_session
+
+    ran = 0
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai", kind="person",
+                                source_type="chapter")
+    ran += 1
+
+    fact = await fx.merge_fact(s, user_id=uid, project_id=proj, type="attribute",
+                               content="Kai is brave", confidence=0.8,
+                               source_type="chapter", subject_id=kai.id)
+    ran += 1
+    assert fact.content == "Kai is brave"
+
+    listed = await fx.list_facts_for_entity(s, user_id=uid, entity_id=kai.id)
+    ran += 1
+    assert [f.id for f in listed] == [fact.id], (
+        "this is the `RETURN DISTINCT f … ORDER BY` query AGE refuses outright"
+    )
+
+    invalidated = await fx.invalidate_fact(s, user_id=uid, fact_id=fact.id)
+    ran += 1
+    assert invalidated is not None and invalidated.valid_until is not None
+    revalidated = await fx.revalidate_fact(s, user_id=uid, fact_id=fact.id)
+    ran += 1
+    assert revalidated is not None and revalidated.valid_until is None
+
+    # The bi-temporal chain: two positioned instances of the same attribute, and the earlier
+    # one must be closed at the later one's ordinal.
+    await fx.merge_fact(s, user_id=uid, project_id=proj, type="temporal",
+                        content="Kai is north", confidence=0.9, source_type="chapter",
+                        subject_id=kai.id, predicate="location", object="north",
+                        valid_from_ordinal=100, maintain_chain=True)
+    await fx.merge_fact(s, user_id=uid, project_id=proj, type="temporal",
+                        content="Kai is south", confidence=0.9, source_type="chapter",
+                        subject_id=kai.id, predicate="location", object="south",
+                        valid_from_ordinal=200, maintain_chain=True)
+    ran += 1
+    chain = [f for f in await fx.list_facts_for_entity(s, user_id=uid, entity_id=kai.id)
+             if f.type == "temporal"]
+    bounds = sorted((f.valid_from_ordinal, f.valid_to_ordinal) for f in chain)
+    assert bounds == [(100, 200), (200, None)], (
+        f"the chain did not close on AGE: {bounds}. The maintainer's comparison list is the "
+        f"construct AGE rejects — every as-of read depends on these bounds being right."
+    )
+
+    ran += 1
+    event = await ev.merge_event(s, user_id=uid, project_id=proj, title="The Oath",
+                                 chapter_id="ch-1", event_order=1)
+    ran += 1
+    updated, before = await ev.update_event_fields(
+        s, user_id=uid, event_id=event.id, title="The Sworn Oath", summary=None,
+        time_cue=None, event_date_iso=None, expected_version=1)
+    assert updated is not None and updated.title == "The Sworn Oath", (
+        "the OCC path needs a real transaction — `begin_transaction` on the AGE session"
+    )
+    assert before is not None and before["title"] == "The Oath"
+    ran += 1
+    assert (await ev.archive_event(s, user_id=uid, event_id=event.id)) is not None
+
+    ran += 1
+    await es.merge_entity_status(s, user_id=uid, project_id=proj, entity_id=kai.id,
+                                 status="gone", from_order=300, source_type="chapter")
+    ran += 1
+    statuses = await es.status_at_order(s, user_id=uid, project_id=proj,
+                                        entity_ids=[kai.id], at_order=400)
+    assert kai.id in statuses
+
+    ran += 1
+    await hi.upsert_hierarchy_chain(
+        s, book_path="b1", book_id="b1", book_title="Book", part_path="b1/p1",
+        part_id="p1", part_index=1, part_title="Part", chapter_path="b1/p1/c1",
+        chapter_id="ch-1", chapter_index=1, chapter_title="Chapter", scenes=[])
+
+    ran += 1
+    stats = await mt.project_graph_stats(s, user_id=uid, project_id=proj)
+    assert stats["entity_count"] == 1 and stats["event_count"] == 1, stats
+    assert stats["passage_count"] == 0, (
+        "a project with NO passages must report 0, not vanish — that is the OPTIONAL MATCH "
+        "the T82 stats rewrite depends on (bite 3)"
+    )
+
+    assert ran >= _WAVE_2, (
+        f"only {ran} second-wave repo functions were exercised against AGE; the floor is "
+        f"{_WAVE_2} of {_PROVEN_ON_AGE} total. This number is shrink-only — a function that "
+        f"stops being proven is a regression in the claim, not a smaller test."
     )

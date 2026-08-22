@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: extend the AGE proof past 12 — `facts`, `events`, `hierarchy` and the temporal chain are untried on it.**
+**RESUME: T54 — wire the AGE provider and flip the default. The repo layer now runs on it; the provider never has.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,86 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T84 2026-08-22 — **the second wave: facts, events, hierarchy and the BI-TEMPORAL CHAIN on AGE**
+
+  ```
+  repo functions proven on AGE   12  ->  25   (a FLOOR, in two waves)
+  knowledge unit 4336 · DB integration 626 -> 627 passed, 0 failed
+  ```
+
+  📐 T83 proved `entities` / `relations` / `provenance`. This is the half it did not touch, and
+  it carries the hardest machinery in the layer. **Three more things only a live run could
+  find**, all in code that passed every Neo4j test:
+
+  🔴 **1 · `RETURN DISTINCT f … ORDER BY` in TWO `facts` queries.** The same construct T83 fixed
+  in `entities` — in queries T83 never executed. So the pattern was **systemic**, not a pair of
+  one-offs I had introduced: `_LIST_FACTS_FOR_ENTITY_BODY` and `_FACTS_FOR_SUBJECT_HEAD` had
+  carried it since long before this plan. `WITH DISTINCT f` puts the dedup before the sort,
+  which is what it always meant.
+
+  🔴 **2 · `AgeCypherSession` had no `begin_transaction`**, so the whole optimistic-concurrency
+  path could not run on AGE at all. That is not a missing convenience: T80 measured that the
+  transaction is what holds statement 1's lock across statement 2, and without it two concurrent
+  editors both report success. `AgeTransaction` wraps a real Postgres transaction, and its
+  `__aexit__` rolls back an uncommitted one exactly as the Bolt driver does.
+
+  🔴 **3 · AGE cannot read a property off a vertex bound inside a list comprehension.**
+
+  ```
+  [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal | x.valid_from_ordinal]
+                                        -> could not find properties for x
+  ```
+
+  This is the **bi-temporal chain maintainer** — the code every as-of read depends on, in four
+  templates. It is ordinary Cypher on Neo4j and rejected outright by AGE, and it was the last
+  construct anyone would have guessed differed. The fix collects the ordinals alongside the
+  nodes and compares plain integers, which says the same thing on both engines and needs no
+  property access at all.
+
+  ⚠️ **My first cut of that fix broke Neo4j**, and the suite caught it: a text replace hit five
+  `WITH cur, [x IN chain …]` sites but only one of the five `collect(f) AS chain` lines, so
+  three templates referenced an `ordinals` variable nothing defined — `Variable 'ordinals' not
+  defined`, three integration tests red. The near-identical chain templates are exactly the
+  shape a blanket replace gets half-right.
+
+  ⚠️ **The commit was REFUSED by `bitemporal-parity-gate`, and it was right to be.** Its KG
+  probe read the literal `x.valid_from_ordinal > cur.valid_from_ordinal`, which the rewrite
+  deleted — so the "strictly-greater next bound" capability measured False against a record of
+  True. **Neither side lost anything**: the bound is still strictly greater on both engines, and
+  the gate's own message demands the plan say which side gained or lost, so: neither. What moved
+  is the TEXT, and the probe now reads the text that is actually executed. Re-validated on four
+  cases including `o >= cur.valid_from_ordinal`, which must not match and does not.
+
+  🔬 **Three bites:**
+
+  ```
+  1  the chain bound becomes >= (the A2 zero-width interval)  RED  18 tests
+  2  the AGE session loses begin_transaction                  RED  the second wave, by name
+  3  RETURN DISTINCT + ORDER BY restored in facts             RED  the second wave, by name
+  ```
+
+  Bite 1 is the one worth keeping: a strictly-greater bound is what stops two instances sharing
+  a `valid_from_ordinal` from closing each other into a `[base, base)` interval that is
+  invisible at every as-of read. Eighteen tests hold it, on both engines.
+
+  ⚙️ **Also found and fixed: a pure write could not run on AGE at all.** `merge_fact`'s second
+  statement is `MERGE (f)-[:ABOUT]->(e)` with no `RETURN`. Neo4j returns no columns and is
+  content; AGE's `cypher()` is a table-valued function and needs a column list regardless.
+  `return_columns` now yields `[]` for a RETURN-less query and the session emits one placeholder
+  column — without which every fact write failed.
+
+  **What is proven now.** 25 repo functions across **eight modules** — entities, relations,
+  provenance, facts, events, entity_status, hierarchy, maintenance — execute on both engines
+  from the same source with no engine branch in any of them, including the OCC path and the
+  bi-temporal chain. `_WAVE_1` and `_WAVE_2` are floors, so the number can only rise.
+
+  **QC (a) gates:** unit 4336, `port-adoption-gate` PASS at dialect 0/0 and engine literals 0/0,
+  four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved.
+  **QC (c) real data:** two positioned facts chained and their `[valid_from, valid_to)` bounds
+  read back off a live AGE graph as `[(100, 200), (200, None)]`; the same suite green against a
+  throwaway Neo4j.
 
   ### 🔴 T83 2026-08-22 — **"dialect 0" was NOT portability, in three ways — and the repo layer now runs on AGE**
 

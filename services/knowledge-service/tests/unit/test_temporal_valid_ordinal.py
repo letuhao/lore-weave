@@ -77,7 +77,12 @@ def test_maintain_chain_cypher_is_ordinal_aware_not_wallclock():
         # the CLOSE value is the next STRICTLY-GREATER survivor's valid_from_ordinal, never now()
         # — strictly-greater so a same-ordinal tie can't collapse into a zero-width [base,base)
         # interval (the A2 bug); mirrors the Postgres maintain_chain core.
-        assert "x.valid_from_ordinal > cur.valid_from_ordinal" in cy
+        # T84: the comparison list holds ORDINALS, not nodes — AGE cannot read a property
+        # off a vertex bound inside a list comprehension, and this is ordinary Cypher
+        # on Neo4j either way. The rule is unchanged and is what is asserted: the next
+        # bound is STRICTLY greater, never equal, or two same-ordinal instances close
+        # each other into a zero-width interval (the A2 bug).
+        assert "[o IN ordinals WHERE o > cur.valid_from_ordinal]" in cy
         assert "greaters[0]" in cy
         assert "$open_ceiling" in cy
 

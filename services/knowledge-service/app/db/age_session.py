@@ -41,6 +41,7 @@ from typing import Any
 
 __all__ = [
     "AgeCypherSession",
+    "AgeTransaction",
     "AgeResult",
     "AgeVertex",
     "ColumnParseError",
@@ -117,7 +118,11 @@ def return_columns(cypher: str) -> list[str]:
         )
     matches = list(re.finditer(r"\bRETURN\b", cypher, re.I))
     if not matches:
-        raise ColumnParseError(f"cypher has no RETURN clause: {cypher[:80]!r}")
+        # A pure write — `MERGE (f)-[:ABOUT]->(e)` with nothing to hand back. Neo4j is happy
+        # to return no columns; AGE's `cypher()` is a table-valued function and needs a column
+        # list regardless, so it gets one placeholder that yields no rows. Returning `[]` here
+        # (and NOT raising) is what lets `merge_fact`'s second statement run at all.
+        return []
     body = cypher[matches[-1].end():]
     tail = _TAIL.search(body)
     if tail:
@@ -223,6 +228,50 @@ class AgeResult:
         return _gen()
 
 
+
+class AgeTransaction:
+    """A `tx`-shaped handle over an open asyncpg transaction.
+
+    The repo layer's transactional paths — the optimistic-concurrency pair (T80), the entity
+    merge, the scoped erase — do `async with await session.begin_transaction() as tx:` and then
+    `tx.run(...)`. On Neo4j that is the Bolt driver's own object; here it is this, so the same
+    repo function works either side without an engine branch in it.
+
+    ⚠️ The transaction is not decoration in the OCC path: statement 1 takes a lock and statement
+    2 relies on it still being held. A `tx` that quietly ran each statement in its own
+    transaction would leave every measurement T80 made about concurrency false, while every
+    test that mocks a session still passed.
+    """
+
+    def __init__(self, session: "AgeCypherSession", pg_tx: Any) -> None:
+        self._session = session
+        self._pg_tx = pg_tx
+
+    #: Mirrors the session's, so `engine_of(tx)` answers the same as `engine_of(session)`.
+    engine = "age"
+
+    async def run(self, cypher: str, /, **params: Any) -> "AgeResult":
+        return await self._session.run(cypher, **params)
+
+    async def commit(self) -> None:
+        await self._pg_tx.commit()
+        self._committed = True
+
+    async def rollback(self) -> None:
+        await self._pg_tx.rollback()
+        self._committed = True
+
+    async def __aenter__(self) -> "AgeTransaction":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        # The Bolt driver rolls back an uncommitted transaction on exit; asyncpg raises if the
+        # transaction is already finished, so a committed one is left alone.
+        if not getattr(self, "_committed", False):
+            await self._pg_tx.rollback()
+            self._committed = True
+        return False
+
 class AgeCypherSession:
     """Runs `neo4j_repos` Cypher against an AGE graph. Satisfies `CypherSession` structurally.
 
@@ -256,9 +305,19 @@ class AgeCypherSession:
         await conn.execute("LOAD 'age';")
         await conn.execute("SET search_path = ag_catalog, public;")
 
+    async def begin_transaction(self) -> "AgeTransaction":
+        """Open a real Postgres transaction and hand back a `tx`-shaped handle.
+
+        Awaited then used as a context manager — `async with await session.begin_transaction()`
+        — which is the Bolt driver's shape and therefore what the repo layer writes.
+        """
+        pg_tx = self._conn.transaction()
+        await pg_tx.start()
+        return AgeTransaction(self, pg_tx)
+
     async def run(self, cypher: str, /, **params: Any) -> AgeResult:
         columns = return_columns(cypher)
-        col_sql = ", ".join(f"{c} agtype" for c in columns)
+        col_sql = ", ".join(f"{c} agtype" for c in columns) or "_void agtype"
         # `$q$…$q$` dollar-quoting so the Cypher body needs no escaping, and `$1` for the
         # parameter map — the whole point of this module. Values are BOUND, never interpolated.
         sql = (

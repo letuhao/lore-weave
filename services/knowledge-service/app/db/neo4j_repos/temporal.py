@@ -131,17 +131,21 @@ WHERE f.user_id = $user_id
   AND f.valid_until IS NULL
   AND f.valid_from_ordinal IS NOT NULL
 WITH f ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
-WITH collect(f) AS chain
+// §10.1 — the ORDINALS are collected alongside the nodes, and the comparison below
+// iterates over THOSE. AGE cannot read a property off a vertex bound inside a list
+// comprehension (`could not find properties for x`), so `[x IN chain | x.valid_from_ordinal]`
+// is rejected outright while being ordinary Cypher on Neo4j. Comparing plain integers
+// says the same thing on both engines and needs no property access at all (T84).
+WITH collect(f) AS chain, collect(f.valid_from_ordinal) AS ordinals
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, chain[i] AS cur
+WITH chain, ordinals, chain[i] AS cur
 // STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
 // next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
 // a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
 // ordinal with no per-item offset) must NOT close each other into a zero-width
 // [base, base) interval (invisible at every as-of read, the A2 bug). They both get
 // the same next-greater bound (a real overlap) or both stay open if co-last.
-WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
-           | x.valid_from_ordinal] AS greaters
+WITH cur, [o IN ordinals WHERE o > cur.valid_from_ordinal] AS greaters
 // §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
 // derivation, and this maintainer must not overwrite it. Mirrors the Postgres
 // `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
@@ -190,17 +194,16 @@ WHERE f.user_id = $user_id
   AND f.valid_from_ordinal IS NOT NULL
 WITH e.id AS entity_id, f.type AS attr, f
 ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
-WITH entity_id, attr, collect(f) AS chain
+WITH entity_id, attr, collect(f) AS chain, collect(f.valid_from_ordinal) AS ordinals
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, chain[i] AS cur
+WITH chain, ordinals, chain[i] AS cur
 // STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
 // next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
 // a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
 // ordinal with no per-item offset) must NOT close each other into a zero-width
 // [base, base) interval (invisible at every as-of read, the A2 bug). They both get
 // the same next-greater bound (a real overlap) or both stay open if co-last.
-WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
-           | x.valid_from_ordinal] AS greaters
+WITH cur, [o IN ordinals WHERE o > cur.valid_from_ordinal] AS greaters
 // §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
 // derivation, and this maintainer must not overwrite it. Mirrors the Postgres
 // `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
@@ -231,17 +234,16 @@ WHERE r.user_id = $user_id
   AND r.valid_from_ordinal IS NOT NULL
 WITH subj.id AS subject_id, r.predicate AS predicate, r
 ORDER BY r.valid_from_ordinal ASC, r.created_at ASC
-WITH subject_id, predicate, collect(r) AS chain
+WITH subject_id, predicate, collect(r) AS chain, collect(r.valid_from_ordinal) AS ordinals
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, chain[i] AS cur
+WITH chain, ordinals, chain[i] AS cur
 // STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
 // next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
 // a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
 // ordinal with no per-item offset) must NOT close each other into a zero-width
 // [base, base) interval (invisible at every as-of read, the A2 bug). They both get
 // the same next-greater bound (a real overlap) or both stay open if co-last.
-WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
-           | x.valid_from_ordinal] AS greaters
+WITH cur, [o IN ordinals WHERE o > cur.valid_from_ordinal] AS greaters
 // §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
 // derivation, and this maintainer must not overwrite it. Mirrors the Postgres
 // `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
@@ -314,17 +316,16 @@ WHERE r.user_id = $user_id
   AND r.valid_until IS NULL
   AND r.valid_from_ordinal IS NOT NULL
 WITH r ORDER BY r.valid_from_ordinal ASC, r.created_at ASC
-WITH collect(r) AS chain
+WITH collect(r) AS chain, collect(r.valid_from_ordinal) AS ordinals
 UNWIND range(0, size(chain) - 1) AS i
-WITH chain, chain[i] AS cur
+WITH chain, ordinals, chain[i] AS cur
 // STRICTLY-GREATER next bound (mirrors the Postgres maintain_chain core): the
 // next-greater valid_from in the chain, never an EQUAL one. Two instances sharing
 // a valid_from_ordinal (same-chapter ties — facts/relations stamp the chapter
 // ordinal with no per-item offset) must NOT close each other into a zero-width
 // [base, base) interval (invisible at every as-of read, the A2 bug). They both get
 // the same next-greater bound (a real overlap) or both stay open if co-last.
-WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
-           | x.valid_from_ordinal] AS greaters
+WITH cur, [o IN ordinals WHERE o > cur.valid_from_ordinal] AS greaters
 // §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
 // derivation, and this maintainer must not overwrite it. Mirrors the Postgres
 // `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant

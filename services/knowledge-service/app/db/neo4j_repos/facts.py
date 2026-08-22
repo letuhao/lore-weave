@@ -636,7 +636,13 @@ WHERE f.user_id = $user_id
   AND f.valid_until IS NULL
   AND ($include_archived OR f.archived_at IS NULL)
   AND ($before_order IS NULL OR f.from_order <= $before_order)
-RETURN DISTINCT f
+// §10.1 — `WITH DISTINCT f` rather than `RETURN DISTINCT f … ORDER BY`. AGE compiles the
+// RETURN into `SELECT DISTINCT` and then refuses the sort — *"for SELECT DISTINCT, ORDER BY
+// expressions must appear in select list"*. Deduplicating in a WITH puts the DISTINCT before
+// the sort, which is what it always meant. Both forms are valid on Neo4j, so the difference
+// only ever shows up by running the query on the other engine (T84).
+WITH DISTINCT f
+RETURN f
 ORDER BY """
 
 
@@ -716,7 +722,10 @@ WHERE f.user_id = $user_id
   AND e.user_id = $user_id
   AND ($type IS NULL OR f.type = $type)
   AND f.valid_until IS NULL
-RETURN DISTINCT f
+// See `_LIST_FACTS_FOR_ENTITY_BODY` — `WITH DISTINCT` before the sort, not `RETURN DISTINCT`
+// after it. AGE refuses the second form.
+WITH DISTINCT f
+RETURN f
 ORDER BY coalesce(f.valid_from_ordinal, $null_sink) ASC, f.created_at ASC
 LIMIT $limit
 """
