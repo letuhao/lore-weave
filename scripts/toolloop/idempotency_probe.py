@@ -73,7 +73,46 @@ def _resolve_sql(args: dict, fx) -> dict:
     return out
 
 
-def run_one(scenarios: dict, tool: str, args_tpl: dict) -> dict:
+def _resolve_pre(args: dict, pre_results: list, fx) -> dict:
+    """Resolve `{pre:N:key}` against the Nth PRE-CALL's result.
+
+    🔴 SOME IDS ONLY EXIST ONCE YOU ASK FOR THEM. `kg_triage_resolve` needs a `signature`, and the
+    only place a signature comes from is `kg_triage_list` — a READ, run against the fixture the
+    seeds have already built. It is not a seed (it creates nothing) and it is not a SQL lookup (the
+    signature is computed, not stored under that name), so neither existing resolver reaches it.
+
+    A pre-call is a READ ONLY convenience and is recorded in the result, so a probe can never
+    quietly acquire its target by writing one. `{pre:N:key}` also digs one level into a list — the
+    triage queue is `{"items": [{"signature": ...}]}` — via `key` paths like `items.0.signature`.
+    """
+    def dig(obj, path: str):
+        for part in path.split("."):
+            if isinstance(obj, list):
+                obj = obj[int(part)]
+            elif isinstance(obj, dict):
+                obj = obj.get(part)
+            else:
+                return None
+            if obj is None:
+                return None
+        return obj
+
+    out = {}
+    for k, v in args.items():
+        if isinstance(v, str) and v.startswith("{pre:") and v.endswith("}"):
+            _, idx, path = v[1:-1].split(":", 2)
+            got = dig(pre_results[int(idx)], path)
+            if got is None:
+                raise SystemExit(
+                    f"the pre-call lookup for {k!r} found nothing at {path!r}. "
+                    f"pre-call {idx} returned: {json.dumps(pre_results[int(idx)])[:300]}")
+            out[k] = got
+        else:
+            out[k] = v
+    return out
+
+
+def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None) -> dict:
     scen = next((s for s in scenarios["scenarios"] if s.get("tool_under_test") == tool), None)
     if scen is None:
         raise SystemExit(f"{tool} is not in that scenarios file")
@@ -82,8 +121,13 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict) -> dict:
     out: dict = {"tool": tool}
     try:
         fx.build(scen.get("seed") or [], chapter=True)
+        pre_results = []
+        for p in (pre or []):
+            pre_results.append(fx.mcp.call(p["tool"], fx._substitute(p.get("args") or {})))
+        out["pre"] = [{"tool": p["tool"]} for p in (pre or [])]
         args = fx._substitute(args_tpl)          # the same substitution the seeds use
         args = _resolve_sql(args, fx)            # …plus one lookup the seeds cannot provide
+        args = _resolve_pre(args, pre_results, fx)
         out["args"] = args
 
         before = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id)
@@ -163,7 +207,7 @@ def main() -> int:
     for j in jobs:
         print(f"\n=== {j['tool']} ===")
         try:
-            r = run_one(scen, j["tool"], j["args"])
+            r = run_one(scen, j["tool"], j["args"], j.get("pre"))
         except Exception as e:  # noqa: BLE001 — one tool's failure must not abort the pass
             r = {"tool": j["tool"], "error": f"{type(e).__name__}: {e}"[:300]}
         results.append(r)

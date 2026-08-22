@@ -139,12 +139,36 @@ def _counts(db: str, tables: list[str], column: str, value: str) -> dict:
     """One round trip per database, not per table — 67 tables would otherwise be 67 exec calls."""
     if not tables:
         return {}
-    # `updated_at` is not universal, so probe for it and fold it in only where it exists. A count
-    # alone cannot see an in-place edit, and an in-place edit is how this loop damaged a real book.
-    has_upd = set(_scoped_tables(db, "updated_at"))
+    # A count alone cannot see an in-place edit, and an in-place edit is how this loop damaged a
+    # real book. So the latest mutation timestamp rides along with the count.
+    #
+    # 🔴 IT USED TO FOLD IN `updated_at` ALONE, AND THAT MISSED A WHOLE SHAPE. `kg_triage_resolve`
+    # returned {"status": "resolved", "affected": 1} and then refused the second call with "no
+    # pending triage items for this signature" — the refusal PROVES the first call changed state —
+    # while the diff stayed empty. `kg_triage_items` flips `status` IN PLACE: the row count holds,
+    # and its timestamps are `created_at` and `resolved_at`, with no `updated_at` at all. A count
+    # plus one hardcoded column cannot see a status flip on a table that names its columns
+    # differently, and "resolved" is exactly the kind of state this bar exists to notice.
+    #
+    # Every timestamptz column the table actually HAS is folded in now, per table, read from the
+    # catalogue. No per-tool knowledge, and nothing to keep in sync with a schema.
+    ts_cols: dict[str, list[str]] = {}
+    for row in _psql(db, (
+            "select table_name, column_name from information_schema.columns "
+            "where table_schema='public' and data_type like 'timestamp%' "
+            f"and table_name in ({','.join(chr(39) + t.replace(chr(39), chr(39) * 2) + chr(39) for t in tables)}) "
+            "order by table_name, column_name;")):
+        bits = row.split("|")
+        if len(bits) == 2:
+            ts_cols.setdefault(bits[0], []).append(bits[1])
     parts = []
     for t in tables:
-        upd = (f", coalesce(max(updated_at)::text,'-')" if t in has_upd else ", '-'")
+        cols = ts_cols.get(t) or []
+        if cols:
+            inner = ", ".join(f"coalesce(max(\"{c}\")::text, '')" for c in cols)
+            upd = f", greatest({inner})" if len(cols) > 1 else f", {inner}"
+        else:
+            upd = ", '-'"
         parts.append(
             f"select '{t}', count(*)::text{upd} from public.\"{t}\" where {column} = '{value}'"
         )
@@ -244,6 +268,13 @@ def snapshot(book_id: str, project_id: str | None = None,
     `world_id` extends the sweep to a store that has no `book_id` at all — see `_world_counts`.
     """
     snap: dict = {}
+    # Composition's project id is resolved from the BOOK rather than trusted from the caller, and
+    # it is resolved FIRST because every database is now swept by it — see the loop below.
+    proj = _psql("loreweave_composition",
+                 f"select project_id from composition_work where book_id='{book_id}' limit 1;")
+    if proj:
+        project_id = project_id or proj[0]
+
     for db in DATABASES:
         tables = _scoped_tables(db, "book_id")
         got = _counts(db, tables, "book_id", book_id)
@@ -258,18 +289,25 @@ def snapshot(book_id: str, project_id: str | None = None,
         #
         # Only tables the book sweep did NOT already cover — a table carrying both keys would
         # otherwise be counted twice under the same name and read as a phantom change.
+        seen = set(tables)
         if chapter_id:
-            chap = [t for t in _scoped_tables(db, "chapter_id") if t not in set(tables)]
+            chap = [t for t in _scoped_tables(db, "chapter_id") if t not in seen]
             for k, v in _counts(db, chap, "chapter_id", chapter_id).items():
                 snap[f"{db}.{k}"] = v
-    # composition also scopes by project_id; resolve it from the book rather than being told.
-    proj = _psql("loreweave_composition",
-                 f"select project_id from composition_work where book_id='{book_id}' limit 1;")
-    if proj:
-        ptables = _scoped_tables("loreweave_composition", "project_id")
-        for k, v in _counts("loreweave_composition", ptables, "project_id", proj[0]).items():
-            snap[f"loreweave_composition.{k}"] = v
-        project_id = project_id or proj[0]
+            seen |= set(chap)
+        # 🔴 `project_id` USED TO BE SWEPT IN COMPOSITION ONLY, and 18 tables sat outside it.
+        # `kg_triage_resolve` is the case that found it: it returned {"status": "resolved",
+        # "affected": 1} and then refused the second call with "no pending triage items for this
+        # signature" — the refusal PROVES the first call changed state — while the store diff said
+        # nothing at all. `kg_triage_items` lives in loreweave_knowledge, WHICH IS SWEPT, keyed
+        # (triage_id, user_id, project_id) with no book_id. The database was right and the key was
+        # missing. Counted: 11 such tables in knowledge, 5 in lore_enrichment, 2 more in
+        # composition itself. The key is now applied to every swept database, which is what it
+        # should have been when the second project-scoped service appeared.
+        if project_id:
+            proj_t = [t for t in _scoped_tables(db, "project_id") if t not in seen]
+            for k, v in _counts(db, proj_t, "project_id", project_id).items():
+                snap[f"{db}.{k}"] = v
     if world_id:
         snap.update(_world_counts(world_id))
     try:
