@@ -26,6 +26,7 @@ import re
 
 import pytest
 
+from app.db.neo4j_repos import entities as en
 from app.db.neo4j_repos import events as em
 from app.db.neo4j_repos import facts as fm
 from app.db.neo4j_repos import relations as rm
@@ -58,6 +59,10 @@ _NEVER_ASSIGN = [
      ("archived_at",)),
     ("relations._CREATE_RELATION_CYPHER", rm._CREATE_RELATION_CYPHER,
      ("valid_until", "valid_to_ordinal")),
+    # T76 — the glossary sync. `archived_at` was ON CREATE ONLY here too; assigning it would
+    # UN-ARCHIVE an entity on every sync from the glossary.
+    ("entities._GLOSSARY_ANCHOR_SYNC_CYPHER", en._GLOSSARY_ANCHOR_SYNC_CYPHER,
+     ("archived_at",)),
 ]
 
 _WHY = {

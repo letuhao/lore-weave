@@ -3528,31 +3528,35 @@ async def load_entity_details_by_ids(
 
 _GLOSSARY_ANCHOR_SYNC_CYPHER = """
 MERGE (e:Entity {user_id: $user_id, project_id: $project_id, glossary_entity_id: $glossary_entity_id})
-ON CREATE SET
-  e.id = $canonical_id,
-  e.name = $name,
-  e.canonical_name = $canonical_name,
-  e.kind = $kind,
-  e.aliases = $aliases,
-  e.short_description = $short_description,
-  e.confidence = 1.0,
-  e.source_type = 'glossary',
-  e.source_types = ['glossary'],
-  e.canonical_version = 1,
-  e.anchor_score = 1.0,
-  e.evidence_count = 0,
-  e.mention_count = 0,
-  e.archived_at = NULL,
-  e.created_at = {NOW},
-  e.updated_at = {NOW}
-ON MATCH SET
-  e.name = $name,
-  e.canonical_name = $canonical_name,
-  e.kind = $kind,
-  e.aliases = $aliases,
-  e.short_description = $short_description,
-  e.confidence = 1.0,
-  e.updated_at = {NOW}
+// §10.1/§10.2 — engine-neutral. The glossary is the SOURCE OF TRUTH for the display fields,
+// so name/canonical_name/kind/aliases/short_description/confidence were overwritten on match
+// and stay unconditional here. The identity and the counters were create-only and take
+// `coalesce`.
+//
+// 🔴 `archived_at` is NOT assigned — T73's never-assign rule. It was ON CREATE ONLY, and an
+// absent property is already null; assigning it would UN-ARCHIVE an entity on every glossary
+// sync, which is a resurrection nobody asked for and nothing would report.
+//
+// ⚠️ `RETURN e.created_at = e.updated_at AS created` is a HERITAGE heuristic and it survives
+// the merge unchanged: on create both take the same `{NOW}`, on match only `updated_at`
+// moves. Left exactly as it was — the 2026-08-11 probe offers an exact `__was_created` form
+// (a pre-MATCH count, as T75 used for `add_evidence`), and swapping this one over is a
+// behaviour question for its callers rather than part of a dialect translation.
+SET e.id                = coalesce(e.id, $canonical_id),
+    e.source_type       = coalesce(e.source_type, 'glossary'),
+    e.source_types      = coalesce(e.source_types, ['glossary']),
+    e.canonical_version = coalesce(e.canonical_version, 1),
+    e.anchor_score      = coalesce(e.anchor_score, 1.0),
+    e.evidence_count    = coalesce(e.evidence_count, 0),
+    e.mention_count     = coalesce(e.mention_count, 0),
+    e.created_at        = coalesce(e.created_at, {NOW}),
+    e.name              = $name,
+    e.canonical_name    = $canonical_name,
+    e.kind              = $kind,
+    e.aliases           = $aliases,
+    e.short_description = $short_description,
+    e.confidence        = 1.0,
+    e.updated_at        = {NOW}
 RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
 """
 

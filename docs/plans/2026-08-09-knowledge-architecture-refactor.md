@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `entities`' 4 remaining merge branches — the last ON CREATE SET anywhere; 48 dialect sites left.**
+**RESUME: `entities`' last 3 merge branches — `_MERGE_ENTITY_CYPHER`, `_UPSERT_ANCHOR_CYPHER`, `_MERGE_REWIRE_RELATES_TO_CYPHER`.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,58 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T76 2026-08-22 — **the glossary sync, and the never-assign rule earns its fourth entry**
+
+  ```
+  entities::_GLOSSARY_ANCHOR_SYNC_CYPHER      dialect 48 -> 46
+  knowledge unit 4310 -> 4311 · DB integration 606 passed, 0 failed
+  ON CREATE SET branches remaining: 3, all in `entities`
+  ```
+
+  The glossary is the SOURCE OF TRUTH for an anchor's display fields, so
+  `name`/`canonical_name`/`kind`/`aliases`/`short_description`/`confidence` were overwritten on
+  match and stay unconditional. The identity and the counters were create-only and take
+  `coalesce`.
+
+  🔴 **`archived_at` was ON CREATE ONLY here too** — assigning it would UN-ARCHIVE an entity on
+  every glossary sync. T73 wrote the never-assign rule over three queries precisely so a fourth
+  would be covered by the rule rather than by remembering; this is that fourth, and adding it
+  was one line in `_NEVER_ASSIGN` rather than a new test. **The rule paid for itself one cycle
+  after it was written.**
+
+  ⚠️ **`RETURN e.created_at = e.updated_at AS created` is left EXACTLY as it was.** It is a
+  heritage heuristic — the same `created_at == updated_at` trick `_UPSERT_ANCHOR_CYPHER`'s own
+  comment warns against — and it survives the merge unchanged: on create both take the same
+  `{NOW}`, on match only `updated_at` moves. The 2026-08-11 probe offers an exact replacement (a
+  pre-MATCH count, as T75 used for `add_evidence`), but swapping it is a behaviour question for
+  this function's callers, **not part of a dialect translation**. Recorded so the next reader
+  knows it was seen and left, rather than missed.
+
+  **BITE ×2:**
+
+  ```
+  46. archived_at reinstated
+        FAILED — "entities._GLOSSARY_ANCHOR_SYNC_CYPHER assigns `archived_at` — it un-archives
+                  the node … Offending line(s): ['e.archived_at       = NULL,']"
+  47. project_id assigned
+        FAILED — "project_id is assigned — it is part of the MERGE key and every read
+                  (salience, coref, graph views) filters on it"
+  ```
+
+  ⚠️ **One test restated, and the restatement is STRONGER.**
+  `test_merge_key_is_project_scoped_and_on_match_keeps_project_id` split on `ON MATCH SET` to
+  check that arm did not overwrite `project_id`. Merged, there is no arm — so the rule becomes
+  *"`project_id` is not assigned anywhere"*, which a single `SET` satisfies absolutely rather
+  than conditionally. `D-KG-GLOSSARY-FK-GLOBAL-UNIQUE` is the reason it matters: the field is
+  in the MERGE key and every read filters on it.
+
+  **QC (a) gates:** unit **4311**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **48 → 46** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ full DB integration on a fresh throwaway Neo4j with AGE live — 606
+  passed, 0 failed.
+  **QC (c) real data:** glossary anchors synced and re-synced in a real Neo4j through the
+  rewritten query.
 
   ### 🔴 T75 2026-08-22 — **`add_evidence`, the `__was_created` case — and T73/T74's "all branches done" was FALSE**
 
