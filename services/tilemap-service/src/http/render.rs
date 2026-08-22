@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::engine::place_tilemap;
 use crate::seed::TilemapSeed;
-use crate::types::{ChannelId, ChannelTier, GridSize};
+use crate::types::{ChannelId, MapKind, GridSize};
 use crate::types::template::TilemapTemplate;
 use crate::types::tilemap::TilemapView;
 
@@ -81,7 +81,7 @@ fn json_rejection_to_problem(rej: JsonRejection) -> ProblemDetails {
 pub struct RenderRequest {
     pub template: TilemapTemplate,
     pub channel_id: ChannelId,
-    pub tier: ChannelTier,
+    pub tier: MapKind,
     pub grid_size: GridSize,
     pub seed: u64,
 }

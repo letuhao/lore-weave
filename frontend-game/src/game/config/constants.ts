@@ -14,7 +14,11 @@ export const CAMERA_LERP = 0.1;
 // per spec §3 + GridSize::ZOOM_64 (64²) in tilemap-service (renamed 2026-08-22, SPG-R13 -- the presets were a zoom ladder keyed by retired ChannelTier rungs, not a per-kind map).
 export const DEFAULT_ZONE_WIDTH = 64;
 export const DEFAULT_ZONE_HEIGHT = 64;
-export const DEFAULT_TIER = 'town' as const;
+// SPG-R14, 2026-08-22: `town` became `locale` -- the tilemap-bearing kind
+// (SPG-R9). The name stays DEFAULT_TIER for now because renaming it would
+// touch call sites in the same pass as a wire change; the VALUE is the part
+// that had to move.
+export const DEFAULT_TIER = 'locale' as const;
 export const DEFAULT_SEED = 1;
 
 // Game container element id (matches index.html).

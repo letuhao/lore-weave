@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::object::TilemapObjectPlacement;
 use crate::types::registry::RegistryRef;
 use crate::types::template::TilemapTemplateId;
@@ -20,7 +20,7 @@ use crate::types::zone::{ZoneId, ZoneRole};
 ///
 /// ⚠ RENAMED 2026-08-22 — `SPG-R13`. These were `CONTINENT_DEFAULT` /
 /// `COUNTRY_DEFAULT` / `DISTRICT_DEFAULT` / `TOWN_DEFAULT`, keyed by
-/// `ChannelTier`, which `SPG-R1` retired. They are NOT a per-kind map and never
+/// `MapKind`, which `SPG-R1` retired. They are NOT a per-kind map and never
 /// were: under `SPG-A3`'s containment matrix **depth is not a kind**, so a
 /// `Region` at depth 1 and a `Region` at depth 3 share a kind and want different
 /// sizes — a per-kind default cannot reproduce that and should stop pretending
@@ -54,7 +54,7 @@ mod grid_size_preset_tests {
 
     /// WHY THIS EXISTS, and it was found by biting rather than by review.
     ///
-    /// `SPG-R13` renamed these presets off the retired `ChannelTier` rungs.
+    /// `SPG-R13` renamed these presets off the retired `MapKind` rungs.
     /// Immediately after the rename, `ZOOM_64` was mutated from 64 to 32 and
     /// **all 521 tilemap-service tests still passed** -- the constants are used
     /// as INPUTS to tests that assert relative properties, and no assertion
@@ -177,7 +177,7 @@ pub struct RiverSegment {
 pub struct TilemapView {
     pub channel_id: ChannelId,
     /// Denormalized tier — must NOT be `Cell` (TMP-A1).
-    pub tier: ChannelTier,
+    pub tier: MapKind,
     pub grid_size: GridSize,
     pub template_id: TilemapTemplateId,
     /// Deterministic blake3 seed per TMP-A4. See [`crate::seed`].
@@ -234,7 +234,7 @@ impl TilemapView {
     /// Engine-only generation; empty zones/terrain/objects; cell anchors empty.
     pub fn empty(
         channel_id: ChannelId,
-        tier: ChannelTier,
+        tier: MapKind,
         grid_size: GridSize,
         template_id: TilemapTemplateId,
         seed: u64,
@@ -317,7 +317,7 @@ mod tests {
         // AC-12 — an engine-empty view carries empty segment lists.
         let v = TilemapView::empty(
             ChannelId("ch".to_string()),
-            ChannelTier::Country,
+            MapKind::Region,
             GridSize { width: 4, height: 4 },
             TilemapTemplateId("t".to_string()),
             1,

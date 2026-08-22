@@ -1,6 +1,6 @@
 {
   "channel_id": "ch_determinism",
-  "tier": "country",
+  "tier": "region",
   "grid_size": {
     "width": 64,
     "height": 64

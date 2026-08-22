@@ -16,7 +16,7 @@ use crate::engine::pipeline::{ModificatorContext, ModificatorRegistry};
 use crate::engine::placement::place_zones;
 use crate::registry::Registry;
 use crate::seed::TilemapSeed;
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::template::TilemapTemplate;
 use crate::types::tile::TerrainKind;
 use crate::types::tilemap::{GenerationSource, GridSize, TilemapView, ZoneRuntime};
@@ -49,7 +49,7 @@ pub mod treasure_select;
 pub fn place_tilemap(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    tier: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<TilemapView> {
@@ -64,7 +64,7 @@ pub fn place_tilemap(
 pub fn place_tilemap_with_registry(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    tier: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
     registry: &Registry,
@@ -92,7 +92,7 @@ pub struct PlacementStageTimings {
 pub fn place_tilemap_with_timings(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    tier: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
 ) -> crate::Result<(TilemapView, PlacementStageTimings)> {
@@ -109,7 +109,7 @@ pub fn place_tilemap_with_timings(
 fn place_tilemap_inner(
     template: &TilemapTemplate,
     channel_id: ChannelId,
-    tier: ChannelTier,
+    tier: MapKind,
     grid: GridSize,
     seed: TilemapSeed,
     registry: &Registry,
@@ -627,7 +627,7 @@ mod tests {
         let plain = place_tilemap(
             &template,
             crate::types::channel::ChannelId("ch".to_string()),
-            crate::types::channel::ChannelTier::Country,
+            crate::types::channel::MapKind::Region,
             grid,
             TilemapSeed(0xA17_EAD),
         )
@@ -635,7 +635,7 @@ mod tests {
         let (timed_view, timings) = place_tilemap_with_timings(
             &template,
             crate::types::channel::ChannelId("ch".to_string()),
-            crate::types::channel::ChannelTier::Country,
+            crate::types::channel::MapKind::Region,
             grid,
             TilemapSeed(0xA17_EAD),
         )

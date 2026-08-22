@@ -5,19 +5,19 @@
 //! consumes it). These tests cover what's unique to tilemap-service:
 //! - `TilemapView` JSON roundtrip
 //! - `derive_seed` determinism (TMP-A4)
-//! - `ChannelTier::Cell` excluded from tilemap generation (TMP-A1)
+//! - `MapKind::Domain` excluded from tilemap generation (TMP-A1)
 //! - `TilemapSeed` Display
 
 use tilemap_service::seed::{TilemapSeed, derive_seed};
 use tilemap_service::types::{
-    ChannelId, ChannelTier, GridSize, TilemapTemplateId, TilemapView,
+    ChannelId, MapKind, GridSize, TilemapTemplateId, TilemapView,
 };
 
 #[test]
 fn tilemap_view_roundtrips_through_json() {
     let original = TilemapView::empty(
         ChannelId("country:song_china".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize::ZOOM_192,
         TilemapTemplateId("wuxia_southern_song_v1".to_string()),
         0xDEAD_BEEF_CAFE_F00D,
@@ -48,11 +48,11 @@ fn derive_seed_differs_on_any_input_change() {
 #[test]
 fn channel_tier_cell_excluded_from_tilemap() {
     // TMP-A1: cell tier has no tilemap_view.
-    assert!(!ChannelTier::Cell.generates_tilemap());
-    assert!(ChannelTier::Continent.generates_tilemap());
-    assert!(ChannelTier::Country.generates_tilemap());
-    assert!(ChannelTier::District.generates_tilemap());
-    assert!(ChannelTier::Town.generates_tilemap());
+    assert!(!MapKind::Domain.generates_tilemap());
+    assert!(MapKind::Region.generates_tilemap());
+    assert!(MapKind::Region.generates_tilemap());
+    assert!(MapKind::Region.generates_tilemap());
+    assert!(MapKind::Locale.generates_tilemap());
 }
 
 #[test]

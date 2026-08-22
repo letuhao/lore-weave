@@ -19,7 +19,7 @@ import {
   DEFAULT_ZONE_HEIGHT,
   DEFAULT_ZONE_WIDTH,
 } from '@/game/config/constants';
-import type { ChannelTier } from '@/types/tilemap';
+import type { MapKind } from '@/types/tilemap';
 import type { JSX } from 'react';
 
 // V1.2 tilemap-viewer route. Renders one zone fetched from
@@ -29,18 +29,28 @@ import type { JSX } from 'react';
 // `docs/specs/2026-05-24-v1-tilemap-viewer-scope-expansion.md` +
 // `2026-05-24-v1-tilemap-viewer-render-strategy.md`.
 
-const TIER_OPTIONS: readonly ChannelTier[] = ['town', 'district', 'country', 'continent'] as const;
-const GRID_DEFAULTS_BY_TIER: Record<ChannelTier, { w: number; h: number }> = {
-  town: { w: 64, h: 64 },
-  district: { w: 128, h: 128 },
-  country: { w: 192, h: 192 },
-  continent: { w: 256, h: 256 },
+// SPG-R14 / SPG-R13, 2026-08-22. This picker used to offer FOUR rungs of the
+// retired ChannelTier ladder, each with its own grid default. Two things changed
+// and both are structural rather than cosmetic:
+//
+//   1. Continent, Country and District were three DEPTHS, not three kinds. Under
+//      SPG-A3's containment matrix `Region` is RECURSIVE, so they are one kind.
+//      Offering the same kind three times would be a dropdown with three
+//      identical entries -- which is exactly what a mechanical rename produced
+//      here before this block was written by hand.
+//   2. The 256/192/128/64 grid sizes were never a per-kind map. They are a ZOOM
+//      LADDER (SPG-R13), and a matrix cannot carry a per-rung parameter, so a
+//      kind gets a sensible DEFAULT and the width/height inputs stay authoritative.
+const TIER_OPTIONS: readonly MapKind[] = ['region', 'locale'] as const;
+const GRID_DEFAULTS_BY_TIER: Record<MapKind, { w: number; h: number }> = {
+  region: { w: 256, h: 256 },
+  locale: { w: 64, h: 64 },
 };
 
 export function PlayRoute(): JSX.Element {
   const health = useTilemapHealth();
   const [seed, setSeed] = useState<number>(DEFAULT_SEED);
-  const [tier, setTier] = useState<ChannelTier>(DEFAULT_TIER);
+  const [tier, setTier] = useState<MapKind>(DEFAULT_TIER);
   const [gridWidth, setGridWidth] = useState<number>(DEFAULT_ZONE_WIDTH);
   const [gridHeight, setGridHeight] = useState<number>(DEFAULT_ZONE_HEIGHT);
 
@@ -81,7 +91,7 @@ export function PlayRoute(): JSX.Element {
     void tilemap.refetch();
   };
 
-  const onTierChange = (next: ChannelTier): void => {
+  const onTierChange = (next: MapKind): void => {
     setTier(next);
     const d = GRID_DEFAULTS_BY_TIER[next];
     setGridWidth(d.w);
@@ -117,7 +127,7 @@ export function PlayRoute(): JSX.Element {
           <span>tier</span>
           <select
             value={tier}
-            onChange={(e) => onTierChange(e.target.value as ChannelTier)}
+            onChange={(e) => onTierChange(e.target.value as MapKind)}
             className="bg-slate-800 border border-slate-600 rounded px-2 py-1 w-24"
           >
             {TIER_OPTIONS.map((t) => (
