@@ -134,6 +134,15 @@ async def _json(client, auth, method, path, **kw):
     raise RuntimeError("unreachable")
 
 
+#: Seconds a single TURN may take before the client gives up. 180 was hard-coded, and seven arms
+#: of translation_update_settings were lost to it before anyone looked: that prompt PINS RAILS
+#: (measured in chat-service's log — "intent pinned workflow(s) ['translation-pass']", plus
+#: vision-to-book at 0/9), the server drives them step by step, and the turn outruns the budget.
+#: The client disconnects, the run records "upstream sent 'error' with no error message", and it
+#: reads as a provider fault. It is not one — it is this number.
+TURN_TIMEOUT = 180.0
+
+
 async def _drain(client, auth, method, url, body, out, timeout):
     """Read one AG-UI stream into `out`. Returns True if it completed, False on a 401 retry."""
     async with client.stream(method, url, headers=auth.headers(), json=body,
@@ -232,7 +241,7 @@ def pending_approval(out) -> dict | None:
 
 
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
-                    thinking=False, effort="off", timeout=180.0,
+                    thinking=False, effort="off", timeout=TURN_TIMEOUT,
                     permission_mode="write", approve=None, max_approvals=3):
     """One real turn, including the approvals a user would have clicked.
 
@@ -403,7 +412,7 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     if swept:
         print(f"swept {len(swept)} leaked fixture(s) from a previous run before starting")
 
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=TURN_TIMEOUT) as client:
         await auth.login(client)
         print(f"authenticated as {auth.email} ({auth.user_id})")
 
@@ -683,10 +692,14 @@ def main():
     ap.add_argument("--batch-id", default="batch")
     ap.add_argument("--keep-fixtures", action="store_true",
                     help="do not tear down (investigation); clean up with provision.py --sweep")
+    ap.add_argument("--turn-timeout", type=float, default=TURN_TIMEOUT,
+                    help="seconds a single turn may take; raise it for a prompt that pins a RAIL, "
+                         "which the server drives step by step (see TURN_TIMEOUT)")
     ap.add_argument("--approvals", default="none", choices=("none", "standing", "as-is"),
                     help="standing tool approvals for this batch; 'none' clears and restores")
     a = ap.parse_args()
     scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
+    globals()["TURN_TIMEOUT"] = a.turn_timeout
     globals()["APPROVAL_MODE"] = a.approvals
     globals()["KEEP_FIXTURES"] = a.keep_fixtures
     bad = preflight_seed_asserts(scenarios)
