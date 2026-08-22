@@ -1,0 +1,384 @@
+{
+ "batch": "batch",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "registry_set_skill_enabled",
+   "scenario": "registry-set-skill-enabled",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+   "answer_expect": null,
+   "falsifier_sha": "22ee0c1832bdcaf0",
+   "ship_audit": {
+    "gate": "NOT REACHED — never advertised, so no card could be raised.",
+    "absent_case": "EXERCISED by direct probe (batch 38) — an unknown slug is refused BY NAME: 'skill not found: no-such-skill-xyz'.",
+    "idempotency": "NOT REACHED.",
+    "tenancy": "EXERCISED AS NOT APPLICABLE — scope=USER, no id a cross-tenant probe can drive. Worth noting from the store: the five user-tier `glossary` overrides belong to five OTHER accounts and were untouched throughout, which is the per-user shadowing this tool's description describes ('the shared skill is never changed')."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02703-371d-7f3f-870b-cb9c8146cd0b",
+     "session_id": "01a02703-542f-746d-924e-18df73da3873",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing:** I can help you write prose and turn your story ideas into a structured plan, materializing your thoughts into a formal chapter and scene structure.\n*   **The planner (Novel Planner):** A dedicated recipe to take a story idea and build its entire foundation—from world categories and cast to a detailed chapter-by-chapter plan.\n*   **Composition:** I can help you build outlines, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motif library.\n*   **Autonomous Drafting:** I can take your existing plans and draft the next chapters for you.\n\n### **Worldbuilding & Lore**\n*   **S"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.471977+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.68465+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.676068+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.471977+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.68465+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:08:37.676068+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot turn off the `story bible` skill. The skills listed are part of the system's available capabilities for this session and cannot be disabled by a user request."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02703-a859-7221-a077-c2531ffdf921",
+     "session_id": "01a02703-c3b6-7d67-a95b-b1a63dcbe27d",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing:** I can help you write prose and turn your story ideas into a structured plan, materializing your thoughts into a formal chapter and scene structure.\n*   **The planner (Novel Planner):** This is a structured recipe to take a raw story idea and build its entire foundation—from world categories and cast to a detailed chapter-by-chapter plan.\n*   **Composition:** I can help you build outlines, write or publish chapter prose, declare \"canon\" rules for your world, and manage your story's motifs.\n*   **Drafting:** Once a plan is in place, I can use a focused drafting specialist to write long, careful chapters.\n\n###"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.432592+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.649541+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.641691+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.432592+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.649541+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:06.641691+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot turn off the `story bible` skill. My instructions only allow me to use the tools provided to me; I do not have the capability to modify my own available skill set or the system's configuration."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02704-1c5e-76ec-8942-c89ad6100811",
+     "session_id": "01a02704-38ee-75c6-a5f0-6a37eaaecdbe",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing:** I can help you write prose and turn your story ideas into a structured chapter-by-chapter plan.\n*   **The planner (Novel Planner):** A dedicated recipe to take a story idea and build its entire foundation—from world categories to a detailed arc plan.\n*   **Composition:** I can help you build outlines, write and publish chapter prose, declare \"canon\" rules for your world, and manage your story's motifs.\n*   **Drafting:** Once a plan is set, I can use a focused drafting specialist to write long, detailed chapters.\n\n### **Worldbuilding & Lore**\n*   **Story bible Assistant:** I can manage your \"story bible\"—tra"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.152579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.379118+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.371895+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.152579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.379118+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:09:36.371895+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot turn off the `story bible` skill. Skills are part of the system's core capabilities and cannot be disabled by a user request."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02704-91c1-7327-8da5-e0b506aaaab3",
+     "session_id": "01a02704-ae1d-7bd5-a067-6c85a73d5ff6",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing:** I can help you write prose and turn your story ideas into a structured chapter and scene plan.\n*   **The planner (Novel Planner):** I can take a source document (like your notes) and build a complete story foundation, including a chapter-by-chapter plan.\n*   **Composition:** I can help you build outlines, write or publish chapter prose, declare \"canon\" rules for your world, and manage your story's motifs.\n*   **Drafting:** Once a plan is set, I can use a focused drafting specialist to write long, detailed chapters.\n\n### **Worldbuilding & Lore**\n*   **Story bible Assistant:** I can help you build and organiz"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.198529+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.430482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.421013+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.198529+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.430482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:06.421013+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot turn off the `story bible` skill. It is a system-tier skill, and I do not have the authority to disable core system capabilities."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02705-069b-7f22-a36b-353f91c0116f",
+     "session_id": "01a02705-21de-7ce6-8ffa-d4a97bbe8540",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your book. Here is a breakdown of what I can do:\n\n### **Core Writing & Planning**\n*   **Co-writing:** I can help you write prose and turn your story ideas into a structured chapter and scene plan.\n*   **The planner (Novel Planner):** I can take a source document (like your notes) and build a complete story foundation, including a chapter-by-chapter plan.\n*   **Composition:** I can help you build outlines, write or publish chapter prose, declare \"canon\" rules for your world, and manage motifs.\n*   **Drafting:** Once a plan is set, I can use a focused drafting specialist to write long, detailed chapters.\n\n### **Worldbuilding & Lore**\n*   **Story bible Assistant:** I can manage your book's story bible—tracking characte"
+      }
+     ],
+     "called": false,
+     "surfaced": false,
+     "called_tools": [],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.114207+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.329286+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.321896+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.114207+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.329286+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 01:10:36.321896+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot turn off the `story bible` skill. It is a system-tier skill, and only the system administrators can manage the availability of system-tier skills."
+    }
+   ],
+   "surfaced_count": 0,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED — SURFACED 0/5 across 5 CLEAN runs (zero errors), so the model was never shown it. D-LAZY-TAIL-UNUSED, the same cause as batches 31-40 (DQ-T36).\n\n🔴 AND THIS IS THE FIRST CLEAN ARM THIS TOOL HAS EVER HAD, AFTER THREE I MISREAD. Batches 38, 39 and 40 each recorded it as '5 of 5 lost to transport errors' and I wrote that into three commits and the session handoff. They were never transport failures. Every one says, in the run's own error field:\n    PROVISION ProvisionError: SEED ASSERTION FAILED\nMy assertion counted `slug='glossary'` ACCOUNT-WIDE and expected 1. The registry holds SIX rows with that slug — one System-tier plus five user-tier overrides created 2026-07-02 by other accounts, body 'override', seven weeks before this loop touched it. The seed failed before a turn ever ran.\n\nWHAT MADE IT INVISIBLE: the report's `err` column shows a count, and I read '5' as a provider fault three times without opening the error. A fixture bug wore a provider's clothes for three batches, and the same week I built a preflight specifically so a broken seed assertion could not cost a batch — it catches INVALID SQL, and this SQL was perfectly valid and simply wrong. Scoped to tier='system', the arm is clean at the first attempt.\n\nThe tool itself is still unproven: it was never advertised, so there is no evidence about it. The SYSTEM row it targets is untouched, and its absent-slug refusal was exercised by direct probe in batch 38 — 'skill not found: no-such-skill-xyz'."
+  }
+ ]
+}
