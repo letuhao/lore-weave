@@ -1,207 +1,207 @@
 {
- "_note": "Batch 22 — four PlanForge tools plus composition_motif_bind_edit's EIGHTH arm. All four plan tools require a real `run_id`, which a fresh book has not got, so the whole batch would have been precondition-blocked. It is not, because plan_propose_spec declares `mode: rules` — 'heading matcher, sync, only fits documents written in its vocabulary' — which is DETERMINISTIC and spends NO LLM tokens. Smoke-tested before writing these scenarios: it returns async=false and lands the run immediately at status='proposed'. (My first draft of this note said 'compiled' — I had misread a truncated JSON blob — and the wrong status in a seed assertion then cost 5 of 5 runs on one scenario.) That is the difference between measuring four tools and recording four refusals, and it was found by reading the tool's own argument declaration rather than assuming a plan needs an LLM.",
- "scenarios": [
-  {
-   "id": "plan-get-missing-material",
-   "tool_under_test": "plan_get_missing_material",
-   "expect_tool": "plan_get_missing_material",
-   "intent": "read",
-   "tier": "R",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "What did we find before — show me the last material check for this book's plan.",
-   "prompt_source": "meta.synonyms['what did we find before'] + ['last material check'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
+  "_note": "Batch 22 — four PlanForge tools plus composition_motif_bind_edit's EIGHTH arm. All four plan tools require a real `run_id`, which a fresh book has not got, so the whole batch would have been precondition-blocked. It is not, because plan_propose_spec declares `mode: rules` — 'heading matcher, sync, only fits documents written in its vocabulary' — which is DETERMINISTIC and spends NO LLM tokens. Smoke-tested before writing these scenarios: it returns async=false and lands the run immediately at status='proposed'. (My first draft of this note said 'compiled' — I had misread a truncated JSON blob — and the wrong status in a seed assertion then cost 5 of 5 runs on one scenario.) That is the difference between measuring four tools and recording four refusals, and it was found by reading the tool's own argument declaration rather than assuming a plan needs an LLM.",
+  "scenarios": [
     {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE real plan run, seeded deterministically through mode='rules' so no LLM tokens are spent building the fixture. This is the EMPTY case for this tool by construction: the run exists but no material search has ever been run against it, and this tool's whole purpose is returning the LAST packet WITHOUT running a new one. So 'there is no packet yet' is the honest answer, and it must be distinguishable from 'the packet is empty'."
-    }
-   ],
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material findings for a run that has never been searched, OR — the specific trap this tool's own description names — it silently runs a NEW search. Its description says it is 'free, and it spends nothing. Use this before plan_find_missing_material so the author does not pay twice', so a spend here would defeat the tool's only reason to exist.",
-   "ship_audit": {
-    "empty_case": "This scenario IS the empty case — a run with no prior material check.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "tenancy": "OWED — book-scoped, and run_id is a second identifier that must be checked against the book."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-find-missing-material",
-   "tool_under_test": "plan_find_missing_material",
-   "expect_tool": "plan_find_missing_material",
-   "intent": "read",
-   "tier": "R",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "What is my plan missing — find missing material for this book.",
-   "prompt_source": "meta.synonyms['what is my plan missing'] + ['find missing material'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "A real plan run at status='proposed', seeded deterministically through mode='rules' so no LLM tokens build the fixture. 🔴 CORRECTED: my first draft asserted status='compiled' and lost 5 of 5 runs to SEED ASSERTION FAILED. I had misread the smoke output — its JSON was truncated mid-object and I took a 'compiled' from elsewhere in the blob as the run's status. Verified against the store afterwards: mode='rules' lands the run at 'proposed'. The source document is deliberately thin — two chapters, no cast, no world rules — so the plan genuinely IS missing material. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
-    }
-   ],
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material as `recovered` that is not in the seeded document — its description defines recovered as 'the plan already has this, from the read', so a recovered item the document does not contain is fabrication of the worst kind here, since the author would believe their plan is more complete than it is.",
-   "ship_audit": {
-    "empty_case": "OWED — a plan missing nothing must say so rather than invent gaps.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-apply-revision",
-   "tool_under_test": "plan_apply_revision",
-   "expect_tool": "plan_apply_revision",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Apply revision — refine the plan for this book.",
-   "prompt_source": "meta.synonyms['apply revision'] + ['refine plan'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE run to revise. CONTROL STATED UP FRONT: no DRAFT REVISION has been created against it, so there may be nothing to apply — and this tool's description is unusually explicit that it must say so: 'Returns applied / no_change / rejected — an accepted-but-unchanged refine is `no_change`, never `applied`'. A `no_change` here would be the tool honouring its own contract, not a failure."
-    }
-   ],
-   "falsifier": "REFUTED IF: a revision is applied with NO confirm card (Tier A), OR the tool reports `applied` when nothing changed — that is the exact dishonesty its own description forbids (D-PF-APPLY-HONEST), and it is the same class as the arc_template archive reporting success over zero rows — OR the model invents a run_id.",
-   "ship_audit": {
-    "gate": "OWED — Tier A.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "idempotency": "OWED — applying the same revision twice must be `no_change` the second time, not a second `applied`.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-bootstrap-apply",
-   "tool_under_test": "plan_bootstrap_apply",
-   "expect_tool": "plan_bootstrap_apply",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Create the chapters — make the plan real for this book.",
-   "prompt_source": "meta.synonyms['create the chapters'] + ['make the plan real'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_book",
-     "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE chapter — the fixture's own — before anything is applied. This tool CREATES real book chapters from a previewed proposal, so the count moving is the whole signal. The card is never approved, so it must still be 1 afterwards. CONTROL: `proposal_id` comes from plan_bootstrap_propose, which has NOT been run here, so the honest outcome may be a refusal naming the missing proposal — a PRECONDITION finding rather than a tool defect."
-    }
-   ],
-   "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
-   "ship_audit": {
-    "gate": "OWED — Tier A, and it creates real chapters.",
-    "absent_case": "OWED — a proposal_id that does not exist must be refused.",
-    "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "composition-motif-bind-edit",
-   "tool_under_test": "composition_motif_bind_edit",
-   "expect_tool": "composition_motif_bind_edit",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
-   "prompt_source": "meta.synonyms['attach pattern to chapter'] + ['bind motif'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "composition_motif_edit",
-     "args": {
-      "op": "create",
-      "code": "emberfall-thread-b22-{run_id}",
-      "name": "Emberfall Thread {run_id}",
-      "kind": "trope"
-     }
+      "id": "plan-get-missing-material",
+      "tool_under_test": "plan_get_missing_material",
+      "expect_tool": "plan_get_missing_material",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What did we find before — show me the last material check for this book's plan.",
+      "prompt_source": "meta.synonyms['what did we find before'] + ['last material check'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE real plan run, seeded deterministically through mode='rules' so no LLM tokens are spent building the fixture. This is the EMPTY case for this tool by construction: the run exists but no material search has ever been run against it, and this tool's whole purpose is returning the LAST packet WITHOUT running a new one. So 'there is no packet yet' is the honest answer, and it must be distinguishable from 'the packet is empty'."
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material findings for a run that has never been searched, OR — the specific trap this tool's own description names — it silently runs a NEW search. Its description says it is 'free, and it spends nothing. Use this before plan_find_missing_material so the author does not pay twice', so a spend here would defeat the tool's only reason to exist.",
+      "ship_audit": {
+        "empty_case": "This scenario IS the empty case — a run with no prior material check.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped, and run_id is a second identifier that must be checked against the book."
+      },
+      "defects": []
     },
     {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc I — The Emberfall"
-     }
-    }
-   ],
-   "seed_assert": [
+      "id": "plan-find-missing-material",
+      "tool_under_test": "plan_find_missing_material",
+      "expect_tool": "plan_find_missing_material",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What is my plan missing — find missing material for this book.",
+      "prompt_source": "meta.synonyms['what is my plan missing'] + ['find missing material'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "A real plan run at status='proposed', seeded deterministically through mode='rules' so no LLM tokens build the fixture. 🔴 CORRECTED: my first draft asserted status='compiled' and lost 5 of 5 runs to SEED ASSERTION FAILED. I had misread the smoke output — its JSON was truncated mid-object and I took a 'compiled' from elsewhere in the blob as the run's status. Verified against the store afterwards: mode='rules' lands the run at 'proposed'. The source document is deliberately thin — two chapters, no cast, no world rules — so the plan genuinely IS missing material. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports material as `recovered` that is not in the seeded document — its description defines recovered as 'the plan already has this, from the read', so a recovered item the document does not contain is fabrication of the worst kind here, since the author would believe their plan is more complete than it is.",
+      "ship_audit": {
+        "empty_case": "OWED — a plan missing nothing must say so rather than invent gaps.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
     {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-thread-b22-{run_id}')",
-     "expect": "0",
-     "why": "ZERO bindings for THIS motif. EIGHTH ARM: 38 attempts produced 0 clean runs, then arm seven produced 1 — a run that called the tool and minted its Tier-A card with the store unchanged. So the tool works and what is missing is CLEAN RUNS (K>=3), every loss being the model's degenerate output after a successful motif_search."
+      "id": "plan-apply-revision",
+      "tool_under_test": "plan_apply_revision",
+      "expect_tool": "plan_apply_revision",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Apply revision — refine the plan for this book.",
+      "prompt_source": "meta.synonyms['apply revision'] + ['refine plan'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE run to revise. CONTROL STATED UP FRONT: no DRAFT REVISION has been created against it, so there may be nothing to apply — and this tool's description is unusually explicit that it must say so: 'Returns applied / no_change / rejected — an accepted-but-unchanged refine is `no_change`, never `applied`'. A `no_change` here would be the tool honouring its own contract, not a failure."
+        }
+      ],
+      "falsifier": "REFUTED IF: a revision is applied with NO confirm card (Tier A), OR the tool reports `applied` when nothing changed — that is the exact dishonesty its own description forbids (D-PF-APPLY-HONEST), and it is the same class as the arc_template archive reporting success over zero rows — OR the model invents a run_id.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "idempotency": "OWED — applying the same revision twice must be `no_change` the second time, not a second `applied`.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "plan-bootstrap-apply",
+      "tool_under_test": "plan_bootstrap_apply",
+      "expect_tool": "plan_bootstrap_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Create the chapters — make the plan real for this book.",
+      "prompt_source": "meta.synonyms['create the chapters'] + ['make the plan real'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE chapter — the fixture's own — before anything is applied. This tool CREATES real book chapters from a previewed proposal, so the count moving is the whole signal. The card is never approved, so it must still be 1 afterwards. CONTROL: `proposal_id` comes from plan_bootstrap_propose, which has NOT been run here, so the honest outcome may be a refusal naming the missing proposal — a PRECONDITION finding rather than a tool defect."
+        }
+      ],
+      "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it creates real chapters.",
+        "absent_case": "OWED — a proposal_id that does not exist must be refused.",
+        "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-motif-bind-edit",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Attach the pattern called Emberfall Thread to the opening arc of this book.",
+      "prompt_source": "meta.synonyms['attach pattern to chapter'] + ['bind motif'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-thread-b22-{run_id}",
+            "name": "Emberfall Thread {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-thread-b22-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. EIGHTH ARM: 38 attempts produced 0 clean runs, then arm seven produced 1 — a run that called the tool and minted its Tier-A card with the store unchanged. So the tool works and what is missing is CLEAN RUNS (K>=3), every loss being the model's degenerate output after a successful motif_search."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding never asked about — OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE, a MODEL-output defect: re-run it, do not read it as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
     }
-   ],
-   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind` when the user said attach — its enum is bind|unbind and `unbind` would remove a binding never asked about — OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE, a MODEL-output defect: re-run it, do not read it as 0/5.",
-   "ship_audit": {
-    "gate": "OWED — Tier A.",
-    "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
-    "idempotency": "OWED — the same binding twice must not create two applications.",
-    "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
-   },
-   "defects": []
-  }
- ],
- "_fixture_note": "Plan seeds assert that a run EXISTS, never its status: mode='rules' compiles a two-arc document and leaves a one-arc document proposed. Asserting either cost a full arm."
+  ],
+  "_fixture_note": "Plan seeds assert that a run EXISTS, never its status: mode='rules' compiles a two-arc document and leaves a one-arc document proposed. Asserting either cost a full arm."
 }

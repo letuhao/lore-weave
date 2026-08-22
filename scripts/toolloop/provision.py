@@ -423,6 +423,7 @@ class Throwaway:
             out["models_error"] = f"{type(e).__name__}: {e}"
         try:
             out["arc_templates"] = self._purge_arc_templates()
+            out["motifs"] = self._purge_motifs()
         except Exception as e:  # noqa: BLE001 — same rule: never mask the book teardown
             out["arc_templates_error"] = f"{type(e).__name__}: {e}"
         if not self.book_id:
@@ -510,6 +511,51 @@ class Throwaway:
         quoted = ",".join("'" + i.replace("'", "''") + "'" for i in ids)
         oracle.db_query("loreweave_composition",
                         f"DELETE FROM arc_template WHERE id IN ({quoted})")
+        return ids
+
+    def _purge_motifs(self) -> list[str]:
+        """Remove the motifs this fixture's seed created. THE FOURTH ACCOUNT-SCOPED LEAK.
+
+        🔴 MEASURED 2026-08-23, AND IT HAD ALREADY EATEN FIFTEEN RUNS. Four motifs seeded
+        2026-08-21 06:43 were ARCHIVED by the model at 09:23 — archiving is what a sibling scenario
+        asks for — and never restored. From that moment `composition_motif_link_edit` was measured
+        against a fixture that was dead in three independent ways at once:
+
+          * it CANNOT BE RECREATED. `uq_motif_user` is UNIQUE(owner_user_id, code) WHERE
+            book_id IS NULL, with no status predicate — an archived row still owns its code, so
+            every later seed create hits a unique violation.
+          * it CANNOT BE RESOLVED. `get_by_codes` filters `status = 'active'`, so the two names
+            the prompt asks the model to link resolve to nothing.
+          * it ASSERTS GREEN. The seed_assert counted `code IN (...)` with NO status filter, so it
+            read 2 off the archived rows and passed. A fixture assertion that cannot see the same
+            rows the tool sees is not an assertion.
+
+        That is the batch-15 arc-template defect exactly — D-SEED-FIXTURE-LEFT-ARCHIVED-BREAKS-
+        EVERY-LATER-RUN — which was fixed as an INSTANCE and left as a CLASS. It cost the same
+        thing twice: a tool that reads as broken in the report while the platform is fine.
+
+        SQL, because archiving is what put the row here and archiving again would not free the
+        code. PROVENANCE, not a name prefix: the ids come from THIS run's own seed results.
+        """
+        ids: list[str] = []
+        for r in self.seeded:
+            if r.get("tool") != "composition_motif_edit":
+                continue
+            if (r.get("args") or {}).get("op") != "create":
+                continue
+            res = r.get("result")
+            if not isinstance(res, dict):
+                continue
+            mid = res.get("motif_id") or res.get("id")
+            if mid:
+                ids.append(str(mid))
+        if not ids:
+            return []
+        quoted = ",".join("'" + i.replace("'", "''") + "'" for i in ids)
+        oracle.db_query("loreweave_composition",
+                        f"DELETE FROM motif_link WHERE from_motif_id IN ({quoted}) "
+                        f"OR to_motif_id IN ({quoted})")
+        oracle.db_query("loreweave_composition", f"DELETE FROM motif WHERE id IN ({quoted})")
         return ids
 
     def _purge_worlds(self) -> list[str]:

@@ -33,8 +33,15 @@
         }
       ],
       "answer_expect": {
-        "all_of": ["Waterline"],
-        "none_of": ["couldn't find", "could not find", "no mention", "hasn't been written"],
+        "all_of": [
+          "Waterline"
+        ],
+        "none_of": [
+          "couldn't find",
+          "could not find",
+          "no mention",
+          "hasn't been written"
+        ],
         "why": "Only Chapter II — The Waterline contains the phrase. The none_of needles are the false-absence sentences the canon-default defect produced on this same fixture."
       },
       "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the search reports no match for text that is verbatim in the manuscript (the D-AUTHOR-SEARCH-READS-ONLY-CANON shape, regressing), OR it names Chapter I. NOTE this is a LITERAL substring search — its description says LIKE metacharacters are escaped — so a paraphrase legitimately finds nothing and the prompt therefore quotes the phrasing closely.",
@@ -159,11 +166,19 @@
       "seed": [
         {
           "tool": "composition_motif_edit",
-          "args": {"op": "create", "code": "emberfall-vein-b27-{run_id}", "name": "Emberfall Vein {run_id}", "kind": "trope"}
+          "args": {
+            "op": "create",
+            "code": "emberfall-vein-b27-{run_id}",
+            "name": "Emberfall Vein {run_id} {run_word}",
+            "kind": "trope"
+          }
         },
         {
           "tool": "composition_arc_create",
-          "args": {"book_id": "{book_id}", "title": "Arc I — The Emberfall"}
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
         }
       ],
       "seed_assert": [

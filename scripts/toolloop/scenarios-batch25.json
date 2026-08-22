@@ -19,7 +19,14 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
           }
         }
       ],
@@ -56,7 +63,14 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
           }
         },
         {
@@ -64,8 +78,14 @@
           "args": {
             "book_id": "{book_id}",
             "items": [
-              {"kind": "character", "name": "Untitled Draft Entity"},
-              {"kind": "character", "name": "Aldric Vane"}
+              {
+                "kind": "character",
+                "name": "Untitled Draft Entity"
+              },
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
             ]
           }
         }
@@ -105,14 +125,26 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
           }
         },
         {
           "tool": "glossary_propose_entities",
           "args": {
             "book_id": "{book_id}",
-            "items": [{"kind": "character", "name": "Mira Solene"}]
+            "items": [
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
           }
         },
         {
@@ -158,7 +190,14 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
           }
         }
       ],
@@ -194,11 +233,19 @@
       "seed": [
         {
           "tool": "composition_motif_edit",
-          "args": {"op": "create", "code": "emberfall-knot-b25-{run_id}", "name": "Emberfall Knot {run_id}", "kind": "trope"}
+          "args": {
+            "op": "create",
+            "code": "emberfall-knot-b25-{run_id}",
+            "name": "Emberfall Knot {run_id} {run_word}",
+            "kind": "trope"
+          }
         },
         {
           "tool": "composition_arc_create",
-          "args": {"book_id": "{book_id}", "title": "Arc I — The Emberfall"}
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
         }
       ],
       "seed_assert": [

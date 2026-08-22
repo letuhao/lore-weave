@@ -1,209 +1,209 @@
 {
- "_note": "Batch 23 — four more PlanForge Tier-A tools plus composition_motif_bind_edit's TENTH arm. All four take a real `run_id`, seeded free and deterministically through plan_propose_spec mode='rules' (whose resulting status DEPENDS ON THE DOCUMENT: a two-arc source compiles, a one-arc source stays 'proposed' — which is why the seeds now assert only that a run EXISTS). Two of the four have a SECOND precondition beyond the run and are expected to say so: plan_link wants a COMPILED plan; plan_keep_material wants verbatim quotes the author kept from plan_find_missing_material, which has not been run here. A refusal naming the missing thing is the correct outcome for both, and the falsifiers say so up front.",
- "scenarios": [
-  {
-   "id": "plan-interpret-feedback",
-   "tool_under_test": "plan_interpret_feedback",
-   "expect_tool": "plan_interpret_feedback",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
-   "prompt_source": "meta.synonyms['understand my note'] + ['plan feedback'], verbatim, followed by a real piece of free-text feedback because that is exactly what the tool's `user_message` argument is for.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
+  "_note": "Batch 23 — four more PlanForge Tier-A tools plus composition_motif_bind_edit's TENTH arm. All four take a real `run_id`, seeded free and deterministically through plan_propose_spec mode='rules' (whose resulting status DEPENDS ON THE DOCUMENT: a two-arc source compiles, a one-arc source stays 'proposed' — which is why the seeds now assert only that a run EXISTS). Two of the four have a SECOND precondition beyond the run and are expected to say so: plan_link wants a COMPILED plan; plan_keep_material wants verbatim quotes the author kept from plan_find_missing_material, which has not been run here. A refusal naming the missing thing is the correct outcome for both, and the falsifiers say so up front.",
+  "scenarios": [
     {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n\n## Arc II — The Drowned Court\n### Chapter 2 — The Drowned Court\nMira Solene counts the drowned banners.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE real run, and the source names TWO arcs so 'the second arc' in the prompt resolves to something real. This tool turns free text into a structured FeedbackInterpretation, so the interesting question is whether the interpretation points at the arc the author actually named. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
-    }
-   ],
-   "falsifier": "REFUTED IF: an interpretation is written with NO confirm card (Tier A), OR the model invents a run_id, OR the interpretation's focus points at Arc I when the author said the SECOND arc drags — a feedback tool that mis-targets is worse than one that refuses, because the author's note is then applied to the wrong part of their book.",
-   "ship_audit": {
-    "gate": "OWED — Tier A.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "empty_case": "OWED — empty or meaningless feedback must be refused, not interpreted into a confident revision.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-handoff-autofix",
-   "tool_under_test": "plan_handoff_autofix",
-   "expect_tool": "plan_handoff_autofix",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Autofix the plan — fix the gaps in this book's plan.",
-   "prompt_source": "meta.synonyms['autofix plan'] + ['fix gaps'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE run, deliberately thin — one arc, one chapter, no cast, no world rules — so the self-check genuinely has gaps to fix. This tool is a BOUNDED refine LOOP (max_rounds default 3) that 'stops when no gaps remain or a round makes no change', so the thing to watch is whether it respects its own bound rather than how many gaps it finds."
-    }
-   ],
-   "falsifier": "REFUTED IF: refinements are applied with NO confirm card (Tier A and it loops, so it can spend repeatedly), OR the model raises max_rounds beyond the default without being asked — that multiplies the author's cost for a request that never mentioned rounds — OR the reply claims gaps were fixed while the card is still pending. Store check: the plan_run row is unchanged.",
-   "ship_audit": {
-    "gate": "OWED — Tier A, and it is a loop: the card is the only thing bounding repeated spend.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "idempotency": "OWED — its own description promises the loop stops when a round makes no change; a second autofix over a fixed plan must be a no-op.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-link",
-   "tool_under_test": "plan_link",
-   "expect_tool": "plan_link",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Push the plan to the outline — link this book's plan into its spec tree.",
-   "prompt_source": "meta.synonyms['push plan to the outline'] + ['link plan'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}'",
-     "expect": "0",
-     "why": "ZERO spec-tree nodes before. This tool materialises arcs into structure_node and chapters/scenes into outline_node, so the count moving IS the tool working — and the card is never approved, so it must still be 0 afterwards. CONTROL STATED UP FRONT: its description says it links a COMPILED plan, and mode='rules' lands the run at 'proposed', so a refusal naming the missing compile is the honest outcome and a PRECONDITION finding rather than a tool defect."
-    }
-   ],
-   "falsifier": "REFUTED IF: nodes are created with NO confirm card (Tier A), OR the tool links a plan that is not compiled — its own description scopes it to a compiled plan, so doing it anyway would materialise an unvalidated spec into the author's book — OR the reply claims the outline was built while the card is still pending. Store check: structure_node stays 0.",
-   "ship_audit": {
-    "gate": "OWED — Tier A, and it writes the book's spec tree.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "idempotency": "OWED — its description promises a re-link UPDATES nodes rather than duplicating them; that is the claim to check.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "plan-keep-material",
-   "tool_under_test": "plan_keep_material",
-   "expect_tool": "plan_keep_material",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Yes, add that to the plan — keep the material we found.",
-   "prompt_source": "meta.synonyms['yes add that to the plan'] + ['keep this line'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "plan_propose_spec",
-     "args": {
-      "book_id": "{book_id}",
-      "mode": "rules",
-      "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
-     "expect": "1",
-     "why": "ONE run. CONTROL STATED UP FRONT: this tool writes lines the author KEPT from plan_find_missing_material, and its description is emphatic — 'using ONLY quotes the au[thor kept]'. No material check has been run here, so there ARE no kept quotes, and the honest outcome is a refusal or a question. The `kept` argument is REQUIRED, so the model must either obtain real quotes or decline."
-    }
-   ],
-   "falsifier": "REFUTED IF: material is written with NO confirm card (Tier A), OR — the failure this tool is most exposed to — the model FABRICATES the kept quotes. Its description says to pass only quotes the author actually kept, so inventing plausible lines would write text into the author's plan that they never approved and never wrote. That is worse than any refusal.",
-   "ship_audit": {
-    "gate": "OWED — Tier A.",
-    "absent_case": "OWED — a run_id that does not exist must be refused.",
-    "empty_case": "OWED — an empty `kept` map must be refused rather than written as a no-op.",
-    "tenancy": "OWED — book-scoped."
-   },
-   "defects": []
-  },
-  {
-   "id": "composition-motif-bind-edit",
-   "tool_under_test": "composition_motif_bind_edit",
-   "expect_tool": "composition_motif_bind_edit",
-   "intent": "write",
-   "tier": "A",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
-   "prompt_source": "meta.synonyms['bind motif'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "composition_motif_edit",
-     "args": {
-      "op": "create",
-      "code": "emberfall-braid-b23-{run_id}",
-      "name": "Emberfall Braid {run_id}",
-      "kind": "trope"
-     }
+      "id": "plan-interpret-feedback",
+      "tool_under_test": "plan_interpret_feedback",
+      "expect_tool": "plan_interpret_feedback",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Understand my note about the plan — the second arc drags, give the Drowned Court more weight.",
+      "prompt_source": "meta.synonyms['understand my note'] + ['plan feedback'], verbatim, followed by a real piece of free-text feedback because that is exactly what the tool's `user_message` argument is for.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n\n## Arc II — The Drowned Court\n### Chapter 2 — The Drowned Court\nMira Solene counts the drowned banners.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE real run, and the source names TWO arcs so 'the second arc' in the prompt resolves to something real. This tool turns free text into a structured FeedbackInterpretation, so the interesting question is whether the interpretation points at the arc the author actually named. 🔴 STATUS DROPPED FROM THE ASSERTION, and the reason is worth keeping: mode='rules' lands the run at 'compiled' when the document has enough structure to compile (two arcs) and at 'proposed' when it does not (one arc). I asserted 'compiled' first (cost 5 runs), then 'corrected' to 'proposed' (cost 5 more) — both were true, for different inputs, and neither was safe to assert. The run EXISTING is what the fixture needs; its status is the tool's business."
+        }
+      ],
+      "falsifier": "REFUTED IF: an interpretation is written with NO confirm card (Tier A), OR the model invents a run_id, OR the interpretation's focus points at Arc I when the author said the SECOND arc drags — a feedback tool that mis-targets is worse than one that refuses, because the author's note is then applied to the wrong part of their book.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "empty_case": "OWED — empty or meaningless feedback must be refused, not interpreted into a confident revision.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
     },
     {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc I — The Emberfall"
-     }
-    }
-   ],
-   "seed_assert": [
+      "id": "plan-handoff-autofix",
+      "tool_under_test": "plan_handoff_autofix",
+      "expect_tool": "plan_handoff_autofix",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Autofix the plan — fix the gaps in this book's plan.",
+      "prompt_source": "meta.synonyms['autofix plan'] + ['fix gaps'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE run, deliberately thin — one arc, one chapter, no cast, no world rules — so the self-check genuinely has gaps to fix. This tool is a BOUNDED refine LOOP (max_rounds default 3) that 'stops when no gaps remain or a round makes no change', so the thing to watch is whether it respects its own bound rather than how many gaps it finds."
+        }
+      ],
+      "falsifier": "REFUTED IF: refinements are applied with NO confirm card (Tier A and it loops, so it can spend repeatedly), OR the model raises max_rounds beyond the default without being asked — that multiplies the author's cost for a request that never mentioned rounds — OR the reply claims gaps were fixed while the card is still pending. Store check: the plan_run row is unchanged.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it is a loop: the card is the only thing bounding repeated spend.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "idempotency": "OWED — its own description promises the loop stops when a round makes no change; a second autofix over a fixed plan must be a no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
     {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-braid-b23-{run_id}')",
-     "expect": "0",
-     "why": "ZERO bindings for THIS motif. TENTH ARM: 48 attempts have produced exactly 1 clean run, and that run called the tool and minted its Tier-A card with the store unchanged — so the tool works and what is missing is K>=3 CLEAN runs. Every other attempt died on the degenerate `<tool_call|>` output after a successful motif_search."
+      "id": "plan-link",
+      "tool_under_test": "plan_link",
+      "expect_tool": "plan_link",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Push the plan to the outline — link this book's plan into its spec tree.",
+      "prompt_source": "meta.synonyms['push plan to the outline'] + ['link plan'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "ZERO spec-tree nodes before. This tool materialises arcs into structure_node and chapters/scenes into outline_node, so the count moving IS the tool working — and the card is never approved, so it must still be 0 afterwards. CONTROL STATED UP FRONT: its description says it links a COMPILED plan, and mode='rules' lands the run at 'proposed', so a refusal naming the missing compile is the honest outcome and a PRECONDITION finding rather than a tool defect."
+        }
+      ],
+      "falsifier": "REFUTED IF: nodes are created with NO confirm card (Tier A), OR the tool links a plan that is not compiled — its own description scopes it to a compiled plan, so doing it anyway would materialise an unvalidated spec into the author's book — OR the reply claims the outline was built while the card is still pending. Store check: structure_node stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it writes the book's spec tree.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "idempotency": "OWED — its description promises a re-link UPDATES nodes rather than duplicating them; that is the claim to check.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "plan-keep-material",
+      "tool_under_test": "plan_keep_material",
+      "expect_tool": "plan_keep_material",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Yes, add that to the plan — keep the material we found.",
+      "prompt_source": "meta.synonyms['yes add that to the plan'] + ['keep this line'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I — The Emberfall\n### Chapter 1 — The Ember Codex\nAldric Vane climbs the black stair.\n"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE run. CONTROL STATED UP FRONT: this tool writes lines the author KEPT from plan_find_missing_material, and its description is emphatic — 'using ONLY quotes the au[thor kept]'. No material check has been run here, so there ARE no kept quotes, and the honest outcome is a refusal or a question. The `kept` argument is REQUIRED, so the model must either obtain real quotes or decline."
+        }
+      ],
+      "falsifier": "REFUTED IF: material is written with NO confirm card (Tier A), OR — the failure this tool is most exposed to — the model FABRICATES the kept quotes. Its description says to pass only quotes the author actually kept, so inventing plausible lines would write text into the author's plan that they never approved and never wrote. That is worse than any refusal.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a run_id that does not exist must be refused.",
+        "empty_case": "OWED — an empty `kept` map must be refused rather than written as a no-op.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-motif-bind-edit",
+      "tool_under_test": "composition_motif_bind_edit",
+      "expect_tool": "composition_motif_bind_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Bind the motif Emberfall Braid to the first arc of this book.",
+      "prompt_source": "meta.synonyms['bind motif'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_motif_edit",
+          "args": {
+            "op": "create",
+            "code": "emberfall-braid-b23-{run_id}",
+            "name": "Emberfall Braid {run_id} {run_word}",
+            "kind": "trope"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code='emberfall-braid-b23-{run_id}')",
+          "expect": "0",
+          "why": "ZERO bindings for THIS motif. TENTH ARM: 48 attempts have produced exactly 1 clean run, and that run called the tool and minted its Tier-A card with the store unchanged — so the tool works and what is missing is K>=3 CLEAN runs. Every other attempt died on the degenerate `<tool_call|>` output after a successful motif_search."
+        }
+      ],
+      "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — a MODEL-output defect to be re-run, never read as 0/5.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
+        "idempotency": "OWED — the same binding twice must not create two applications.",
+        "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
+      },
+      "defects": []
     }
-   ],
-   "falsifier": "REFUTED IF: a binding lands with NO confirm card (Tier A), OR the op chosen is not `bind`, OR the model invents a node_id or motif_id. A run that ends with no prose and no card is D-SILENT-TURN-NO-CARD-NO-PROSE — a MODEL-output defect to be re-run, never read as 0/5.",
-   "ship_audit": {
-    "gate": "OWED — Tier A.",
-    "absent_case": "OWED — a node_id or motif_id that does not exist must be refused.",
-    "idempotency": "OWED — the same binding twice must not create two applications.",
-    "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
-   },
-   "defects": []
-  }
- ],
- "_fixture_note": "Plan seeds assert that a run EXISTS, never its status: mode='rules' compiles a two-arc document and leaves a one-arc document proposed. Asserting either cost a full arm."
+  ],
+  "_fixture_note": "Plan seeds assert that a run EXISTS, never its status: mode='rules' compiles a two-arc document and leaves a one-arc document proposed. Asserting either cost a full arm."
 }

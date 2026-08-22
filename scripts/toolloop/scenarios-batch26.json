@@ -97,7 +97,14 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
           }
         }
       ],
@@ -136,7 +143,15 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character", "location"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location"
+              ]
+            }
           }
         }
       ],
@@ -172,11 +187,19 @@
       "seed": [
         {
           "tool": "composition_motif_edit",
-          "args": {"op": "create", "code": "emberfall-seam-b26-{run_id}", "name": "Emberfall Seam {run_id}", "kind": "trope"}
+          "args": {
+            "op": "create",
+            "code": "emberfall-seam-b26-{run_id}",
+            "name": "Emberfall Seam {run_id} {run_word}",
+            "kind": "trope"
+          }
         },
         {
           "tool": "composition_arc_create",
-          "args": {"book_id": "{book_id}", "title": "Arc I — The Emberfall"}
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Emberfall"
+          }
         }
       ],
       "seed_assert": [

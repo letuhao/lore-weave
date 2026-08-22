@@ -42,6 +42,14 @@ ACCOUNT_SCOPED = {
     "world_create": "_purge_worlds",
     "settings_model_register": "_purge_models",
     "composition_arc_extract_template": "_purge_arc_templates",
+    # 🔴 THE FOURTH, AND THIS GATE MISSED IT. Written 2026-08-23 listing three creators;
+    # `composition_motif_edit` op=create is just as account-scoped and was not among them, so the
+    # gate passed green while four motifs sat archived on the harness account for two days and
+    # fifteen runs of composition_motif_link_edit measured a fixture that could not be recreated,
+    # could not be resolved, and asserted green. A hand-written map of "the account-scoped
+    # creators" is the same shape as the hand-written work list that build_rerun_set.py exists to
+    # replace: it is right on the day it is typed.
+    "composition_motif_edit": "_purge_motifs",
 }
 
 
