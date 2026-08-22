@@ -19037,9 +19037,9 @@
       "answer_expect": null,
       "falsifier_sha": "072203ab72733c09",
       "ship_audit": {
-        "gate": "OWED — Tier A.",
-        "absent_case": "OWED — an unknown language_code must be refused with what is supported.",
-        "tenancy": "OWED — book-scoped."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 4/5, left SUSPENDED on an approval card 4/5. The store movement on 5/5 is loreweave_knowledge.entity_access_log gaining one row per run — a READ-side audit trail, not the proposal write, which is still behind the unapproved card.",
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c6-ship-probe.txt): an absent book is refused, 'book not accessible'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c6-ship-probe.txt): a foreign book refuses IDENTICALLY to an absent one — no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -19848,9 +19848,9 @@
       "falsifier_sha": "b8a9550a7d944c13",
       "ship_audit": {
         "gate": "OWED — Tier W and schema-mutating.",
-        "absent_case": "OWED — a signature that is not in the queue must be refused.",
-        "empty_case": "OWED — an action with no value to add must be refused.",
-        "tenancy": "OWED — project-scoped."
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c6-ship-probe.txt): an absent project is refused, 'project not found'.",
+        "empty_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c6-ship-probe.txt): refused by NAME — 'signature: String should have at least 1 character'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c6-ship-probe.txt): a foreign project refuses IDENTICALLY."
       },
       "defects": [],
       "runs": [
@@ -20464,7 +20464,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 3,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED on a PREMISE the fixture cannot satisfy, and the model is RIGHT. Re-measured at K=5: SURFACED 5/5 with zero errors (its row's 'surfaced 0/5' is refuted), CALLED 0/5. On every run it called kg_triage_list and kg_schema_read and answered: 'since allow_free_edges is already set to true, the allied_with relationship is already permitted'. That is TRUE — a fresh project has edge_types=[] and allow_free_edges=true — and it is genuinely useful: it tells the author the schema change they asked for is unnecessary.\n\nSo the tool is unreachable because the FIXTURE never creates the condition it exists for: a project whose schema FORBIDS the edge. Denied the tool, the model reasoned from a read instead of inventing a result, which is the behaviour this loop wants. Boundary is sound: absent and foreign projects refuse IDENTICALLY, empty refuses by name."
     },
     {
       "tool": "propose_edit",
@@ -20992,7 +20993,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, and it is P6's OWN INVARIANT failing in the clearest possible form: 'when the request names an artefact the platform can STORE, prose about it is not an answer'. Re-measured at K=5: SURFACED 5/5, CALLED 0/5. Asked to make the opening line darker AND to show the change before it goes in, the model called book_read and replied 'Here are three ways we could make it...' — three rewrites as prose in chat. The author gets text to copy instead of an Apply button, which is the entire value of the tool, and the store was untouched on every run: safe, for the wrong reason.\n\nTWO THINGS ARE KNOWN ABOUT WHY, and neither is fixed here. It declares NO SYNONYMS, so answerable_tools can never reach it and only the editor-surface advertisement puts it in play — and that declaration lives in ai-gateway's propose-edit-tool.ts, which OWNS the tool, not in the chat-service copy that a test pins byte-identical. And a declaration is not obviously the remedy anyway: this loop has now measured twice that declaring what a tool is does NOT stop the model answering in prose (world_map_delete, settings_provider_inventory)."
     },
     {
       "tool": "catalog_get_book",

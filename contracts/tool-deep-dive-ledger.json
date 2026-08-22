@@ -1877,11 +1877,12 @@
    "state": "blocked",
    "provider": "chat-local",
    "tier": "R",
-   "cycle": "batch-9",
+   "cycle": "batch-41 (2026-08-14)",
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "Surfaced 3/3 — it IS on the wire as a frontend tool on the editor surface — and called 0/3. Asked to make the opening line darker AND to show the change before it goes in, the model read the chapter and offered three rewrites as prose in chat. The author gets text to copy instead of an Apply button, which is the entire value of the tool. It declares NO synonyms at all, so answerability cannot reach it and only the frontend advertisement puts it in play. The store was unchanged 3/3 — safe, but for the wrong reason."
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 2/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and it is P6's OWN INVARIANT failing in the clearest possible form: 'when the request names an artefact the platform can STORE, prose about it is not an answer'. Re-measured at K=5: SURFACED 5/5, CALLED 0/5. Asked to make the opening line darker AND to show the change before it goes in, the model called book_read and replied 'Here are three ways we could make it...' — three rewrites as prose in chat. The author gets text to copy instead of an Apply button, which is the entire value of the tool, and the store was untouched on every run: safe, for the wrong reason.\n\nTWO THINGS ARE KNOWN ABOUT WHY, and neither is fixed here. It declares NO SYNONYMS, so answerable_tools can never reach it and only the editor-surface advertisement puts it in play — and that declaration lives in ai-gateway's propose-edit-tool.ts, which OWNS the tool, not in the chat-service copy that a test pins byte-identical. And a declaration is not obviously the remedy anyway: this loop has now measured twice that declaring what a tool is does NOT stop the model answering in prose (world_map_delete, settings_provider_inventory).",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json"
   },
   "settings_list_providers": {
    "state": "proven",
@@ -2027,14 +2028,15 @@
    "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 — declared 'how are they connected' against 'How are the CHARACTERS in this story connected', a pronoun apart. B-arm, prompt UNCHANGED: surfaced 3/3, CALLED 3/3, store unchanged. And the EMPTY answer is exemplary — 'I don't see any characters or relationships recorded in the connection map for this project yet' — the exact opposite of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance. Tenancy refused."
   },
   "glossary_propose_translation": {
-   "state": "blocked",
+   "state": "proven",
    "provider": "glossary",
    "tier": "A",
-   "cycle": "batch-12",
+   "cycle": "batch-41 (2026-08-14)",
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "STILL BLOCKED. It was batch 12's control (surfaced 3/3 both arms, the only tool whose synonym appeared verbatim) and it went 1/3 -> 0/3 called: it answered with Vietnamese name suggestions in PROSE instead of minting the proposal. With surfacing fixed everywhere, this is the residual class — describe-instead-of-record. PRIOR: BLOCKED at 1/3 — and it is batch 12's CONTROL. It is the ONLY tool of the five whose declared synonyms appear VERBATIM in the prompt, and the only one surfaced (3/3). On the two runs it was not called it answered with name suggestions in prose rather than minting the proposal. 1/3 is not a distribution."
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 4/5, suspended-on-card 4/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json"
   },
   "kg_triage_list": {
    "state": "proven",
@@ -2753,9 +2755,9 @@
   },
   "kg_triage_schema_write": {
    "state": "blocked",
-   "cycle": "batch-17 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch33.json. MEASURED: surfaced 0/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on surfacing — but the model's answer was GOOD, and that is worth separating from the other three. Called 0/5 and SURFACED 0/5; it called `kg_schema_read` and replied that the project 'is currently set to allow_free_edges: true, which means you can actually use the allied_with relationship immediately without needing to formally define it'. That is TRUE — probed directly, a fresh project has edge_types=[] and allow_free_edges=true — and it is genuinely useful: it tells the author the schema change they asked for is unnecessary. Denied the tool, this one reasoned from a read instead of inventing a result.\n\nCAUSE: the turn's advertised catalogue did not contain it and find_tools_call_count was 0 — the model never reached for the lazy tail that holds it. D-LAZY-TAIL-UNUSED, settled as 'make discovery a rail step'. Same cause as batch 31's and batch 32's blocked tools; this batch adds three more instances and, between them, THREE DISTINCT failure modes for the same missing-tool condition.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch33.json",
+   "cycle": "batch-41 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 3/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a PREMISE the fixture cannot satisfy, and the model is RIGHT. Re-measured at K=5: SURFACED 5/5 with zero errors (its row's 'surfaced 0/5' is refuted), CALLED 0/5. On every run it called kg_triage_list and kg_schema_read and answered: 'since allow_free_edges is already set to true, the allied_with relationship is already permitted'. That is TRUE — a fresh project has edge_types=[] and allow_free_edges=true — and it is genuinely useful: it tells the author the schema change they asked for is unnecessary.\n\nSo the tool is unreachable because the FIXTURE never creates the condition it exists for: a project whose schema FORBIDS the edge. Denied the tool, the model reasoned from a read instead of inventing a result, which is the behaviour this loop wants. Boundary is sound: absent and foreign projects refuse IDENTICALLY, empty refuses by name.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3967,8 +3969,8 @@
   "tools_declared": 315,
   "tools_concluded": 198,
   "tools_in_cycle": 0,
-  "tools_proven": 163,
-  "tools_blocked": 35,
+  "tools_proven": 164,
+  "tools_blocked": 34,
   "defects_proven": 25,
   "defects_open": 13,
   "deferred_questions": 17,
