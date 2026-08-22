@@ -1,10 +1,18 @@
 package pglive
 
 // PG-gated test for the 071 adapters. Gated on PIIKMS_TEST_PG_URL.
-//   - PgUserRealityLookup over the meta player_character_index (migration 012).
-//   - PgPerRealityScrubber over pc_projection (a minimal create mirroring
-//     contracts/migrations/per_reality/0006_projections — the columns the
-//     scrubber touches: pc_id/user_id/name/status + the status CHECK).
+//   - PgUserRealityLookup over the meta actor_control_binding (migration 034).
+//
+// TestLive_PgPerRealityScrubber_ScrubsAndIdempotent was DELETED on 2026-08-04.
+// It created its own minimal `pc_projection`, seeded two users, and asserted the
+// scrub tombstoned one and left the other alone. `0017` dropped that table, and
+// no per-reality projection carries a user reference any more, so
+// PgPerRealityScrubber has nothing to scrub and the test was asserting a
+// behaviour that no longer exists — against a table it had brought into being
+// itself, which is the tell: a live test that CREATEs its own subject can outlive
+// the subject indefinitely. What replaces it is not another live test but
+// TestNoPerRealityTableCarriesAUserReference, which reds the day the subject
+// comes back.
 
 import (
 	"context"
@@ -43,24 +51,24 @@ func exec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
 func TestLive_PgUserRealityLookup_DistinctRealities(t *testing.T) {
 	pool := pgPool(t)
 	ctx := context.Background()
-	sql, _ := os.ReadFile("../../../../../migrations/meta/012_player_character_index.up.sql")
+	sql, _ := os.ReadFile("../../../../../migrations/meta/034_actor_control_binding.up.sql")
 	if _, err := pool.Exec(ctx, string(sql)); err != nil && !strings.Contains(err.Error(), "deadlock") {
-		t.Fatalf("apply 012: %v", err)
+		t.Fatalf("apply 034: %v", err)
 	}
 
 	userA, userB := uuid.New(), uuid.New()
 	r1, r2 := uuid.New(), uuid.New()
-	seed := func(user, reality uuid.UUID, name string) {
+	seed := func(user, reality uuid.UUID) {
 		exec(t, pool,
-			`INSERT INTO player_character_index (pc_index_id, user_ref_id, reality_id, pc_id, pc_name, status)
-			 VALUES ($1,$2,$3,$4,$5,'active')`,
-			uuid.New(), user, reality, uuid.New(), name)
+			`INSERT INTO actor_control_binding (user_ref_id, reality_id, actor_id)
+			 VALUES ($1,$2,$3)`,
+			user, reality, uuid.New())
 	}
-	// userA: 2 PCs in r1 (same reality) + 1 in r2 → distinct realities {r1, r2}.
-	seed(userA, r1, "A-one")
-	seed(userA, r1, "A-two")
-	seed(userA, r2, "A-three")
-	seed(userB, uuid.New(), "B-one") // a different user, different reality
+	// userA drives 2 actors in r1 (same reality) + 1 in r2 → distinct {r1, r2}.
+	seed(userA, r1)
+	seed(userA, r1)
+	seed(userA, r2)
+	seed(userB, uuid.New()) // a different user, different reality
 
 	got, err := NewPgUserRealityLookup(pool).RealitiesForUser(ctx, userA)
 	if err != nil {
@@ -75,50 +83,25 @@ func TestLive_PgUserRealityLookup_DistinctRealities(t *testing.T) {
 	}
 }
 
-func TestLive_PgPerRealityScrubber_ScrubsAndIdempotent(t *testing.T) {
-	pool := pgPool(t)
-	ctx := context.Background()
-	// Minimal pc_projection (the scrubber-touched columns + the real status CHECK).
-	exec(t, pool, `
-		CREATE TABLE IF NOT EXISTS pc_projection (
-			pc_id   UUID PRIMARY KEY,
-			user_id UUID NOT NULL,
-			name    TEXT NOT NULL,
-			status  TEXT NOT NULL DEFAULT 'active',
-			CONSTRAINT pc_projection_status_valid CHECK (status IN ('active','inactive','deleted'))
-		)`)
-
-	userA, userB := uuid.New(), uuid.New()
-	exec(t, pool, `INSERT INTO pc_projection (pc_id, user_id, name, status) VALUES ($1,$2,'Alice','active')`, uuid.New(), userA)
-	exec(t, pool, `INSERT INTO pc_projection (pc_id, user_id, name, status) VALUES ($1,$2,'Bob','active')`, uuid.New(), userB)
-
-	reality := uuid.New()
-	scrubber := NewPgPerRealityScrubber(func(_ uuid.UUID) (*pgxpool.Pool, error) { return pool, nil })
-	intent := uew.ScrubIntent{RealityID: reality, UserID: userA, EventID: uuid.New(), ErasedAt: time.Unix(0, 0), IssuedAt: time.Unix(0, 0)}
-
-	if err := scrubber.ScrubUserRefs(ctx, intent); err != nil {
-		t.Fatalf("ScrubUserRefs: %v", err)
+// TestPgPerRealityScrubber_SucceedsWithNothingToScrub pins the no-op's contract:
+// a reachable reality is success, not an error. Paired with
+// TestPgPerRealityScrubber_ResolverError below, which pins that an UNREACHABLE
+// reality still fails — the one thing the leg is still responsible for.
+func TestPgPerRealityScrubber_SucceedsWithNothingToScrub(t *testing.T) {
+	called := false
+	scrubber := NewPgPerRealityScrubber(func(_ uuid.UUID) (*pgxpool.Pool, error) {
+		called = true
+		return nil, nil
+	})
+	if err := scrubber.ScrubUserRefs(context.Background(), uew.ScrubIntent{
+		RealityID: uuid.New(), UserID: uuid.New(),
+		ErasedAt: time.Unix(0, 0), IssuedAt: time.Unix(0, 0),
+	}); err != nil {
+		t.Fatalf("ScrubUserRefs must succeed when there is nothing to scrub: %v", err)
 	}
-	// userA's PC scrubbed.
-	var name, status string
-	if err := pool.QueryRow(ctx, `SELECT name, status FROM pc_projection WHERE user_id=$1`, userA).Scan(&name, &status); err != nil {
-		t.Fatalf("query userA: %v", err)
-	}
-	if name != "[erased]" || status != "deleted" {
-		t.Errorf("userA PC not scrubbed: name=%q status=%q", name, status)
-	}
-	// userB untouched.
-	var bName, bStatus string
-	if err := pool.QueryRow(ctx, `SELECT name, status FROM pc_projection WHERE user_id=$1`, userB).Scan(&bName, &bStatus); err != nil {
-		t.Fatalf("query userB: %v", err)
-	}
-	if bName != "Bob" || bStatus != "active" {
-		t.Errorf("userB PC must be untouched: name=%q status=%q", bName, bStatus)
-	}
-	// Idempotent re-run: no error, still scrubbed (the status<>'deleted' guard
-	// makes it a 0-row no-op).
-	if err := scrubber.ScrubUserRefs(ctx, intent); err != nil {
-		t.Fatalf("idempotent re-scrub: %v", err)
+	if !called {
+		t.Error("the reality must still be RESOLVED — an unreachable reality the lookup " +
+			"named is a real failure, and dropping the resolve would hide it")
 	}
 }
 

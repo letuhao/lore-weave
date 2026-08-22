@@ -128,7 +128,7 @@ mod tests {
         // Full SSOT id-set — must match the meta_read_audit query_type CHECK
         // (migration 031); read-audit-query-type-drift-lint enforces CHECK == YAML.
         for id in [
-            "player_index_cross_user",
+            "actor_binding_cross_user",
             "audit_query",
             "admin_bulk_export",
             "bulk_meta_query",

@@ -301,6 +301,56 @@ func TestLoadMatrix_FromCheckedInMatrixYAML(t *testing.T) {
 	}
 }
 
+// E2 — game-server's first OUTBOUND edge, asserted against the checked-in file.
+//
+// Without this the ACL row would be prose: nothing else in the tree loads
+// matrix.yaml and asks it a question, so a row could be renamed, mis-nested
+// under the wrong service, or deleted, and every gate would stay green. The
+// three arms are the three ways it can be wrong — the caller is not allowed,
+// the WRONG caller is allowed, and the principal mode contradicts the RPC.
+func TestCheckedInMatrix_AllowsGameServerToResolveASubject(t *testing.T) {
+	m, err := LoadMatrix(strings.NewReader(mustReadFile(t, "matrix.yaml")))
+	if err != nil {
+		t.Fatalf("LoadMatrix(checked-in matrix.yaml): %v", err)
+	}
+
+	d, rule := m.CheckRPCAllowed("game-server", "world-service-rpcs", "ResolveActorSubject")
+	if !d.IsAllow() {
+		t.Fatalf("game-server must be allowed to resolve its own players' subjects, got %s", d)
+	}
+
+	// requires_user, and it is not a formality: this RPC answers "which actor
+	// does THIS user drive". `system_only` would make CheckPrincipalAllowed
+	// DENY every call that names a user, which is every real call.
+	if rule.PrincipalMode != PrincipalRequiresUser {
+		t.Fatalf("ResolveActorSubject must declare requires_user, got %q", rule.PrincipalMode)
+	}
+	if got := rule.CheckPrincipalAllowed(true); !got.IsAllow() {
+		t.Fatalf("a call carrying a user must be allowed, got %s", got)
+	}
+	if got := rule.CheckPrincipalAllowed(false); got.IsAllow() {
+		t.Fatalf("a call naming NO user has no answer and must be denied, got %s", got)
+	}
+
+	// Non-vacuity. An allow-list that allows everyone is not an allow-list, and
+	// this one exists to say that a service which is not the transport has no
+	// business asking who drives whom.
+	for _, rogue := range []string{"rogue", "api-gateway-bff", "commit-service"} {
+		if d, _ := m.CheckRPCAllowed(rogue, "world-service-rpcs", "ResolveActorSubject"); d.IsAllow() {
+			t.Fatalf("%s must NOT be allowed to resolve subjects, got %s", rogue, d)
+		}
+	}
+
+	// The WRITERS are deliberately not on this surface. game-server may ask who
+	// a user drives; it may not decide it. An RPC row appearing for these later
+	// is a design change, and this arm is where it has to be argued.
+	for _, writer := range []string{"GrantActorControl", "RevokeActorControl", "CreateActor"} {
+		if d, _ := m.CheckRPCAllowed("game-server", "world-service-rpcs", writer); d.IsAllow() {
+			t.Fatalf("game-server must not reach %s, got %s", writer, d)
+		}
+	}
+}
+
 func TestAuditEntry_Validate_Happy(t *testing.T) {
 	uid := uuid.New()
 	entry := AuditEntry{

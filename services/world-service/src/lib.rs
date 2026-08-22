@@ -53,17 +53,25 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+pub mod actor_control_flow;
+pub mod actor_registry;
 pub mod capacity_glue;
 pub mod capacity_planner;
 pub mod db_pool;
 pub mod deprovisioner;
 pub mod embedding_queue;
 pub mod errors;
+pub mod orphan_scan;
+pub mod provision_flow;
 pub mod provisioner;
 pub mod provisioner_live;
 pub mod reality_seeder;
 pub mod rebuild;
 pub mod replay_aggregate;
+pub mod server;
+pub mod space_view;
+pub mod spawn;
+pub mod world_seed;
 
 pub use capacity_glue::{live_snapshot, place_reality, LIVE_STATES};
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
@@ -82,6 +90,14 @@ pub use embedding_queue::live::{
     MetricsAuditWriter, NotWiredProvider, SqlxEmbeddingWriter,
 };
 pub use errors::ProvisionerError;
+// W5 — orphan classification for the reality reaper.
+pub use orphan_scan::{classify as classify_orphans, Finding, RegistryRow, ScanThresholds};
+// WS3 — the end-to-end flow, shared by the `provision` worker and the HTTP
+// surface so neither restates the other (`WS-F1`).
+pub use provision_flow::{
+    EffectsConfig, Registration, SETTLED_STATUSES, existing_registration, place_and_provision,
+    resume_on_registered_shard,
+};
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
 pub use provisioner_live::{BridgeClient, LiveEffects};
 // L5.G cycle 26 — reality seeder + supporting traits.

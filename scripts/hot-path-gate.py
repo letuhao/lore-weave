@@ -96,7 +96,7 @@ import sys
 # rather than reused: a `//` inside a string literal silently ate the code after
 # it. `gatelib.strip_comments` blanks IN PLACE, so line numbers survive.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from gatelib import strip_comments  # noqa: E402
+from gatelib import blank_rust_test_items, strip_comments  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_DIRS = {"target", "node_modules", ".git", "__pycache__", ".claude"}
@@ -228,7 +228,14 @@ def pragma_near(lines: list[str], line_no: int) -> bool:
 def check_source(rel: str, src: str) -> list[tuple[str, int, str]]:
     if not in_scope(rel) or is_test_file(rel):
         return []
-    clean = strip_comments(src, keep_strings=True)
+    # `is_test_file` excludes tests BY PATH, and Rust does not put its unit
+    # tests on a path — it puts them in a `#[cfg(test)] mod` at the bottom of
+    # the `src/` file this gate reads as production. Measured 2026-08-06: a
+    # mirror test indexing `schema["$defs"][…]` raised NINE
+    # `string-keyed-lookup` findings against the island step path, for code
+    # that never runs in a step. Same hole `orphan-model-gate` closed a day
+    # earlier, which is why the stripper is in `gatelib` and not here.
+    clean = strip_comments(blank_rust_test_items(src), keep_strings=True)
     lines = src.split("\n")
     findings: list[tuple[str, int, str]] = []
 

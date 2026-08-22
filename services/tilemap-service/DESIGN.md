@@ -12,7 +12,7 @@
 ### Goal
 
 Land a compiling Rust scaffold for `services/tilemap-service/` that:
-- Mirrors the TMP_001 §2 domain types (ChannelTier, ZoneRole, PassageKind, TileState, TilemapTemplate stub, TilemapView stub) in Rust.
+- Mirrors the TMP_001 §2 domain types (MapKind, ZoneRole, PassageKind, TileState, TilemapTemplate stub, TilemapView stub) in Rust.
 - Defines a blake3-based deterministic seed helper per TMP-A4 (replay-determinism axiom).
 - Defines a stub LLM gateway HTTP client mirroring the `contracts/api/llm-gateway/v1/openapi.yaml` `StreamRequest` shape (types + reqwest client signatures, **no actual network call this session**).
 - Has one compiling smoke test that round-trips a `TilemapView` JSON.
@@ -59,7 +59,7 @@ Workspace layout (single Cargo workspace at repo root; first Rust workspace in t
     │   ├── seed.rs                     (TMP-A4 blake3 seed helper)
     │   └── types/
     │       ├── mod.rs
-    │       ├── channel.rs              (ChannelTier enum + ChannelId newtype stub)
+    │       ├── channel.rs              (MapKind enum + ChannelId newtype stub)
     │       ├── tilemap.rs              (TilemapView struct stub, ZoneRuntime, TileCoord, GridSize)
     │       ├── template.rs             (TilemapTemplate struct stub, ZoneSpec stub, TilemapTemplateId)
     │       ├── zone.rs                 (ZoneRole enum, ZoneEdge, PassageKind enum)

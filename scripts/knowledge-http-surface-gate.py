@@ -47,6 +47,11 @@ import re
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEARCH_DIRS = ("services",)
@@ -97,23 +102,39 @@ def is_test_file(rel: str) -> bool:
     )
 
 
-def scan_file(path: str, rel: str) -> list[tuple[int, str, str]]:
-    if is_test_file(rel) or rel.startswith(ALLOWLIST_PREFIXES) or rel.startswith(EXEMPT_SERVICE_PREFIXES):
-        return []
+def scan_file(path: str, rel: str, prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES):
+    """Return (violations, n_subjects, allow_used).
+
+    `n_subjects` counts EVERY reference to a KAL-covered endpoint, owner-side
+    included — this gate's reach is its DETECTOR, not its walk. Rename or
+    restructure those routes and the pattern matches nothing anywhere, which
+    exits 0 in the same bytes as compliance (BDR-82). Measured 2026-08-12: 8
+    references, all 8 inside the exempt owning services."""
+    subjects = 0
+    allow_used: set[str] = set()
     out: list[tuple[int, str, str]] = []
+    matched_prefix = next((pf for pf in prefixes if rel.startswith(pf)), None)
+    exempt_owner = rel.startswith(EXEMPT_SERVICE_PREFIXES)
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             for n, line in enumerate(fh, 1):
-                if KAL_COVERED.search(line):
-                    out.append((n, rel, line.strip()[:160]))
+                if not KAL_COVERED.search(line):
+                    continue
+                subjects += 1
+                if is_test_file(rel) or exempt_owner:
+                    continue
+                if matched_prefix is not None:
+                    allow_used.add(matched_prefix)
+                    continue
+                out.append((n, rel, line.strip()[:160]))
     except OSError:
         pass
-    return out
+    return out, subjects, allow_used
 
 
-def iter_full_scan():
-    for d in SEARCH_DIRS:
-        root = os.path.join(REPO_ROOT, d)
+def iter_full_scan(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS):
+    for d in search_dirs:
+        root = os.path.join(repo_root, d)
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
@@ -121,7 +142,7 @@ def iter_full_scan():
             for fn in filenames:
                 if fn.endswith(SCAN_EXTS):
                     full = os.path.join(dirpath, fn)
-                    yield full, os.path.relpath(full, REPO_ROOT).replace("\\", "/")
+                    yield full, os.path.relpath(full, repo_root).replace("\\", "/")
 
 
 def iter_staged():
@@ -129,8 +150,9 @@ def iter_staged():
         out = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
             cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            timeout=GIT_TIMEOUT_S,
         ).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return
     for rel in out.splitlines():
         rel = rel.strip().replace("\\", "/")
@@ -140,26 +162,151 @@ def iter_staged():
                 yield full, rel
 
 
-def main() -> int:
-    staged = "--staged" in sys.argv
-    it = iter_staged() if staged else iter_full_scan()
+def check(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS,
+          prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES, staged: bool = False) -> int:
+    """The REAL checker, parameterised so `--self-test` can drive it over a
+    synthetic tree instead of re-implementing its rules."""
+    it = iter_staged() if staged else iter_full_scan(repo_root, search_dirs)
     violations: list[tuple[int, str, str]] = []
+    subjects = 0
+    allow_used: set[str] = set()
+    n_files = 0
     for full, rel in it:
-        violations.extend(scan_file(full, rel))
+        n_files += 1
+        v, sub, used = scan_file(full, rel, prefixes)
+        violations.extend(v)
+        subjects += sub
+        allow_used |= used
 
-    if not violations:
-        print("[knowledge-http-surface-gate] PASS — no consumer hits the owning services' "
-              "bi-temporal knowledge /internal endpoints (read them through the KAL)")
+    problems: list[str] = []
+    if not staged:
+        # ── SUBJECT FLOOR (GT-F3). Not a file count: zero files implies zero
+        # subjects, so a file floor would be strictly shadowed by this one. What
+        # can actually go wrong is the ROUTE SHAPE changing under the pattern.
+        if subjects == 0:
+            print(f"[knowledge-http-surface-gate] ERROR — {n_files} file(s) scanned and NOT ONE "
+                  f"references a KAL-covered /internal endpoint, not even the owning services "
+                  f"that serve them. The detector has no subject, so its silence proves "
+                  f"nothing.", file=sys.stderr)
+            return 2
+        # ── SHRINK ARM (GT-F5).
+        for pref in prefixes:
+            if pref not in allow_used:
+                problems.append(
+                    f"ALLOWLIST_PREFIXES entry {pref!r} suppressed nothing in this tree — it "
+                    f"exempts no read today and would exempt every one under that path the day "
+                    f"one appears.")
+
+    if not violations and not problems:
+        print(f"[knowledge-http-surface-gate] PASS — no consumer hits the owning services' "
+              f"bi-temporal knowledge /internal endpoints ({n_files} file(s); {subjects} "
+              f"covered-endpoint reference(s), all owner-side; {len(prefixes)} allowlisted)")
         return 0
 
-    print("[knowledge-http-surface-gate] FAIL — INV-KAL HTTP-surface violations "
-          "(read bi-temporal knowledge through the KAL, not the owning service's /internal route):\n")
-    for n, rel, line in violations:
-        print(f"  [kal-covered-internal-read] {rel}:{n}\n      {line}")
-    print("\nFix: call KNOWLEDGE_GATEWAY_URL /v1/kal/... (get_facts / get_canonical / timeline / "
-          "list_attr_values / search / neighborhood / retrieve) instead of the owning service's "
-          "/internal/* route.")
+    if violations:
+        print("[knowledge-http-surface-gate] FAIL — INV-KAL HTTP-surface violations "
+              "(read bi-temporal knowledge through the KAL, not the owning service's "
+              "/internal route):\n")
+        for n, rel, line in violations:
+            print(f"  [kal-covered-internal-read] {rel}:{n}\n      {line}")
+        print("\nFix: call KNOWLEDGE_GATEWAY_URL /v1/kal/... (get_facts / get_canonical / "
+              "timeline / list_attr_values / search / neighborhood / retrieve) instead of the "
+              "owning service's /internal/* route.")
+    for pr in problems:
+        print(f"[knowledge-http-surface-gate] FAIL — {pr}")
     return 1
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+# Every probe tree carries an owner-side reference, so the subject floor stays
+# quiet and each case below tests exactly one rule.
+OWNER_ROUTE = 'ROUTE = "/internal/books/{book}/entities/{eid}/facts"\n'
+
+
+def self_test() -> int:
+    import contextlib
+    import io
+    import tempfile
+
+    failures = 0
+
+    def probe(name: str, want: int, files: dict[str, str], *,
+              prefixes: tuple[str, ...] = (), seed: bool = True) -> None:
+        nonlocal failures
+        with tempfile.TemporaryDirectory() as d:
+            if seed:
+                files = {"services/glossary-service/routes.py": OWNER_ROUTE, **files}
+            for rel, body in files.items():
+                full = os.path.join(d, *rel.split("/"))
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            os.makedirs(os.path.join(d, "services"), exist_ok=True)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    got = check(d, ("services",), prefixes)
+            except Exception as e:  # noqa: BLE001 - a crash is what this asserts against
+                failures += 1
+                print(f"  FAIL {name}: raised {type(e).__name__}: {e} — it must return a code")
+                return
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: rc={got} (want {want})")
+
+    print("knowledge-http-surface-gate --self-test")
+
+    probe("an owner-side route definition passes", 0, {})
+
+    # each covered endpoint, from a consumer
+    for frag, label in (
+        ("entities/e1/facts", "facts"),
+        ("entities/e1/canonical-snapshot", "canonical-snapshot"),
+        ("entities/e1/timeline", "timeline"),
+        ("entities/e1/attr-values", "attr-values"),
+        ("entities/search", "entities/search"),
+        ("kg/neighborhood", "kg/neighborhood"),
+        ("retrieve", "retrieve"),
+    ):
+        probe(f"a consumer calling {label} fails", 1, {
+            "services/other/client.py": f'URL = "/internal/books/b1/{frag}"\n'})
+
+    # …and the shapes that must NOT cry wolf
+    probe("...but the authored entities LIST endpoint is not covered", 0, {
+        "services/other/client.py": 'URL = "/internal/books/b1/entities"\n'})
+    probe("...nor the KAL's own /v1/kal route", 0, {
+        "services/other/client.py": 'URL = "/v1/kal/facts"\n'})
+    probe("...nor a test file", 0, {
+        "services/other/tests/t.py": 'URL = "/internal/books/b1/retrieve"\n'})
+    probe("...nor the KAL federator itself", 0, {
+        "services/knowledge-gateway/fed.py": 'URL = "/internal/books/b1/retrieve"\n'})
+
+    # allowlist + shrink arm
+    probe("an ALLOWLISTED prefix suppresses the read", 0, {
+        "services/other/legacy/c.py": 'URL = "/internal/books/b1/retrieve"\n'},
+        prefixes=("services/other/legacy/",))
+    probe("...but a prefix that suppresses nothing fails", 1, {},
+          prefixes=("services/ghost/",))
+
+    # the subject floor
+    probe("a tree with NO covered-endpoint reference is misuse", 2, {
+        "services/other/main.py": "x = 1\n"}, seed=False)
+
+    if failures:
+        print(f"knowledge-http-surface-gate --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("knowledge-http-surface-gate --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
+    rc = self_test()
+    if rc:
+        return rc
+    print()
+    return check(staged="--staged" in sys.argv)
 
 
 if __name__ == "__main__":

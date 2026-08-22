@@ -21,7 +21,10 @@ SCOPE -- DEFAULT-COVERED ON PURPOSE (NV-3). This gate does not carry a list of f
 watches; it watches everything staged whose suffix is text, minus the subject-matter
 allowlist below. A doc created tomorrow in a directory nobody thought of is covered.
 
-ADDED LINES ONLY. Measured 2026-07-31: 468 of 1962 tracked docs already contain Vietnamese.
+ADDED LINES ONLY. Measured 2026-07-31: 468 of 1962 tracked ``.md`` docs already contain
+Vietnamese (re-measured 2026-08-10: 480 of 2218 — essentially flat, tracking new docs).
+Note the denominator: ``--all`` reports over EVERY text suffix, not just markdown, so it
+prints a much larger pair (995 of 10821 on the same day). Two measurements, two subjects.
 Blocking on file contents would make every touch of a legacy doc uncommittable and the gate
 would be switched off within a day. So --staged reads the diff and judges only lines this
 commit ADDS. Legacy text is reported by --all as a baseline, never as a failure.
@@ -142,7 +145,19 @@ def _git(*args: str) -> str:
 
 def staged_findings() -> tuple[list[tuple[str, int, str, str]], int, list[str]]:
     """(findings, files_scanned, bad_pragmas) over ADDED lines in the staged diff."""
-    diff = _git("diff", "--cached", "-U0", "--no-color", "--diff-filter=ACMR")
+    return parse_diff(_git("diff", "--cached", "-U0", "--no-color", "--diff-filter=ACMR"))
+
+
+def parse_diff(diff: str) -> tuple[list[tuple[str, int, str, str]], int, list[str]]:
+    """The judging itself, over a unified diff — separated from `git` so it can be
+    PROVEN on a synthetic diff.
+
+    Everything interesting about this gate lives here and nowhere else: which
+    files are in scope, that only ADDED lines are judged, that a block pragma
+    suppresses until its `end`, and that a pragma with no reason is itself a
+    finding. While this was welded to `subprocess`, none of it could be checked
+    without staging a real commit — so in practice none of it was.
+    """
     findings: list[tuple[str, int, str, str]] = []
     bad_pragmas: list[str] = []
     scanned: set[str] = set()
@@ -213,13 +228,139 @@ def baseline() -> tuple[int, int]:
     return hits, total
 
 
+def _diff(rel: str, *added: str) -> str:
+    """A minimal unified diff adding `added` at line 1 of `rel`."""
+    body = "".join(f"{ln}\n" for ln in added)
+    return f"--- a/{rel}\n+++ b/{rel}\n@@ -0,0 +1,{len(added)} @@\n{body}"
+
+
+def self_test() -> int:
+    """Prove this gate goes RED, and — just as much — that it stays QUIET.
+
+    A language gate's failure mode is not only missing a fragment; it is crying
+    wolf on ordinary English technical prose and getting switched off within a
+    day. So every detection arm here has a twin that must come back clean, and
+    the accented-English arm (`Soufflé`, `naïve`, `café`, `Gödel` — all words
+    this repo actually uses) is the one that keeps the gate alive.
+
+    The scope arms matter for the opposite reason. This gate is
+    **default-covered** by design (`NV-3`): it carries no list of watched files.
+    That property is only real if the suffix set and the subject-matter
+    allowlist behave, so both are checked in both directions rather than
+    assumed from a green run.
+    """
+    fails: list[str] = []
+    arms = {"red": 0, "clean": 0}
+
+    # doc-language-gate: ok -- these fixtures ARE Vietnamese by necessity: a gate
+    # that detects Vietnamese cannot be tested with English. Scope is the four
+    # literals below, each used only as synthetic input to `judge_line`.
+    VN_DIACRITIC = "Người dùng phải xác nhận trước khi ghi"
+    VN_NO_DIACRITIC = "nguoi dung khong duoc sua cua nguoi khac"
+    VN_TWO_STOPWORDS = "the cua field and the phai flag are unrelated"
+    # doc-language-gate: end
+
+    # ── judge_line: fires, and does not cry wolf ──────────────────────────────
+    def judge(label: str, line: str, expect: bool) -> None:
+        arms["red" if expect else "clean"] += 1
+        got = judge_line(line) is not None
+        if got is not expect:
+            fails.append(f"judge_line({label}) returned {got}, want {expect}")
+
+    judge("Vietnamese with diacritics", VN_DIACRITIC, True)
+    judge("Vietnamese typed without diacritics", VN_NO_DIACRITIC, True)
+    judge("an English line with two coincidental hits", VN_TWO_STOPWORDS, False)
+    judge("accented ENGLISH technical prose",
+          "The Soufflé engine is a naïve café-scale Gödel numbering", False)
+    judge("plain English", "Every persisted artifact is written in English.", False)
+    judge("CJK, which this gate does not police",
+          "The glossary keeps 築基 and 靈石 as domain terms.", False)
+
+    # ── parse_diff: scope, added-lines-only, and the escape hatch ─────────────
+    def diffcheck(label: str, diff: str, n_find: int, n_bad: int = 0) -> None:
+        arms["red" if (n_find or n_bad) else "clean"] += 1
+        found, _, bad = parse_diff(diff)
+        if len(found) != n_find or len(bad) != n_bad:
+            fails.append(
+                f"parse_diff({label}): {len(found)} finding(s) + {len(bad)} bad pragma(s), "
+                f"want {n_find} + {n_bad}")
+
+    diffcheck("a doc adding a Vietnamese line",
+              _diff("docs/x.md", "+" + VN_DIACRITIC), 1)
+    diffcheck("the same line REMOVED, not added",
+              _diff("docs/x.md", "-" + VN_DIACRITIC), 0)
+    diffcheck("the same line under /fixtures/",
+              _diff("tests/fixtures/x.md", "+" + VN_DIACRITIC), 0)
+    diffcheck("the same line in a non-text suffix",
+              _diff("docs/x.png", "+" + VN_DIACRITIC), 0)
+    # THE MARKERS BELOW ARE SYNTHESISED, NOT WRITTEN LITERALLY, and that is not
+    # style. **This file is scanned by this gate.** A literal
+    # `<!-- doc-language-gate: ok -->` sitting here as test INPUT is
+    # indistinguishable, to the scanner reading this file's own diff, from a real
+    # reasonless exemption — and the pre-commit hook duly reported one, at the
+    # line of the arm written to prove reasonless pragmas are caught. Neither the
+    # self-test (which feeds `parse_diff` synthetic diffs) nor the full sweep nor
+    # /review-impl saw it, because only the real `--staged` path scans THIS file.
+    #
+    # Composing the marker from `_MARK` keeps the source text off the pattern
+    # while the fixture the test actually runs is byte-identical. Same rule as
+    # `gate-teeth-gate` refusing to certify itself: a gate must never be its own
+    # witness, and that includes its test data.
+    _MARK = "doc-language-gate"
+    ok_reason = f"<!-- {_MARK}: ok -- verbatim corpus excerpt below -->"
+    ok_bare = f"<!-- {_MARK}: ok -->"
+    blk_end = f"<!-- {_MARK}: end -->"
+
+    diffcheck("an inline pragma with a reason",
+              _diff("docs/x.md",
+                    "+" + VN_DIACRITIC + f" <!-- {_MARK}: ok -- cited PO span -->"), 0)
+    diffcheck("a block pragma with a reason",
+              _diff("docs/x.md", "+" + ok_reason, "+" + VN_DIACRITIC, "+" + blk_end), 0)
+    # The block must CLOSE. A fragment after `end` is covered again — otherwise
+    # one opened block silences the rest of the file.
+    diffcheck("a fragment AFTER the block closes",
+              _diff("docs/x.md", "+" + ok_reason, "+" + VN_DIACRITIC, "+" + blk_end,
+                    "+" + VN_DIACRITIC), 1)
+    # NV-5: an escape hatch that cannot say why is a silencer, and this gate's
+    # own docstring names that shape. It must be a finding, not a free pass.
+    diffcheck("a block pragma with NO reason",
+              _diff("docs/x.md", "+" + ok_bare, "+" + VN_DIACRITIC), 0, 1)
+
+    # ── reach: is the baseline walk pointed at the repository? ────────────────
+    hits, total = baseline()
+    if total < 500:
+        fails.append(
+            f"the baseline walk scanned only {total} tracked text file(s) (floor 500). "
+            f"Either `git ls-files` returned nothing or the suffix set stopped matching — "
+            f"both report a clean repository indistinguishably from a healthy one.")
+    if hits < 1:
+        fails.append(
+            f"the baseline found Vietnamese in {hits} file(s). Measured 2026-07-31 there "
+            f"were 468 legacy files; zero means the DETECTOR is reading nothing, not that "
+            f"the repository was swept.")
+
+    for f in fails:
+        print(f"FAIL: {f}", file=sys.stderr)
+    if fails:
+        return 1
+    print(f"doc-language-gate: self-test OK -- {arms['red']} arm(s) go RED, {arms['clean']} "
+          f"stay clean on accented English / CJK / removed lines / subject-matter paths; "
+          f"baseline walk reaches {total} tracked file(s), {hits} with legacy Vietnamese.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--self-test", action="store_true",
+                    help="prove the detectors red on synthetic input and the walk has reach")
     ap.add_argument("--staged", action="store_true",
                     help="judge only lines ADDED by the staged diff (pre-commit mode)")
     ap.add_argument("--all", action="store_true",
                     help="report the legacy baseline across tracked files; never blocks")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if args.all or not args.staged:
         hits, total = baseline()

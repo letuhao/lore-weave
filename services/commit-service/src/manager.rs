@@ -64,7 +64,18 @@ pub struct Managed {
 
 pub struct Manager {
     pool: Arc<PgPool>,
-    reality_id: Uuid,
+    /// `3E` — a VERIFIED reality, not a raw uuid.
+    ///
+    /// The whole point of `dp::RealityId` is that it cannot be forged: the only
+    /// way to hold one is to have been handed it by `SessionContext::bind`,
+    /// which got it from a control plane that confirmed the reality exists and
+    /// accepts commands. A `Uuid` here was a value this process asserted about
+    /// itself — and this struct is the WRITER, so an unverified reality means
+    /// writing events into a world that may be frozen, archived, or absent.
+    ///
+    /// `.as_uuid()` at each SQL boundary below is not ceremony: it is the one
+    /// place the verified value becomes a bind parameter, and it is greppable.
+    reality_id: dp::RealityId,
     /// Stable identity for this process, minted once. Renew and release are
     /// scoped to it, so two managers in one process would be indistinguishable
     /// at the DB — hence one per process, not one per island.
@@ -74,7 +85,7 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(pool: Arc<PgPool>, reality_id: Uuid) -> Self {
+    pub fn new(pool: Arc<PgPool>, reality_id: dp::RealityId) -> Self {
         Self {
             pool,
             reality_id,
@@ -127,9 +138,9 @@ impl Manager {
             });
         }
 
-        let ch = ChannelId(channel);
+        let ch = ChannelId::unverified(channel);
         let Some(lease) =
-            claim_writer_lease(&self.pool, self.reality_id, ch, self.holder, self.ttl_secs)
+            claim_writer_lease(&self.pool, self.reality_id.as_uuid(), ch, self.holder, self.ttl_secs)
                 .await
                 .map_err(unwrap_db)?
         else {
@@ -143,7 +154,7 @@ impl Manager {
         let at = island.tick_now();
         seed_seen(&mut island, &recovery.seen_input_ids, at);
 
-        let writer = ChannelWriter::new(self.pool.clone(), self.reality_id, lease.lease);
+        let writer = ChannelWriter::new(self.pool.clone(), self.reality_id.as_uuid(), lease.lease);
         let out = AdoptOutcome::Adopted {
             recovered_ids: recovery.seen_input_ids.len(),
             turn_number: recovery.turn_number,
@@ -162,7 +173,7 @@ impl Manager {
     pub async fn renew_all(&mut self) -> Result<Vec<i64>, sqlx::Error> {
         let mut lost = Vec::new();
         for (channel, managed) in &self.islands {
-            let ok = renew_writer_lease(&self.pool, self.reality_id, managed.lease, self.ttl_secs)
+            let ok = renew_writer_lease(&self.pool, self.reality_id.as_uuid(), managed.lease, self.ttl_secs)
                 .await
                 .map_err(unwrap_db)?;
             if !ok {
@@ -198,7 +209,7 @@ impl Manager {
         let Some(managed) = self.islands.remove(&channel) else {
             return Ok(false);
         };
-        release_writer_lease(&self.pool, self.reality_id, managed.lease)
+        release_writer_lease(&self.pool, self.reality_id.as_uuid(), managed.lease)
             .await
             .map_err(unwrap_db)
     }

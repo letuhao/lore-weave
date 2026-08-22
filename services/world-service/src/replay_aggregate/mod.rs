@@ -207,13 +207,15 @@ mod tests {
 
     #[test]
     fn temp_shadow_ddl_qualifies_public_and_validates_table() {
-        let sql = temp_shadow_ddl("pc_projection").unwrap();
+        let sql = temp_shadow_ddl("canon_projection").unwrap();
         assert_eq!(
             sql,
-            "CREATE TEMP TABLE pc_projection (LIKE public.pc_projection INCLUDING ALL)"
+            "CREATE TEMP TABLE canon_projection (LIKE public.canon_projection INCLUDING ALL)"
         );
         assert!(temp_shadow_ddl("reality_registry").is_err());
-        assert!(temp_shadow_ddl("pc_projection; DROP TABLE x").is_err());
+        assert!(temp_shadow_ddl("region_projection; DROP TABLE x").is_err());
+        // ...and the removed vocabulary must not be re-admitted by accident.
+        assert!(temp_shadow_ddl("region_projection").is_err()); // dropped by 0018
     }
 
     #[test]
@@ -236,25 +238,32 @@ mod tests {
 
     #[test]
     fn payload_select_strips_all_meta_keys_and_casts_pk_to_text() {
-        let sql = payload_select_sql("pc_inventory_projection", &["pc_id", "item_code"]).unwrap();
+        // A two-column pk arg, so the $1/$2 binding is exercised. NOTE this is now
+        // SYNTHETIC: `canon_projection`'s real PK is one column, and it is the only
+        // projection left after `0018`. `payload_select_sql` takes its pk columns as
+        // a parameter and does not consult the DDL, so the multi-binding path stays
+        // reachable — but nothing in the schema exercises it any more, and that is
+        // stated rather than left for someone to assume otherwise.
+        let sql = payload_select_sql("canon_projection", &["canon_entry_id", "book_id"])
+            .unwrap();
         for k in META_KEYS {
             assert!(
                 sql.contains(&format!(" - '{k}'")),
                 "missing meta strip {k}: {sql}"
             );
         }
-        assert!(sql.contains("FROM pc_inventory_projection t"), "{sql}");
-        assert!(sql.contains("t.pc_id::text = $1"), "{sql}");
-        assert!(sql.contains("t.item_code::text = $2"), "{sql}");
+        assert!(sql.contains("FROM canon_projection t"), "{sql}");
+        assert!(sql.contains("t.canon_entry_id::text = $1"), "{sql}");
+        assert!(sql.contains("t.book_id::text = $2"), "{sql}");
         assert!(sql.trim_end().ends_with("LIMIT 1"), "{sql}");
     }
 
     #[test]
     fn payload_select_rejects_unknown_table_and_unsafe_pk() {
-        assert!(payload_select_sql("not_a_table", &["pc_id"]).is_err());
-        assert!(payload_select_sql("pc_projection", &[]).is_err());
-        assert!(payload_select_sql("pc_projection", &["pc_id; DROP TABLE x"]).is_err());
-        assert!(payload_select_sql("pc_projection", &["PcId"]).is_err()); // uppercase rejected
+        assert!(payload_select_sql("not_a_table", &["canon_entry_id"]).is_err());
+        assert!(payload_select_sql("canon_projection", &[]).is_err());
+        assert!(payload_select_sql("canon_projection", &["id; DROP TABLE x"]).is_err());
+        assert!(payload_select_sql("canon_projection", &["CanonId"]).is_err()); // uppercase rejected
     }
 
     #[test]

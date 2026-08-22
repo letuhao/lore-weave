@@ -1,0 +1,20 @@
+# The DIFFERENTIAL against fixtures/dp_kernel.
+#
+# Same package NAME, same source, same dependency. The ONLY difference is that
+# this manifest has no `[package.metadata.dp] dp-crate = true`. It must lint
+# RED where its twin lints green.
+#
+# This exists because the exemption used to be a hardcoded list of crate NAMES
+# inside the lint, and `fixtures/dp_kernel` was exempt because of what it was
+# called. That made the self-test's "exempts the data plane" leg pass for the
+# wrong reason: the marker in the manifest was decoration, and deleting it
+# would have changed nothing. A pair that differs only in the marker is what
+# makes the marker the thing under test.
+[package]
+name = "dp_kernel"
+version = "0.0.0"
+edition = "2021"
+publish = false
+[workspace]
+[dependencies]
+sqlx = { version = "0.8", default-features = false, features = ["postgres"] }

@@ -235,17 +235,17 @@ pub trait ConnectionWriter {
     type Tx: TransactionExecutor;
 
     /// Start a fresh transaction. On success returns `(tx, commit, rollback)`.
-    fn begin_tx(
-        &mut self,
-    ) -> Result<
-        (
-            Self::Tx,
-            Box<dyn FnOnce() -> Result<(), MetaError> + Send>,
-            Box<dyn FnOnce() -> Result<(), MetaError> + Send>,
-        ),
-        MetaError,
-    >;
+    fn begin_tx(&mut self) -> Result<(Self::Tx, TxFinish, TxFinish), MetaError>;
 }
+
+/// A one-shot transaction terminator — `commit` or `rollback`.
+///
+/// Named rather than written inline three times: `clippy::type_complexity`
+/// refused the inline form, and it was right that the signature was unreadable.
+/// Both terminators have the same shape by construction — each consumes itself,
+/// takes nothing, and reports only whether it succeeded — so one alias is
+/// honest rather than a convenience that hides a difference.
+pub type TxFinish = Box<dyn FnOnce() -> Result<(), MetaError> + Send>;
 
 /// SQL builder. Decouples the library from any specific driver dialect.
 pub trait QueryBuilder {

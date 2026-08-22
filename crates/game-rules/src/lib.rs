@@ -31,8 +31,11 @@
 //!
 //! ## Determinism, restated because it is the reason for all of the above
 //!
-//! Every law is integer-only (DF7-A4), reads no ambient randomness (rolls are
-//! derived per-coordinate — see [`combat`]), and touches no clock. Same inputs,
+//! Every law here is integer-only — not because DF7-A4 bans float (revised
+//! 2026-08-02: it does not; it requires one byte representation per value),
+//! but because these numbers are integers on a fixed scale and fixed-point is
+//! the representation that fits them. A law reads no ambient randomness (rolls
+//! are derived per-coordinate — see [`combat`]) and touches no clock. Same inputs,
 //! byte-identical outputs, on any machine — which is what makes replaying a
 //! committed encounter a recovery model instead of a hope.
 

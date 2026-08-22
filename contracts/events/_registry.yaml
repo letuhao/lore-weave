@@ -59,6 +59,60 @@ events:
     owner: commit-service
 
   # ────────────────────────────────────────────────────────────────────
+  # channel.* — per-channel timeline primitives (DP-Ch21)
+  # ────────────────────────────────────────────────────────────────────
+  - name: channel.turn_boundary
+    aggregate: channel
+    versions: [1]
+    active_version: 1
+    go_struct: TurnBoundaryV1
+    description: A channel's turn counter advanced by one; every member sees it in the channel's total order (DP-Ch21). NOT the dp-kernel TurnContext request lifecycle.
+    shipped_cycle: 8
+    owner: dp
+
+  # ────────────────────────────────────────────────────────────────────
+  # turn.* — island resolution outcomes (sim-core Outcome, DP-A17)
+  # ────────────────────────────────────────────────────────────────────
+  - name: turn.resolved
+    aggregate: combat_session
+    versions: [1]
+    active_version: 1
+    go_struct: TurnResolvedV1
+    description: An admitted proposal was resolved by the island; the resulting domain events are committed and the turn ADVANCES (DP-A17 — only an Applied resolution consumes it). Written by the live spine since S3b, read by game-server turnOutcome.ts; registered by DF5, which found it absent.
+    shipped_cycle: 8
+    owner: commit-service
+
+  - name: turn.discarded
+    aggregate: combat_session
+    versions: [1]
+    active_version: 1
+    go_struct: TurnResolvedV1
+    description: The island refused an admitted proposal at resolution; carries discard_reason and does NOT advance the turn. Shares TurnResolvedV1 with its two siblings — same subject, different populated fields.
+    shipped_cycle: 8
+    owner: commit-service
+
+  - name: turn.buffered
+    aggregate: combat_session
+    versions: [1]
+    active_version: 1
+    go_struct: TurnResolvedV1
+    description: The island held an admitted proposal for a later tick; neither events nor discard_reason is populated, and the turn does not advance.
+    shipped_cycle: 8
+    owner: commit-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # proposal.* — admission outcomes (CS-A4)
+  # ────────────────────────────────────────────────────────────────────
+  - name: proposal.rejected
+    aggregate: combat_session
+    versions: [1]
+    active_version: 1
+    go_struct: ProposalRejectedV1
+    description: A submitted proposal was refused by admission; the refusal is COMMITTED to the channel rather than merely logged (CS-A4), and does NOT advance the turn (EVT-V4). Written by the live spine and read by two projectors since S3b; registered by DFO-4, which found it absent.
+    shipped_cycle: 8
+    owner: commit-service
+
+  # ────────────────────────────────────────────────────────────────────
   # npc.* — NPC behavior + utterances
   # ────────────────────────────────────────────────────────────────────
   - name: npc.said

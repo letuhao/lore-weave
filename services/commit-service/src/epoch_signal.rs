@@ -77,9 +77,16 @@ pub fn signal_group(reality_id: &str, channel: i64) -> String {
 /// needs, and a second implementation of it is a second place for those rules to
 /// be got subtly wrong.
 ///
-/// `block_ms: 0` NEVER blocks. The proposal fetch already owns the loop's
-/// latency; blocking here would add this timeout to every idle iteration for a
-/// stream that is empty almost always.
+/// `block_ms: 0` NEVER blocks — see [`crate::bus::BusConfig::read_options`],
+/// which omits the argument rather than sending `BLOCK 0` (the server reads
+/// that as *wait forever*). The intent below was always right and was wrong in
+/// effect for the whole life of `DFO-7`: this rail is the FIRST read of the
+/// spine's loop, so *"never blocks"* silently meant the binary never got past
+/// iteration one.
+///
+/// The reason for `0` stands unchanged: the proposal fetch already owns the
+/// loop's latency, and blocking here would add this timeout to every idle
+/// iteration for a stream that is empty almost always.
 pub async fn connect_signal_bus(
     redis_url: &str,
     reality_id: &str,
@@ -186,7 +193,11 @@ pub fn is_malformed_for_us(msg: &BusMessage, reality_id: &str) -> bool {
 pub struct PendingSwitch {
     pub from_epoch: RulesetEpoch,
     pub to_epoch: RulesetEpoch,
-    pub rules: std::sync::Arc<ruleset_core::Ruleset>,
+    /// **`M1`** — the RESOLVED rules, not the raw ruleset. An epoch switch to a
+    /// reality that leaves an engine role unbound is refused HERE, before the
+    /// switch is submitted: the island would otherwise adopt rules under which a
+    /// law has no number, and the symptom would be an encounter that cannot end.
+    pub rules: std::sync::Arc<crate::domain::RealityRules>,
     pub digest: String,
     pub authorised_by: String,
 }
@@ -223,10 +234,12 @@ pub fn reconcile(
     if to <= island_epoch {
         return Ok(None);
     }
+    let resolved = crate::domain::RealityRules::resolve(rules)
+        .map_err(|e| anyhow::anyhow!("reality {reality_id} epoch {} is unrunnable: {e}", binding.epoch))?;
     Ok(Some(PendingSwitch {
         from_epoch: island_epoch,
         to_epoch: to,
-        rules: std::sync::Arc::new(rules),
+        rules: std::sync::Arc::new(resolved),
         digest: binding.digest.clone(),
         authorised_by: authorised_by(reality_id, binding.epoch),
     }))

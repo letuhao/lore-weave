@@ -15,7 +15,22 @@ x-build-labels: &build-labels
 services:
   postgres:
     restart: unless-stopped
-    image: postgres:18-alpine
+    # Postgres 18 + pgvector, built from THIS image's own pg_config.
+    #
+    # Was `postgres:18-alpine`, which has no pgvector — so `0008_pgvector_setup`
+    # could not apply, and once the provisioner began applying the whole manifest
+    # it died at migration 8 of 15 on every new reality (`1b14-05`).
+    #
+    # NOT `pgvector/pgvector:pg18`, which is Debian/glibc: this data directory is
+    # a persistent volume holding 139 databases created by a MUSL build, and
+    # Postgres resolves text collation through libc. Swapping the libc under an
+    # existing PGDATA changes the sort order behind every text index without
+    # changing the data — indexes stop matching and raise nothing. See
+    # `postgres-pgvector.Dockerfile` for why the Alpine package is not it either.
+    build:
+      context: .
+      dockerfile: postgres-pgvector.Dockerfile
+    image: loreweave/postgres-pgvector:18
     # The local stack has 22 per-service databases and its steady-state pools
     # already consume about 90 client slots. Keep enough headroom for a cold
     # Compose start rather than falling back to Postgres's 100-slot default.
@@ -30,6 +45,24 @@ services:
       PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "5555:5432"
+    # SHARD IDENTITY. `reality_registry.db_host` records which Postgres server a
+    # reality's database lives on, and its CHECK requires
+    # `^pg-shard-[0-9]+\.(internal|prod|staging)$`. The dev host is `postgres`,
+    # so the registry rejected the only environment that exists.
+    #
+    # An ALIAS rather than a widened constraint: `pg-shard-0.internal` genuinely
+    # RESOLVES inside the compose network, so `db_host` stays a real connectable
+    # host and the constraint stays honest. Dev then has the same shape as prod
+    # with one shard instead of many.
+    #
+    # Sharding is RESERVED, not built (PO 2026-08-08): one reality lives in one
+    # database on one server today. `ShardId`, `shard_utilization` and
+    # `capacity_planner::pick_shard` already model the multi-shard future; this
+    # is simply its first and only member.
+    networks:
+      default:
+        aliases:
+          - pg-shard-0.internal
     volumes:
       - loreweave_pg:/var/lib/postgresql
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -92,6 +125,167 @@ services:
     ports:
       - "1148:1025"
       - "8148:8025"
+
+  # ── META BRIDGE ──────────────────────────────────────────────────────────
+  # The Rust->Go meta-write bridge. `reality_registry` may only be written
+  # through Go MetaWrite so the `meta_write_audit` row lands in the SAME
+  # transaction (I8) -- world-service states it as a rule: "Rust cannot write
+  # reality_registry directly."
+  #
+  # Added 2026-08-08. It had no Dockerfile and appeared in no compose file, so
+  # the provisioner's FIRST step could never run -- which is why zero realities
+  # have ever existed in this stack.
+  # W5-CRON — something that actually runs the reality reaper.
+  #
+  # The row it closes reads "nothing schedules the scanner -- it is a binary
+  # nobody runs", and notes that a detector nobody invokes is the scaffold
+  # problem one level up. So this is a running container, not a schedule
+  # document.
+  #
+  # It RECORDS findings into orphan_scan_finding through the bridge; it never
+  # drops a database. Reclaiming a reality stays a double-approval admin
+  # command (R13 §12L.5).
+  orphan-scanner:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile.orphan-scanner
+    image: loreweave/orphan-scanner:0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    environment:
+      ORPHAN_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      ORPHAN_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      ORPHAN_SHARD_HOST: pg-shard-0.internal
+      ORPHAN_BRIDGE_URL: http://meta-bridge:8090
+      ORPHAN_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Hourly in dev. R04 §12D.7 specifies a NIGHTLY cron in production; an
+      # hour here means a developer who breaks a provision sees it the same
+      # session instead of the next day.
+      ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
+    restart: unless-stopped
+
+  # ── `G1` (2026-08-21) — the publisher: committed event → the wire.
+  #
+  # `pkg/redisemit` XADDs to `lw.events.<reality_id>`, which is exactly the
+  # stream `ChannelRoom.streamFor()` consumes. It had no Dockerfile and no
+  # compose entry, so the room subscribed to a stream with no writer and a
+  # browser rendered an empty roster with nothing anywhere reporting why.
+  # `Dockerfile.bridge` records the identical defect one service over.
+  #
+  # SHARD_DB_SSLMODE=disable is REQUIRED here and not a preference: the default
+  # is `require`, and the dev postgres image serves no TLS, so a publisher
+  # without this line connects to nothing and says only that it could not.
+  #
+  # PUBLISHER_SHARD_HOST_OVERRIDE exists because `reality_registry.db_host` is a
+  # LOGICAL shard name — a CHECK pins it to `pg-shard-N.internal` — so dialling
+  # the column verbatim resolves nothing. Same trap `E5` hit from the other
+  # side, where a real hostname in that column was refused by the constraint.
+  publisher:
+    build:
+      context: ..
+      dockerfile: services/publisher/Dockerfile
+      labels: *build-labels
+    environment:
+      PUBLISHER_ID: dev-publisher-0
+      SHARD_HOST: pg-shard-0.internal
+      # `host=HOST:PORT`, and the port is NOT optional even though the parser
+      # accepts it missing: `resolveHostPort` returns this value VERBATIM as the
+      # dial target and never consults SHARD_DB_PORT on the override path. So
+      # `…=postgres` parses cleanly and dials a host with no port. Written out
+      # after reading the consumer, not the parser.
+      PUBLISHER_SHARD_HOST_OVERRIDE: pg-shard-0.internal=postgres:5432
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      SHARD_DB_USER: loreweave
+      SHARD_DB_PASSWORD: loreweave_dev
+      SHARD_DB_PORT: "5432"
+      SHARD_DB_SSLMODE: disable
+      PUBLISHER_HTTP_ADDR: ":8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: on-failure:5
+    ports:
+      # 8091, not 8081. The first choice collided with a non-Docker listener on
+      # the dev box (`chaos-backend` on 0.0.0.0:8081), and the failure mode is
+      # worth the comment: Docker bound the mapping anyway, so `docker ps`
+      # showed `0.0.0.0:8081->8080` while host requests reached the OTHER
+      # process and came back 404. The container was healthy the whole time —
+      # `wget /healthz` inside it returns `ok` — so every signal pointed at the
+      # publisher being broken except the one that mattered.
+      - "8091:8080"
+    profiles:
+      - game
+      - full
+
+  # ── `F2` (2026-08-21) — world-service's HTTP surface.
+  #
+  # It was absent from this file entirely, which meant the one service that
+  # answers "which actor does this user drive" could not be reached by anything
+  # in the stack: `game-server` had nowhere to send the lookup, and both of the
+  # player-edge phase's live proofs started world-service from source. A
+  # control-plane route nothing in the stack can call is reachable only by
+  # whoever remembers the incantation.
+  #
+  # Same profiles as game-server, because that is its only caller here.
+  world-service:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile
+      labels: *build-labels
+    environment:
+      WORLD_HTTP_BIND: "0.0.0.0:7120"
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      PROVISION_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      PROVISION_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      PROVISION_BRIDGE_URL: http://meta-bridge:8090
+      PROVISION_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Where the per-reality databases actually live. NOT `db_host` from
+      # `reality_registry` — that column is a LOGICAL shard name pinned by a
+      # CHECK to `pg-shard-N.internal`, and `open_reality_pool` builds its
+      # connection from this value instead. Measured during E5, by putting a
+      # real hostname in that column and watching the constraint refuse it.
+      PROVISION_SHARD_HOSTPORT: postgres:5432
+      PROVISION_PG_USER: loreweave
+      PROVISION_PG_PASSWORD: loreweave_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:7120/livez"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: on-failure:5
+    ports:
+      - "7120:7120"
+    profiles:
+      - game
+      - full
+
+  meta-bridge:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: services/meta-worker/Dockerfile.bridge
+      labels: *build-labels
+    environment:
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      METAWORKER_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      METAWORKER_BRIDGE_ADDR: "0.0.0.0:8090"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   auth-service:
     restart: unless-stopped
@@ -2087,6 +2281,24 @@ services:
       # origin :5176 (was :5174 until it collided with the main `frontend`).
       LOREWEAVE_CORS_ORIGINS: ${LOREWEAVE_CORS_ORIGINS:-http://localhost:5176}
       NODE_ENV: production
+      # ── `F2`/`F1` — what ChannelRoom needs to serve a real subject ────────
+      #
+      # Until now this block configured EchoRoom only, and ChannelRoom was
+      # registered but unreachable: `onCreate` throws without a reality id, so a
+      # `channel` join failed before auth. That is why deleting the env actor
+      # map in `E4` broke nothing here — there was nothing to break.
+      LW_WORLD_SERVICE_URL: http://world-service:7120
+      LW_CHANNEL_REDIS_URL: redis://redis:6379
+      LW_CHANNEL_REALITY_ID: ${LW_CHANNEL_REALITY_ID:-}
+      LW_CHANNEL_ID: ${LW_CHANNEL_ID:-1}
+      # The dev identity, and it has NO default on purpose (`F1`). It used to be
+      # invented from four characters of the shared token, so every session on
+      # the box was one "user" — and after E3 it was not a `user_ref_id` at all,
+      # so the subject lookup refused it. Supply a real one, or dev auth fails
+      # closed; the binding still comes from the control plane, so a dev user
+      # with no grant drives nobody.
+      LW_WS_DEV_ALLOW_STATIC: ${LW_WS_DEV_ALLOW_STATIC:-}
+      LW_WS_DEV_USER_REF_ID: ${LW_WS_DEV_USER_REF_ID:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:2567/livez"]
       interval: 10s

@@ -69,7 +69,7 @@ mod tests {
         for i in 0..5 {
             queue
                 .enqueue(MemoryRef {
-                    reality_id: Uuid::from_u128(1),
+                    reality_id: crate::embedding_queue::test_reality(Uuid::from_u128(1)),
                     npc_id: Uuid::from_u128(i + 1),
                     session_id: Uuid::from_u128(i + 100),
                     content_hash: format!("h{i}"),

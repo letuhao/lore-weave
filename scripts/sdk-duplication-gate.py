@@ -47,6 +47,11 @@ import re
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SEARCH_DIRS = ("services", "frontend/src")
@@ -58,10 +63,17 @@ EXCLUDE_DIRS = {
 }
 
 # Path prefixes where these symbols BELONG (the shared home) — never flagged.
-ALLOWLIST_PREFIXES = (
-    "sdks/",       # the SDK layer — the intended single owner
-    "contracts/",  # shared Go modules (adminjwt, events, logging, …)
-)
+#
+# EMPTY, and that is the fix rather than an omission. It held `sdks/` and
+# `contracts/` — neither of which `SEARCH_DIRS` reaches, since the walk covers
+# `services/` and `frontend/src/` only. Every relative path handed to
+# `is_allowlisted` therefore begins with one of those two, and the prefix test
+# could never be true: an allowlist unreachable by construction, `NV-1`, next to
+# a docstring listing it as one of the gate's three protections. The shared homes
+# are out of scope because they are the intended owner — that is expressed by
+# not scanning them, and needs no row here. `is_allowlisted` keeps its test-file
+# arm, which does fire.
+ALLOWLIST_PREFIXES: tuple[str, ...] = ()
 
 # ── detection patterns (symbol-level) ─────────────────────────────────
 
@@ -164,8 +176,8 @@ def is_test_file(rel: str) -> bool:
     )
 
 
-def is_allowlisted(rel: str) -> bool:
-    return rel.startswith(ALLOWLIST_PREFIXES) or is_test_file(rel)
+def is_allowlisted(rel: str, prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES) -> bool:
+    return (bool(prefixes) and rel.startswith(prefixes)) or is_test_file(rel)
 
 
 def fingerprint(rule: str, rel: str, line: str) -> str:
@@ -186,9 +198,9 @@ def scan_file(path: str, rel: str) -> list[tuple[str, int, str, str]]:
     return out
 
 
-def iter_full_scan():
-    for d in SEARCH_DIRS:
-        root = os.path.join(REPO_ROOT, *d.split("/"))
+def iter_full_scan(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS):
+    for d in search_dirs:
+        root = os.path.join(repo_root, *d.split("/"))
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):
@@ -196,7 +208,7 @@ def iter_full_scan():
             for fn in filenames:
                 if fn.endswith(SCAN_EXTS):
                     full = os.path.join(dirpath, fn)
-                    rel = os.path.relpath(full, REPO_ROOT).replace(os.sep, "/")
+                    rel = os.path.relpath(full, repo_root).replace(os.sep, "/")
                     yield full, rel
 
 
@@ -205,8 +217,9 @@ def iter_staged():
         res = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
             cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            timeout=GIT_TIMEOUT_S,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return
     prefixes = tuple(d + "/" for d in SEARCH_DIRS)
     for rel in res.stdout.splitlines():
@@ -248,12 +261,187 @@ Usage:
 Exit 0 = clean (or baseline-only). Exit 1 = a new duplication."""
 
 
+def check(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS, baseline=None,
+          prefixes: tuple[str, ...] = ALLOWLIST_PREFIXES, staged: bool = False) -> int:
+    """The REAL checker, parameterised so `--self-test` can drive it over a
+    synthetic tree instead of re-implementing its rules."""
+    baseline = BASELINE if baseline is None else baseline
+    files = list(iter_staged() if staged else iter_full_scan(repo_root, search_dirs))
+
+    found: list[tuple[str, int, str, str]] = []
+    subjects: dict[str, int] = {rule: 0 for rule, _ in DETECTORS}
+    n_files = 0
+    for full, rel in files:
+        n_files += 1
+        for rule, n, r, line in scan_file(full, rel):
+            subjects[rule] += 1
+            if not is_allowlisted(rel, prefixes):
+                found.append((rule, n, r, line))
+
+    problems: list[str] = []
+    if not staged:
+        # ── REACH FLOOR (GT-F3). A per-rule subject floor would be WRONG here and
+        # the distinction matters: for a duplication detector, zero subjects is
+        # the goal — the copy was removed. Measured 2026-08-12, 5 of the 9 rules
+        # match nothing in this tree, and that is success, not blindness. What
+        # must not be silent is the WALK reaching nothing, and every rule going
+        # quiet at once (a renamed services/ looks exactly like a clean fleet).
+        if n_files == 0:
+            print(f"sdk-duplication-gate: ERROR — scanned 0 file(s) across "
+                  f"{list(search_dirs)} (BDR-82).", file=sys.stderr)
+            return 2
+        if not any(subjects.values()):
+            print(f"sdk-duplication-gate: ERROR — {n_files} file(s) scanned and NOT ONE "
+                  f"matched any of the {len(DETECTORS)} detectors, not even at a known "
+                  f"baselined site. Every rule going quiet together is a broken scan, not "
+                  f"a clean fleet.", file=sys.stderr)
+            return 2
+
+        # ── SHRINK ARM (GT-F5). A baseline row is a standing waiver on one exact
+        # line; when the duplication is migrated away the row survives it and
+        # re-waives that line the day anything takes its place.
+        live = {fingerprint(r, rel, ln) for r, _, rel, ln in found}
+        for row in sorted(set(baseline) - live):
+            problems.append(f"BASELINE row matches nothing: {row[:110]}")
+
+    new = [v for v in found if fingerprint(v[0], v[2], v[3]) not in baseline]
+    mode = "staged" if staged else "full"
+
+    if not new and not problems:
+        quiet = [r for r, c in subjects.items() if c == 0]
+        print(f"sdk-duplication-gate ({mode}): OK — no new SDK-tier duplications "
+              f"({n_files} file(s); baseline: {len(baseline)} known; "
+              f"{len(DETECTORS) - len(quiet)}/{len(DETECTORS)} detector(s) have a subject "
+              f"in this tree)")
+        return 0
+
+    if new:
+        print("sdk-duplication-gate: FAIL — NEW SDK-tier duplication(s)\n")
+        print("Standard: docs/standards/sdk-first.md (SDK-2 · always-SDK categories)\n")
+        for rule, _ in DETECTORS:
+            rule_hits = [v for v in new if v[0] == rule]
+            if not rule_hits:
+                continue
+            print(f"[{RULE_LABELS[rule]}]")
+            for _, n, rel, line in rule_hits:
+                print(f"  {rel}:{n}: {line.strip()}")
+            print()
+        print("A security-critical verifier, a wire type crossing a service boundary,")
+        print("or a redaction/logging helper is SDK-tier (SDK-2) — import it from a")
+        print("shared sdks/<lang>/ or contracts/* module, do not re-declare it per service.")
+        print("\nIf this is intentional/legacy, add a row to docs/deferred/DEFERRED.md and")
+        print("re-seed the baseline (python scripts/sdk-duplication-gate.py --update-baseline).")
+    for pr in problems:
+        print(f"sdk-duplication-gate: FAIL — {pr}")
+    return 1
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+# Every probe tree carries one live subject (a baselined JWT verifier), so the
+# all-quiet floor stays down and each case below tests exactly one rule.
+SEED_REL = "services/auth/keep.go"
+SEED_LINE = "\tt, err := jwt.ParseWithClaims(s, &C{}, f)"
+SEED_FP = f"jwt-verifier|{SEED_REL}|{' '.join(SEED_LINE.split())}"
+
+
+def self_test() -> int:
+    import contextlib
+    import io
+    import tempfile
+
+    failures = 0
+
+    def probe(name: str, want: int, files: dict[str, str], *, baseline=None,
+              prefixes: tuple[str, ...] = (), seed: bool = True) -> None:
+        nonlocal failures
+        with tempfile.TemporaryDirectory() as d:
+            if seed:
+                files = {SEED_REL: SEED_LINE + "\n", **files}
+            for rel, body in files.items():
+                full = os.path.join(d, *rel.split("/"))
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            os.makedirs(os.path.join(d, "services"), exist_ok=True)
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    got = check(d, ("services", "frontend/src"),
+                                {SEED_FP} if baseline is None else baseline, prefixes)
+            except Exception as e:  # noqa: BLE001
+                failures += 1
+                print(f"  FAIL {name}: raised {type(e).__name__}: {e}")
+                return
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: rc={got} (want {want})")
+
+    print("sdk-duplication-gate --self-test")
+
+    probe("a baselined duplication alone passes", 0, {})
+
+    # one case per detector
+    probe("a NEW jwt.ParseWithClaims fails", 1, {
+        "services/b/j.go": "t, err := jwt.ParseWithClaims(s, &C{}, f)\n"})
+    probe("a hand-rolled algorithm pin fails", 1, {
+        "services/b/j.go": "if t.Method != jwt.SigningMethodHS256 {\n"})
+    probe("...but MINTING with HS256 does not", 0, {
+        "services/b/j.go": "tok := jwt.NewWithClaims(jwt.SigningMethodHS256, c)\n"})
+    probe("a python HS256 jwt.decode assignment fails", 1, {
+        "services/b/a.py": 'data = jwt.decode(tok, sec, algorithms=["HS256"])\n'})
+    probe("...but an RS256 decode does not", 0, {
+        "services/b/a.py": 'data = jwt.decode(tok, k, algorithms=["RS256"])\n'})
+    probe("...nor a comment describing the old shape", 0, {
+        "services/b/a.py": '# data = jwt.decode(tok, sec, algorithms=["HS256"])\n'})
+    probe("a resolve_model_name copy fails", 1, {
+        "services/b/m.py": 'URL = f"/internal/models/{model_source}/{model_ref}/info"\n'})
+    probe("an inline retryable-status set fails", 1, {
+        "services/b/c.py": "retry = resp.status_code in (502, 503, 429)\n"})
+    probe("...but the 504-inclusive set does not", 0, {
+        "services/b/c.py": "retry = resp.status_code in (429, 502, 503, 504)\n"})
+    probe("...nor a success-status check", 0, {
+        "services/b/c.py": "ok = resp.status_code in (200, 201)\n"})
+    probe("a RedactFilter class fails", 1, {
+        "services/b/l.py": "class RedactFilter(logging.Filter):\n"})
+    probe("a setup_logging def fails", 1, {"services/b/l.py": "def setup_logging():\n"})
+    probe("a _SECRET_PATTERNS assignment fails", 1, {
+        "services/b/l.py": "_SECRET_PATTERNS = [\n"})
+    probe("a TerminalEvent struct DEFINITION fails", 1, {
+        "services/b/e.go": "type TerminalEvent struct {\n"})
+    probe("...but the type ALIAS (the sanctioned fix) does not", 0, {
+        "services/b/e.go": "type TerminalEvent = notifyevent.TerminalEvent\n"})
+
+    # exclusions
+    probe("a duplication in a test file is excluded", 0, {
+        "services/b/tests/t.go": "t, err := jwt.ParseWithClaims(s, &C{}, f)\n"})
+    probe("an ALLOWLISTED prefix excludes it", 0, {
+        "services/legacy/j.go": "t, err := jwt.ParseWithClaims(s, &C{}, f)\n"},
+        prefixes=("services/legacy/",))
+
+    # the shrink arm
+    probe("a BASELINE row matching nothing fails", 1, {},
+          baseline={SEED_FP, "jwt-verifier|services/gone/j.go|t, err := jwt.ParseWithClaims("})
+
+    # floors
+    probe("no files at all is misuse, not a pass", 2, {}, seed=False)
+    probe("every detector quiet at once is misuse", 2, {
+        "services/b/main.go": "package main\n"}, seed=False, baseline=set())
+
+    if failures:
+        print(f"sdk-duplication-gate --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("sdk-duplication-gate --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
 
     if "--help" in args or "-h" in args:
         print(USAGE)
         return 0
+    if "--self-test" in args or "--selftest" in args:
+        return self_test()
 
     if "--update-baseline" in args:
         found = collect(iter_full_scan())
@@ -265,34 +453,11 @@ def main() -> int:
         print(f"\n# {len(fps)} baselined duplications", file=sys.stderr)
         return 0
 
-    staged = "--staged" in args
-    files = iter_staged() if staged else iter_full_scan()
-    found = collect(files)
-
-    new = [v for v in found if fingerprint(v[0], v[2], v[3]) not in BASELINE]
-
-    mode = "staged" if staged else "full"
-    if not new:
-        print(f"sdk-duplication-gate ({mode}): OK — no new SDK-tier duplications "
-              f"(baseline: {len(BASELINE)} known)")
-        return 0
-
-    print("sdk-duplication-gate: FAIL — NEW SDK-tier duplication(s)\n")
-    print("Standard: docs/standards/sdk-first.md (SDK-2 · always-SDK categories)\n")
-    for rule, _ in DETECTORS:
-        rule_hits = [v for v in new if v[0] == rule]
-        if not rule_hits:
-            continue
-        print(f"[{RULE_LABELS[rule]}]")
-        for _, n, rel, line in rule_hits:
-            print(f"  {rel}:{n}: {line.strip()}")
-        print()
-    print("A security-critical verifier, a wire type crossing a service boundary,")
-    print("or a redaction/logging helper is SDK-tier (SDK-2) — import it from a")
-    print("shared sdks/<lang>/ or contracts/* module, do not re-declare it per service.")
-    print("\nIf this is intentional/legacy, add a row to docs/deferred/DEFERRED.md and")
-    print("re-seed the baseline (python scripts/sdk-duplication-gate.py --update-baseline).")
-    return 1
+    rc = self_test()
+    if rc:
+        return rc
+    print()
+    return check(staged="--staged" in args)
 
 
 # Seeded from the current repo (2026-07-04). Re-generate with --update-baseline.
@@ -310,23 +475,19 @@ def main() -> int:
 # duplicate consumer; its 2 entries stay.
 # Each is a line-number-independent `rule|relpath|normalized-code` fingerprint,
 # so the gate passes today and fails only on the NEXT new copy.
+#
+# GT8 · 2026-08-12: **6 of the 11 rows were DEAD** — the whole logging_config
+# trio (RedactFilter + _SECRET_PATTERNS + setup_logging across composition,
+# knowledge and lore-enrichment) had been migrated to loreweave_obs, and the
+# rows outlived their subjects by months. 55% dead, the worst ratio on the
+# gate-teeth board since runbook-drift's 91%. Trimmed to 5; the shrink arm
+# below now reds instead of waiting for someone to look.
 BASELINE = {
     'jwt-alg-pin|services/auth-service/internal/authjwt/jwt.go|if t.Method != jwt.SigningMethodHS256 {',
     'jwt-verifier|services/auth-service/internal/authjwt/jwt.go|t, err := jwt.ParseWithClaims(tokenStr, &AccessClaims{}, func(t *jwt.Token) (interface{}, error) {',
-    'logging-redact-filter|services/composition-service/app/logging_config.py|class RedactFilter(logging.Filter):',
-    'logging-redact-filter|services/knowledge-service/app/logging_config.py|class RedactFilter(logging.Filter):',
-    'logging-redact-filter|services/lore-enrichment-service/app/logging_config.py|class RedactFilter(logging.Filter):',
-    'logging-secret-patterns|services/composition-service/app/logging_config.py|_SECRET_PATTERNS = [',
-    'logging-secret-patterns|services/knowledge-service/app/logging_config.py|_SECRET_PATTERNS = [',
-    'logging-secret-patterns|services/lore-enrichment-service/app/logging_config.py|_SECRET_PATTERNS = [',
     'logging-setup|services/composition-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/knowledge-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
     'logging-setup|services/lore-enrichment-service/app/logging_config.py|def setup_logging(level: str = "INFO") -> None:',
-    # P3 SDK-first W4 (2026-07-05): worker-ai's last client-METHOD copy of the
-    # model-name resolver (ProviderRegistryClient.get_model_name) was migrated to
-    # loreweave_internal_client.resolve_model_name — its 2 baseline entries are GONE.
-    # ALL model_name copies (6 standalone modules + this method) are now SDK shims;
-    # py-model-name-copy now has an EMPTY baseline — any new copy reds immediately.
 }
 
 

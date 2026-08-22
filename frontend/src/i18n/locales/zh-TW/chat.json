@@ -351,7 +351,6 @@
     "temperature": "溫度",
     "temp_min": "0（精確）",
     "temp_max": "2（創意）",
-    "top_p": "Top P",
     "topp_min": "0（窄）",
     "topp_max": "1（多樣）",
     "default_mode": "預設模式",
@@ -363,7 +362,8 @@
     "yes": "是",
     "no": "否",
     "reset": "重設為預設",
-    "save_failed": "儲存失敗：{{error}}"
+    "save_failed": "儲存失敗：{{error}}",
+    "top_p": "Top P"
   },
   "session_toast": {
     "create_failed": "建立聊天失敗：{{error}}",
@@ -381,11 +381,11 @@
     "approve_once": "允許一次",
     "always_allow": "一律允許",
     "deny": "拒絕",
-    "never_allow": "從不允許",
     "approved": "已允許 — 執行中 ✓",
     "always_allowed": "一律允許 — 執行中 ✓",
     "denied": "已拒絕",
-    "never_allowed": "絕不允許 — 您可以在「設定」→「權限」中取消此設定"
+    "never_allowed": "絕不允許 — 您可以在「設定」→「權限」中取消此設定",
+    "never_allow": "從不允許"
   },
   "rack": {
     "label": "情境",

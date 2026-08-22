@@ -82,14 +82,14 @@ pub enum EpochOutcome {
 pub async fn drain_and_reconcile(
     signals: &mut crate::bus::ProposalBus,
     boot: &RulesetBoot,
-    reality: Uuid,
+    reality: &dp::RealityId,
     channel: i64,
     isle: &mut Island<CombatDomain>,
     writer: &ChannelWriter,
     aggregate_version: &mut u64,
     turn_number: u64,
 ) -> anyhow::Result<EpochOutcome> {
-    let reality_str = reality.to_string();
+    let reality_str = reality.as_uuid().to_string();
     let mut to_ack = Vec::new();
     for msg in signals.fetch().await? {
         if crate::epoch_signal::is_malformed_for_us(&msg, &reality_str) {
@@ -178,7 +178,7 @@ pub async fn drain_and_reconcile(
 /// it is exactly what a naive `submit(); append();` would do.
 pub async fn reconcile_and_commit(
     boot: &RulesetBoot,
-    reality: Uuid,
+    reality: &dp::RealityId,
     channel: i64,
     isle: &mut Island<CombatDomain>,
     writer: &ChannelWriter,
@@ -198,7 +198,7 @@ pub async fn reconcile_and_commit(
         return Ok(EpochOutcome::Poisoned);
     }
 
-    let Some(pending) = reconcile(boot, &reality.to_string(), isle.epoch)? else {
+    let Some(pending) = reconcile(boot, &reality.as_uuid().to_string(), isle.epoch)? else {
         return Ok(EpochOutcome::AlreadyCurrent);
     };
 
@@ -271,7 +271,7 @@ fn outcome_for(isle: &Island<CombatDomain>, seq: Seq) -> Option<&Outcome<CombatD
 /// island actually runs (`Domain::rules_digest`), never copied from the record
 /// that asked for them.
 pub fn activation_payload(
-    reality: Uuid,
+    reality: &dp::RealityId,
     channel: i64,
     from_epoch: RulesetEpoch,
     to_epoch: RulesetEpoch,
@@ -280,7 +280,7 @@ pub fn activation_payload(
     activated_at: &str,
 ) -> serde_json::Value {
     serde_json::json!({
-        "reality_id": reality.to_string(),
+        "reality_id": reality.as_uuid().to_string(),
         "channel_id": channel,
         "from_epoch": from_epoch.0,
         "to_epoch": to_epoch.0,
@@ -292,7 +292,7 @@ pub fn activation_payload(
 
 /// Build the `RulesetEpochActivatedV1` envelope around [`activation_payload`].
 fn envelope(
-    reality: Uuid,
+    reality: &dp::RealityId,
     channel: i64,
     pending: &PendingSwitch,
     digest: String,
@@ -312,7 +312,7 @@ fn envelope(
         aggregate_id: format!("enc-{channel}"),
         aggregate_type: "combat_session".into(),
         aggregate_version,
-        reality_id: reality,
+        reality_id: reality.as_uuid(),
         occurred_at: at.clone(),
         recorded_at: at.clone(),
         payload: activation_payload(

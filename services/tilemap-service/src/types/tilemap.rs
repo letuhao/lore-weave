@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::object::TilemapObjectPlacement;
 use crate::types::registry::RegistryRef;
 use crate::types::template::TilemapTemplateId;
@@ -16,8 +16,20 @@ use crate::types::tile::{TerrainCell, TerrainKind, TileCoord};
 use crate::types::tile_mask::TileMask;
 use crate::types::zone::{ZoneId, ZoneRole};
 
-/// Grid dimensions in tiles. TMP_001 §2 defaults: Continent 256² · Country 192² ·
-/// District 128² · Town 64². Author-configurable per template.
+/// Grid dimensions in tiles.
+///
+/// ⚠ RENAMED 2026-08-22 — `SPG-R13`. These were `CONTINENT_DEFAULT` /
+/// `COUNTRY_DEFAULT` / `DISTRICT_DEFAULT` / `TOWN_DEFAULT`, keyed by
+/// `MapKind`, which `SPG-R1` retired. They are NOT a per-kind map and never
+/// were: under `SPG-A3`'s containment matrix **depth is not a kind**, so a
+/// `Region` at depth 1 and a `Region` at depth 3 share a kind and want different
+/// sizes — a per-kind default cannot reproduce that and should stop pretending
+/// to. What they actually are is a **zoom ladder**, and the ladder is what
+/// `SPG-A3` removed. So they are named by the size they give.
+///
+/// The authored `grid_size` on the view stays authoritative; these are presets
+/// an author picks, which is what this comment already said before the rename
+/// ("author-configurable per template") and what made the rename cheap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GridSize {
     pub width: u32,
@@ -25,14 +37,57 @@ pub struct GridSize {
 }
 
 impl GridSize {
-    pub const CONTINENT_DEFAULT: GridSize = GridSize { width: 256, height: 256 };
-    pub const COUNTRY_DEFAULT: GridSize = GridSize { width: 192, height: 192 };
-    pub const DISTRICT_DEFAULT: GridSize = GridSize { width: 128, height: 128 };
-    pub const TOWN_DEFAULT: GridSize = GridSize { width: 64, height: 64 };
+    pub const ZOOM_256: GridSize = GridSize { width: 256, height: 256 };
+    pub const ZOOM_192: GridSize = GridSize { width: 192, height: 192 };
+    pub const ZOOM_128: GridSize = GridSize { width: 128, height: 128 };
+    pub const ZOOM_64: GridSize = GridSize { width: 64, height: 64 };
 
     /// Tile count for this grid.
     pub fn tile_count(self) -> usize {
         (self.width as usize) * (self.height as usize)
+    }
+}
+
+#[cfg(test)]
+mod grid_size_preset_tests {
+    use super::GridSize;
+
+    /// WHY THIS EXISTS, and it was found by biting rather than by review.
+    ///
+    /// `SPG-R13` renamed these presets off the retired `MapKind` rungs.
+    /// Immediately after the rename, `ZOOM_64` was mutated from 64 to 32 and
+    /// **all 521 tilemap-service tests still passed** -- the constants are used
+    /// as INPUTS to tests that assert relative properties, and no assertion
+    /// anywhere tied a value to `TMP_001` section 2.
+    ///
+    /// Before the rename the tier NAME carried that tie by implication
+    /// (`TOWN_DEFAULT` was obviously the town figure). Renaming to a size role
+    /// makes the name self-consistent with any value, so the tie has to become
+    /// an assertion or it is gone. This is the rename paying for what it took.
+    #[test]
+    fn presets_match_tmp_001_section_2_and_descend() {
+        assert_eq!((GridSize::ZOOM_256.width, GridSize::ZOOM_256.height), (256, 256));
+        assert_eq!((GridSize::ZOOM_192.width, GridSize::ZOOM_192.height), (192, 192));
+        assert_eq!((GridSize::ZOOM_128.width, GridSize::ZOOM_128.height), (128, 128));
+        assert_eq!((GridSize::ZOOM_64.width, GridSize::ZOOM_64.height), (64, 64));
+
+        // A ZOOM LADDER is the thing they are (`SPG-R13`), so it must descend
+        // strictly -- two presets with the same size would not be a ladder, and
+        // an ascending one would not be a zoom.
+        let ladder = [GridSize::ZOOM_256, GridSize::ZOOM_192, GridSize::ZOOM_128, GridSize::ZOOM_64];
+        for w in ladder.windows(2) {
+            assert!(
+                w[0].tile_count() > w[1].tile_count(),
+                "the zoom ladder must descend strictly: {:?} then {:?}",
+                w[0],
+                w[1]
+            );
+        }
+
+        // Every preset is square. The name says one number; two would be a lie.
+        for g in ladder {
+            assert_eq!(g.width, g.height, "preset {g:?} is not square");
+        }
     }
 }
 
@@ -122,7 +177,7 @@ pub struct RiverSegment {
 pub struct TilemapView {
     pub channel_id: ChannelId,
     /// Denormalized tier — must NOT be `Cell` (TMP-A1).
-    pub tier: ChannelTier,
+    pub tier: MapKind,
     pub grid_size: GridSize,
     pub template_id: TilemapTemplateId,
     /// Deterministic blake3 seed per TMP-A4. See [`crate::seed`].
@@ -179,14 +234,14 @@ impl TilemapView {
     /// Engine-only generation; empty zones/terrain/objects; cell anchors empty.
     pub fn empty(
         channel_id: ChannelId,
-        tier: ChannelTier,
+        kind: MapKind,
         grid_size: GridSize,
         template_id: TilemapTemplateId,
         seed: u64,
     ) -> Self {
         Self {
             channel_id,
-            tier,
+            tier: kind,
             grid_size,
             template_id,
             seed,
@@ -262,7 +317,7 @@ mod tests {
         // AC-12 — an engine-empty view carries empty segment lists.
         let v = TilemapView::empty(
             ChannelId("ch".to_string()),
-            ChannelTier::Country,
+            MapKind::Region,
             GridSize { width: 4, height: 4 },
             TilemapTemplateId("t".to_string()),
             1,

@@ -72,6 +72,17 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 "$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
 "$PY" "$ROOT/scripts/pin-resolution-gate.py"
 
+# WHAT AN AUTHOR MAY DECLARE must match the types that accept it. `G-S5a` asked for a derived
+# statement of the engine's authorable surface; the answer already existed in executable form
+# (`RulesetPatch` is deny_unknown_fields, so the loader can already say yes or no to any key) and
+# had never been written down. `contracts/ruleset/authorable-surface.v1.yaml` writes it down, and
+# this keeps it true — it is a list that must contain every member of a set the compiler knows,
+# which is `closed-set-gate`'s drift one level up. Scope is the transitive closure of
+# `RulesetPatch`'s field types, so a nested table added tomorrow is in scope the day it lands
+# rather than being default-uncovered. Not `--staged`: the contract and the types live in
+# different crates and a change to either can break the pair.
+"$PY" "$ROOT/scripts/authorable-surface-gate.py"
+
 # NO STRING-KEYED LOOKUP on the island step path (IMP-D4 / QTY-A9). Q1 introduces author-declared
 # quantities, which arrive as NAMES in TOML, and the shortest path from `name = "qi"` to a working
 # Q2 is `resources: BTreeMap<String, ResourceState>` on the actor — after which `evaluate_outcome`'s
@@ -93,6 +104,152 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # rule that actually states IMP-D2 because it is about the CAPABILITY, and R4 an I/O-runtime
 # denylist. Scans the whole tree, so it does not need a staged-file trigger.
 "$PY" "$ROOT/scripts/crate-purity-gate.py"
+
+# ONE AGGREGATE NAME BINDS ONE TIER AND ONE SCOPE (DP-A9 / DP-Ch5). `crates/dp`
+# makes tier and scope ASSOCIATED TYPES, and slice 1 was put to the PO on the
+# claim that a second tier is therefore unrepresentable. A cold-start refuter
+# compiled the counter-example in one file (V1-F1): `impl<T: Tier> DpAggregate
+# for Wallet<T>` gives ONE `TYPE_NAME` four tiers, picked per request — with
+# `survives_store_outage` flipping false->true on an env var, which is exactly
+# the REC-102c promise the crate exists to make un-flippable.
+#
+# rustc cannot object, BY CONSTRUCTION: each monomorphisation is individually
+# consistent and the contradiction lives across them, which is the one
+# comparison a type checker never makes. So the half the type system cannot hold
+# is held here. The legal tier/scope names are PARSED out of crates/dp/src, so
+# adding a tier extends this gate in the same edit rather than rotting it.
+# Whole-tree and unconditional: a new aggregate can land in any crate.
+"$PY" "$ROOT/scripts/dp-aggregate-gate.py"
+
+# DP-Ch2 AND THE MIGRATION ARE TWO STATEMENTS OF ONE SCHEMA, AND BOTH ARE SQL.
+# `REC-102a` ruled ChannelId to be i64 on 2026-08-07; that ruling reached the
+# newtype and the Rust code in the same commit and NEVER REACHED THE SCHEMA
+# THIRTY LINES BELOW IT, so the one artifact a migration would be written from
+# still said UUID. Nothing said so, for eight weeks — which is `FLOW-2`, the
+# defect this repo has now measured four times in one corpus.
+#
+# Cheap (two file reads, no DB). What it CANNOT do is compare CHECK bodies:
+# `depth >= 0 AND depth <= 16` and `depth BETWEEN 0 AND 16` are one predicate and
+# two strings, and a gate that called them different would be off within a day.
+# That half is `scripts/dp-channels-live-smoke.py`, which asks each constraint to
+# actually reject a row — and needs a live Postgres, which is why it is not a
+# gate and not named like one.
+"$PY" "$ROOT/scripts/dp-channels-schema-gate.py"
+
+# A MIGRATION THE ORCHESTRATOR NEVER APPLIES (1b7gap-H1). manifest.yaml ended at
+# 0013 while six more migrations had shipped, so `channels`, the writer lease,
+# the ruleset digest and both projection drops could not exist in a real
+# per-reality database -- 0019 was written, reviewed, live-smoked 46 times, gated
+# here, and applied by NOTHING. The gap was already tracked in a manifest comment
+# naming four other files, and six drifted past it, because a row is not a
+# mechanism. Every per_reality/*.up.sql now needs an entry or a reasoned
+# exclusion, and the exclusion list must shrink.
+"$PY" "$ROOT/scripts/migration-manifest-gate.py"
+
+# NO FLOAT IN THE BYTES THAT BECOME A NAME (U-9, engine-substrate §3). A float
+# inside the hashed ruleset bytes lets two machines produce two digests for one
+# ruleset -- two realities with identical content and different NAMES. Server
+# authority cannot repair that: what breaks is the naming scheme, not the
+# gameplay. The property was structurally true and UNGUARDED, which the design
+# round wrote down as U-9 and then had no mechanism for. This is the mechanism.
+#
+# It is NOT a float ban -- DF7-A4 was revised in 2026-08 precisely because "float
+# cannot reproduce across targets" is FALSE for basic IEEE 754 ops, and world-gen
+# uses f64 across 41 files while hashing deterministically. Scope is narrow and
+# named: the crates whose bytes are hashed, plus the fold that ranges over them.
+# Whole-directory, so a file created tomorrow is covered on its first line (NV-3).
+"$PY" "$ROOT/scripts/hashed-substrate-float-gate.py"
+
+# THE HUB MAY ORDER BY AN ORDINAL, NEVER READ ITS MEANING (A-1). actor-hub.md §4
+# states its own failure condition -- "if the hub ever needs to know what a layer
+# MEANS, a plugin's vocabulary has leaked in" -- and until the completeness audit
+# (D-513) nothing checked it: the property held structurally and unguarded, which
+# is verbatim what substrate §3 recognised for floats one contract over. Keyed on
+# the ACCESSOR rather than on variable names, because the first version's own bite
+# test walked through it with a one-letter binding.
+"$PY" "$ROOT/scripts/hub-vocabulary-gate.py"
+
+# THE ENGINE CLOSES ON MECHANISM; THE MANIFEST CLOSES ON VOCABULARY (D-2, M1).
+# `M1` moved an actor's numbers into the reality's declared quantities, so the
+# engine holds ordinals and resolves a ROLE. Nothing checked that: the property
+# was structurally true and unguarded, which is the same shape D-513 found one
+# contract down. The forbidden words are PARSED OUT of the shipped presets rather
+# than listed here, so adding a quantity extends the gate in the same edit.
+"$PY" "$ROOT/scripts/engine-vocabulary-gate.py"
+
+# A CITATION IN SOURCE MUST NAME WHAT DEFINES THE THING (A-2). D-512: actor.rs
+# cited dp-kernel/src/entity_status.rs for GoneState, which had MOVED -- and the
+# two obvious checks were measured against that defect and both MISS it. The file
+# resolves, and it mentions the symbol 38 times. Only "does it DEFINE it" catches,
+# because the one line is a `pub use`. citation-gate governs documents; nothing
+# reached a citation in a `//!` header until this.
+"$PY" "$ROOT/scripts/source-citation-gate.py"
+
+# A PROJECTION WITH NO PRODUCER IS A DEAD END, NOT A FEATURE. Measured
+# 2026-08-04: seven of the ten L3.A projection tables handled events that NO
+# production code emitted -- a projector, a table, a rebuilder, a golden fixture,
+# an independent oracle and a benchmark, everything except an input. They sat
+# that way for two months and encoded pre-D-2 game vocabulary while they did.
+# 0017 removed them; this gate is the mechanism, and it found five more orphans
+# on its first run. Phase 0 made mechanical.
+"$PY" "$ROOT/scripts/orphan-model-gate.py"
+
+# A LIST COPIED INTO FOUR LANGUAGES, CHECKED IN ONE. The L3.A projection table
+# names live in a SQL CHECK, a Rust const, three Go declarations and a YAML
+# config, and every copy's own comment calls itself a mirror. Exactly one had a
+# mechanism, and that one read a SINGLE migration file -- so when 0017 narrowed
+# the constraint from ANOTHER file, it kept comparing against 0007's ten names
+# and stayed green. One day later four copies still named seven tables the DB no
+# longer had; one of them gates a TRUNCATE, one is a loaded production config
+# that would have failed the integrity-checker at startup.
+"$PY" "$ROOT/scripts/projection-table-mirror-gate.py"
+
+# A CITATION NOBODY CAN FOLLOW IS WORSE THAN NONE (U-10). It reports evidence and
+# silences review. Measured in the 2026-08-02 actor-hub round: design-lint's corpus
+# is hard-defaulted to docs/03_planning/LLM_MMO_RPG and pointing it at docs/specs
+# fails outright, so NONE of the ~45 citations those contracts carry was checked by
+# anything -- and that same round produced three phantom citations, TWO of them
+# inside correction blocks written to fix citation errors. The failure mode is not
+# carelessness; it is the absence of a mechanism.
+# Strict trees are scanned in full (a doc added there tomorrow is covered on its
+# first line, NV-3); everywhere else under docs/ is added-lines-only, the same
+# trade doc-language-gate makes and for the same measured reason.
+"$PY" "$ROOT/scripts/citation-gate.py" --staged
+
+# A SELF-TEST NOBODY RUNS IS NOT A SELF-TEST. The non-vacuity cases in these gates
+# are the artefact this round cites as proof that "every rule bites" -- and a
+# review found NONE of them ran automatically: the hook runs each gate's normal
+# mode, and `gate-wiring-gate --run-all` invokes gates with no arguments.
+# Deleting a case, or one silently starting to fail, reddened nothing.
+#
+# The first remedy NAMED THREE GATES here. A cold-start round then measured it:
+# fifteen `scripts/*.py` advertise `--self-test` and this line reached three of
+# them, leaving twelve in exactly the state the remedy calls intolerable -- and a
+# sixteenth written tomorrow default-uncovered. Which is NV-3, the shape the
+# comment ten lines below forbids by name. So the scope is a DIRECTORY and a
+# PREDICATE, and the driver discovers rather than remembers.
+#
+# Conditional on some gate being staged, which is when a case can rot.
+if git diff --cached --name-only | grep -qE '^scripts/.*\.py$'; then
+  "$PY" "$ROOT/scripts/gate-self-tests.py"
+fi
+
+# NEVER TYPE A NUMBER YOU DID NOT JUST MEASURE. The actor-hub handoff carried a
+# stale figure in FOUR consecutive commits, each time inside the commit that
+# recorded the previous recurrence -- and the row declaring the remedy ("every
+# number is now derived by a script") was written while no such script existed.
+# This is that script. CONDITIONAL because it runs `cargo test` twice (~40s): it
+# fires only when one of the documents whose figures it governs is staged --
+# including `_index.md`, which a review found UNCOVERED and which is the file with
+# the worst record for this defect (stale twice, D-347 and D-350).
+#
+# It DEGRADES rather than blocks when the toolchain is absent: the trigger
+# includes the repo-wide SESSION_HANDOFF, which this project's SESSION phase
+# mandates updating on essentially every commit across 47 services, and the first
+# version gave a frontend contributor a raw FileNotFoundError instead.
+if git diff --cached --name-only | grep -qE 'docs/sessions/SESSION_HANDOFF\.md|docs/plans/2026-08-02-|docs/specs/2026-08-02-'; then
+  "$PY" "$ROOT/scripts/actor-hub-figures-gate.py"
+fi
 
 # IMP-D3's 400-line ceiling, which had NO gate and decayed exactly as IMP-A7 predicts: doc 26
 # recorded domain.rs at 592 as already over, and by the time S2 came to split it it had reached 609
@@ -134,9 +291,12 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # so, because none of these four lints had ever been hooked. They were "run them
 # if you remember", which is the same as not having them.
 #
-# `meta-write-discipline-lint.sh` is deliberately NOT here: it greps every Go /
-# Rust / SQL / TS file for every meta table and takes ~74s, which is a pre-commit
-# nobody keeps. It belongs in CI. The three below total ~8s.
+# `meta-write-discipline-lint.sh` IS here now (2026-08-06). It used to be
+# excluded for taking ~74s — it grepped every Go/Rust/SQL/TS file once per meta
+# table, 33 of them. That exclusion was honest and it still left I8 unguarded:
+# the rule held because nobody had broken it, not because anything would say so.
+# Rewritten to ONE walk with the tables as a single alternation, measured
+# 74s -> 9.2s, which is a pre-commit someone keeps.
 #
 # The trigger is CONTENT as well as path. A path-only condition
 # (migrations/meta/, contracts/meta/, crates/meta-rs/) would have MISSED the very
@@ -147,7 +307,36 @@ if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/(service
   sh "$ROOT/scripts/service-acl-matrix-lint.sh"
   sh "$ROOT/scripts/role-grant-validator.sh"
   sh "$ROOT/scripts/pii-classify-lint.sh"
+  sh "$ROOT/scripts/meta-write-discipline-lint.sh"
 fi
+
+# I3 — the TRANSPORT TIER owns no database of record. Repo-wide, not
+# staged-scoped, and deliberately: "no TS service declares a DB driver" is a
+# property of the TREE, so a staged-only check would pass while a violation sat
+# one un-staged commit away. Runs in well under a second.
+#
+# Added 2026-08-06 alongside the meta-write rewrite, after a PO question found
+# THREE invariants in a row that were true and unguarded: the kernel sitting
+# outside crate-purity-gate PURE_CRATES, this one, and meta-write-discipline
+# being too slow to run. An unguarded true statement is one commit from false.
+"$PY" "$ROOT/scripts/tier-capability-gate.py"
+
+# Phase 0 QUESTION 1 — "what already models this concept?" CLAUDE.md names a
+# gate for question 2 and named nothing for 1, which is the question that kept
+# failing: the actor-hub round skipped it twice (pc/npc tables, then the 25
+# LOCKED 06_data_plane docs), and a third spec re-derived five of those axioms
+# the same week. Default-uncovered is NV-3 at the process level.
+"$PY" "$ROOT/scripts/phase0-reconcile-gate.py"
+
+# DFO-6 — the registry of live suites and the databases they need. It is
+# AUTHORED, because a live suite cannot be discovered from Rust source: two of
+# the 21 reach `env::var` with the DSN name as a parameter, so a grep finds 19
+# and reports complete coverage. This checks the registry against the two things
+# that cannot lie about themselves — foundation-ci.yml's legs, both directions,
+# and the filesystem — plus a ratchet on how many live suites have no CI leg at
+# all. That count was 15 of 21 when it was first measured, and every one of
+# those suites is green in `cargo test --workspace` because it SKIPPED.
+"$PY" "$ROOT/scripts/live-suite-registry-gate.py"
 
 # A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
 # the repo's 58 gate/lint scripts running NOWHERE — not here, not in any
@@ -177,6 +366,30 @@ fi
 # the epoch trigger below is 1.0s. That ~3s is the price of the two checks that
 # fire when nobody is looking, which is when they matter.
 "$PY" "$ROOT/scripts/deferral-gate.py"
+
+# world-scale-parity-gate -- `WorldScale` is declared TWICE and this is what stops
+# the copies drifting. `world-service` needs the closed size set to enforce
+# `SDF-A19` (a World under a Domain is bounded to `Pocket`), and importing
+# `world-gen` for it would drag `image`, `clap` and a triangulator into a
+# provisioning service. So it is mirrored -- and a duplicated closed set with
+# nothing watching it is precisely the rot `SPG-F4` and `REC-97` record, both
+# found late.
+#
+# A cross-crate TEST would need the dependency the mirror exists to avoid, so the
+# mechanism is a gate that reads source text and needs neither crate to know the
+# other. The compare is set EQUALITY in both directions: a one-way check would
+# miss a variant added UPSTREAM, which is the likelier drift, since the source
+# grows and the mirror does not.
+"$PY" "$ROOT/scripts/world-scale-parity-gate.py"
+
+# lore-bible-park-gate -- the lore-bible track is PARKED and `LB0` found a 253-file
+# service already shipping the sweep `LB2` was going to rebuild. The board's own
+# words for carrying that forward were "carry that finding forward when this track
+# legitimately reopens", which is a wish. This reds the moment a lore-bible SCHEMA
+# or PRODUCER appears and hands the author the finding at the only moment it
+# matters -- before the sweep gets rebuilt. `D-LORE-BIBLE-PARKED-SWEEP-EXISTS`.
+"$PY" "$ROOT/scripts/lore-bible-park-gate.py" --selftest >/dev/null
+"$PY" "$ROOT/scripts/lore-bible-park-gate.py"
 
 # amendment-rot-gate — deferral-gate's sibling, for the DESIGN corpus rather than
 # the code tier. Same conclusion reached a third time, from a third direction:

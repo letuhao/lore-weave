@@ -864,7 +864,8 @@ on Strike action(attacker, defender, instrument):
   let final_damage = llm_proposed_damage.clamp(min_dmg, max_dmg);
   
   // Apply VitalDelta to defender's vital_pool.HP (RES_001)
-  emit VitalDelta { actor_ref: defender, kind: VitalKind::Hp, delta: -final_damage };
+  // `kind` is a DECLARED quantity ordinal (D-3, 2026-08-02); `VitalKind::Hp` was a closed engine enum
+  emit VitalDelta { actor_ref: defender, kind: vital_ordinal, delta: -final_damage };
   
   // Q7f post-damage hooks (status application via PL_006)
   for hook in formula.post_damage_hooks where final_damage >= hook.damage_threshold:

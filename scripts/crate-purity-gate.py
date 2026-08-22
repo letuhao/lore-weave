@@ -117,6 +117,92 @@ PURE_CRATES: dict[str, dict[str, set[str]]] = {
                        # laws, so someone decided that, and the decision is here.
         },
     },
+    # Feature #1 of the game tier (2026-08-02). The fold is a function of
+    # (actor, declarations, rows) with one correct answer, so the same argument
+    # that made `game-rules` a crate applies verbatim: a hub that can read a
+    # file is a hub that can be slow, fallible and unreplayable.
+    #
+    # `game-rules` is DELIBERATELY ABSENT from the workspace set below. The hub
+    # sits beneath the features and combat is a feature; a dependency in that
+    # direction becomes a cycle the day combat is rewritten as a plugin. Its
+    # absence here is what refuses it — R1 is deny-by-default.
+    "actor-hub": {
+        "workspace": {
+            "ruleset-core",      # MAX_DECLARED_QUANTITIES, ModifierOp, the declared substrate
+            "sim-core",          # EntityId; zero dependencies
+            "entity-existence",  # GoneState — the shipped existence enum, leaf-extracted
+        },
+        "external": {
+            "serde",   # derive ONLY, on GoneState, which crosses the wire as a
+                       # platform status envelope. Same distinction as above:
+                       # serde_json / toml / bincode stay out by omission.
+            "blake3",  # via ruleset-core, as for game-rules.
+        },
+    },
+    # ── the two the gate was NOT looking at, added 2026-08-06 ────────────────
+    #
+    # Both were already clean — measured: zero I/O-capable std paths, and
+    # dependency lists of `{}` and `{sim-core, blake3}`. Clean is not the point.
+    # `PURE_CRATES` is an ENUMERATED LIST, and R3 scans `crates/<name>/src` for
+    # exactly the names in it, so everything absent was **default-uncovered**
+    # (`NV-3`) — including the kernel, which is the one crate in the tree whose
+    # purity the whole determinism argument rests on.
+    #
+    # The gate's own header says R1 is transitive so that a sibling crate
+    # written tomorrow is refused. That polarity was right for R1 and never
+    # applied to R3: a `std::fs::read` inside `sim-core` reached no allowlist,
+    # widened no dependency set, and would have shipped green.
+    #
+    # Found by a PO question — *"is there anywhere a module that may not touch
+    # the DB reaches down to it, and how is that guarded?"* — not by any check.
+    # `DP-A2` — the CP/DP split. Policy lives in a thin control-plane SERVICE;
+    # hot-path reads and writes happen in a data plane embedded as a LIBRARY,
+    # and "the control plane is never on the hot path of a player action".
+    #
+    # That is a purity claim about this crate, and it was guarded by nothing
+    # until 2026-08-13 — `crates/dp` was simply never listed here, so a `tokio`
+    # or a dependency on `dp-control-plane` would have put the control plane on
+    # the hot path with the whole suite green. The crate's own Cargo.toml argues
+    # the point and cites `S2.3`; an argument in a comment is not a check.
+    #
+    # `dp-control-plane` is DELIBERATELY ABSENT from the workspace set: the SDK
+    # reaching the control plane is the exact thing DP-A2 forbids, so its
+    # absence here is what refuses it.
+    #
+    # `DP-A8` rides on the same row. "DP does not reimplement event sourcing;
+    # it is a contract layer above it" — and a crate whose only dependency is
+    # `uuid`, reaching no I/O capability, CANNOT append to an event log, drive
+    # an outbox or write a snapshot. Delegation to 02_storage is not a
+    # convention here; it is the only option the dependency set leaves. This
+    # row is what keeps that true.
+    "dp": {
+        # R1 — workspace-internal, TRANSITIVE. Empty on purpose.
+        "workspace": set(),
+        # R2 — external. `uuid` opens nothing, reads nothing, spawns nothing.
+        "external": {"uuid"},
+    },
+    "sim-core": {
+        # ZERO, and the emptiness is the assertion. `Cargo.toml` carries the
+        # same claim in prose (*"determinism is the product, and every
+        # dependency is a determinism liability to audit"*); this is where that
+        # sentence becomes a thing that can fail. Adding ANY dependency to the
+        # kernel now reds here and has to be argued in this diff.
+        "workspace": set(),
+        "external": set(),
+    },
+    "ruleset-core": {
+        "workspace": {
+            "sim-core",  # `RulesetDigest` ALONE (F1-D1) — the kernel CARRIES
+                         # the digest, this crate COMPUTES it
+        },
+        "external": {
+            "blake3",  # the canonical-bytes hash. Pure compute: no fs, no net,
+                       # no clock. Same entry the two crates above already carry
+                       # it under, because they reach it transitively through
+                       # here — which is why its absence from THIS set would
+                       # have been the inconsistency.
+        },
+    },
 }
 
 # R3 — capabilities a law may not have. The rule is the CAPABILITY, not the
@@ -308,6 +394,33 @@ def _fake_meta(extra_ws: list[str], extra_ext: list[str]) -> dict:
 def self_test() -> int:
     policy = {"game-rules": {"workspace": {"ruleset-core", "sim-core"}, "external": {"serde", "blake3"}}}
     fails = []
+
+    # ── DP-A2, the CP/DP split ────────────────────────────────────────────────
+    # "Hot-path reads and writes happen in a data plane embedded as a LIBRARY …
+    # the control plane is never on the hot path of a player action."
+    #
+    # The mutation harness proves this gate REFUSES an I/O dependency on
+    # `crates/dp`. This proves the row that makes it do so still exists —
+    # deleting `"dp"` from PURE_CRATES silently retires DP-A2's only guard, and
+    # every other case here would stay green, because they all drive `policy`
+    # above rather than the shipped table.
+    #
+    # The SECOND half of DP-A2 — the SDK must not reach the control plane — is
+    # enforced by CARGO, not by this gate: `dp-control-plane` depends on `dp`,
+    # so the reverse edge is a cycle and metadata refuses it. Recorded here
+    # because "enforced by construction" is a claim, and this is where a reader
+    # finds out which half is which.
+    dp = PURE_CRATES.get("dp")
+    if dp is None:
+        fails.append("DP-A2 + DP-A8: `dp` is not in PURE_CRATES — the data plane's "
+                     "purity is an INVARIANT (DP-A2), and it is also the only thing "
+                     "making DP-A8 true: a crate that cannot do I/O cannot "
+                     "reimplement event sourcing. Both are guarded by nothing")
+    elif dp["external"] != {"uuid"} or dp["workspace"] != set():
+        fails.append(
+            f"DP-A2: `dp`'s allowed set widened to workspace={sorted(dp['workspace'])} "
+            f"external={sorted(dp['external'])}. It is the SDK on the hot path; every "
+            f"addition needs its own argument, in the row.")
 
     # R1 must bite on a TRANSITIVE workspace dep — the case a direct-deps check
     # would wave through. This is the whole reason the walk is transitive.

@@ -80,6 +80,92 @@ pub enum CeilingBinding {
     Fixed(i32),
 }
 
+/// **Which engine law reads this pool** — `Q2`'s exit criterion, built.
+///
+/// > *"a reality binds `Vital → qi` and the defeat law is **unchanged**"*
+/// > — [`ZeroBehaviour`]'s doc, written when nothing could express that binding.
+///
+/// Until this enum existed, `Vital` appeared **exactly once in the repository:
+/// in that sentence.** The criterion was therefore unmeetable — an engine law
+/// had no way to find its number except by reading a struct field with the
+/// number's name on it, which is `D-2`'s failure at its source.
+///
+/// ## Why this is a NEW HASHED FIELD, when the module refuses two others
+///
+/// The paragraph below (*"What this slice does NOT build"*) declines `deps` and
+/// `tags` on a stated test: **neither has a consumer yet**, and a field in the
+/// hashed ruleset is effectively permanent (`QTY-A10(c)` forbids removal). That
+/// test is the right one and this passes it — three engine laws consume this
+/// field in the commit that adds it: the defeat law reads `Vital`, the turn
+/// order reads `Initiative`, the spend check reads `ActionBudget`. A role with
+/// no law is exactly `deps` and would be refused for exactly that reason.
+///
+/// ## Why the ROLE is here and not derived from [`CeilingBinding`]
+///
+/// The tempting shortcut is *"the vital is the pool whose ceiling binds to
+/// `MaxHp`"* — no new bytes, and the sentence is nearly true. It was rejected:
+/// it gives `ceiling` a **second, hidden meaning**, so an author who caps a
+/// second pool at `MaxHp` silently acquires a second vital, and the two pools
+/// with no matching slot (`Initiative`, `ActionBudget`) have no honest key at
+/// all. A binding the engine depends on should be the thing the author writes,
+/// not an inference from something else they wrote.
+///
+/// ## Why an ENGINE vocabulary in `ruleset-core`
+///
+/// The same argument [`crate::slots`] makes for `StatSlot`, one field over: *the
+/// ruleset declares a value per slot, so it has to be able to NAME the slots.*
+/// A reality binds a pool to a role, so it has to be able to name the roles.
+/// **The names are the ENGINE's** — an author picks which of their quantities
+/// fills each role; they never add one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum EngineRole {
+    /// No engine law reads this pool. The ordinary case: a mana meter, a
+    /// corruption track, a reputation bar — content the features read.
+    None = 0,
+    /// **The pool whose exhaustion ends this actor's participation.** Read by
+    /// the encounter-outcome law.
+    Vital = 1,
+    /// **The pool that orders turns.** Read by the turn-order law.
+    Initiative = 2,
+    /// **The pool an action spends to be taken at all.** Read by the
+    /// spend/refuse check.
+    ActionBudget = 3,
+}
+
+impl EngineRole {
+    /// Every role, for exhaustive iteration. **The list a decoder validates
+    /// against**, so an artifact naming role 9 is refused rather than read as
+    /// `None` — which would silently unbind a law from its number.
+    pub const ALL: [EngineRole; 4] =
+        [EngineRole::None, EngineRole::Vital, EngineRole::Initiative, EngineRole::ActionBudget];
+
+    /// The authored spelling, and the only one. Shared by the loader's parser
+    /// and its error message so the legal values a refusal lists cannot drift
+    /// from the values it accepts.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            EngineRole::None => "none",
+            EngineRole::Vital => "vital",
+            EngineRole::Initiative => "initiative",
+            EngineRole::ActionBudget => "action_budget",
+        }
+    }
+
+    /// Resolve an authored spelling. `None` for anything else — the caller
+    /// refuses with the legal set rather than defaulting, because a typo'd role
+    /// silently becoming `none` unbinds an engine law and shows up only as a
+    /// fight that never ends.
+    pub fn from_str(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.as_str() == s)
+    }
+
+    /// A role at most one pool may hold. `None` is shared by construction.
+    pub const fn is_exclusive(self) -> bool {
+        !matches!(self, EngineRole::None)
+    }
+}
+
 /// How a pool refills. Closed: regen is arithmetic the engine performs, so a
 /// new mode is an engine release (`QTY-A10`), not a declared row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +220,9 @@ pub struct ResourceDecl {
     pub regen_rate: i32,
     pub regen_type: RegenType,
     pub zero_behaviour: ZeroBehaviour,
+    /// **Which engine law reads this pool** — see [`EngineRole`]. `None` for the
+    /// ordinary case, and `None` is what every pre-v6 artifact upcasts to.
+    pub role: EngineRole,
 }
 
 /// Why a declared resource was refused.
@@ -156,6 +245,15 @@ pub enum ResourceError {
     /// Caught at declaration because the alternative is catching it per actor
     /// per spawn, forever, in code that has no way to report which row is wrong.
     BadBounds { ordinal: u16, reason: &'static str },
+    /// Two pools claim one exclusive [`EngineRole`].
+    ///
+    /// Refused rather than resolved by precedence, for the reason
+    /// [`Duplicate`](Self::Duplicate) gives one field over: a silent collapse
+    /// hides which declaration won. Here the stakes are higher — the losing
+    /// pool is one an engine law was told to read and now never will, and the
+    /// symptom is a law that appears not to run rather than a value that is
+    /// wrong.
+    RoleClaimedTwice { role: EngineRole, first: u16, second: u16 },
 }
 
 impl core::fmt::Display for ResourceError {
@@ -182,6 +280,14 @@ impl core::fmt::Display for ResourceError {
             Self::BadBounds { ordinal, reason } => {
                 write!(f, "the resource row for quantity ordinal {ordinal} is unusable: {reason}")
             }
+            Self::RoleClaimedTwice { role, first, second } => write!(
+                f,
+                "quantity ordinals {first} and {second} both claim the engine role `{}`. \
+                 A role names ONE pool: the law that reads it would otherwise have two \
+                 numbers and no basis to choose, and the pool it silently dropped would \
+                 look like a law that never runs",
+                role.as_str()
+            ),
         }
     }
 }

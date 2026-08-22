@@ -19,6 +19,8 @@ import {
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
 import { PRODUCER_NAME, producerKeyFromEnv, signProposal } from '../ws/producer-sign.js';
+import { placeResolverFromEnv, type FramePlace } from '../ws/place.js';
+import { isUserRefId, subjectResolverFromEnv, type SubjectLookup } from '../ws/subject.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -170,7 +172,10 @@ export class ChannelRoom extends Room {
   private view: ChannelView = emptyView();
   /** sessionId → the entity this connection may act as (D3). */
   private actorOf = new Map<string, string>();
-  /** sessionId → authenticated user, for the CNC-Q1 user-keyed global cap. */
+  /**
+   * sessionId → authenticated user, for the CNC-Q1 user-keyed global cap —
+   * and, since `SEALED-SUBJECT`, for the `user_ref_id` the proposal carries.
+   */
   private userOf = new Map<string, string>();
 
   /**
@@ -311,6 +316,13 @@ export class ChannelRoom extends Room {
     }
 
     const actor = this.actorOf.get(client.sessionId);
+    if (!userId) {
+      // Unreachable if `onAuth` ran — asserted rather than assumed, because a
+      // proposal with no submitter is refused at the far side's schema stage
+      // and would arrive there as an opaque malformed body.
+      client.send('turn.error', { code: 'no_user_bound', message: 'session has no user' });
+      return;
+    }
     if (!actor) {
       client.send('turn.error', { code: 'no_actor_bound', message: 'session has no actor' });
       return;
@@ -337,7 +349,20 @@ export class ChannelRoom extends Room {
       producer_service: PRODUCER_NAME,
       proposal_id: msg.client_request_id,
       target_channel: Number(this.opts.channelId),
-      actor: Number(actor),
+      // SEALED-SUBJECT — the USER, never the actor.
+      //
+      // This sent `actor: Number(actor)` and commit-service believed it. The
+      // room stamped it from the authenticated session, so the CLIENT could
+      // not choose — but the field still existed on the wire, and a field on
+      // the wire is a field some other producer can set. The subject is now
+      // resolved from `actor_control_binding` on the authoritative side, and
+      // the way to make it unassertable is for it to be ABSENT rather than
+      // trusted: `admission::Proposal` has no `actor` to deserialise into.
+      //
+      // `candidates` still needs the local actor, and that is fine — it is an
+      // OFFER the far side re-validates against island state (THR-A4), not a
+      // claim about who is acting.
+      user_ref_id: userId,
       candidates: this.candidates(actor),
       decision: msg.action,
     };
@@ -361,18 +386,71 @@ export class ChannelRoom extends Room {
   }
 
   /**
-   * Map an authenticated user to the entity they control on this channel.
-   * V1 resolves this from the PC-substrate binding (a user's character in
-   * this reality); the dev map keeps the PoC runnable without that service
-   * while never letting the CLIENT choose. Env form: `user:entity,user:entity`.
+   * Map an authenticated user to the entity they control on this channel, or
+   * `undefined` when this user drives nobody here.
+   *
+   * **`undefined` IS THE FIX.** This returned `LW_CHANNEL_DEFAULT_ACTOR ?? '1'`
+   * for any authenticated user absent from the map, so every unmapped user was
+   * legitimately bound to the SAME subject — two humans acting as one actor,
+   * with the server itself stamping the claim. A red-team pass called it the
+   * load-bearing hole and downgraded the confused-deputy guard because of it:
+   * `CMD-12`'s keyed-MAC over a subject is a lock on the wrong door while the
+   * caller can already BE that subject. It is a tenancy defect by CLAUDE.md's
+   * own checklist before it is an offer problem.
+   *
+   * Two lines above, `onJoin` refuses a missing `userId` with the comment *"loud
+   * rather than defaulting to entity 1"* — and then called a function that
+   * defaulted to entity 1. The principle was already written down; only this
+   * function disagreed with it.
+   *
+   * The refusal it now reaches is not new either: `handleSubmit` has always had
+   * `no_actor_bound`, which the default made unreachable. Refusing at SUBMIT and
+   * not at join is deliberate — the user is authenticated and entitled to the
+   * channel, they simply drive nobody in it, so they may watch and may not act.
+   * Closing the socket would need a close code that does not exist in the
+   * four-language `§12AB.9` set, to say something this transport can already say.
+   *
+   * The durable source is `actor_control_binding` (migration 034 — which human
+   * drives which actor, in which reality), and as of `E3` this reads it. `E4`
+   * then deleted the env map outright, so there is now exactly ONE source and
+   * the function that read `LW_CHANNEL_ACTOR_MAP` is gone.
    */
-  private actorForUser(userId: string): string {
-    const raw = process.env.LW_CHANNEL_ACTOR_MAP ?? '';
-    for (const pair of raw.split(',')) {
-      const [u, e] = pair.split(':').map((x) => x.trim());
-      if (u && e && u === userId) return e;
+
+  /**
+   * `E3`/`E4` — resolve the joining user's subject, and FAIL CLOSED otherwise.
+   *
+   * # There is one source, and no second one to fall back to
+   *
+   * **The PO deleted `LW_CHANNEL_ACTOR_MAP` at the `E4` checkpoint** rather
+   * than keeping it as a declared dev binding. The argument that won: a
+   * fallback that answers when the real lookup is absent is the `?? '1'`
+   * default this function's ancestor was opened about, wearing a new costume —
+   * and every gate short of deletion still leaves the second source in the
+   * code, one edit away from being consulted. The cost is real and was accepted
+   * out loud: a local session must now provision a reality, mint an actor and
+   * grant control before anything can be driven.
+   *
+   * So there is no branch here to get wrong. Either the control plane answers,
+   * or nobody acts.
+   *
+   * # Unconfigured is not permission
+   *
+   * With no `LW_WORLD_SERVICE_URL` the room serves NO subject at all — the
+   * caller refuses the join. That is the rule `onAuth` already applies to the
+   * ticket store a few lines away, and for the same reason: a deployment that
+   * forgets a variable must fail closed rather than quietly answer from
+   * somewhere else. There is no longer a "somewhere else".
+   */
+  private async resolveSubject(userId: string): Promise<SubjectLookup> {
+    const resolver = subjectResolverFromEnv();
+    if (!resolver) {
+      return {
+        kind: 'unavailable',
+        detail:
+          'no subject resolver configured: set LW_WORLD_SERVICE_URL and LOREWEAVE_INTERNAL_TOKEN',
+      };
     }
-    return process.env.LW_CHANNEL_DEFAULT_ACTOR ?? '1';
+    return resolver.resolve(this.opts.realityId, userId);
   }
 
   /**
@@ -414,14 +492,42 @@ export class ChannelRoom extends Room {
       if (!options?.jwt || options.jwt !== expected) {
         throw new ServerError(4001, 'invalid token');
       }
-      return { userId: `dev:${String(options.jwt).slice(0, 4)}` };
+      // `F1` — the dev identity is SUPPLIED, never invented.
+      //
+      // This returned `` `dev:${jwt.slice(0, 4)}` ``: an identity fabricated
+      // from four characters of a SHARED token, so every session on the box was
+      // the same "user" — and after `E3` it was not a user at all, because
+      // `dev:dev_` is not a `user_ref_id` and the subject lookup refuses it. The
+      // whole demo path was dead and nothing reported it, because the only view
+      // that would have shown the refusal is mounted nowhere.
+      //
+      // A NARROWING, not a loosening: the value must be supplied by the
+      // SERVER's environment and must parse as a UUID, and there is no default,
+      // so the branch fails closed where it used to fabricate. `options` is not
+      // consulted for it — a client that could name its own `user_ref_id` would
+      // be choosing whose bindings to inherit, which is `SEALED-SUBJECT` with
+      // the lock moved one door out.
+      //
+      // It does NOT reintroduce what `E4` deleted. `LW_CHANNEL_ACTOR_MAP` said
+      // which ACTOR a user drives — a binding, and a second source of truth
+      // against `actor_control_binding`. This says who the DEVELOPER is, which
+      // is the redeemed ticket's job on the real path. A dev user with no grant
+      // still drives nobody.
+      const devUser = (process.env.LW_WS_DEV_USER_REF_ID ?? '').trim();
+      if (!isUserRefId(devUser)) {
+        throw new ServerError(
+          4001,
+          'dev auth requires LW_WS_DEV_USER_REF_ID to be a user_ref_id (uuid)',
+        );
+      }
+      return { userId: devUser };
     } catch (err) {
       const code = err instanceof ServerError ? (err.code as number) : authCloseCode(err);
       throw err instanceof ServerError ? err : new ServerError(code, (err as Error).message);
     }
   }
 
-  onJoin(client: Client): void {
+  async onJoin(client: Client): Promise<void> {
     // D3 — identity comes from the AUTHENTICATED session, never from join
     // options. Taking `actorEntityId` off the wire (as this did while it was
     // a PoC) lets any client claim any actor and act as another player; the
@@ -433,8 +539,46 @@ export class ChannelRoom extends Room {
       client.leave(4001);
       return;
     }
-    const actor = this.actorForUser(userId);
-    this.actorOf.set(client.sessionId, actor);
+    // `E3` — ASK. The answer is one of four things and only two of them let
+    // the join proceed; see `resolveSubject`.
+    const found = await this.resolveSubject(userId);
+    if (found.kind === 'realityClosed') {
+      // 4004 `CloseRealityArchived` — "S10 reality state archived/dropped" —
+      // is the enumerated code named for precisely this, so no code is being
+      // invented. Refusing the join is the honest move: a room whose reality
+      // refuses commands cannot host a player who came to act.
+      log.warn('join refused — the reality does not accept commands', {
+        reality_id: this.opts.realityId,
+        detail: found.detail,
+      });
+      throw new ServerError(4004, 'this reality does not accept commands');
+    }
+    if (found.kind === 'unavailable') {
+      // FAIL CLOSED, and refuse rather than seat them.
+      //
+      // Admitting them with `self: null` was the tempting cheap option and it
+      // is a LIE: it says "you drive nobody" when the truth is "we could not
+      // find out". Every player would silently become a spectator during an
+      // outage, and the frame the client renders as "you" would be empty with
+      // nothing in the log tying it to the cause.
+      //
+      // There is no truthful close code — the `§12AB.9` set has ten and none
+      // of them means "the control plane did not answer" — and the contract
+      // refuses any code outside that set. So this refuses the JOIN, which
+      // needs no close code and which a client can retry.
+      log.error('join refused — could not resolve the subject', {
+        reality_id: this.opts.realityId,
+        detail: found.detail,
+      });
+      throw new ServerError(4001, 'could not resolve your actor; retry');
+    }
+    const actor = found.kind === 'driving' ? found.entityId : undefined;
+    // Only bind when there IS a binding. A user who drives nobody gets no
+    // entry, which is what makes `handleSubmit`'s `no_actor_bound` reachable.
+    // Storing a default here was the confused-deputy hole.
+    if (actor !== undefined) {
+      this.actorOf.set(client.sessionId, actor);
+    }
     this.userOf.set(client.sessionId, userId);
     // IAS-D5 — one limiter per connection, created here so a reconnect gets a
     // fresh window rather than inheriting a stranger's.
@@ -465,8 +609,24 @@ export class ChannelRoom extends Room {
       client_protocol: 1,
     });
     // W1 — first frame, folded from the replayed log (D2).
+    //
+    // `self` is null when this user drives nobody here (see `resolveSubject`).
+    // Null and not a default entity: the frame is what the client renders as
+    // "you", and inventing one is the same confused-deputy claim one layer up
+    // from the submit path — it would show a stranger's actor as the reader's.
+    // `A4` — WHERE the driven actor is. ADVISORY: a failed lookup costs a
+    // location, never a join, so this is awaited but never throws (see
+    // `ws/place.ts`). Only asked when there IS an actor: a spectator drives
+    // nobody, so "where are you" has no subject.
+    let place: FramePlace | undefined;
+    if (actor !== undefined) {
+      const resolver = placeResolverFromEnv();
+      if (resolver) place = await resolver.resolve(this.opts.realityId, Number(actor));
+    }
+
     client.send('w1.frame', {
-      self: { entity_id: actor, ...this.view.actors[actor] },
+      self: actor === undefined ? null : { entity_id: actor, ...this.view.actors[actor] },
+      ...(place ? { place } : {}),
       turn_number: this.view.turn_number,
       roster: Object.entries(this.view.actors).map(([id, a]) => ({
         entity_id: id,

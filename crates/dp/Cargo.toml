@@ -1,0 +1,59 @@
+[package]
+name = "dp"
+version = "0.1.0"
+edition = "2021"
+description = "Data-plane SDK contract: DP-T0..T3 tiers, DP-Ch4 scopes, DP-K1 aggregate."
+
+[dependencies]
+# The ONLY runtime dependency, and a pure DATA type: `uuid` opens nothing,
+# reads nothing and spawns nothing, so `S2.3`'s "declares no I/O" is
+# untouched. Taken from the workspace, where `dp-kernel` already resolves
+# it, so no new third party enters the tree. See src/ids.rs for why the
+# newtypes wrap `Uuid` rather than `[u8; 16]`.
+uuid = { workspace = true }
+
+[dev-dependencies]
+trybuild = { workspace = true }
+# `syn` is a DEV dependency only: it is not linked into the crate at all.
+# (`[dependencies]` above holds `uuid` and nothing else — a pure data type, so
+# `S2.3`'s "declares no I/O" still holds. It is NOT "dependency-free" any more,
+# and saying so was the claim slice 3 had to correct.)
+# It is here because `tests/aggregate_contract.rs` enforces DP-A9 over a real
+# Rust AST — three rounds of refutation broke a hand-rolled lexer eleven times,
+# and every one of those breaks was a fact about Rust's grammar that a partial
+# reimplementation got wrong.
+# `visit` is not in the workspace default feature set; this crate needs the
+# visitor to reach impls nested in modules.
+syn = { workspace = true, features = ["visit", "extra-traits"] }
+# `span-locations` is what turns a finding into a file:line rather than a
+# file — a gate that cannot say WHERE sends the reader hunting.
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+
+# NOTE — this crate deliberately does NOT carry `[package.metadata.dp]
+# dp-crate = true`, and that is a decision, not an omission.
+#
+# The marker is `DP-K11`'s exemption from `dp::forbid_raw_kernel_client`
+# (`DP-R3`): a crate that declares it may hold a raw `sqlx`/`redis` client.
+# `V1-F12` removed the key from here because its only reader was a lint that
+# did not exist yet — a declared input with no consumer is the orphan shape
+# `scripts/orphan-model-gate.py` refuses. The lint now exists (`lints/dp-clippy`,
+# slice 2) and reads this manifest directly, so the key would finally do
+# something. It is still absent, for a different reason:
+#
+#   This crate DECLARES NO I/O (`S2.3`). A raw storage client in THIS crate
+#   would be a defect, not a design — so the one crate DP-R3's prose exempts by
+#   name is precisely the crate that should stay covered. Exempting it would
+#   silence the lint exactly where its firing would be most informative.
+#
+#   This sentence used to read "`[dependencies]` above is EMPTY, and S2.3's
+#   'declares no I/O' rests on that emptiness". Slice 3 added `uuid`, a pure
+#   data type that opens nothing, so the emptiness is gone and the property is
+#   not. Corrected rather than left to rot into a claim a reader can check and
+#   find false: emptiness was only ever EVIDENCE for no-I/O, and citing evidence
+#   as though it were the property is how a rule outlives its own justification.
+#
+# `crates/dp-kernel` carries the marker instead: it is where the database code
+# belongs. If a future slice gives this crate a real read/write surface that
+# must hold a handle, the lint will red and that is the moment to decide
+# whether the surface belongs here or behind `dp-kernel` — visibly, in a diff,
+# rather than by a pre-granted permission nobody re-examines.

@@ -12,7 +12,7 @@ use tilemap_service::types::template::{TemplateConnection, TilemapTemplate, Tile
 use tilemap_service::types::tile_mask::TileMask;
 use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind, TilemapView};
 
 /// Seed for the committed Phase-A golden baseline (AC-9) — reused by both the
 /// regenerator and the byte-identity gate.
@@ -79,7 +79,7 @@ fn run(template: &TilemapTemplate, seed: u64) -> TilemapView {
     place_tilemap(
         template,
         ChannelId("ch_determinism".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 64, height: 64 },
         TilemapSeed(seed),
     )

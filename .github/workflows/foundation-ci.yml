@@ -49,6 +49,36 @@ jobs:
       # Linux baselines (D-WORLDGEN-XPLAT-DETERMINISM). Build above still compiles it.
       - run: cargo test --workspace --exclude world-gen
 
+  # `crates/dp` is the data-plane SDK contract. It gets its own leg, on EVERY
+  # branch, because the heavy job above is scoped to main + mmo-rpg and this
+  # work lives on feature branches — a completeness pass measured that `S1.1`
+  # fired only on a PR to main and `S1.2` (clippy) had NO CI HOME AT ALL, so the
+  # row that catches a whole class of this crate's defects ran only when a human
+  # typed it (`G7`).
+  #
+  # It is cheap and can afford to be unconditional: the crate has no runtime
+  # dependencies, and `tests/aggregate_contract.rs` is where DP-A9 is actually
+  # enforced — over a real `syn` AST, after three rounds of refutation broke a
+  # hand-rolled lexer eleven times.
+  dp-contract:
+    name: dp — tier/scope contract (clippy + tests, all branches)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `aggregate_contract` scopes itself with `git ls-files`, so it needs a
+          # real checkout rather than a shallow archive.
+          fetch-depth: 0
+      # No `@stable`: `rust-toolchain.toml` pins the channel, because this leg's
+      # trybuild `.stderr` files pin rustc's diagnostic prose.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p dp -- --nocapture
+      - run: cargo clippy -p dp --all-targets -- -D warnings
+
   go:
     name: Go modules (build + vet + test)
     runs-on: ubuntu-latest
@@ -307,7 +337,17 @@ jobs:
       # The first two are the ones worth naming twice: a script that cannot return
       # non-zero is indistinguishable from no script, and wiring it would have read as
       # +2 gates in this file while enforcing nothing.
+      # A gate must be able to FAIL, and the proof of that is a test. These suites exist
+      # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
+      # own teeth were as unwired as the gates were.
+      - run: python -m pytest scripts/test_ai_provider_gate.py scripts/test_check_stack_freshness.py
 
+      # ...and then RUN the proofs it just counted. The step above matches text:
+      # a gate advertising `--self-test` is certified whether or not that flag
+      # still works. Measured — rename the function, leave the flag, and the
+      # count stays at 49 while `--self-test` raises NameError. This step is the
+      # difference between gates that CLAIM a proof and gates that have one.
+      - run: python scripts/gate-teeth-gate.py --verify-proofs
   python:
     name: Python services (byte-compile)
     runs-on: ubuntu-latest
@@ -582,6 +622,105 @@ jobs:
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/scan_smoke?sslmode=disable
         run: go -C services/integrity-checker test -tags=integration -run TestScanRows ./pkg/pgsource/...
+
+      # The provisioner's RE-ENTRY path, against a real database (`1b14-01`).
+      #
+      # Armed here because `test-dsn-coverage-gate` found it armed NOWHERE: the
+      # test shipped with the W3 fix and skipped silently on every runner, and a
+      # skip is indistinguishable from a pass in the summary line. It is the only
+      # coverage of a defect a unit test provably could not catch — the mock had
+      # the re-drivable property (`FakeEffects::apply_migrations` is a
+      # `HashSet::insert`) and the live code did not, so a reality that crashed
+      # mid-provision could never be completed.
+      #
+      # No dedicated database to create: the test CREATEs and DROPs its own
+      # throwaway, whose name carries a `test` marker per CLAUDE.md's
+      # destructive-ops rule. It needs a MAINTENANCE DSN with CREATEDB, which is
+      # what `/postgres` is — never a data database.
+      #
+      # pg16 is sufficient here, checked rather than assumed: `contracts/migrations/
+      # per_reality/*.sql` uses no `uuidv7()`, which is the PG18 dependency that
+      # pins `domain-db-smoke` to `postgres:18-alpine`.
+      # 5A — the first REAL dp::ControlPlane, against a real reality_registry.
+      #
+      # Armed on the way in rather than after test-dsn-coverage-gate finds it,
+      # which is what happened to provisioner_reentry_live below. Its LIVE run
+      # already earned its place: the adapter decoded deploy_cohort as INT2 and
+      # the database stores INT4, a ColumnDecode failure no mock could reach,
+      # because the decision logic was green against a hand-built row.
+      - name: create meta smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='meta_cp_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE meta_cp_smoke;"
+          fi
+          for f in migrations/meta/*.up.sql; do
+            psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -f "$f"
+          done
+          psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO reality_registry (reality_id, db_host, db_name, status, locale, deploy_cohort) \
+             VALUES ('1ec91442-100c-45f5-85e1-34865d7daeaf','pg-shard-0.internal','lw_reality_ci','active','en',0) \
+             ON CONFLICT (reality_id) DO NOTHING;"
+      - name: cargo test dp ControlPlane live-smoke
+        env:
+          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/meta_cp_smoke?sslmode=disable
+        run: cargo test -p meta-rs --features sqlx-pg --test control_plane_live -- --nocapture
+
+      - name: cargo test provisioner re-entry live-smoke
+        env:
+          # db-safety-gate: ok — `postgres` here is the MAINTENANCE database, not a data
+          # database. `provisioner_reentry_live` connects to it for the one thing it is
+          # for: issuing CREATE/DROP DATABASE for its own throwaway reality. There is no
+          # other database you can be connected to while creating one, so main's CI-DSN
+          # rule (every workflow DSN names a throwaway) cannot be satisfied by renaming.
+          # The protection the rule is really after lives on the TARGET, and is present:
+          # the suite's databases carry markers and the fixture calls
+          # `testsafe.EnsureThrowawayDB(current_database())` before anything destructive.
+          LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable  # db-safety-gate: ok — maintenance DB, see above
+        run: cargo test -p world-service --test provisioner_reentry_live
+
+      # ── EVERY live suite, one database each — driven by the registry ──────
+      #
+      # `DFO-6`. The six legs above are the ones anybody ever got round to
+      # writing. There are **21** live Rust targets, and the
+      # `cargo test --workspace` leg at the top of this file sets NO DSN — so
+      # for the other fifteen, CI has been running them in their SKIPPED form
+      # and reporting green. That is how `epoch_activation_live` sat DEAD since
+      # `M1`: its fixture never declared the role-bound `resources` that
+      # `RealityRules::resolve` has required all along, four tests failed on
+      # their first line, and nothing anywhere said so.
+      #
+      # This step is ONE leg rather than fifteen more, because fifteen legs
+      # would be fifteen copies of a mapping that already exists as data.
+      # `contracts/testing/live-suites.yaml` is the registry;
+      # `live-suite-registry-gate.py` (pre-commit) checks it against the legs
+      # above in both directions and refuses a suite that cannot announce a
+      # skip; and the runner reports SKIPPED as NOT a pass, so this leg cannot
+      # go green by doing nothing.
+      #
+      # It talks to the service container over TCP (a `services:` container has
+      # no `docker exec` route), which is why the runner has a TCP mode at all.
+      # `db-smoke` sets up Rust and Go and NOT Python — every other `python`
+      # invocation in this file lives in a different job, which has this step.
+      # Found by reading the job rather than by the leg failing on its first
+      # line, which is the only way it could have been found here: Actions
+      # cannot be run on the dev box.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: cargo test EVERY live suite (registry-driven, one DB per suite)
+        env:
+          LS_PG_MODE: tcp
+          LS_PG_HOSTPORT: localhost:5432
+          LS_PG_USER: foundation
+          LS_PG_PASSWORD: foundation
+          LS_REDIS_URL: redis://localhost:6379/0
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/live-suites.py
 
   secrets:
     name: Secret scan (gitleaks)

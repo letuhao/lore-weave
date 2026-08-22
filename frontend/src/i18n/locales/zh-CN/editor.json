@@ -90,7 +90,6 @@
     "underline": "下划线 (Ctrl+U)",
     "inline_code": "行内代码",
     "link": "链接",
-    "url_prompt": "URL：",
     "highlight": "高亮 (Ctrl+Shift+H)",
     "subscript": "下标",
     "superscript": "上标",
@@ -103,7 +102,8 @@
     "code_block": "代码块",
     "horizontal_rule": "分割线",
     "undo": "撤销 (Ctrl+Z)",
-    "redo": "重做 (Ctrl+Shift+Z)"
+    "redo": "重做 (Ctrl+Shift+Z)",
+    "url_prompt": "URL："
   },
   "slash": {
     "paragraph": {

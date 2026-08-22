@@ -26,6 +26,9 @@ use world_service::{
     EmbeddingProvider, EmbeddingQueue, EmbeddingWorker, MemoryRef,
 };
 
+mod support;
+use support::verified_reality;
+
 fn cosine(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -38,7 +41,7 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 
 fn mr(reality: Uuid, npc: Uuid, session: Uuid, text: &str) -> MemoryRef {
     MemoryRef {
-        reality_id: reality,
+        reality_id: verified_reality(reality),
         npc_id: npc,
         session_id: session,
         content_hash: format!("h-{text}"),
@@ -177,7 +180,7 @@ async fn non_blocking_enqueue_returns_immediately_even_with_backlog() {
     // Sanity: AuditWriter trait IS the same `audit` we constructed.
     audit
         .record(AuditEvent {
-            reality_id: Uuid::from_u128(0),
+            reality_id: verified_reality(Uuid::from_u128(0)),
             npc_id: Uuid::from_u128(0),
             session_id: Uuid::from_u128(0),
             provider: "test".into(),

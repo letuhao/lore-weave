@@ -1,6 +1,611 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `34810c12a` + DB-guard sweep · **Branch:** `main` · 2026-08-09
+## 🗺️ WORKING ON THE MAP, THE WORLD, MOVEMENT, PLACES, OR WHERE AN ENTITY IS?
+
+> ### **Read [`docs/standards/world-and-map.md`](../standards/world-and-map.md) BEFORE designing anything.**
+>
+> It is the **BUILT / HOLLOW / ABSENT** inventory — which capability is shipped, which is a table
+> with no writer, which is genuinely unstarted, the **symbol** that owns each one, and where to
+> attach. §6 gives five commands that reproduce every claim, so **re-measure rather than trusting
+> its date**.
+>
+> **Why this pointer is the first thing in this file.** The map is the most thoroughly *designed*
+> area in the repo (`MAP_001`, `GEO_001`, `TMP_001`, `36_map_architecture`, `41_space_dataflow`)
+> and, until 2026-08-23, had **no statement anywhere of what actually runs**. An agent handed
+> *"build the map"* finds eight rich design docs, no evidence of running code, and reasonably
+> concludes there is none. **There is.** A from-scratch rebuild does not merely waste that work —
+> it produces a *second* world model beside the first, and this repo already has two unjoined
+> ones (`world-service`'s space graph and `tilemap-service`; see §5 of that doc).
+>
+> The three traps it names, because each is one an agent walks into by reading the code honestly:
+> `combat_v1`'s **`move` is a STANCE** (`Kite/Flank/Cover/Hold`) with no destination; **`portal`
+> has never had a writer**, so the world is a containment tree with zero lateral edges and
+> movement is meaningless until it does; and **`site_in_cell` treats re-siting as an error by
+> design**, so movement is a new verb (`move_to_cell`), never a relaxed insert.
+
+---
+
+## ▶ WORLD IN A RUNNING REALITY IS CLOSED — 7 of 7 (2026-08-23, branch `feat/game-logic`)
+
+> **[`2026-08-22-world-in-a-running-reality-RUN-STATE.md`](../plans/2026-08-22-world-in-a-running-reality-RUN-STATE.md)
+> is 7/7.** Commits `dea3ca944` → `93dced098`. The board existed because the space producers were
+> reachable and **no reality anyone uses had ever been touched by them**: all ten were provisioned
+> before `0022`–`0030` existed.
+>
+> **`A2` — all ten realities are at `0030_encounter`.** 26 migrations each, seven tables each, 0
+> failed; meta ledger 104 rows (7×11 + 3×9). The PO authorised the live write, and the wait paid for
+> itself four times over. The one that mattered: the pending list was hardcoded `id >= '0022'`,
+> right for the three realities at `0021_turn_slot` and **wrong for the seven at `0019_channels`**,
+> which would have reached head with `0020`/`0021` missing and nothing saying so. The one that
+> outlives the run: **`migrate` never wrote the reality's own `schema_migrations`** — two ledgers,
+> one writer, so the tables were there and the database denied it, and `apply_pending` reads exactly
+> that table to decide what a resume still owes. Now written in `SQLApplier.Apply`, guarded
+> permanently by `realityLedgerCount` in `migrate-drill`. Two more shared a cause worth keeping:
+> **plan mode executes neither the apply nor the verify** — nine green plans proved the plan and
+> nothing downstream of it.
+>
+> **`A4` — a reality that already existed has a world, and the browser says where.**
+> `lw_reality_00c7e2c5cabc` has 5 channels, 5 map nodes, 2 places and a sited actor; the browser
+> renders `turn N · you are entity 4 · at Yen Vu Lau`; `running-reality.spec.ts` is 2 passed on
+> chromium. Swapping the reality was **not** a one-line change, and that is the finding:
+> `seed_world`'s only production caller was the provision step, which runs at provision time and
+> only then, so for every reality that actually exists **the producer was unreachable** — which
+> reads exactly like reachable until somebody tries. `POST /internal/v1/world/seed` is that missing
+> caller. The demo that drives it contains **not one `INSERT`**; every write goes through an
+> endpoint, because a demo that reaches past the API proves the database, not the system.
+>
+> **▶ NEXT — in the order I would take them**
+>
+> 1. **Give `/internal/v1/space/view` a caller** (`OR-4`-shaped, cheapest real progress). The
+>    endpoint is finished and careful — recursive ancestor walk, explicit budget, a `truncated` flag
+>    — and nothing calls it. A consumer turns *"you are at Yen Vu Lau"* into *"you are in a room"*,
+>    and immediately surfaces the empty `portal_ring`, which is the honest next problem.
+> 2. **`OR-6` — no playwright suite runs in CI**, not the new one and not `kernel-state`. Both skip
+>    without `LOREWEAVE_E2E_FULL=1`, so a naive leg goes green having asserted nothing. Needs the
+>    subject-floor treatment `live-suite-registry-gate` gave the Rust side.
+> 3. **`OR-7` — nothing decides which world a reality gets.** `/world/seed` would happily give all
+>    ten the same five demo nodes. `D-3` refused a hardcoded starter world; this is that question one
+>    layer out.
+> 4. **A writer for `portal`** — the one hollow table whose absence blocks everything downstream.
+>
+> **Carried open:** `OR-1` (`portal`/`encounter`/`layer_registry` deferred with triggers) ·
+> `OR-2` (`reality_seeder` still has 0 production constructors) · `OR-5` (13 boards still parse
+> empty, two dialect families refused deliberately).
+>
+> **`WD-3` — three orphan actors in `lw_reality_00c7e2c5cabc`**, entities 1–3, left by partial runs
+> before the script was made idempotent. **Deliberately not deleted**: hand-run `DELETE`s against a
+> live reality to tidy up a mistake is worse than the litter, and `R-52` says evacuate, never delete.
+> Recorded so the next reader knows what they are.
+
+---
+
+## ▶ SPACE-PRODUCERS IS CLOSED — 13 of 13, three lanes (2026-08-22, branch `feat/game-logic`)
+
+> **[`2026-08-22-space-producers-RUN-STATE.md`](../plans/2026-08-22-space-producers-RUN-STATE.md) is
+> 13/13.** 14 commits. The board existed because closing the space substrate revealed that **six
+> tables had two producers between them and `world_seed`/`space_view` had zero callers outside
+> `tests/`** — reality-layer `3C`'s lesson (*"an unforgeable mint is dead code until something can
+> mint"*) at seven times the scale.
+>
+> **Lane A — producers.** `A1` measured the seam and found something worse than the thesis: there is
+> no space phase because **there is no seeding phase at all** — provision steps 9 and 10 are
+> consecutive statements, and `reality_seeder` (1008 lines, described as the background orchestrator
+> for exactly that stage) has zero production constructors. `A2` gave the stage a body: a 12th
+> provision step, `seed_world_structure`, called BETWEEN the two transitions, taking a DECLARATION —
+> **empty means skipped, never "use a default world"**. `A3` is SPAWN: `entity_binding` gets a
+> producer, atomic with actor creation, and the bite proves it (`actors 2 -> 3` when the transaction
+> is removed — an actor with nowhere to be has no collector). `A4` put *"what is here"* on the wire
+> with a ceiling that **refuses rather than clamps**. `A5` decided `portal`/`encounter`/
+> `layer_registry` get TRIGGERS, not producers.
+>
+> **Lane B — four rows other boards held open, and THREE OF THEM WERE ALREADY DONE.** reality-layer
+> `3C`/`3D` shipped and the board still said *"blocked on a PRODUCER"*. kernel-state `G5`'s automated
+> suite was fully written and **had never been run** — 2 passed on chromium once someone ran it.
+> game-tier's eight `1b5-*` rows were discharged eighty lines below themselves. Only lore-bible was
+> genuinely open, and it stays parked — with a mechanism now.
+>
+> **Lane C — the tooling that hid all of it.** `goal-prompt.py` had three measured gaps: a bolded id
+> was not a row (**30 of 51 boards parsed as EMPTY**), `⬜` was not in its vocabulary (**27 open rows
+> invisible**), and it could not tell a marker from a **mention** of one — which silently TICKED open
+> rows, twice in one day. Fixed and bitten; boards parsing empty **30 → 15**, rows visible **~200 →
+> 445**, validated against five boards whose state was independently known.
+>
+> **⚠ Four things to carry, none of them a task.**
+>
+> 1. **The recurring shape, five times in one run:** the work ships and the register is never told.
+>    `SPG-Q6`, reality-layer `3C`/`3D`, the eight `1b5-*` rows, `G5`'s unrun suite, and
+>    `reality-id-adoption-gate` (a row said it was *refused*; it exists, and **this run had broken it**
+>    — `A3`/`A4` took it 0 → 6 ADOPTABLE, now back to 0).
+> 2. **A gate's SELF-TEST passing is not the gate running.** `reality-id-adoption-gate`'s self-test
+>    runs in `gate-self-tests`, so it was green in every commit while the ratchet itself was red.
+> 3. **`OR-3`: nothing yet DECLARES a world.** Every in-repo caller passes an empty declaration, so
+>    `seed_world_structure` is `Skipped` on every existing path. The producer is reachable; the author
+>    does not exist.
+> 4. **`OR-5`: 15 boards still parse empty** — a fourth dialect family (plain-text ids, ids containing
+>    a space or `·`, a marker before the id). Deliberately not folded in: the first careless widening
+>    produced **three false opens on a 35/35 closed board**.
+>
+> **One pre-existing failure, verified as pre-existing:** `provisioner_reentry_live` fails locally on
+> `could not access file "vector"` — pgvector is not installed on this Postgres. Confirmed identical at
+> `ff58f69b1`, the commit before this run, by running it in a worktree there. Not caused by this work.
+## ▶ ALL FOUR BOARDS CLOSED, AND THE OPEN REGISTERS ARE EMPTY (2026-08-21, branch `feat/game-logic`)
+
+> **`HEAD` after this commit.** Four boards — [player-edge](../plans/2026-08-21-player-edge-RUN-STATE.md)
+> `E1`–`E6` · [demo-path](../plans/2026-08-21-demo-path-RUN-STATE.md) `F1`–`F5` ·
+> [kernel-state](../plans/2026-08-21-kernel-state-to-screen-RUN-STATE.md) `G1`–`G8` · the closeout —
+> and **no open row left on any of them.** The five that were open at the last handoff (`GO-1`,
+> `GO-2`, `FO-1`, `FO-2`, `EO-1`) are all cleared.
+>
+> **The pipeline is proven in both directions, automatically.**
+>
+> ```
+> browser Strike → proposal (user_ref_id server-stamped, NO actor field)
+>   → spine, LONG-RUNNING, no --drain-once → actor_hub::Actor::set_quantity
+>   → events row → publisher → lw.events.<reality> → foldEvent → the DOM
+> ```
+>
+> A page that never reloaded shows `turn 2 · 1 strikes 2 for 9 (31 left)`, and the number is the
+> hub's, not a derived badge. Every hop bitten.
+>
+> **`G8` is the one added today**, and only because a reason got checked: three boards said *"the
+> long-running consumer hangs (`DFO-7`)"*. `DFO-7` closed 2026-08-14 and its subject was
+> `--drain-once`; the no-flag mode is a daemon by construction. Measured: a proposal XADDed while
+> the spine was already running committed in **~1s** (`COMMIT … → channel_event_id 3 (Applied)`,
+> `turn.resolved` / `struck` / `attacker: "1"` resolved by the kernel from the binding), and the
+> process stayed up. The control is in the same run — the synthetic driver produced
+> `proposal.rejected` *"drives no actor in this reality"*, so the difference between commit and
+> refusal is the binding. `GD-13` records the mis-citation.
+>
+> **`FO-2` closed the last gate gap**, and cost more than the row promised. `phase0-reconcile-gate`
+> now refuses a `Reconciles:` field that strands citations past the em-dash — reporting a segment
+> only when its head **does** resolve to a real index row, so it can under-report but never invent
+> a phantom, which is what got the earlier widening reverted. **94 → 106 citations actually read**;
+> the 5 legacy fields rewritten in the same commit. It also surfaced two things nobody was looking
+> for: the reference set was admitting the table HEADERS `Test`/`Script`/`SoT file`, so
+> `Reconciles: a test I wrote` **passed at HEAD**; and `Destructive DB ops in tests` — ENFORCED,
+> three enforcement layers, an incident behind it — **had no row in the standards index** and only
+> resolved through that `Test` cell. Both fixed.
+>
+> **⚠ Two things to carry, neither of them a task.**
+>
+> 0. **The handoff/archive split is main's, and it is now done here too.** This file was 12,445
+>    lines after the merge and is 1,182 now; nothing was deleted — `SESSION_ARCHIVE.md` went
+>    21,881 → 28,260 and the move is proven lossless (0 headings, 0 non-blank lines, checked
+>    against the merge commit). Trim this file freely; put what you trim in a dated archive
+>    block. **I got this wrong first**: main's 1,036-line handoff looked like data loss, so the
+>    merge resolution kept the branch's whole file — which put 96 already-archived sections back
+>    beside the copies still in the archive. The `▶ GAME TIER` entry is deliberately still live:
+>    `actor-hub-figures-gate` anchors a checked region in it.
+> 1. **The local sweep is not CI.** `SWEEP_RC=0 — 91 GREEN` runs 99 of ~200 scripts;
+>    `migration-idempotency-validator` is CI-wired only, which is why a non-idempotent migration
+>    passed the sweep and was caught by a live suite (`GD-11`, `GD-12`).
+> 2. **THIS BRANCH IS ~115 COMMITS BEHIND `main`, and that produced a whole class of false work.**
+>    I wrote here that `frontend-game-e2e` "has never run green on a PR". `gh run list` says it is
+>    **green on push to `main`, 2026-08-09, 3m27s** — and `main` already carries both fixes `GO-1`
+>    claimed to make, including a `smoke.spec.ts` that seeds a session so the guarded routes stay
+>    asserted. My branch version SKIPPED them (2 tests running vs main's 8). Main's spec is adopted
+>    here now. **Before the next task: decide whether to merge `main` down.** Three of today's rows
+>    were written against things that already existed one branch or one `ls` away (`GD-15`).
+>
+> **VERIFY.** Gate sweep **91 GREEN / 0 RED / 8 SKIP** (`gate-wiring-gate.py --run-all`; the six
+> bite gates that first reported RED in 0.1s were a stale `target/.bite-harness.lock` left by my own
+> killed run — re-run serially, 6 GREEN. `GD-14`). `phase0-reconcile-gate` **SELFTEST 15 cases** +
+> tree **OK, 25 specs / 128 index rows**, bitten three ways with byte-exact restores. Long-running
+> spine measured live against the demo stack. No Rust or TS source changed in this commit.
+>
+> **▶ DO NEXT — nothing is in flight; the next task opens its own board.** The natural continuations,
+> none started: run the whole demo under an orchestrator rather than by script (`G8` proves the
+> binary, not the deployment) · the product path `G-S3`/`G-S4`, still parked on the PO because
+> combat and progression have no complete design to write a schema against · `DFO-6` and the two
+> unbuilt `DP-X2` Redis roles in
+> [data-foundation](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md).
+
+---
+
+## ▶ THE DEMO PATH — kernel identity reaches a browser (2026-08-21, branch `feat/game-logic`)
+
+> [`2026-08-21-demo-path-RUN-STATE.md`](../plans/2026-08-21-demo-path-RUN-STATE.md) — `F1`–`F5`.
+> Opened by one question: *"does the actor hub reach the FE end to end?"* It did not, and the
+> reasons stacked in a way nothing in the tree could report.
+>
+> **`turn 0 · you are entity 1`, rendered in Chromium.** Browser → `channel` room → `onAuth`
+> (server-supplied identity) → world-service `/internal/v1/actor-control/subject` → meta binding →
+> per-reality `actors` → `entity_id 1` → `w1.frame.self` → the DOM. **Bitten**: stop world-service
+> and the same click yields *"could not resolve your actor; retry"*; restart it and entity 1 comes
+> back. So the number on screen provably comes from the control plane and both databases.
+>
+> **And the refusal is the RIGHT one** — not *"you drive nobody"*. `E3`'s four-answer design
+> (driving · nobody · realityClosed · unavailable), visible in a UI for the first time rather than
+> argued for in a test.
+>
+> **THE VIEW WAS BORN UNREACHABLE.** `ChannelPanel` shipped in `fc2ba5f8a` with its client, its
+> store, six tests and a live proof — and that proof drove the CLIENT. Nothing ever rendered the
+> panel. It stayed an orphan for three weeks, through a security review of the room it talks to and
+> a phase that rewrote the subject it renders. Nothing went red and nothing could: it compiles, its
+> store compiles, its client is tested, the suite is green. The orphan shape one tier above the one
+> `orphan-model-gate` watches — there a model with no PRODUCER, here a view with no CALLER.
+>
+> **And after `E4` the FE's only identity was not a user.** `onAuth` returned
+> ``dev:${jwt.slice(0,4)}`` — fabricated from four characters of a SHARED token — which fails
+> `isUserRefId`, so the join was refused and the demo path was structurally dead. Nothing reported
+> that BECAUSE the panel was unmounted; had it been wired, `E4` would have broken it visibly.
+> `F1` makes the identity server-supplied, UUID-validated, **no default**, so the branch fails
+> closed where it used to invent.
+>
+> **world-service had no Dockerfile and no compose entry** (`WS-COMPOSE`, closed). Both written; the
+> image builds at 139 MB and carries `contracts/`, because two config defaults are CWD-relative —
+> `ED-D8` from the player-edge run reappearing as a packaging requirement.
+>
+> **⚠ WHAT IS STILL NOT PROVEN: actor-hub STATE in the browser.** *(Proven later the same day by
+> the kernel-state board — `G3`–`G5`. Kept as written because the reason it was not proven here is
+> the useful part.)* The roster was empty and the turn
+> 0 because reality `cd0747d2` has **zero committed events** (`XLEN 0`, `events` table 0 rows).
+> The SUBJECT hop is proven; hp/roster/turn have never been rendered. Doing it needs a reality with
+> both committed events AND a live binding, and no reality has both — creating one means granting a
+> binding, a write to the non-throwaway dev meta database.
+>
+> **▶ DO NEXT — SUPERSEDED, and left in place because what it got wrong is the record.** Every
+> candidate it named is done: kernel STATE is on the screen (`G3`–`G5`), `FO-1`, `FO-2` and `EO-1`
+> are cleared, and *"the spine still hangs (`DFO-7`)"* was never true — see `GD-13`. Read the block
+> at the top of this file instead. Original text: either (a) get kernel STATE onto the screen —
+> needs the write above, or a throwaway reality provisioned for it, and the spine still hangs
+> (`DFO-7`) so a RESOLVED turn is further out; or (b) `FO-1` — `EchoRoom.onAuth` takes
+> `options.userId ?? 'guest'` FROM THE CLIENT, and that id keys the per-user connection cap, so a
+> client evades the cap by picking a new id per connection; or (c) `FO-2` —
+> `phase0-reconcile-gate` reads only the citations before the first em-dash (7 of 25 fields, 15
+> unread), whose fix is a convention change across tracks. `EO-1` from the player-edge board is
+> still open (no `CHECK (entity_id >= 0)` on `actors`).
+
+---
+
+## ▶ THE PLAYER-FACING EDGE — a human drives without an operator (2026-08-21, branch `feat/game-logic`)
+
+> [`2026-08-21-player-edge-RUN-STATE.md`](../plans/2026-08-21-player-edge-RUN-STATE.md) — `E1`–`E6`,
+> six slices, one PO checkpoint. **`D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` is discharged**, open
+> since 2026-08-06; registry **34 → 33**.
+>
+> **The transport ASKS now.** `POST /internal/v1/actor-control/subject` on world-service resolves
+> `(reality_id, user_ref_id)` to the island `entity_id`, and `ChannelRoom` reads it instead of an
+> environment variable. A human can drive an actor because somebody granted them one, not because
+> an operator edited the environment and restarted the process.
+>
+> **Phase 0 shrank the work before it started.** The read is OWNER-SCOPED — the sensitive-path
+> contract describes its audited sibling, verbatim, as `WHERE user_ref_id != $caller_user`, so none
+> of `RA1`'s audit machinery applies. *"Which actor do I drive"* is a question about yourself.
+>
+> **The shape came from a LINT, not from taste.** `meta-sensitive-read-bypass-lint.sh` excuses
+> callers BY NAME, and carried `commit-service/src/subject.rs` under a comment saying the quiet part
+> out loud: *"There is NO RUST-SIDE SANCTIONED READER… the only compliant Rust read is one that does
+> not happen."* A second caller would have grown that list by one per service — `NV-3`'s
+> default-uncovered shape. So hop 1 moved into **`meta-rs`** and both services call it; `subject.rs`
+> left the exclusion list because it no longer contains a SELECT.
+>
+> **⏸ `E4`, the PO checkpoint: DELETE `LW_CHANNEL_ACTOR_MAP` entirely.** The strict option over the
+> recommended one. Every alternative leaves the second source *in the code*, one edit away from
+> being consulted; a gate is a decision someone can revisit, an absence is not. The cost was
+> accepted out loud: **a local session now needs `admin reality provision` → `create-actor` →
+> `grant-control` before anything can be driven.**
+>
+> **Two defects found on the way, neither of them the feature's:**
+> 1. `actors.entity_id` accepted a NEGATIVE value — `0022` has no `CHECK` and `adopt_actor` passed
+>    an operator's `--entity-id` straight through. `-1 as u64` is `u64::MAX`, so the actor could be
+>    created, granted, and never act, with nothing on the path saying so. Refused at both edges now.
+> 2. `meta_allowlist` defaults to a RELATIVE path, so the same code binds from a shell and 500s
+>    under `cargo test`, reported as a generic *"actor-control write failed"*.
+>
+> **Evidence: 26 bites**, every one watched RED for the right reason and restored byte-exact —
+> 7 (`E1`) + 4 (`E2`) + 6 (`E3`) + 2 (`E4`) + 3 live (`E5`) + 4 re-bitten after refactors. Rust
+> workspace **2568 passed / 0 failed**, game-server **82 / 0**, all Go contract suites green, and
+> **23 of 23 live suites** including the new `world-actor-subject`.
+>
+> **▶ DO NEXT.** The edge is built and proven; nobody has driven a turn through it end to end. The
+> honest next step is a WS-level run — a real ticket, a real join, a real submit — which needs
+> world-service in `infra/docker-compose.yml` (it is not there; both live proofs run it from
+> source). Four `D-PC-*` rows remain. `D-DEFERRAL-GATE-PLATFORM-SCOPE` still leaves ~360 ids
+> ungoverned outside the game tier.
+
+---
+
+## ▶ THE DEBT RUN — and the audit table that had never had a row (2026-08-21, branch `feat/game-logic`)
+
+> Closes both rows the `P7` audit opened, one day later.
+> [`2026-08-20-actor-control-debt-RUN-STATE.md`](../plans/2026-08-20-actor-control-debt-RUN-STATE.md)
+>
+> **`D-PC-SEAM-NO-CONTRACT`** — `contracts/actor-control-worker.contract.json`, read at RUNTIME by a
+> test in each language. Written FROM MEASUREMENT: the two sides already agreed (18 keys, 8 flags,
+> 3 ops), so it freezes an agreement rather than declaring one. **Eleven bites**, five Rust and six
+> Go. The flags half is BEHAVIOURAL — the real compiled worker, a complete argv and an empty
+> environment reach the config check while a rejected argv dies earlier with a different message —
+> and the response-keys half is a source scan, stated as such in the test rather than dressed up.
+>
+> **`D-PC-NO-RUST-READ-AUDIT`** — the row asked for a reachable audited path from Rust. Trying to
+> PROVE it is what found the real defect: **`meta_read_audit` had never held a single row.**
+>
+> 1. `liveBinding` writes it `if m.ReadAudit != nil`; **no production construction ever set the
+>    field** — both entry points built `MetaRegistrar{Cfg, Caller, Pool}` and stopped.
+> 2. The `ReadAuditor` implementation its own interface comment described **did not exist**.
+> 3. Written and wired, it failed validation: `TagActorBindingCrossUser` was declared as a constant
+>    on 2026-08-14 and **never added to `IsValid`'s switch six lines below it**.
+> 4. Fixed: **0 → 1**, then **2 → 3** against the dev stack's own container.
+>
+> Four layers of one discipline — the migration that declared it, the yml that registered it, the
+> constant that named it, the interface that guarded it — with an empty table underneath, because
+> nobody had ever CALLED it.
+>
+> **The PO decision at `RA3`:** the preview reports the SLOT and never the PERSON. Enforced by a
+> TYPE — `Preview.actor_is_driven` is a bool, so the worker cannot send the id; a future edit that
+> wanted to leak it would have to change the type, which is reviewable, where forgetting a
+> redaction is not.
+>
+> **The mechanism** that would have caught the whole chain is now `contracts/pii/sdk_test.go`: the
+> yml and the SDK must agree in BOTH directions. It found a second gap on its first run — three
+> registered paths (`audit_query`, `admin_bulk_export`, `bulk_meta_query`) have no Go constant, so
+> `IsValid`'s claim to "mirror the yml" was false three more times.
+>
+> Registry: **36 → 34** tracked deferrals, and the closure is enforced — a `PROSE_ONLY` row whose id
+> has left the block reds the gate (bitten).
+>
+> **Also:** `scripts/goal-prompt.py`, copied from the MVP repo and de-biased so any plan can use it
+> — zero configuration, both row dialects, proven against a foreign repo's plan. It found a defect
+> in ITSELF while generating this run's goal (a table row's span ran to EOF and turned a
+> drift-register row into a hand-back), and the selftest arm for that was VACUOUS on first write.
+>
+> **▶ DO NEXT.** The debt run is closed. The obvious next feature is the player-facing edge — the
+> transport still resolves actors from `LW_CHANNEL_ACTOR_MAP`
+> (`D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`), so a human still cannot drive an actor without
+> admin-cli. Four `D-PC-*` rows remain, each waiting on something that has not happened.
+
+---
+
+
+## ▶ GAME BUILD — FEATURE #2: a player is a CONTROL INTERFACE, the subject can no longer be forged, and an OPERATOR can now grant one (2026-08-14, branch `feat/game-logic`)
+
+> ## ▶ THE PLAYER FEATURE — first slice shipped
+>
+> **The PO picked feature #2: a hub for a player to control the actors they own.** Phase 0 found it
+> already half-designed and carrying a live security defect.
+>
+> **What existed:** `migrations/meta/034_actor_control_binding`, sealed 2026-08-06, stating the
+> framing almost word for word — *"a player is not a KIND of actor — it is a CONTROL INTERFACE"* —
+> with three declared events and **one reader and no writer at all**. The only `INSERT` in the tree
+> was a test fixture, so the table was empty by construction: the same state `035` recorded about
+> the table `034` replaced, and the reason that one was deleted.
+>
+> **The defect it closes:** `admission::Proposal` carried `pub actor: u64` and `ChannelRoom`
+> supplied it. The producer SIGNATURE was verified and the SUBJECT was not, so the field naming who
+> you act as arrived from the party claiming it. `PID-D5`'s *"a field that is not on the wire cannot
+> be forged"* sat eleven lines below it, making that argument about a different field.
+>
+> ### Two sealed decisions turned out to be wrong, and both were measured, not guessed
+>
+> * **`034`'s PK made revoke TERMINAL.** Its header promises *"two LIVE rows … unrepresentable"*;
+>   `PRIMARY KEY (reality_id, actor_id)` permits one row TOTAL, so an actor whose driver left could
+>   never be driven again. Migration **`041`** replaces it with a partial unique index over live
+>   rows. Handoff works, two live drivers still refused.
+> * **`S-9` fired**: the binding said UUID, the island says `EntityId(u64)`, zero conversion sites
+>   existed — and after `0017` dropped the `pc_*`/`npc_*` projections, **no per-reality actor table
+>   survived at all**. The binding was a durable pointer to something that did not durably exist.
+>   The PO chose to build the registry; migration **`0022_actors`** is `S-9`'s conversion site, and
+>   `SF-6` (three days old) says why it is not a fifth spelling: it mints no vocabulary, it writes
+>   down the mapping between two that already exist.
+>
+> ### Shipped
+>
+> | | |
+> |---|---|
+> | `041` + `0022` | the binding's constraint repaired; the per-reality actor registry, which ALLOCATES the island id so it is the SSOT rather than a second copy |
+> | the WRITER | two scoped ops on the Rust→Go meta bridge (`I8` audit in the same TX) + `world-service` routes + a frozen contract. A grant REFUSES an actor the registry does not have |
+> | the RESOLVER | `commit_service::subject` — two hops, meta binding (live rows only) → per-reality `actors` → `EntityId`, with three distinguishable refusals and a CHECKED `i64→u64` |
+> | the WIRE | `pub actor: u64` is GONE. `user_ref_id` replaces it; the transport sends the user |
+> | the CALLER | `admin reality create-actor` / `grant-control` / `revoke-control` — because the writer's routes are `require_internal` and no operator could reach them. **The same orphan shape one tier up**, and the reason `035` deleted a table |
+>
+> ### Evidence
+>
+> **The forgery, demonstrated and then killed** — the new suite run against a mutant that reads the
+> acting entity off the wire again:
+>
+> ```text
+> MUTANT  a_proposal_naming_another_actor_does_not_become_that_actor ... FAILED
+>           left: EntityId(99)      right: EntityId(1)
+>         the_callers_resolved_subject_is_the_one_that_acts ... FAILED
+>           left: EntityId(0)       right: EntityId(7)
+> RESTORED byte-exact -> test result: ok. 4 passed; 0 failed
+> ```
+>
+> **Live, two databases in two tiers** (`scripts/live-suites.py --only commit-subject`):
+>
+> ```text
+> GRANTED   user 29731ffa-… -> EntityId(4242)
+> STRANGER  user bb171b31-… -> refused (no live binding)
+> REVOKED   user 29731ffa-… -> refused (binding is history)
+> HANDOFF   user 076d7efe-… -> EntityId(4242)
+> DANGLING  actor f1065f68-… -> refused (no registry row)
+> ```
+>
+> `CARGO_RC=0` — **785 passed / 0 failed across 68 suites**. `GO_RC=0` across 13 packages.
+> game-server **70 pass / 0 fail**. Removing the field rather than ignoring it is what made the
+> compiler find all **19** call sites.
+>
+> ### `P7` — the caller, and the fork it turned out to be
+>
+> The grant path shipped with **no invoker**. Three facts ruled out the obvious fixes: `admin-cli`
+> has no HTTP client at all (every command is a subprocess or a direct `pgxpool`);
+> `contracts/service_acl/matrix.yaml` sanctions admin-cli against **meta-worker**, not
+> world-service; and the sanctioned path — straight to the Go bridge — has neither safety check and
+> **cannot** have the second, because `actors` lives in the per-reality database meta-worker does
+> not hold. Resolved on the shape `reality provision` already proved: a **worker binary**, flags in,
+> secrets by env, one JSON object out, exit code as verdict. The checks moved into
+> `actor_control_flow` so the HTTP route and the CLI run the SAME rules rather than two sets that
+> drift.
+>
+> **Live, end to end — twelve steps, two databases, the real bridge, no mocks:** create-actor →
+> grant → idempotent re-grant → a second user REFUSED → a ghost actor REFUSED → a stale CAS refused
+> *with the driver surviving* → revoke → **handoff**, which `034`'s PK made impossible until `041`.
+> The `I8` audit rows carry the operator's reason and `binding_id` as `row_pk`, so `041`'s new key
+> is proven on the real path.
+>
+> **The live run found a defect the entire unit suite agreed with.** `bind_reality` mapped every
+> bind failure to `RealityClosed`, so a missing table reached the operator as *"REFUSED — reload and
+> decide"* with `conflict: true`: an outage wearing the costume of a normal answer. The split
+> already existed upstream (`RealityMismatch` vs `ControlPlaneUnavailable`) and I had not looked —
+> the exact distinction `ActorAlreadyDriven` exists to preserve, collapsed one layer up. Fixed,
+> bitten, and re-proved live in both directions.
+>
+> **Two deliberate asymmetries, recorded so nobody "tidies" them:** grant binds the reality and
+> revoke does not (refusing to revoke a driver in a frozen world would strand a player in a world
+> under maintenance — revoke is the safe direction); and **the dry run does not report who currently
+> drives the actor**, because that is a cross-user read of `actor_control_binding` and a preview
+> that answered it would be an unaudited way to probe who holds whom.
+>
+> `revoke-control` is tier-1: the framework REFUSED the registry file until `double_approval` was
+> true, and reaching the CAS took four independent guards (`admin:destructive`, a second-actor
+> token, typed confirmation, then the feature's own CAS). The first draft said `false`; accepting
+> the tier's second half was the right answer, not downgrading the tier to escape it.
+>
+> **Two dev-stack facts nothing checks:** `039`/`040`/`041` were committed and **never applied** to
+> `loreweave_meta`, and the bridge container was a 37-hour-old image that 404'd on the grant route.
+> Both invisible to every unit suite. Fixed by applying and rebuilding; the GAP has no mechanism
+> (`PD-15`).
+>
+> ### The RUN-STATE audit (2026-08-20) — six deferrals that were never tracked
+>
+> Asked to check the run-state for staleness before planning further, and it was worse than stale.
+> **The six `PC-*` rows in its §4 were invisible to `deferral-gate.py` twice over:** they lived in
+> `docs/plans/`, which the gate does not scan (it globs `docs/**/SESSION_HANDOFF.md` +
+> `docs/deferred/*.md`), under a prefix its `D-[A-Z]…` id pattern cannot match. `D-PC-AGENT`'s own
+> text promised *"it must not be prose-only… the trigger goes in with `P1`"* — `P1` shipped six days
+> earlier with none, and nothing said a word.
+>
+> **And `PC-*` was already owned.** `00_foundation/06_id_catalog.md` assigns it to *Player Character
+> semantics* (`PC-A1..A3`…`PC-E1..E3`) and `I15` says those ids are forever. `PC-D2` is a locked
+> decision about consent-gated PvP. Phase 0's question 1 asked of a NAME instead of a concept.
+>
+> Fixed: renamed `D-PC-*`, moved into the game-tier registry block (**30 → 36** tracked), five
+> `PROSE_ONLY` rows with real wake-ups, and `D-PC-AGENT` got the asserted trigger it was owed —
+> `services/meta-worker/pkg/bridge/actor_control_trigger_test.go`, which reds when
+> `actor_control_binding` gains a seventh column. Bitten with `controller_kind`: red for the right
+> reason, restored green.
+>
+> Three measured-false claims went with it (`PD-19`): `D-PC-SEATS` said *"the PK makes
+> one-driver-per-actor a database law"* when `P1a` — in the same document — had replaced that PK
+> with `binding_id` (the law is `actor_control_binding_one_live_driver`, a partial unique index);
+> the header said `files 8` against a measured **52**; and `P6`'s `799/0 across 72` covered a subset
+> of a workspace that has **193** suites. `D-PC-ACTOR-IDENTITY` was still listed as BLOCKING `P2`
+> six days after `P2` shipped (`PD-18`).
+>
+> **▶ DO NEXT — the open rows, now tracked where the gate can see them**
+> ([registry block](../03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md); reasoning in
+> [`2026-08-14-player-control-RUN-STATE.md`](../plans/2026-08-14-player-control-RUN-STATE.md) §4):
+> `D-PC-AGENT` (can a controller be an LLM? deferred by the PO to the AI feature — **now the only
+> one of the six with an asserted trigger**) · `D-PC-SF6-REVERSAL` (`0021`'s
+> `current_turn_actor JSONB` should eventually hold a typed actor identity) · `D-PC-SEATS`
+> (one LIVE driver per actor is enforced by a partial unique index where Unreal's one-to-one is an
+> overridable default, so **spectating** and **GM override** must each be something other than a
+> second binding) · `D-PC-METAWRITE-NOOP-EVENT` (`MetaWrite` emits the outbox event without checking
+> `RowsAffected` — shared by every meta table, not this feature's to fix) · `D-PC-SEAM-NO-CONTRACT`
+> (the admin-cli↔worker argv/JSON seam has no machine-checked contract) · `D-PC-NO-RUST-READ-AUDIT`
+> (no sanctioned audited cross-user read from Rust — the reason `grant-control --dry-run` will not
+> say who drives an actor).
+
+---
+
+
+---
+
+## ▶ GAME TIER — feature #1 is BUILT (branch `feat/game-logic`, 2026-08-02)
+
+> **Different branch from the block above.** That NEXT block belongs to
+> `feat/frontend-tools-mcp-migration` and is left untouched.
+
+**The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-535` decision record
+live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
+the two design contracts that are its only specification are in
+[`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
+
+| what landed | where |
+|---|---|
+| the hub — ordinals · `PluginSet` · declaration registry · contribution rows · the fold · `Actor` · the explain path | `crates/actor-hub` (new, PURE) |
+| `GoneState`, moved DOWN out of `dp-kernel` so a pure crate can hold hub item 3 | `crates/entity-existence` (new). `dp_kernel::entity_status::GoneState` is unchanged |
+| `ModifierOp` + `OpKind`, moved DOWN out of `game-rules` for the same reason | `crates/ruleset-core/src/modifier.rs`. `game_rules::stats::ModifierOp` is unchanged |
+| `U-9` — no float in the bytes that become a ruleset's NAME | `scripts/hashed-substrate-float-gate.py`, wired pre-commit |
+| `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
+
+**Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
+= **332 passed, 0 failed** · `dp-kernel --lib` **320** passed (was 315; `5-WIRE` + the subkey regression added four `dp_backend` tests, and `DFO-2` a fifth: a channel-scoped read is REFUSED rather than served from the reality-wide snapshot), unchanged by the `GoneState`
+move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
+every mutation in the committed
+mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
+PRODUCTION RULE, run it rather than trust this sentence) · the **58**
+gate scripts the pre-commit hook
+wires all green, and every `--self-test` among them runs pre-commit via
+`scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.
+
+> **Every number in this block was RE-DERIVED from the artifacts, not advanced from the previous
+> version.** That distinction is not pedantry: this exact block carried a stale figure in three
+> consecutive commits (`D-343`, `D-350`, `D-351`), each time because a fix pass moved the number to what
+> it had been rather than reading what it was.
+
+**Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
+**The per-round tallies are the source and live in [§6e..§6ac of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
+round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
+asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each
+one and watching the gate stay silent. They are gone rather than corrected, for the same reason the slice
+board's three were. **Every round after the first has returned REFUTED, and every one found its worst defect in the
+PREVIOUS round's fixes** — never in the fold, which survived every mutation aimed at it. Round 3: a `CAPPED`
+record reporting a value the fold never emitted. Round 4: round 3's gate repairs blocking commits on
+correct content. Round 5: ten of those false positives *relabelled* rather than removed. Round 6: the round-5 cut
+aimed at the wrong class, and a stale-number remedy declared *"mechanised"* by a script that did not
+exist. Round 8: a self-test that reimplemented the loop it tested, so twelve production rules could be
+deleted green. **Round 9: a blanket find-and-replace of `` `D-1`..`D-N` `` — run to advance the two LIVE
+citations — rewrote six HISTORICAL statements to the live head, including this document's citation of
+another document and the worked example inside the row that exists to defend worked examples.** Restoring
+the number exposed a second layer: that citation was set in quotation marks and was never verbatim, and
+**a paraphrase in quotation marks is why nobody checked the number** — a quotation is supposed to be frozen. Six commits carried the damage, from two
+different start points — `_index.md` from `2792717cd`, the RUN-STATE from `4f28c35e1`. The remedy is mechanical (`D-385`): the live range may
+appear only inside a current-state block. **The two-consecutive-clean-rounds rule is not met, and this
+block does not claim it is.** **Nineteen rounds; every one REFUTED.** Round 15 is fully discharged: the twin-guard class in `D-443`..`D-446`, its remaining six findings in `D-447`..`D-451`. The sharpest was the raw fallback reaching the marker search and not the content blanking — the same rule, two consumers, one fixed. **Round 16 measured the answer to that class and found it satisfied by its own table:** the parity check searched the whole file, which CONTAINS the table, so seven of its eight witnesses were present whether or not the guard existed — and it read the original file while the child under test is the mutated copy. Its blocking finding was the round-15 fix reproducing the exact misdiagnosis it had been written to eliminate, because its predicate asked about the document while its subject was one fence. **Round 17 found that answer reproduced one row later:** `D-459` asserted that a precedence pair already had a case, and the case was on the sibling function that writes the same two lines again — three of five pairs were survivors. **Round 18 stopped writing better rows and made the check mechanical:** a row's LABEL must name what its ANCHOR touches, measured over all 132 shipped rows before it was wired — one finding, and it was a row labelled `Accumulator.wanted` whose anchor was the Emit record, hiding a field that survived all 300 tests. **Round 19 found the same commit's OTHER decision feeding that one exactly what it rejects:** the crash wrapper printed the word `FAIL`, which is the token the harness counts as a case disagreeing, so `120/120` was 118 verdicts and two artifacts — `D-470`'s arithmetic, in the commit that fixed `D-470`. **And round 19's own fix was EXPONENTIAL, found by the wall clock and not by any check:** removing a word bound because a bound is an enumeration left a shape whose separator could be split many ways, so the gate's `--self-test` went from seconds to 189.5s while rc stayed 0, every case passed and `--check` still agreed with the artifacts — a 60× regression below the 300s hang bound, which is the only timing alarm this apparatus owns. Its repair then had a redundant half that its own bite test refused to certify, because the mutation restoring it **hung** the child instead of failing a case. `D-452`..`D-505`. Round 10: the round-9 mechanism tested SUBSTRING
+membership where it needed a POSITION SPAN, so it was blind in two of the three files it guards —
+including the very line it had just repaired — and a wider mutation set found **nine actionable
+survivors in `crates/actor-hub`**, the crate nine rounds had called untouched. Round 11: the mutation
+harness **dirtied the working tree on a fully-green run** — `write_text` rewriting every line ending —
+which is the exact incident its own docstring says it was shaped by, on the success path; and the CI
+wiring the previous round records was never actually made. Round 12: the fix for a silently-truncated
+scope was certified by a case built from the reported symptom, so **its own worked example still produced
+zero findings** — and the harness had been rewriting the shipped Rust sources 30 times per commit.
+Round 13: the SENTINEL that replaced the incidental `---` inherited the same defect, because a
+*second* marker truncates a block exactly as the first one did; the 30 writes were still happening
+(one of four call sites injected the no-op writer); and a case seeding a Rust test count had made the
+gate refuse commits from every contributor without cargo. **Round 14 named the shape rather than
+another instance of it:** a verifier measured that every blocking finding for five rounds had been
+*the previous fix with one token substituted* — the end marker hardened and the start marker not, the
+duplicate route closed and the move route open, the instance fixed and the class left undetected. The
+mutation harness now runs an UNMUTATED baseline first, because without one it cannot tell "every rule
+bites" from "the suite is already broken" — and CI is its only automatic runner.
+
+**Every BOLDED figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which
+`--check`s them pre-commit whenever this file is staged — and the same script reports a bolded figure
+here that no rule of its reads, so the claim has a mechanism and not just a sentence.** Bolding is the
+scope because that is what the detector recognises; a number written as a word is outside both.
+
+**The frame that governs the next feature:** *a plugin exists so that adding feature N+1 does not touch
+feature #1 — not so feature #1 can specify feature N+1.* The seams the BUILD measured are
+registered in [`2026-08-02-seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md)
+which now holds `S-1`..`S-18`, each with a trigger and none with a design.
+
+<!-- actor-hub-figures:end game-tier -->
+
+---
+
+---
+
+> **Kept live rather than archived (2026-08-22).** Everything else from this branch's
+> 2026-08-02…08-14 sessions moved to `SESSION_ARCHIVE.md` at the `main` merge. This entry
+> stays because `actor-hub-figures-gate` anchors a checked region inside it, and those
+> figures are claims about today's code that the gate re-verifies on every run — archiving
+> them would freeze a maintained contract into a snapshot. The gate found this itself, by
+> refusing to report a pass on a document whose markers it could no longer resolve.
 
 ## 📦 2026-08-08 — PR #184 merged: contributed features in, contributed process out
 
@@ -514,329 +1119,6 @@ route without authentication. A live authenticated browser upload of a supplied 
 the created book still shows no cover: treat cover persistence as an open defect. The FB2 dialog
 also has no chapter-selection control, so importing only selected chapters requires follow-up work.
 Do not copy supplied source books into Git.
-
-## 🗳️ ENTITY KIND: FIRST-WRITER-WINS → A RESOLVED VOTE (2026-08-02)
-
-Spec: `docs/specs/2026-08-02-entity-kind-resolution.md`. PO chose **all three** directions
-(vote · sub-kinds · facets) plus re-kind-by-mode. **M1–M3 shipped; M4 is the remainder.**
-
-**The estimator.** `entity_kind_votes(entity_id, kind_id, votes)` — one ledger, two jobs: the
-argmax is the **primary** kind, everything else above a floor is a **facet**. That is why all
-three directions fit one table; multi-label is the same rows read at a looser threshold.
-`glossary_entities.kind_id` **stays a scalar** (≈470 Go sites, KG's `NOT NULL` mirror, Neo4j) —
-it just stops being frozen. `domain.ResolveKind` is pure, so it is tested without a pool.
-
-Rules, each with a test that reds when the mechanism is removed:
-- **hysteresis** (`>1.5×`, `≥2` votes) — one stray observation must not re-kind; a near-tie
-  must not flip (every flip re-emits to the KG).
-- **refinement is exempt** — parent→descendant loses no information, so `terminology →
-  technique` needs no majority. This is the only way a corrected ontology can correct the data
-  the wrong one produced.
-- **roll-up + strict-majority descent** — `{technique 7, power_system 7}` beats `character 8`
-  as a branch, but an even split between siblings resolves to the **parent**. "If unsure, use
-  the generic kind" is now a rule, not a hope.
-- **a challenger that leads and loses is RECORDED** (`kind_conflict_id`) — the writeback said
-  `updated` and never `conflict`, so a standing disagreement was invisible.
-
-**Hierarchy** (`parent_kind_id` × 3 tiers): `terminology → {technique, power_system}`. This
-**describes** what the model already did — terminology collected 崑崙之妙術, 土遁, 五行方位.
-
-**Applied, on 封神演義:** 77 re-kinds + 77 outbox events (KG re-syncs through the existing
-path), then **idempotent** (a re-run applies 0). 姜子牙 **species → character**, keeping
-`species` as a *facet* — the second reading survives instead of being erased. 武王 → character.
-八九變化 → **technique**, as a refinement. 西岐 → organization **+ location**. Book-wide:
-character 272→302, species 227→202, organization 112→96, location 92→108. **399 entities carry
-a facet, 33 carry a live conflict.**
-
-**A re-kind is not always a MOVE — 17 of them are MERGES.** The dedup key is
-`(book_id, kind_id, normalized_name, scope_label)`, so moving into a kind that already holds
-that name is a unique violation. The first backfill aborted its whole transaction on one. Now
-detected, skipped, recorded as a conflict, and reported as `blocked_by_duplicate` — the run's
-output does not overstate what it did.
-
-**Three of my own defects, found by using it:** the alias-folded `loadKindMap` inverted to
-`generic` (an alias of `terminology`) and that value was going out to the KG as the entity's
-kind · pgx cannot bind `[]uuid.UUID` into `uuid[]`, failing opaquely where the same statement
-worked by hand · the import INCREMENTED, so four runs inflated 姜子牙's ledger 84 → 321 (ratios
-survived, the numbers were fiction) — it now RESTATES absolutely.
-
-**Verified** — glossary `internal/...` all green (`-count=1`) · translation **1117 passed** ·
-`tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested hysteresis / refinement /
-roll-up, each red when removed · live: backfill + a real extraction recording votes through the
-**writeback** path (20 new ledger rows).
-
-**M4 — the facets are now VISIBLE (API + FE).** `kind_labels` / `kind_conflict` ride the entity
-list *and* detail as one query each (a JSON sub-select, not an N+1). The list shows the primary
-badge solid, each secondary faded, and a standing disagreement as a **dashed outline with a
-`?`** — a genuine "we are not sure" that reads as one. Proven by effect in a browser, not by a
-green unit test: 陳塘關 renders `🏛 Organization` + `📍 Location?`, 姜子牙 renders
-`👤 Character` + a faded `🧬 Species / Race`, and the 9 event rows beside them carry no badge
-at all, so the overlay is signal rather than decoration.
-- Decoding is deliberately **tolerant** — a malformed facet yields no badge rather than a 500.
-  It is an advisory overlay on a kind the row already carries; a list that fails to load
-  because a badge could not be built would be strictly worse than a missing badge.
-
-**▶ NEXT, two decisions that are yours because both touch data:**
-1. **The 17 blocked merges.** A re-kind into a kind that already holds that name is a MERGE of
-   two entities, and merging is destructive. The pairs are recorded (`kind_conflict_id`) and
-   listed by `--apply` under `blocked_by_duplicate`.
-2. **`D-KG-KIND-FACETS`** — knowledge-service still mirrors ONE `kind_code TEXT NOT NULL`, so
-   the graph cannot filter on a facet. **Deliberately deferred** (defer-gate #1, out of scope):
-   it is a cross-service contract change, and you have a glossary↔KG entity-consistency
-   refactor coming that will re-cut this seam. Trigger: that refactor.
-
-**Follow-up fix — transaction and outbox truth are now aligned (2026-08-02).** A review found
-two holes in the just-shipped path, both now covered by real PostgreSQL HTTP regressions:
-- a duplicate target can block a re-kind (correct: it needs a destructive merge decision), but
-  extraction previously returned the candidate kind and emitted it to KG anyway. It now reports
-  and emits only a **persisted** move; a blocked re-kind retains the glossary kind, records its
-  conflict, and emits no false `glossary.entity_updated` event.
-- the backfill's default preview previously committed its vote ledger. It now resolves against a
-  transaction and rolls it back; only `--apply` persists votes, re-kinds, and emits outbox rows.
-
-**Verified fresh:** both new DB regressions red before the fix and green after; glossary
-`internal/...` passed against isolated `loreweave_glossary_test`.
-
-## 🧭 THE KIND WAS WRONG, AND SO WAS MY READING OF ITS ZERO (2026-08-02)
-
-The PO challenged a claim rather than a line of code, and was right on both counts.
-
-**1 · `power_system` was two concepts sharing a code.** Its name reads as a graded ladder —
-練氣/築基/金丹, 大羅金仙 — the thing a model trained on this genre will look for. Its
-description, written the day before, said the opposite in as many words: *"the name says
-system but one art is enough."* Name and definition were arguing; the model followed the
-name, so individual arts (崑崙之妙術) went to `terminology` instead. **A misfile can be a
-missing-category error rather than a judgement error** (`BTG-A64`).
-- **Split at the System tier**: new `technique` kind (migrations `0056`+`0057`), and
-  `power_system` rewritten to mean the ladder — with an explicit licence to return **none**,
-  so a story without one is not pressured into filling it. `type`/`user`/`effects` retired
-  (soft, `deprecated_at`); `tiers`/`entry_requirement`/`capabilities` added.
-- **Verified live end-to-end**: adopt copied `technique` into a book, and **G5 sync**
-  surfaced 5 `update_available` rows for the redefinition and applied them.
-
-**2 · I read `power_system = 0` as a defect twice, and never checked the corpus.** The
-document argued first that it was a coverage gap, then that it was a typing failure, and
-produced a plausible mechanism for each. The marker count that seemed to settle it counted
-變化 · 陣 · 符 · 遁 — **arts, not tiers**. Re-scanned for the ladder itself, chapters 88–92
-of 封神演義 contain **零** 境界 · 修為 · 品階 · 等級 · 階級 · 層次 · 果位 · 金仙 · 大羅 ·
-天仙 · 太乙. There is no ladder in that book. **`power_system = 0` is the correct answer**
-(`BTG-A63`: *a zero is only evidence once you have shown the thing could have been there*).
-
-**3 · …and the split changed nothing, for a structural reason worth knowing** (`BTG-A65`).
-Re-run on the corrected catalogue: still zero. The stage-1 sweep cited **95 mentions** and
-one art-like string; 縱地行之術 · 陰符之術 never reached stage 2, which types only what
-stage 1 cites. **Under `edc_cited` the ontology can change TYPING but never RECALL.** A user
-who adds a kind and re-extracts will see the ontology change and the results not. The
-batched shape does not have this property — part of what its 7.4× input is buying, and it
-was not priced in when the cheap shapes were ranked.
-
-**4 · The sweep is cached now** (the gap left open yesterday). It was the one call nothing
-keyed: `prefer_cache` reported 100% of batches served and still spent 12,622 tokens. Keyed
-on the rendered sweep prompt, not the extraction shape hash — the sweep is handed no kinds,
-so busting it on a definition edit would re-spend for an answer that cannot change.
-- **Measured**: `always_refresh` 25,971 in / 6 executed → `prefer_cache` **0 tokens, 6/6
-  cached** → after the definition edit, `refresh_if_stale` **3 cached (the sweeps) / 3
-  executed (the typing)**, automatically, with no flag.
-
-**5 · Two of my own defects, found on the way.**
-- **Replay was fully broken and nothing went red.** Folding strategy + descriptions into
-  `profile_hash` left the consumer recomputing a bare `sha256(profile)`, so every replay
-  answered `profile_drifted`. The test computed the same bare hash the consumer did — both
-  mirroring a producer that had moved on. Fixed by decomposing the hash and storing the one
-  component that cannot be recomputed (`defs_hash` on the row, because glossary's
-  definitions drift); tests now call the production function.
-- **`SeedGenreKindAttr` seeded NULL descriptions** — `var desc *string // DefaultKinds carry
-  no per-attr description today`, stale since the field was added. Existing DBs were covered
-  by the one-shot 0036 backfill, which hid it; a **fresh** database would have seeded 93
-  nameless attributes while the Go struct held all 93 definitions. This also corrects
-  yesterday's overstatement that *"every extraction prompt this platform has ever sent was a
-  list of naked codes"* — the live path had attribute descriptions since 2026-06-22.
-
-**Verified** — translation-service **1117 passed** · glossary `internal/...` all green ·
-frontend `tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested ×3 (drop the
-`batch_idx>=0` filter → sweep leaks into replay; force the legacy hash path → replay reds;
-restore the old power_system wording → the ladder guard reds) · **live smoke** across
-translation + glossary as above.
-
-**6 · MEASURED under `batched` (ch90/92/94/96) — the model is right, the STORE overwrites it.**
-`technique` alone on ch96 returned three real arts (五雷正法, 土遁, 妖風). Tracing each to its
-stored row: 五雷正法 → **`power_system`** (first seen 08:20, under the definition this work
-deleted) · 土遁 → **`terminology`** (14:15) · 遁龍樁 → **`item`** (07:56) · 八九變化 →
-**`terminology`** (18:21, *the same run*, by an earlier batch) · 妖風 → `technique` ✓ — the
-only name nobody had claimed before. **One in five, and the one that worked was new.**
-- `findEntityCrossKind` is **oldest-wins** and returns the STORED kind by design, so the
-  first run that ever names a thing decides its kind permanently and later runs are
-  discarded silently (`updated`, never `conflict`). **`BTG-A66`: correcting an ontology
-  cannot correct the data the wrong ontology produced** — and that data is now the authority.
-- Within one run the batch order decides it: `terminology` is batch 1, `technique` batch 2.
-  Not a model preference. A for-loop.
-
-**▶ NEXT — the decision this leaves you (PO call, it mutates data):** fix `BTG-A49`. Options
-are (a) let a later extraction re-kind when the stored kind's own definition has changed
-since (the `defs_hash`/`source_hash` needed for that now exists), (b) record a kind CONFLICT
-instead of silently updating, so it surfaces for review, or (c) a one-off re-kind pass for
-the arts currently frozen under `power_system`/`terminology`/`item`. Until then, every
-kind-accuracy number this project quotes measures **arrival order**, not the model.
-
-**Also open:** the `event`/`terminology`/`power_system` batch **truncated on every chapter
-tested** (`finish_reason=length` at 133, 148, 233 entities). 233 entities from one chapter is
-degenerate output, and its results are missing from the cached rows entirely.
-
-## 🔗 GLOSSARY↔KG LINKAGE — both holes closed + backfilled (2026-08-01)
-
-Cleared before the entity-consistency refactor, because both defects corrupt the data that
-refactor would build on.
-
-**1 · 96% of one kind had no name.** The writeback resolved an entity's display attribute
-with a hardcoded `attrDefMap[kindID+":name"]`; every read path and the DB trigger use
-`code IN ('name','term')`. `terminology` is the only kind whose display attribute is
-`term`, so the lookup missed — and `if ok { … }` turned that into a **silent skip**: no
-`entity_attribute_values` row at all. One causal chain, three equal numbers: **215 of 224**
-had no `term` row → no `cached_name` → no `normalized_name`. That last one is the **dedup
-key** (`findEntityByNameOrAlias`/`findEntityCrossKind`), so every re-encounter created
-ANOTHER nameless row. Evidence and translations were lost too — both hang off the name's
-`attr_value_id`.
-- **…212940 tokens truncated…the BFF `/v1/kal/*` (now live).
->
-> **▶ REMAINING = the consumer/FE FANOUT (parallel worktree agents, the locked strategy):**
-> X1 composition→KAL (+fix `_cast_roster` cursor drain) · X2 lore-enrichment→KAL · X3 wiki→KAL (kill direct-EAV) ·
-> X4 chat→KAL · X5 translation→KAL (as-of inject + immutable-once cache) · X6 FE temporal surfaces (canonical card,
-> time slider, change timeline, diff, retrieval) + migrate FE reads to KAL · X7 flip BOTH INV-KAL lints (table-read +
-> the new HTTP-surface lint) to ENFORCING. Each binds ONLY to the frozen `kal.v1.yaml` → provably disjoint, parallel-safe.
-
-> **▶ Shipped this run (production-ready, all verified on real DB / build / tests):**
-> - **F1d (producer)** `d5662b64` — facts FLOW from extraction: translation worker passes `chapter_ordinal`,
->   glossary writeback ingests the episode + opens append-only facts per written attr, idempotent. (`TestBulkExtract_EmitsTemporalFacts`)
-> - **F4-live core** `c13d11bb` — glossary `/internal/facts/*`: GET facts/timeline/attr-values (bounded, as-of) + POST
->   episode/append/retract; KAL paths aligned. (`TestFactsHTTP`: append supersedes, retract restitches over the router)
-> - **F4-writes** `41070247` — internal merge/resolve-entity/split routes + KAL wiring (resolve-or-create idempotent).
-> - **in-story dates** `a5d0d80e` (merged) — `event_date_iso` additive valid-time on KG facts/relations (19 tests; chapter-ordinal stays primary).
-> - **prod bugfix** `94caea91` — world-timeline `NameError: q` (pre-existing crash) fixed.
->
-> **▶ Remaining foundation (then fanout):**
-> - **F2-app — fold handler:** dirty queue + canonical_snapshot write + lazy rebuild-on-read + ordinal-bucketed re-ground
->   (B1) + compare-and-clear + backoff. LLM via provider-registry (likely a worker/knowledge pass like #26/#7 summarize).
->   Makes `get_canonical` return the FOLDED canonical (today it serves canon-content). Adds the KAL `fold` route.
-> - **F1g — bi-temporal names:** name as `fact_kind='name'` (single) + aliases as `'alias'` (multi); as-of-name; resolver
->   matches the across-time alias set. RECONCILE: migration 0048 converts the cold-start/F1d `attribute` name/aliases
->   facts → name/alias kind, and `refreshEAVProjection` + the D5 check must project name-kind facts to the name EAV.
-> - then **fanout X1–X7** (parallel worktree agents per the locked strategy).
-
-
-> **What this branch is:** implementing the Incremental Temporal Knowledge Architecture
-> ([spec](../specs/2026-06-29-incremental-temporal-knowledge-architecture.md) §12/§12.7.8 govern;
-> [plan](../plans/2026-06-30-temporal-knowledge-architecture-impl.md)). Append-only bi-temporal facts as the
-> sole SSOT (INV-FACTS §12.0); everything else a rebuildable cache. Execution = **serial foundation → parallel
-> fanout** (user-directed: build foundation serially, checkpoint, then fan out consumer migrations).
->
-> **▶ Shipped this session — the SSOT substrate spine, all real-DB verified on `loreweave_glossary`:**
-> - **F0** `fc4c9a80` — froze the **KAL v1 contract** (`contracts/api/knowledge-gateway/kal.v1.yaml`), the keystone
->   every consumer binds to; `knowledge-gateway: missing` row in `language-rule.yaml` (→ typescript at F4 scaffold).
-> - **F1a** `ae6f17fd` — `0044` **entity_facts + episodes** bi-temporal SSOT schema (content-addressed natural key,
->   `valid_to_eff` INT64_MAX null-sink, `coverage_xid` xid8, merge_journal fact/episode-move cols). Idempotent 2×.
-> - **F1b** `728efaf9` — `0045` **maintain_chain** the single `valid_to` writer (§12.3.3). Verified all 3 scenarios:
->   out-of-order backfill (A2), retract restitch (A3), oscillation (A4).
-> - **F1c** `8a2b8e6d` — **fact core** Go (`facts.go`): appendFact (idempotent NK), retractFacts (restitch),
->   ingestEpisode, refreshEAVProjection (repair/cutover), per-(entity,attr) chain lock. `TestFactCore` PASSES (real DB).
-> - **F1h** `8eb419f9` — `0046` **cold-start seed**: 22,056 facts seeded from live EAV; **projection==flat_eav 0 mismatches** (§12.5.4/D5).
-> - **F2 schema** `fdf6c0d8` — `0047` **canonical versioned-cache** tables (canonical_snapshot + canonical_fold_state), §12.1.
->
-> ⚠ Migrations **0044–0047 are applied to the running dev `loreweave_glossary`** (by F1c's `RunChain`); a fresh stack
-> picks them up from the ledger on boot.
->
-> **▶ PARALLEL track (background agent, worktree):** **F3 — KG ordinal valid-time unify** in `knowledge-service`
-> (Python/Neo4j) — substrate-independent from glossary. Ordinal valid-time unified with `from_order`, ordinal-aware
-> close (A2 on the KG side), extraction-driven invalidate/retract, quote-on-citation, per-entity ordinal snapshot.
-> **Merge its worktree branch at the integration node before F4.**
->
-> **▶ F3 — KG ordinal valid-time unify — MERGED `f2d5ca3e`** (was a parallel worktree agent); 24 F3 unit tests
-> re-verified green post-merge. All under `services/knowledge-service/` (disjoint from glossary).
->
-> **▶ F1f — fact-chain merge + split (DONE):** `ecc7e587` **merge** (§12.4.1, `mergeFactChains`/`revertFactChains`,
-> journal `repointed_fact_ids`+`invalidated_fact_ids`, same-ordinal tiebreak, chain locks both sides) +
-> `f52e50f7` **split** (§12.4.2, `splitFactsByEpisode` re-attribute-by-provenance, originals reason='split').
-> `TestMergeFactChains`/`TestSplitFactsByEpisode` green; existing Merge/Revert/Dedup suites green (no regression).
->
-> **▶ F4 — KAL gateway service + INV-KAL lint (DONE, structure):**
-> - `2ab5f710` **KAL NestJS service** (`services/knowledge-gateway`) implementing `kal.v1.yaml`: config/main/health +
->   `KalReadController` (get_canonical/get_facts/timeline/list_attr_values/roster/search/neighborhood/retrieve, each with
->   per-substrate `temporal_capability`, KG `as_of` dropped when `temporal_unsupported`) + `KalWriteController`
->   (append/close/retract/merge/split/fold/ingest_episode/resolve_entity forwarding to glossary `/internal/facts/*`).
->   **Verified: npm install + nest build clean; boots + serves /health + /health/ready (kgTemporal=ordinal_valid_time),
->   16 routes mapped.** `language-rule.yaml` `missing`→`typescript`; lint PASS.
-> - `434894d8` **INV-KAL table-read lint** (`scripts/knowledge-access-gate.py`, wired into `.githooks/pre-commit`): no
->   consumer reads the glossary EAV / Neo4j directly. Full-scan PASS.
->
-> **▶ NEXT — F4-FOLLOW-ON + remaining foundation, then fanout:**
-> 1. **F4-follow-on (live writes):** add the glossary **`/internal/facts/*` HTTP routes** (Go handlers wrapping the F1c/F1f
->    fact core — appendFact/retract/mergeFactChains/splitFactsByEpisode/fold) so the KAL write verbs hit a real target;
->    then a **cross-service live-smoke** (KAL → glossary fact route → DB) + verify the read endpoints' downstream path
->    mapping against the actual glossary/KG routes. (KAL reads/writes build + the service boots; full delegation is the
->    cross-service smoke, currently unverified end-to-end.)
-> 2. **F2 app** — the fold handler: lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff
->    (needs a provider-registry LLM call). Enhances `get_canonical` behind the frozen contract.
-> 3. **F1g** — bi-temporal name/aliases (§12.4.3) + as-of-name. **Value partly gated on F1d** (deferred writeback wiring);
->    reconciles `D-TK-F1G-NAME-RECONCILE`.
-> 4. **CHECKPOINT** → then parallel **fanout** X1–X7 (consumer migrations onto the KAL, FE temporal surfaces).
->
-> **▶ SCOPE (locked 2026-06-30): this branch is the PRODUCTION-READY refactor — NO deferrals.** Everything below is
-> in-branch work to COMPLETE (the repo adopts the KAL immediately after merge, so nothing core may be stubbed/parked).
-> Includes the full consumer + FE fanout (X1–X7) and both INV-KAL lints flipped to ENFORCING. The items that were
-> "deferred" are now must-complete work:
-> - **F1d — writeback Path-A emission (must complete):** wire fact emission into the glossary writeback; extend the
->   bulk-extract request with `chapter_ordinal` and update the translation-service extraction caller to pass it.
-> - **F4-live — glossary `/internal/facts/*` HTTP routes** wrapping the Go fact core (append/close/retract/merge/split/
->   fold/ingest_episode/resolve_entity) so the KAL writes are real; cross-service KAL→glossary→DB live-smoke.
-> - **F2-app — fold handler:** lazy rebuild-on-read + ordinal-bucketed re-ground (B1) + compare-and-clear + backoff (LLM via provider-registry).
-> - **F1g — bi-temporal name/aliases** (§12.4.3) + as-of-name + RECONCILE the cold-start name/aliases representation
->   (supersede the cold-start `attribute` name/alias facts → `name`/`alias` kind facts; the old `D-TK-F1G-NAME-RECONCILE`).
-> - **In-story dates (must build — user pulled into v1):** detected in-story time (`event_date_iso`) as an additional KG
->   valid-time source (spec §9 dec-3). Knowledge-service.
-> - **Fanout X1–X7 (in-branch):** migrate composition, chat, lore-enrichment, translation, wiki, FE to read/write through
->   the KAL; kill every direct EAV/KG read; flip BOTH INV-KAL lints (table-read + HTTP-surface) to ENFORCING.
->
-> **▶ /review-impl (2026-06-30) — 7 findings, ALL FIXED (no HIGH):** MED-1 same-ordinal single-valued conflict → last-write-wins supersede + deterministic projection tiebreak (`TestFactSameOrdinalConflict`); MED-2 unenforced chain-lock → strengthened contract doc + `TestFactChainLockSerializes` (same-chain blocks, disjoint free); LOW-2 cold-start ordinal `0→-1` (chapter_index is 0-based); LOW-5 targeted `ON CONFLICT` on the natural-key expression index; LOW-3 `refreshEAVProjection` attr_def_id-coupling doc; LOW-4 `reconcileEpisode` F1d-obligation doc + now exercised; LOW-1 → `D-TK-F1G-NAME-RECONCILE` above. All 3 facts tests green on real DB; cold-start re-verified `projection==flat_eav` 0 mismatches with the `-1` sentinel.
-
----
-
-# ▶▶ (prior) **Motif book-collaboration tier (model B) + shared-graph links + MCP edit SHIPPED** · branch `feat/narrative-pattern-library` · HEAD `8c4c45c2`+ · 2026-06-29
-
-> **▶ MERGE 2026-06-29:** `origin/main` merged into this branch (179 commits — the **public-MCP gateway + lazy tool-loading** track, critical-UX fixes, glossary/knowledge/campaign work). Conflicts resolved (composition `actions.py` confirm = JWT-identity ∪ public-MCP spend-attribution; engine `plan.py`/`stitch.py` signatures = both; studio panels = `canonview` ∪ `motifs`/`conformance`; gateway test `mcpPublicGatewayUrl`). The motif MCP tools are exposed to the public-MCP gateway: `find_tools` (lazy discovery) picks them up dynamically from the federation catalog, and they are classified in the edge `TOOL_POLICY` allowlist (commit `2aa65765`). Below is this branch's motif work; the merged-in main tracks + all prior history are archived (see the pointer at the bottom).
-
-> **▶ Follow-up this session (2nd commit) — both model-B deferrals CLOSED:** `D-MOTIF-LINK-SHARED-TIER` (shared-graph link editing — guard rewrite + repo/MCP book_id paths) and `D-MOTIF-MCP-PATCH-SHARED` (the `composition_motif_patch` MCP edit tool). Details in the "Deferred … BOTH NOW CLEARED" block below. 150 motif unit tests + 38 motif DB integration tests green; migration re-smoked idempotent on real `loreweave_composition`; provider-gate clean.
-
-> **▶ Shipped this session — the two NEW future-feature rows (now CLOSED):**
-> - **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER` (model B) — a THIRD tenancy tier (the book SHARED library).** Spec: [docs/specs/2026-06-29-motif-book-collab-tier.md](../specs/2026-06-29-motif-book-collab-tier.md). A `motif.book_shared=true` row is owned by its creator (attribution) but VISIBLE to the book's VIEW-grantees and WRITABLE by its EDIT-grantees — access is the **book grant resolved at the caller**, never row ownership. User decisions (this session): **context-scoped reads** (per-book gate, no global "all my books"), **any-EDIT-grantee writes** (edit + archive), **adopt + create + mine** all produce shared rows. The base read predicate is **UNCHANGED** (a foreign shared row is fail-closed invisible to get_visible/list_for_caller/catalog/get_by_codes); shared rows surface ONLY through the gated book-context methods. Touch-points: schema (`book_shared` col + `motif_book_shared_shape` CHECK [shared ⇒ book+owner+private, the public-catalog-orthogonality guard] + per-book `uq_motif_book_shared` + re-narrowed `uq_motif_user_book WHERE …AND NOT book_shared`); repo (`clone/adopt/create/_clone_with_code` thread book_shared; new `list_in_book/get_in_book/patch_shared/archive_shared`; adopt locks per-BOOK + dedups per-(book,code) for the shared tier); MCP (`adopt target=book_shared`, `create target=book_shared`, `mine promote_target=book_shared`, `archive book_id=`, new `composition_motif_book_list`); confirm dispatch (`book_shared` rides the payload, re-gated EDIT); FE (3rd adopt target "Share with collaborators" + `Shared` badge).
-> - **`D-MOTIF-HTTP-ADOPT-BOOK` — HTTP parity.** `POST /motifs/{id}/adopt` now takes `target=user|book|book_shared`+`book_id`, **EDIT-gated before the clone** (no softer than MCP); `GET /motifs/book/{id}` (VIEW-gated list); `PATCH`/`DELETE …?book_id=` (EDIT-gated shared edit/archive, visibility-flip refused 400). A book-shared pattern root does NOT auto-adopt its members (the half-shared-pattern guard).
->
-> **VERIFY:** 90 motif unit tests + new repo/mcp/router cases green; **integration (real PG)**: new `test_motif_book_shared_db.py` (shape CHECK, per-book dedup, list/get scoping, any-grantee patch/archive) + 32 existing motif DB tests pass on a throwaway DB; **migration live-smoked idempotent on the REAL existing model-A `loreweave_composition`** (added book_shared col + CHECK + uq_motif_book_shared + re-narrowed uq_motif_user_book; two runs, no error). FE 152 motif tests + tsc + provider-gate clean. **`/review-impl` adversarial tenancy review: 0 HIGH / 0 MED** — all 9 read/write/leak/confirm/dedup checks PASS with file:line evidence; 3 LOW/COSMETIC notes (deferred below).
->
-> **▶ Deferred (from the model-B review — BOTH NOW CLEARED 2026-06-29):**
-> - ✅ **`D-MOTIF-LINK-SHARED-TIER`** — **CLEARED:** the `motif_link_guard` was rewritten (NULL-safe) to a precise 3-arm same-tier rule — both SYSTEM, or both the SAME book's SHARED tier (owners may differ — the point of a collaborator graph), or both the SAME user's PRIVATE tier. A shared↔private/system/cross-book link is rejected at the DB. Repo `list_links/create_link/delete_link` gained a `book_id` path (anchor via get_in_book; both endpoints must be `book_shared AND book_id`); MCP link tools take `book_id` (VIEW for list, EDIT for create/delete). Live-PG tested (same-book allowed, 3 cross-tier rejections, 3rd-grantee list/delete) + migration re-smoked idempotent on real `loreweave_composition`. **Caught+fixed a SQL three-valued-logic bug**: `owner = owner` with a NULL operand yields NULL so `IF NOT NULL` wouldn't fire (a user→system link would have slipped) — every arm is now NULL-guarded.
-> - ✅ **`D-MOTIF-MCP-PATCH-SHARED`** — **CLEARED:** new `composition_motif_patch` MCP tool (Tier-A) — owner-keyed by default, or a SHARED-tier edit with `book_id` (EDIT-gated → patch_shared). Optimistic-lock `expected_version` (stale → applied_conflict), visibility/publish deliberately NOT editable (separate flow), honest undo that patches changed fields back to prior values. Owner path denies a foreign row before any write; shared path confirms the row is shared-in-this-book.
->
-> ---
->
-> # ▶▶ (prior) **Motif library COMPLETE — audit 7/7 closed (WI-1…WI-6)** · HEAD `04bab448`+ · 2026-06-29
-
-> **What this branch is:** the narrative-pattern (motif/arc) library — Tier-W cost-gated MCP flows for mining, conformance, adopt, and 3-way publish-sync, fronted by the FE→MCP-tool bridge. The feature body landed across prior sessions; this session closed the **completeness-audit tail** AND shipped **WI-5 per-book adopt**.
->
-> **▶ Shipped this session (all green — 1083+ backend unit + 151 FE motif tests, tsc + provider-gate clean):**
-> - **Audit tail (committed `f1157b25`…`b8f0ddb3`):** BYOK model_ref threading through `motif_mine`/`arc_import`; the **tag-beats LLM extractor** (knowledge `POST /internal/extraction/tag-beats` → composition mine pre-pass; cross-tenant injection neutralized); **WI-3 arc semantic retrieve** (`composition_arc_suggest`); **WI-1/WI-2/WI-4 FE** (mine panel, full editor, publish-sync); `/review-impl` fixes (arc back-fill scoped to own/system; editor edit-loss). Completeness audit: [`docs/reports/2026-06-29-motif-completeness-audit.md`](../reports/2026-06-29-motif-completeness-audit.md).
-> - **WI-5 per-book adopt (`D-MOTIF-ADOPT-PER-BOOK`) — model A "book-scoped filter" (user-chosen, NOT the tier-reversal):** `motif.book_id` is a per-book LABEL on a clone the adopter still owns. The read predicate + 2-tier tenancy are **UNCHANGED** (book_id only narrows the owner's view, never widens visibility). Design: [`docs/plans/2026-06-29-motif-adopt-per-book.md`](../plans/2026-06-29-motif-adopt-per-book.md). Touch-points: schema (`book_id` col + `uq_motif_user` scoped to `book_id IS NULL` + new `uq_motif_user_book` partial + `idx_motif_book`); `MotifRepo.clone/adopt/_clone_with_code/list_for_caller`; `_MotifAdoptArgs.target=Literal['user','book']`+`book_id` (EDIT-gated at propose **and** confirm); FE adopt-to-book toggle (api/hook/AdoptTargetModal/MotifLibraryView). **Live-smoked** on real `loreweave_composition`: migration idempotent; global+per-book coexist; same-book dup blocked by `uq_motif_user_book`; 0 leaked rows.
-> - **WI-6 motif_link edge-walk (`D-MOTIF-LINK-EDGEWALK`) — the FINAL §5 gap, closing the audit 7/7:** 3 MCP tools — `composition_motif_link_list` (R, traverse out/in/both with neighbor code+name), `composition_motif_link_create` + `_delete` (A). User-scoped; WRITE requires **BOTH endpoints owned by the caller** (the system↔system hole the DB `motif_link_guard` same-tier check misses — a user may never reshape the shared graph). `MotifRepo.list_links/create_link/delete_link`. **Live-smoked**: own→own create/list/delete OK; own→system rejected by the guard; 0 leaked rows. The completeness audit is now **7/7 closed, nothing deferred**.
->
-> **⚠ Two already-built misfires earlier this session** (memory [[verify-built-before-building]]): `D-W8-MOTIF-BEAT-EXTRACTOR` and `D-MOTIF-SYNC-3WAY-BASE` backend were **already shipped** — I rebuilt a duplicate sync router and reverted it (`a24d99ea`). **Before building ANY "missing"/deferred motif item: `git grep` the route/module/test first.**
->
-> **▶ NEXT:** **PR `feat/narrative-pattern-library` → main** — the feature body + audit tail + WI-5 are complete, green, and live-smoked. (Note: the WI-5 migration was applied to the *running* dev `loreweave_composition` by the live-smoke; a fresh stack picks it up from `migrate.py` on boot.)
->
-> **▶ Deferred (motif — the §5 audit tail is 7/7 CLOSED; these were NEW future-feature rows):**
-> - ✅ **`D-MOTIF-ADOPT-BOOK-COLLAB-TIER`** — **CLEARED (2026-06-29):** model B shipped (see the top block). The shared book tier landed with a 0-HIGH/0-MED adversarial tenancy review.
-> - ✅ **`D-MOTIF-HTTP-ADOPT-BOOK`** — **CLEARED (2026-06-29):** the HTTP adopt route exposes `target`+`book_id`, EDIT-gated (see the top block).
-
----
-
-> **▶ Archived 2026-06-30** — older / other-track handoffs moved to [`SESSION_ARCHIVE.md`](SESSION_ARCHIVE.md) to keep this file to the **active branch** only. The 2026-06-29 merge pulled in main's `Critical UX` + `Public MCP` tracks and all prior session history (glossary / composition / roleplay / extraction / KG / campaign / Sessions 66–71); all of it (incl. each track's open-defer register) lives in the archive and on its own branch + `main`. Search `SESSION_ARCHIVE.md` for a `D-…` id if you need a prior-track defer.
 
 ## 📕 2026-08-03 — the dogfood run: a novel was planned and drafted through the real frontend
 

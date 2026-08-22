@@ -21,7 +21,7 @@ use tilemap_service::types::template::{
 };
 use tilemap_service::types::treasure::TreasureTierSpec;
 use tilemap_service::types::zone::{PassageKind, ZoneId, ZoneRole};
-use tilemap_service::types::{ChannelId, ChannelTier, GridSize, TerrainKind, TilemapView};
+use tilemap_service::types::{ChannelId, MapKind, GridSize, TerrainKind, TilemapView};
 
 const SEEDS: u64 = 16;
 
@@ -98,7 +98,7 @@ fn run(template: &TilemapTemplate, seed: u64) -> TilemapView {
     place_tilemap(
         template,
         ChannelId("ch_s10".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize {
             width: 48,
             height: 48,

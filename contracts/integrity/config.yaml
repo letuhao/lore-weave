@@ -32,41 +32,19 @@ full_check_interval_days: 30
 
 # Per-table budgets. Cycle-15 default: 20-row sample for daily mode,
 # 500-row cursor batch for monthly mode. SRE can scale per-table:
-#   - Hot tables (pc_projection) → larger samples / smaller batches
-#   - Cold tables (region_projection) → smaller samples acceptable
+#   - Hot tables → larger samples / smaller batches
+#   - Cold tables → smaller samples acceptable
 # Allowlist enforced by services/integrity-checker/pkg/config Validate()
 # (matches projection_drift_table_name_allowlist CHECK in
-# contracts/migrations/per_reality/0007_drift_metadata.up.sql).
+# contracts/migrations/per_reality/0007_drift_metadata.up.sql, as narrowed
+# by 0017).
+#
+# Ten -> three (0017) -> ONE (0018). This file is a LOADED PRODUCTION
+# CONFIG, not documentation: `pkg/config.Validate()` rejects a table that is
+# not in types.L3ATables, so leaving the seven dropped `pc_*`/`npc_*` names
+# here would have failed the checker at startup — the loudest of the several
+# places 0017 left behind, and still not one that any test caught.
 tables:
-  - name: pc_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: pc_inventory_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: pc_relationship_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: npc_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: npc_session_memory_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: npc_pc_relationship_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: npc_session_memory_embedding
-    # Embedding table — narrower sample (vector compare is expensive) +
-    # smaller batch (vector rows can be ~6KB each at 1536 dim).
-    sample_size: 10
-    full_scan_batch_size: 100
-  - name: region_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: world_kv_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: session_participants
+  - name: canon_projection
     sample_size: 20
     full_scan_batch_size: 500

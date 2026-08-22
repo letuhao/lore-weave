@@ -10,6 +10,7 @@ export * from './canon-entry-created-v1';
 export * from './canon-entry-decanonized-v1';
 export * from './canon-entry-promoted-v1';
 export * from './canon-entry-updated-v1';
+export * from './turn-boundary-v1';
 export * from './npc-said-v1';
 export * from './npc-said-v2';
 export * from './reality-created-v1';

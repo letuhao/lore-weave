@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::engine::place_tilemap;
 use crate::seed::derive_seed;
 use crate::types::biome::BiomeObjectType;
-use crate::types::channel::{ChannelId, ChannelTier};
+use crate::types::channel::{ChannelId, MapKind};
 use crate::types::object::TilemapObjectKind;
 use crate::types::template::{TemplateConnection, TilemapTemplate, TilemapTemplateId, ZoneSpec};
 use crate::types::tilemap::{GridSize, TilemapView};
@@ -58,7 +58,7 @@ pub async fn bootstrap_small_reality(
     let tilemap = place_tilemap(
         &template,
         ChannelId("bootstrap_channel".to_string()),
-        ChannelTier::Country,
+        MapKind::Region,
         GridSize { width: 48, height: 48 },
         seed,
     )?;
@@ -334,7 +334,7 @@ mod tests {
         place_tilemap(
             &bootstrap_template(),
             ChannelId("bootstrap_test".to_string()),
-            ChannelTier::Country,
+            MapKind::Region,
             GridSize { width: 48, height: 48 },
             TilemapSeed(0xB00757),
         )

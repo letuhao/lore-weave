@@ -117,7 +117,9 @@ All RES_001 stable IDs are English `snake_case`:
 - `rule_id`: `resource.trade.npc_insufficient_funds`, `resource.hunger.starvation_mortality`, etc.
 - `aggregate_type`: `vital_pool`, `resource_inventory`
 - `EVT-T5` sub-types: `Scheduled:CellProduction`, `Scheduled:HungerTick`, etc.
-- Engine-defined enum variants: `VitalKind::Hp`, `VitalKind::Stamina`, `ConsumableKind::Food` (V1 minimum), etc.
+- Engine-defined enum variants: `ConsumableKind::Food` (V1 minimum), etc. ⚠ `VitalKind::Hp` /
+  `VitalKind::Stamina` were listed here and are **superseded 2026-08-02** (`D-3`, §4.1) — a vital is a
+  declared quantity, so its machine key is authored content and its label is localized like any other.
 
 ### §2.4 Author-content example (Vietnamese xianxia reality)
 
@@ -178,7 +180,8 @@ Existing features with hardcoded Vietnamese reject copy (PL_006, NPC_001, PL_002
 ```rust
 pub enum ResourceKind {
     // ─── V1 active ───
-    Vital(VitalKind),                  // body-bound; storage in vital_pool aggregate
+    Vital(QuantityOrdinal),            // body-bound; storage in vital_pool aggregate.
+                                       // ⚠ was `VitalKind` — superseded 2026-08-02 (D-3, §4.1)
     Consumable(ConsumableKindId),      // author-declared kind via RealityManifest
     Currency(CurrencyKindId),          // author-declared currency via RealityManifest (Q10)
     Material(MaterialKindId),          // author-declared material kind
@@ -267,6 +270,23 @@ Author can override any default by declaring same `kind_id`.
 ## §4 — Aggregates (Q3 split LOCKED)
 
 ### §4.1 `vital_pool` aggregate
+
+> **⚠ `VitalKind` IS SUPERSEDED — 2026-08-02, `D-3` / `D-10` / [`2026-08-02-actor-data-structure.md`](../../../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md).**
+>
+> `VitalKind::{Hp, Stamina, Mana}` was a **closed engine enum**, and it is the same rot as
+> `commit-service::Actor.hp` and `ruleset-core::StatSlot::MaxHp` — the same hardcoded noun at three
+> levels. **`hp` is one declared pool among others, never a variant the binary knows.** A reality that
+> declares `qi` and no `hp` must be expressible, and a village (`ActorKind::Locus`, applied 2026-07-30)
+> has no hp at all.
+>
+> Replace `kind: VitalKind` throughout this section with a **declared quantity ordinal** of kind `Pool`.
+> `VitalProfile.max_value` *"class default"* becomes the archetype's per-quantity parameter (§4 of the
+> spec above) — *"class"* never existed as a type, and that absence is what left `D-4` unexpressible.
+>
+> **What this section got RIGHT and keeps:** `OnZeroEffect::EmitMortalityTrigger` emits a **trigger**,
+> not a death — the three-layer model (`D-5`) is already present in this spec's naming. It is the
+> shipped code that jumps from a depleted pool straight to a lifecycle outcome and skips the status
+> layer entirely.
 
 > **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — DF07_001 Actor Stat Block DRAFT.** `VitalInstance.max_value` is
 > no longer a static per-actor-class constant: it is **derived** from the DF7 `MaxHp` / `MaxStamina` stat

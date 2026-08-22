@@ -29,6 +29,21 @@ This file specifies the **per-event-type schema rules**. Multi-instance migratio
 - Single counter shared across all categories (envelope is universal).
 - Default V1 starting value: `1`.
 
+> ⚠️ **ROT `E-9` — 2026-08-02: the two levels have their levels in the wrong places.** There is **no
+> envelope-wide counter** in the shipped system. Versioning is **per event type**:
+> [`contracts/events/_registry.yaml`](../../../../contracts/events/_registry.yaml) declares
+> `versions: [...]` + `active_version` **per event**, and
+> [`crates/dp-kernel/src/upcaster.rs:139`](../../../../crates/dp-kernel/src/upcaster.rs#L139) registers
+> upcasters keyed by `event_type`. The `event_version` field that does exist on the envelope is the
+> **payload** version *for that type* — i.e. it is this section's *sub-shape* level, sitting where this
+> section puts the envelope level. **Restate against the registry.**
+>
+> One thing this section gets right and should keep, per prior art: **`EVT-S3`'s append-only upcasters
+> are necessary but not sufficient.** The documented trap is a payload that **upcasts cleanly while its
+> MEANING moved** — *"an upcaster can't fix a semantic change because the old data doesn't carry enough
+> information to derive the new meaning."* The defence is **type identity**, not schema migration: if the
+> meaning changed, it is **not a version bump, it is a different event type**. Add that rule here.
+
 **Sub-shape level — implicit schema version per `(event_category, event_sub_shape)` pair**:
 - Tracked by feature-owned sub-shape contract (in feature design + `_boundaries/02_extension_contracts.md`).
 - Increments on **breaking sub-shape changes** (additive optional fields don't increment).

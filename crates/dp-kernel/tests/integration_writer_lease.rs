@@ -45,7 +45,7 @@ async fn a_healthy_lease_cannot_be_stolen() {
         return;
     };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(1));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(1));
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held = claim_writer_lease(&pool, reality, ch, a, LEASE_TTL_SECS).await.unwrap();
@@ -63,7 +63,7 @@ async fn a_healthy_lease_cannot_be_stolen() {
 async fn an_expired_lease_is_claimable_and_bumps_the_epoch() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(2));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(2));
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -87,7 +87,7 @@ async fn an_expired_lease_is_claimable_and_bumps_the_epoch() {
 async fn a_fenced_holder_cannot_renew() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(3));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(3));
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -115,7 +115,7 @@ async fn a_fenced_holder_cannot_renew() {
 async fn release_makes_the_channel_immediately_claimable() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(4));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(4));
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, LEASE_TTL_SECS).await.unwrap().unwrap();
@@ -139,7 +139,7 @@ async fn release_makes_the_channel_immediately_claimable() {
 async fn a_stale_holder_cannot_release_someone_elses_lease() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(5));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(5));
     let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
 
     let held_a = claim_writer_lease(&pool, reality, ch, a, -1).await.unwrap().unwrap();
@@ -162,7 +162,7 @@ async fn a_stale_holder_cannot_release_someone_elses_lease() {
 async fn two_claimants_racing_an_expired_lease_resolve_to_exactly_one() {
     let Some(url) = dsn() else { return };
     let pool = pool(&url).await;
-    let (reality, ch) = (Uuid::new_v4(), ChannelId(6));
+    let (reality, ch) = (Uuid::new_v4(), ChannelId::unverified(6));
 
     // Seed an expired lease, then race N claimants at it concurrently.
     let _ = claim_writer_lease(&pool, reality, ch, Uuid::new_v4(), -1).await.unwrap();

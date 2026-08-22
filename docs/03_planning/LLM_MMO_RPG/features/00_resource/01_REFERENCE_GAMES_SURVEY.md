@@ -1,5 +1,9 @@
 # RES_001 Resource Foundation — Reference Games Survey
 
+> **⚠ The `Vital(VitalKind)` shape this survey reports as our V1 is SUPERSEDED — 2026-08-02, `D-3`.**
+> A vital is a declared quantity of kind `Pool`, not a closed engine enum. The survey's observations
+> about the reference games are unaffected; only the LoreWeave shape it compares them against changed.
+
 > **Status:** RESEARCH 2026-04-26 — companion to [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md). Informs Q1-Q7 + surfaces Q8-Q12 about long-term strategy/simulation expansion.
 >
 > **Scope clarification (user input 2026-04-26):** LoreWeave is **simulation/strategy game with RPG core**, NOT pure RPG. V1 ships RPG-first vertical slice; V2+ expands toward complex resource economy + giao thương + kinh tế module. Resource Foundation must be designed for V1 simplicity AND V2+ extensibility — not an RPG-shaped local optimum that requires rewriting later.

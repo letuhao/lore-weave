@@ -47,6 +47,25 @@ path = "src/bin/rebuilder.rs"
 name = "provision-drill"
 path = "src/bin/provision_drill.rs"
 
+# W3 (reality layer) — the reality-creation WORKER. Exec'd by the Go
+# `admin reality provision` command through the same subprocess seam admin-cli
+# already uses for `rebuilder` (SubprocessRebuildInvoker). Unlike provision-drill
+# this has NO credential defaults and reads live capacity via capacity_glue
+# (place_reality) instead of fabricating a snapshot.
+[[bin]]
+name = "provision"
+path = "src/bin/provision.rs"
+
+# SEALED-BINDING (feature #2, P7) — the actor-control WORKER. Exec'd by the Go
+# `admin reality grant-control` / `revoke-control` / `create-actor` commands
+# through the same subprocess seam as `provision` (W3). It contributes NO
+# control logic: the reality bind and the actor-exists precondition live in
+# `actor_control_flow`, which the internal HTTP routes go through too, so an
+# operator and a service run the same rules rather than two sets that drift.
+[[bin]]
+name = "actor-control"
+path = "src/bin/actor_control.rs"
+
 # W1.4 (production wiring) — freeze-drill live drill. Exercises the dp-kernel
 # write-freeze guard (PgEventStore + MetaFreezeGuard) against real Postgres:
 # guard-on rejects appends in migrating/pending_close/frozen; guard-off bite
@@ -79,7 +98,11 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-meta-rs = { path = "../../crates/meta-rs" }
+# 3E — the data-plane SDK CONTRACT. The embedding worker writes into a
+# per-reality database, so the reality it drains should be one the control
+# plane confirmed is open. `dp` declares no I/O; it adds types, not a runtime.
+dp = { path = "../../crates/dp" }
+meta-rs = { path = "../../crates/meta-rs", features = ["sqlx-pg"] }
 
 # DEFERRED-059 embedding-queue live wiring — async DB + audit + ops surface.
 tokio = { workspace = true }
@@ -91,6 +114,13 @@ pgvector = { workspace = true }
 axum = { workspace = true }
 prometheus = { workspace = true }
 tracing-subscriber = { workspace = true }
+# WS2 — the shared axum kit: serve + graceful shutdown, DB-aware health probes,
+# X-Internal-Token middleware, RFC 7807, trace/metrics layers. Its own module
+# doc names this migration: "tilemap/world migrate opportunistically when next
+# touched". The embedding worker's older hand-rolled probe router stays as it is
+# — it belongs to a different binary on a different port.
+service-http = { path = "../../crates/service-http" }
+tower-http = { workspace = true }
 # 089 D-EMBEDDING-PROVIDER-WIRING — reqwest client to the BYOK gateway
 # (provider-registry POST /internal/embed). First reqwest in world-service; calls
 # OUR gateway, NOT a vendor SDK (provider-gateway invariant). Workspace-pinned.
@@ -102,11 +132,6 @@ reqwest = { workspace = true }
 rebuilder = { path = "../../crates/rebuilder" }
 dp-kernel = { path = "../../crates/dp-kernel" }
 projections-canon = { path = "../../crates/projections/canon" }
-projections-npc = { path = "../../crates/projections/npc" }
-projections-pc = { path = "../../crates/projections/pc" }
-projections-region = { path = "../../crates/projections/region" }
-projections-session = { path = "../../crates/projections/session" }
-projections-world-kv = { path = "../../crates/projections/world_kv" }
 
 [features]
 # 091 D-EMBEDDING-TESTKIT: exposes embedding_queue::testkit (shared in-memory
@@ -124,6 +149,16 @@ world-service = { path = ".", features = ["testkit"] }
 # traits; the live-smoke integration test (tests/embedding_live.rs) is gated
 # on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.
 tokio = { workspace = true }
+# WS2 — `tower::ServiceExt::oneshot` drives the router in-process for the
+# auth-gate and probe tests (the roleplay-service pattern).
+tower = { workspace = true }
+# WS4 — route conformance parses the OpenAPI contract. A REAL parser, not the
+# four-line reader `provisioner_live::manifest_ids` uses: that one reads a shape
+# stated in its own file's header, whereas this reads a document whose nesting a
+# hand-rolled scanner could silently mis-walk — and a conformance gate that
+# reaches nothing is byte-identical to one that passes. Same version as
+# meta-rs/contracts-prompt so the workspace stays on one serde_yaml.
+serde_yaml = "0.9"
 # 089: pins the BYOK-gateway request shape (HttpEmbeddingProvider) against a stub
 # server without needing provider-registry up (the real round-trip is the deferred
 # live-smoke). Workspace-pinned.

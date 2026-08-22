@@ -1,0 +1,30 @@
+warning: unreachable statement
+  --> tests/ui/channel_read_wrong_scope.rs:50:5
+   |
+48 |     let ctx: &dp::SessionContext = todo!();
+   |                                    ------- any code following this expression is unreachable
+49 |     // A reality-scoped aggregate through the channel-scoped door. Must not compile.
+50 |     let _ = dp::read_projection_channel::<Profile, _>(&NoStore, ctx, 0, dp::KeyId::from(1u64), "k");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` on by default
+
+error[E0271]: type mismatch resolving `<Profile as DpAggregate>::Scope == ChannelScope`
+  --> tests/ui/channel_read_wrong_scope.rs:50:43
+   |
+50 |     let _ = dp::read_projection_channel::<Profile, _>(&NoStore, ctx, 0, dp::KeyId::from(1u64), "k");
+   |                                           ^^^^^^^ type mismatch resolving `<Profile as DpAggregate>::Scope == ChannelScope`
+   |
+note: expected this to be `ChannelScope`
+  --> tests/ui/channel_read_wrong_scope.rs:26:18
+   |
+26 |     type Scope = RealityScope;
+   |                  ^^^^^^^^^^^^
+note: required by a bound in `read_projection_channel`
+  --> src/read.rs
+   |
+   | pub fn read_projection_channel<A, B>(
+   |        ----------------------- required by a bound in this function
+...
+   |     A: DpAggregate<Scope = crate::scope::ChannelScope> + Decode,
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `read_projection_channel`

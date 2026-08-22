@@ -32,10 +32,12 @@ mod binding;
 mod epoch;
 mod layer;
 mod patch;
+mod patch_limits;
 mod labels;
 mod patch_progression;
 mod resolve_pin;
 mod patch_resource;
+mod patch_verb;
 mod progression_store;
 mod store;
 mod validate;
@@ -47,14 +49,15 @@ pub use patch::{CombatPatch, PatchError, RulesetPatch, StatPatch};
 pub use labels::{Label, LabelError, LabelStore, ProgressionLabels};
 pub use patch_progression::{ProgressionKindPatch, ProgressionPatchError, TierPatch};
 pub use resolve_pin::resolve_and_pin;
+pub use patch_limits::LimitsPatch;
 pub use patch_resource::ResourcePatch;
+pub use patch_verb::{VerbPatch, VerbPatchError};
 pub use progression_store::{
     resolve_progression, ProgressionStore, ProgressionStoreError,
 };
 pub use store::{RulesetStore, StoreError};
 pub use validate::{ValidationError, validate};
 
-use std::path::Path;
 
 use ruleset_core::{Floor, Ruleset};
 
@@ -67,6 +70,12 @@ use ruleset_core::{Floor, Ruleset};
 /// assertion instead of prose.
 pub const ENGINE_DEFAULT_TOML: &str = include_str!("../artifacts/engine_default.toml");
 
+mod parse;
+pub use parse::{parse_layer, read_layer};
+
+mod preset;
+pub use preset::{proving_ground, PROVING_GROUND_TOML};
+
 mod error;
 pub use error::LoadError;
 
@@ -75,72 +84,6 @@ pub use error::LoadError;
 pub struct LayerSource {
     pub layer: Layer,
     pub patch: RulesetPatch,
-}
-
-/// Parse a TOML layer document.
-///
-/// **Two passes over one parse (S1a).** The document becomes a `toml::Value`
-/// first so the `Forbidden` keys can be refused with a diagnostic that names
-/// the field and the reason, *before* `deny_unknown_fields` gets to answer
-/// "unknown field" — which is the wrong answer to a key that is very well
-/// known and simply not the author's to set.
-///
-/// The rejected alternative was adding `schema_version`/`law_version` to
-/// `RulesetPatch` so the validator could see them. That would make
-/// `missing_fields`' totality check demand them in `engine_default.toml`:
-/// **adding a field so it can be declared, in order to refuse declaring it.**
-pub fn parse_layer(layer: Layer, toml_src: &str) -> Result<LayerSource, LoadError> {
-    // Pass 1 — a permissive `Value`, ONLY to answer "does this document declare a
-    // forbidden key?". Nothing is built from it.
-    let doc: toml::Value =
-        toml::from_str(toml_src).map_err(|source| LoadError::Parse { layer, source })?;
-    // `as_table()` on a parsed TOML root cannot be `None` — the format has no
-    // other root shape. Written as an explicit refusal rather than
-    // `if let Some(t) = … {}` because that form makes the failure case **skip
-    // the check silently**: if the assumption ever stopped holding, every
-    // forbidden key would be quietly admitted and the gate would report nothing.
-    // A guard whose else-branch is "do nothing" is not a guard.
-    let table = doc.as_table().ok_or(LoadError::NotATable { layer })?;
-    for (field, reason) in ruleset_core::FORBIDDEN_KEYS {
-        if table.contains_key(*field) {
-            return Err(LoadError::ForbiddenField { layer, field, reason });
-        }
-    }
-
-    // Pass 2 — deserialize from the STRING, not from `doc`.
-    //
-    // **This costs a second parse and buys back the error spans.** Deserializing
-    // the already-parsed `Value` looked free and silently destroyed every
-    // diagnostic in this path: `toml`'s spans live on the source text, so
-    // `Value -> T` reports
-    //
-    //     unknown field `max_hitt`, expected one of ... in `combat`
-    //
-    // where parsing the string reports
-    //
-    //     TOML parse error at line 4, column 1
-    //       |
-    //     4 | max_hitt = 9
-    //       | ^^^^^^^^
-    //
-    // The module doc above justifies `deny_unknown_fields` by *"turning twenty
-    // minutes of confusion into one line of diagnostic"* — so losing the line
-    // number defeats the reason the refusal exists. Nothing caught it either:
-    // `a_misspelled_key_is_refused_not_ignored` only asserts the key NAME is in
-    // the message, which stayed true. `a_bad_key_is_reported_with_its_LINE` now
-    // pins the span itself.
-    //
-    // The cost is one extra parse of a small file on the COLD path — layers are
-    // resolved once at reality creation (RLS-A3 early binding), never in a step.
-    let patch: RulesetPatch =
-        toml::from_str(toml_src).map_err(|source| LoadError::Parse { layer, source })?;
-    Ok(LayerSource { layer, patch })
-}
-
-/// Read a layer document from disk.
-pub fn read_layer(layer: Layer, path: &Path) -> Result<LayerSource, LoadError> {
-    let src = std::fs::read_to_string(path).map_err(|source| LoadError::Io { layer, source })?;
-    parse_layer(layer, &src)
 }
 
 /// Fold the stack into one immutable resolved ruleset (RLS-A3 early binding).
@@ -159,6 +102,20 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
     ordered.sort_by_key(|l| l.layer.priority());
 
     let mut out = Ruleset::engine_default();
+    // `LIM-1` — a fold accumulator, NOT a field on `Ruleset`, and that is a
+    // decision rather than an omission.
+    //
+    // A limit is read exactly once, here, and never again: no law reads it, no
+    // step reads it, and a resolved `Ruleset` is immutable, so after this loop
+    // there is nothing left for it to constrain. Storing it would be a shape
+    // nobody reads — the anti-pattern this arc has spent two features closing —
+    // and putting it in the hashed bytes would move every existing reality's
+    // digest to record a number that changes no actor's numbers (`RLS-A15`'s
+    // precedent, `QTY-A10(c)`'s warning).
+    //
+    // Seeded at CAPACITY so a stack that declares no `[limits]` anywhere behaves
+    // exactly as every manifest did before this block existed.
+    let mut limits = ruleset_core::Limits::CAPACITY;
     for l in ordered {
         // S1b floor arm — checked BEFORE the merge, so the diagnostic names the
         // layer that overstepped rather than the resolved result, which by then
@@ -191,9 +148,25 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
                 kinds: l.patch.progression_kinds.len(),
             });
         }
-        l.patch.apply(&mut out).map_err(|e| match e {
+        // `M2` — the same floor again, and the reason is sharper than for either
+        // neighbour: a verb ordinal IS the verb's identity (`CMD-1`, append-only
+        // and never reused) and committed history names one. A verb in the
+        // engine default would enter every reality in existence, and
+        // `QTY-A10(c)` forbids taking it back out.
+        if !l.patch.verbs.is_empty() && l.layer.priority() < Layer::Preset.priority() {
+            return Err(LoadError::BelowFloor {
+                layer: l.layer,
+                field: "verbs",
+                floor: Floor::Preset,
+            });
+        }
+        l.patch.apply(&mut out, &mut limits).map_err(|e| match e {
             patch::PatchError::Quantity(source) => LoadError::Quantity { layer: l.layer, source },
             patch::PatchError::Resource(source) => LoadError::Resource { layer: l.layer, source },
+            patch::PatchError::Verb(e) => {
+                LoadError::Verb { layer: l.layer, message: e.to_string() }
+            }
+            patch::PatchError::Limit(source) => LoadError::Limit { layer: l.layer, source },
         })?;
     }
 

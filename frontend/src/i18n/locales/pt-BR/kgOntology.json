@@ -101,7 +101,6 @@
     "addEdgeType": "Adicionar tipo de aresta",
     "code": "Código",
     "label": "Rótulo",
-    "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Cardinalidade",
     "addButton": "Adicionar tipo de aresta",
     "addSectionTitle": "Adicionar ao esquema",
@@ -132,7 +131,8 @@
     "emptyTitle": "Este esquema está vazio",
     "emptyHelp": "Comece adicionando um tipo de nó (um personagem, um lugar, uma organização…), depois conecte-os com um tipo de aresta.",
     "deleteConfirmTitle": "Excluir este componente?",
-    "deleteConfirmBody": "\"{{code}}\" é referenciado por {{count}} elemento(s) do grafo. A exclusão o tornará descontinuado — os dados continuarão consultáveis. Excluir mesmo assim?"
+    "deleteConfirmBody": "\"{{code}}\" é referenciado por {{count}} elemento(s) do grafo. A exclusão o tornará descontinuado — os dados continuarão consultáveis. Excluir mesmo assim?",
+    "temporalField": "temporal (valid_from + provenance)"
   },
   "canvas": {
     "list": "Lista",

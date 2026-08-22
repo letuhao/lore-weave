@@ -521,14 +521,14 @@
       "discoveredHint": "新实体初始状态为“已发现”。通过关联至术语表可获得“规范”状态。"
     },
     "kind": {
-      "unknown": "未知类型",
-      "person": "人物",
-      "artifact": "器物",
       "character": "角色",
       "location": "地点",
       "organization": "组织",
       "concept": "概念",
       "item": "物品",
+      "unknown": "未知类型",
+      "person": "人物",
+      "artifact": "器物",
       "event_ref": "事件引用",
       "preference": "偏好",
       "event": "事件",
@@ -713,7 +713,6 @@
         "general": "通用"
       },
       "bookId": "书籍 ID (可选)",
-      "bookIdPlaceholder": "uuid",
       "description": "描述 (可选)",
       "instructions": "指令 (可选)",
       "instructionsPlaceholder": "风格说明、语调、约束条件 —— 这些内容将被注入到该项目的所有对话中。",
@@ -733,6 +732,7 @@
         "errorProviderFlake": "嵌入服务提供商在运行中发生故障。请重试。",
         "errorGeneric": "基准测试失败: {{message}}"
       },
+      "bookIdPlaceholder": "uuid",
       "benchmarkNoRun": "⋯ 尚未进行基准测试 — 请运行黄金集基准测试以启用提取功能。",
       "bookIdLocked": "本书（已锁定）",
       "canonCapture": "从对话中自动捕获新名称",

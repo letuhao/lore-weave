@@ -3,7 +3,6 @@
 // GDPR erasure event for a user; meta-worker fans out the deletion to every reality the user touched.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XRealityUserErasedV1 {

@@ -36,6 +36,12 @@ LoreWeave is a multi-agent platform for multilingual novel workflows (translatio
 
 Source of truth for current status: `docs/sessions/SESSION_HANDOFF.md`
 
+**📍 Where the work stands, project-wide: [`docs/MILESTONE.md`](docs/MILESTONE.md)** — the progress
+SSOT, and it carries the **BOOK → REALITY build index** for the game tier (what state each stage is
+in, what blocks what). It declares that this guide and the README derive from it, and until 2026-08-08
+nothing here pointed at it — so it went 2.5 months stale while the game tier was actively built.
+Read it before assuming a track is dormant.
+
 ---
 
 ## Architecture
@@ -268,9 +274,13 @@ Overwrite the **▶ NEXT SESSION** block in `docs/sessions/SESSION_HANDOFF.md` i
 A commit is a **task checkpoint, not a session boundary**. Once code is committed, the next task continues in the *same* session.
 
 - **Do NOT** suggest opening a new session, "starting fresh", pausing, or "wrapping up" based on commit count, number of milestones done, elapsed time, or conversation length. None of these are reasons to stop.
-- This matters most during **multi-milestone runs**: after each milestone commits, just present the close-out and continue to the next one — never advise a new session in between.
-- Only mention context at all when it is **genuinely near full (>90% used)**. At normal usage (e.g. a 1M window with most of it free) context is a non-issue — say nothing about it.
-- If compaction is truly needed, run `/compact`. Do not ask the user to restart.
+- This matters most during **multi-milestone runs**: after each milestone commits, just present the close-out and continue to the next one — never advise a new session in between. (This line named `/loom` until the 2026-08-03 retirement recorded under *Slash commands* below; the rule is about the cadence, not the runner.)
+- **Context budget is the HUMAN's to manage, not the agent's (LOCKED 2026-08-02).** Never mention
+  context level, never propose `/compact`, never pace or narrow work because context "is filling".
+  The agent's job is to keep the RUN-STATE file current so that a compaction — whenever the human
+  chooses to run one — loses nothing. Self-managed compaction produced the opposite of its purpose:
+  it interrupted the human with a budget they had not asked to see, and it truncated real work at a
+  boundary chosen by the agent rather than by the task.
 
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
 
@@ -443,26 +453,63 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 **Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
 **Retired 2026-08-03: AMAW mode.** Its cold-start sub-agent reviews are covered by AI Factory's read-only sidecars (`review-sidecar`, `security-sidecar`, `rules-sidecar`, `best-practices-sidecar`) and by `/review-impl +check`. **One behaviour did NOT survive the swap:** AMAW's Scope Guard was a *blocking* gate at POST-REVIEW; the sidecars are advisors. POST-REVIEW is still a human checkpoint and that is now the only thing that blocks there.
 
-### 12 phases
+### 13 phases — and phase 0 is the one this project learned the hard way
 
 ```
-CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
+AUDIT-EXISTING → CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
 
-| Phase | Role |
-|---|---|
-| 1. CLARIFY | Architect + PO |
-| 2. DESIGN | Lead |
-| 3. REVIEW (design) | PO + Lead self-review |
-| 4. PLAN | Lead + Developer |
-| 5. BUILD | Developer (TDD) |
-| 6. VERIFY | Developer (evidence gate) |
-| 7. REVIEW (code) | Lead self-review |
-| 8. QC | QA / PO |
-| 9. POST-REVIEW | Human checkpoint — present + WAIT |
-| 10. SESSION | Developer |
-| 11. COMMIT | Developer |
-| 12. RETRO | All — record the lesson in the repo |
+**Phase 0 · AUDIT-EXISTING — before designing anything, find what already claims
+to model it.** Ask three questions and answer each with a command, not a memory:
+
+1. **What already models this concept?** `grep` the tables, the crates, the
+   projectors, the planning docs. A name from a different track counts.
+   **`scripts/phase0-reconcile-gate.py` asks this mechanically** — a spec dated
+   on/after 2026-08-06 must carry a `Reconciles: <index rows> — <what it found>`
+   line naming real rows of [`docs/standards/README.md`](docs/standards/README.md).
+   It forces the LOOK, not the conclusion; that is the honest limit, and the
+   action that failed three times was *not opening the file*.
+2. **Does it have a PRODUCER?** A model nothing writes to is a dead end, however
+   complete it looks. `scripts/orphan-model-gate.py` asks this mechanically.
+3. **Does it CONFLICT with a decision this round will make?** A pre-existing
+   model built before a rule was sealed will contradict it silently.
+   **No gate. Declared rather than glossed** — see the second incident below.
+
+**The second incident, measured 2026-08-06 — and it is question 1 again.** The
+SAME actor-hub round also wrote three specs for a tier that already had **25
+LOCKED documents** governing it (`06_data_plane/`: `DP-A1..A19` · `DP-T0..T3` ·
+`DP-R1..R8`). Measured: `DP-` appears **zero** times in all three, and `DP-R2`
+(*"every feature design doc MUST contain a tier table"*) is owed and unpaid by
+each. **The mechanism built after the first incident — `orphan-model-gate` —
+answers question 2.** So question 1 failed again, in the same round, and nothing
+said anything: it was **default-uncovered**, which is `NV-3` at the process
+level rather than loose discipline.
+
+**The failure this exists to stop, measured 2026-08-04.** The actor-hub round
+designed feature #1 without auditing what already modelled an actor. Seven of the
+ten shipped projection tables were `pc_*` / `npc_*` — with a projector, a
+rebuilder, a golden fixture, an independent oracle and a benchmark, and **no
+producer at all**: every `pc.created` / `npc.created` in the tree was a fixture or
+a test. They also encoded game vocabulary in engine tables (`name`, `stats JSONB`,
+a hardcoded status set) — the exact shape `D-2` forbids — with a
+`// TODO(cycle 17+ L4): pc.stats_changed` beside them, an invitation to make an
+opaque blob a second SSOT for an actor's numbers. Two months, and nobody asked.
+`0017` removed them, and the gate found **five more orphans on its first run**.
+
+| Phase | Default v2.2 role | AMAW role (opt-in) |
+|---|---|---|
+| 1. CLARIFY | Architect + PO | Main + Scribe |
+| 2. DESIGN | Lead | Main |
+| 3. REVIEW (design) | PO + Lead self-review | Adversary cold-start |
+| 4. PLAN | Lead + Developer | Main + Scribe |
+| 5. BUILD | Developer (TDD) | Main |
+| 6. VERIFY | Developer (evidence gate) | Main |
+| 7. REVIEW (code) | Lead self-review | Adversary cold-start |
+| 8. QC | QA / PO | Scope Guard |
+| 9. POST-REVIEW | Human checkpoint — present + WAIT | Scope Guard |
+| 10. SESSION | Developer | Scribe |
+| 11. COMMIT | Developer | Main |
+| 12. RETRO | All — record the lesson in the repo | Audit Logger |
 
 **Status markers:** `[ ]` not started · `[C/D/P/B/V/R/Q/PR/S]` in phase · `[x]` done. **Task types:** `[FE]` frontend · `[BE]` backend · `[FS]` full-stack.
 
@@ -501,13 +548,12 @@ re-arch spanning several services) is ONE classification + ONE continuous run �
 small tasks each with its own size→build→review→commit cycle. Undersizing on **breadth**
 is allowed (the gate warns, you proceed); undersizing below the **risk floor** is blocked.
 
-**Budget-driven checkpoint cadence (the big unlock).** On a large-context model, let the
-**context budget** — not file count — drive when to stop. Pass current context % as the
-5th arg: `size <S> <files> <logic> <side_effects> <context_pct>`.
-- **Ample budget (<~70%):** run continuously. Checkpoint/commit at genuine **risk boundaries**
-  (a new contract, a migration, a cross-service seam, a shippable milestone), **not** at
-  arbitrary file/sub-task counts.
-- **Filling (>~80%):** checkpoint/commit + `/compact` at the next risk boundary.
+**Risk-driven checkpoint cadence.** Let **risk boundaries** — not file count, and **not context
+level** — drive when to stop. The 5th arg to `size` is accepted for compatibility and is **not** a
+reason to stop, narrow, or compact anything; context is the human's to manage (see *Session
+continuity* above).
+- Run continuously. Checkpoint/commit at genuine **risk boundaries** (a new contract, a migration,
+  a cross-service seam, a shippable milestone), **not** at arbitrary file/sub-task counts.
 - **PO checkpoints (CLARIFY end + POST-REVIEW) are BATCHED per-milestone:** one CLARIFY for
   the effort's scope; POST-REVIEW at each shippable risk boundary — not per sub-task.
 - **Quality gates stay, applied per-milestone:** VERIFY evidence, 2-stage REVIEW, live-smoke
@@ -622,6 +668,8 @@ NO FIXES WITHOUT ROOT CAUSE.
 | Command | When |
 |---|---|
 | `/review-impl [task-id] [+check]` | On-demand deep adversarial review — the standards gate plus the coverage pass. Invoke when POST-REVIEW needs a deeper look, or after COMMIT when something feels off. Add **`+check`** to validate the findings through a fresh-context subagent before they are shown: it can drop a fabricated finding, correct a wrong citation, or promote one that was under-rated. It fails open and says so — a validator that dies never silently shrinks a review, and it may never drop a HIGH finding tagged with an ENFORCED/LOCKED standard. |
+
+| `/goal-prompt [--plan <path>]` | Emit a paste-ready `/goal` condition for a plan or RUN-STATE. Reads the open rows off the board on every invocation, so a ticked row leaves the queue by itself — the alternative is retyping a 4000-character prompt each session and sending one at a task that shipped. `scripts/goal-prompt.py --selftest` proves it. |
 
 **Retired 2026-08-03: `/loom`, `/raid`, `/warp`, `/amaw`.** `/review-impl` is the only runner left, and
 it is the only one that was still being used. AI Factory's `aif-plan` (818 lines) + `aif-implement`

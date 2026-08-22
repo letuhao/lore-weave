@@ -1,0 +1,30 @@
+warning: unreachable statement
+  --> tests/ui/write_wrong_tier.rs:54:5
+   |
+52 |     let ctx: &dp::SessionContext = todo!();
+   |                                    ------- any code following this expression is unreachable
+53 |     // A T3 aggregate down the T2 path. Must not compile.
+54 |     let _ = dp::t2_write::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` on by default
+
+error[E0271]: type mismatch resolving `<Ledger as DpAggregate>::Tier == T2`
+  --> tests/ui/write_wrong_tier.rs:54:28
+   |
+54 |     let _ = dp::t2_write::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
+   |                            ^^^^^^ type mismatch resolving `<Ledger as DpAggregate>::Tier == T2`
+   |
+note: expected this to be `dp::T2`
+  --> tests/ui/write_wrong_tier.rs:26:17
+   |
+26 |     type Tier = T3;
+   |                 ^^
+note: required by a bound in `t2_write`
+  --> src/write.rs
+   |
+   | pub fn t2_write<A, B>(
+   |        -------- required by a bound in this function
+...
+   |     A: DpAggregate<Tier = T2, Scope = RealityScope> + Encode,
+   |                    ^^^^^^^^^ required by this bound in `t2_write`

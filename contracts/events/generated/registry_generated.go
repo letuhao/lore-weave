@@ -35,6 +35,9 @@ var EventDispatch = map[string]map[uint32]string{
 	"canon.entry.updated": {
 		1: "CanonEntryUpdatedV1",
 	},
+	"channel.turn_boundary": {
+		1: "TurnBoundaryV1",
+	},
 	"npc.said": {
 		1: "NpcSaidV1",
 		2: "NpcSaidV2",
@@ -68,6 +71,7 @@ var EventTypesGenerated = []string{
 	"canon.entry.decanonized",
 	"canon.entry.promoted",
 	"canon.entry.updated",
+	"channel.turn_boundary",
 	"npc.said",
 	"reality.created",
 	"ruleset.epoch_activated",

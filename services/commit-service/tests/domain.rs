@@ -1,21 +1,26 @@
 //! CombatDomain bite-tests + the panic canary.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
-use commit_service::{Actor, CombatDomain, CombatEvent, CombatPayload, Ruleset, CombatState};
+use commit_service::combat::Side;
+use commit_service::{CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules};
 use sim_core::{
+
     RulesetEpoch,
     Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Outcome, Producer,
     QueuedInput, SeenWindow, Seq, StepStatus,
 };
 
+
 fn island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 40));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 40));
     let mut isle = Island::new(
         IslandId(1),
         7,
@@ -65,15 +70,15 @@ fn submit(isle: &mut Island<CombatDomain>, id: u128, payload: CombatPayload) {
 #[test]
 fn defend_halves_exactly_one_strike() {
     let mut isle = island();
-    let full_hp = isle.state().actors[&EntityId(2)].hp;
+    let full_hp = isle.state().actors[&EntityId(2)].vital(isle.rules());
 
     submit(&mut isle, 1, CombatPayload::Defend { actor: EntityId(2) });
     submit(&mut isle, 2, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
-    let defended_dmg = full_hp - isle.state().actors[&EntityId(2)].hp;
+    let defended_dmg = full_hp - isle.state().actors[&EntityId(2)].vital(isle.rules());
 
-    let before = isle.state().actors[&EntityId(2)].hp;
+    let before = isle.state().actors[&EntityId(2)].vital(isle.rules());
     submit(&mut isle, 3, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
-    let undefended_dmg = before - isle.state().actors[&EntityId(2)].hp;
+    let undefended_dmg = before - isle.state().actors[&EntityId(2)].vital(isle.rules());
 
     assert!(defended_dmg > 0, "the defended hit still landed (it is halved, not negated)");
     assert!(
@@ -105,7 +110,7 @@ fn strike_on_absent_or_fled_target_is_a_recorded_miss() {
 
     submit(&mut isle, 2, CombatPayload::Flee { actor: EntityId(2) });
     submit(&mut isle, 3, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
-    let hp = isle.state().actors[&EntityId(2)].hp;
+    let hp = isle.state().actors[&EntityId(2)].vital(isle.rules());
     assert_eq!(hp, 40, "a fled actor is untouchable");
 }
 
@@ -117,7 +122,7 @@ fn downed_fires_once_at_zero() {
     for i in 0..5 {
         submit(&mut isle, 10 + i, CombatPayload::Strike { attacker: EntityId(1), target: EntityId(2) });
     }
-    assert_eq!(isle.state().actors[&EntityId(2)].hp, 0);
+    assert_eq!(isle.state().actors[&EntityId(2)].vital(isle.rules()), 0);
     let downs = isle
         .outcomes()
         .iter()
@@ -164,16 +169,19 @@ fn panic_canary_this_profile_unwinds() {
 /// derivation itself, which is the part a future edit could still get wrong.
 #[test]
 fn an_island_reports_the_digest_of_the_rules_it_runs() {
-    use commit_service::Ruleset;
-
-    let mut a = Ruleset::engine_default();
-    a.combat.max_hit -= 1; // any reality with non-default rules
+    // A second reality: the preset with ONE balance number changed. Built from
+    // the preset rather than from `engine_default` because an island's rules
+    // must bind every engine role (`M1`), and the engine default binds none.
+    let base = RealityRules::proving_ground();
+    let mut a_rules = base.rules().clone();
+    a_rules.combat.max_hit -= 1; // any reality with non-default rules
+    let a = RealityRules::resolve(a_rules).expect("still binds every role");
 
     let isle_default: Island<CombatDomain> = Island::new(
         IslandId(1),
         7,
         RulesetEpoch(1),
-        Arc::new(Ruleset::engine_default()),
+        Arc::new(RealityRules::proving_ground()),
         SeenWindow::Unbounded,
         CombatState::default(),
     );
@@ -186,7 +194,7 @@ fn an_island_reports_the_digest_of_the_rules_it_runs() {
         CombatState::default(),
     );
 
-    assert_eq!(isle_default.digest, Ruleset::engine_default().digest());
+    assert_eq!(isle_default.digest, base.digest());
     assert_eq!(isle_a.digest, a.digest());
     assert_ne!(
         isle_default.digest, isle_a.digest,
@@ -215,11 +223,10 @@ fn an_island_reports_the_digest_of_the_rules_it_runs() {
 /// own suite could not have caught a regression here.
 #[test]
 fn restoring_under_different_rules_is_refused() {
-    use commit_service::Ruleset;
-
-    let rules_a = Arc::new(Ruleset::engine_default());
-    let mut b = Ruleset::engine_default();
-    b.combat.max_hit -= 1; // one balance number, the smallest real rules change
+    let rules_a = Arc::new(RealityRules::proving_ground());
+    let mut b_rules = rules_a.rules().clone();
+    b_rules.combat.max_hit -= 1; // one balance number, the smallest real rules change
+    let b = RealityRules::resolve(b_rules).expect("still binds every role");
 
     let isle: Island<CombatDomain> = Island::new(
         IslandId(9),

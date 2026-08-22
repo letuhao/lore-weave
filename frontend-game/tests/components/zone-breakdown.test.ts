@@ -45,7 +45,7 @@ function baseZones(): ZoneRuntime[] {
 function baseView(overrides: Partial<TilemapView> = {}): TilemapView {
   return {
     channel_id: 'unit',
-    tier: 'town',
+    tier: 'locale',
     grid_size: { width: 4, height: 4 },
     template_id: 't',
     seed: 1,

@@ -20,6 +20,9 @@ use commit_service::epoch_commit::activation_payload;
 use sim_core::RulesetEpoch;
 use uuid::Uuid;
 
+mod support;
+use support::verified_reality;
+
 const GO_CONTRACT: &str = "../../contracts/events/reality.go";
 const GO_STRUCT: &str = "RulesetEpochActivatedV1";
 
@@ -54,7 +57,8 @@ fn go_json_fields() -> Vec<String> {
 
 fn sample_payload() -> serde_json::Value {
     activation_payload(
-        Uuid::nil(),
+        // `3E`: a VERIFIED id, bound through the test double, not a bare uuid.
+        &verified_reality(Uuid::nil()),
         7,
         RulesetEpoch(4),
         RulesetEpoch(5),
