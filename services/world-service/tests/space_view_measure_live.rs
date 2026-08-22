@@ -36,6 +36,10 @@ use std::time::Instant;
 use world_service::space_view::{self, ViewBudget};
 use world_service::world_seed::{self, MapKind, NodeDecl, PlaceDecl};
 
+// `dp::RealityId`'s constructor is crate-private by design (`DP-K1`), so a test
+// mints one the way production does -- through a `ControlPlane` bind.
+mod support;
+
 fn admin_dsn() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_PG_ADMIN_URL").ok().filter(|s| !s.is_empty())
 }
@@ -130,12 +134,13 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
     }
 
     // ── Measure. Best-of-7, the same discipline `M-1` used.
+    let verified = support::verified_reality(reality);
     let budget = ViewBudget::MEASURED;
     let mut best = f64::MAX;
     let mut view = None;
     for _ in 0..7 {
         let t = Instant::now();
-        let v = space_view::assemble(pool, reality, 5, budget)
+        let v = space_view::assemble(pool, &verified, 5, budget)
             .await
             .map_err(|e| format!("assemble: {e}"))?;
         let ms = t.elapsed().as_secs_f64() * 1000.0;

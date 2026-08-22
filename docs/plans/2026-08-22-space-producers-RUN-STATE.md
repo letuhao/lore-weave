@@ -475,9 +475,43 @@ letter-guards, with `folklore_bible` added as a near-miss on the other side. 7 c
 | `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[x]` | **DONE 2026-08-22 — §3.11. All three fixed and bitten.** Boards parsing empty **30 → 15**; rows visible **~200 → 445**; five boards' state independently confirmed. A **fourth** dialect family measured and left open (`OR-5`) |
 | `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[x]` | **DONE 2026-08-22 — §3.12. 13.14 ms → 4.81 ms (2.7×), assembled bytes IDENTICAL.** 2 bites. `Q6` answered: it was never a tick cost |
 | `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
-| `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[ ]` | |
+| `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[x]` | **DONE 2026-08-22 — §3.13. The first gate EXISTS, and I had broken it: my own `A3`/`A4` took world-service 0 → 6 ADOPTABLE.** Fixed, adoptable back to **0**, baselines moved, bitten. The second is registered `PROSE_ONLY` with a named trigger and deliberately NO fake mechanism |
 
 ---
+
+#### 3.13 · `C3` — one gate was never refused, and I had regressed it
+
+**`scripts/reality-id-adoption-gate.py` exists.** The row recorded it as *"refused on its
+measurement, needing live-schema introspection"*; what shipped instead is a **ratchet on typed
+sites**, which needs no live schema. So the row's premise was stale — the same shape `B1` and `B3`
+found, a third time.
+
+**And it was RED, because of this run.** `A3` and `A4` took `services/world-service` from
+**0 → 6 ADOPTABLE**: `space_view::assemble`, `node_at`, `spawn::site_in_cell`, `world_seed::seed_world`
+and two wire DTO fields. I wrote all six.
+
+**Fixed by the principle the gate states, not by widening the exemption:**
+
+| site | verdict |
+|---|---|
+| `spawn::site_in_cell`, `space_view::assemble`, `space_view::node_at` | now take `&dp::RealityId` — their callers bind first, so they CAN hold the verified type |
+| `world_seed::seed_world` | **structurally exempt.** It is provision step 10, between `transition_to_seeding` and `transition_to_active` — a reality in `seeding` cannot bind, so a `SessionContext::bind` against it would be *refused by the control plane*. Same ground as `provisioner` and `reality_seeder` |
+| `SpaceViewRequest`/`SpaceViewResponse` `.reality_id` | **input boundary** — wire DTO fields carrying a uuid decoded before any control-plane call exists, exactly like the `actor_control` entry beside it |
+
+**ADOPTABLE is back to 0.** Baselines moved in this commit (`I-8`): boundary **19 → 21**, exempt
+**57 → 60**, adoptable **0 → 0**.
+
+**The bite:** reverting `spawn::site_in_cell` to a bare `Uuid` — mutation proven applied first — reds
+with `REGRESSION (ADOPTABLE): services/world-service went 0 -> 1`. Restored byte-identical.
+
+**The second gate gets no mechanism, and that is the finding.** A half-applied-annotation check was
+prototyped across 386 docs and produced **47 candidates, mostly false** — `was` matches ordinary prose
+(*"the register's highest id was `REC-98`"*), and substring matching catches `tier` inside
+`tier_metadata`. **A 47-finding baseline in front of a real one is worse than no gate.** It is now a
+governed `PROSE_ONLY` deferral whose trigger is named: *a token-level matcher scoped to
+`pub NAME: TYPE` declarations — a parser, not a regex*. Inventing a colour-changing check today
+**would be that gate again**. `deferral-gate` counts it in the declared-wake-up column, not the
+mechanised one: **13 of 38**.
 
 #### 3.12 · `C2` — the N+1, and a question that answered itself
 
@@ -600,6 +634,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 | id | what happened |
 |---|---|
+| **PD-5** | **I broke a live ratchet and pre-commit did not catch it.** `A3`/`A4` added six bare `reality_id: Uuid` sites on bindable paths, taking `reality-id-adoption-gate` from 0 to 6 ADOPTABLE. Its SELF-TEST runs in `gate-self-tests`, so it was green in every commit — **the self-test proves the gate can bite; it does not run the gate.** Found only because `C3` went to read the gate the row claimed did not exist |
 | **PD-4** | **I read "NEW V1+30d service `travel-service`" in `TVL_001` and recorded it as *"the service does not exist"*. It has been on disk the whole time.** The document was not wrong — the service is new to the PLAN — but "will be built" and "is not there" are different claims, and I substituted one for the other without looking. Caught by the trigger's own first run, which is the argument for building the trigger before writing the deferral rather than after. **Same shape as `PD-2`**: a claim taken from a document standing next to claims that were measured |
 | **PD-3** | **The `Effects::apply_migrations` trait doc said *\"apply `0001_initial.sql` (the SKELETON)\"* while its implementation had applied all 67 manifest migrations since 2026-08-08 (`1b12-05`).** The implementation comment records the rewrite in detail; the trait doc above it was never touched. **A doc on the CONTRACT and a doc on the IMPLEMENTATION are two homes for one fact**, and the rewrite moved only the one it was standing in. Fixed in `A2` |
 | **PD-2** | **`world_seed.rs:5-6` asserts that `reality_seeder` *"already runs in the `seeding` lifecycle stage that `provisioner` step 9 transitions into"*. It does not, and I wrote that line eight commits ago.** The paragraph it opens is headed *"What was missing, measured rather than assumed"* — and the half of it that WAS measured (*"every `INSERT INTO channels` in the repository is in a test"*) is still true, which is exactly why the unmeasured half read as credible. **One sentence in a measured paragraph inherits the paragraph's authority without earning it** |
@@ -609,7 +644,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `C3` — the two gates refused on their measurements (a `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced 47 mostly-false candidates). Re-decide or record what a replacement needs. Then `C4`. **11 of 13 done; `C3` and `C4` are the last two.**
+**RESUME: `C4` — the LAST row. `live-suite-registry-gate` walks registry→disk and nothing walks disk→registry; `A3` found four live suites on disk in no row at all, three of them from the predecessor run. Give it the missing direction. **12 of 13 done.**
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
 lanes: |

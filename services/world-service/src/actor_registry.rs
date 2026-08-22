@@ -71,7 +71,7 @@ pub async fn create_actor(
     let entity_id = row.get::<i64, _>("entity_id");
 
     if let Some(s) = siting {
-        crate::spawn::site_in_cell(&mut tx, reality.as_uuid(), entity_id, s).await?;
+        crate::spawn::site_in_cell(&mut tx, reality, entity_id, s).await?;
     }
 
     tx.commit().await.map_err(|e| ProvisionerError::Bridge(format!("commit: {e}")))?;
@@ -117,7 +117,7 @@ pub async fn adopt_actor(
         .map_err(|e| ProvisionerError::Bridge(format!("adopt actor {entity_id}: {e}")))?;
 
     if let Some(s) = siting {
-        crate::spawn::site_in_cell(&mut tx, reality.as_uuid(), entity_id, s).await?;
+        crate::spawn::site_in_cell(&mut tx, reality, entity_id, s).await?;
     }
 
     // ADVANCE THE SEQUENCE PAST WHAT WE JUST ADOPTED.

@@ -34,8 +34,8 @@
 //! the reader's. This module therefore takes caps and not a field list.
 
 use serde::Serialize;
+use dp::RealityId;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 /// `DP-Ch1`'s depth bound, enforced as a `CHECK` in `0019_channels`. Repeated
 /// as a walk guard so a malformed tree cannot spin, never as a second source of
@@ -99,7 +99,7 @@ impl std::fmt::Display for ViewError {
 
 impl std::error::Error for ViewError {}
 
-async fn node_at(pool: &PgPool, reality: Uuid, id: i64) -> Result<Option<ViewNode>, sqlx::Error> {
+async fn node_at(pool: &PgPool, reality: &RealityId, id: i64) -> Result<Option<ViewNode>, sqlx::Error> {
     let row: Option<(i64, String, String, Option<String>)> = sqlx::query_as(
         "SELECT c.id, m.kind, c.level_name, p.name_vi \
            FROM channels c \
@@ -107,7 +107,7 @@ async fn node_at(pool: &PgPool, reality: Uuid, id: i64) -> Result<Option<ViewNod
            LEFT JOIN place p ON p.reality_id = c.reality_id AND p.place_id = c.id \
           WHERE c.reality_id = $1 AND c.id = $2",
     )
-    .bind(reality)
+    .bind(reality.as_uuid())
     .bind(id)
     .fetch_optional(pool)
     .await?;
@@ -123,7 +123,7 @@ async fn node_at(pool: &PgPool, reality: Uuid, id: i64) -> Result<Option<ViewNod
 /// ordering, so a truncated section is a PREFIX rather than a sample.
 pub async fn assemble(
     pool: &PgPool,
-    reality: Uuid,
+    reality: &RealityId,
     node: i64,
     budget: ViewBudget,
 ) -> Result<SpaceView, ViewError> {
@@ -149,7 +149,7 @@ pub async fn assemble(
     let ancestors: Vec<ViewNode> = sqlx::query_as(
         "WITH RECURSIVE up AS (              SELECT c.id, c.parent, 0 AS d                FROM channels c               WHERE c.reality_id = $1 AND c.id = $2              UNION ALL              SELECT c.id, c.parent, up.d + 1                FROM channels c                JOIN up ON c.id = up.parent               WHERE c.reality_id = $1 AND up.d < $3          )          SELECT u.id, m.kind, c.level_name, p.name_vi            FROM up u            JOIN channels c ON c.reality_id = $1 AND c.id = u.id            JOIN map_layout m ON m.reality_id = $1 AND m.channel_id = u.id            LEFT JOIN place p ON p.reality_id = $1 AND p.place_id = u.id           WHERE u.d > 0           ORDER BY u.d ASC",
     )
-    .bind(reality)
+    .bind(reality.as_uuid())
     .bind(node)
     .bind(MAX_DEPTH_WALK as i32)
     .fetch_all(pool)
@@ -174,7 +174,7 @@ pub async fn assemble(
           WHERE reality_id = $1 AND (node_a = $2 OR node_b = $2) \
           ORDER BY other ASC LIMIT $3",
     )
-    .bind(reality)
+    .bind(reality.as_uuid())
     .bind(node)
     .bind(budget.portal_ring as i64 + 1)
     .fetch_all(pool)
@@ -186,7 +186,7 @@ pub async fn assemble(
           WHERE reality_id = $1 AND cell_id = $2 \
           ORDER BY entity_id ASC LIMIT $3",
     )
-    .bind(reality)
+    .bind(reality.as_uuid())
     .bind(node)
     .bind(budget.occupants as i64 + 1)
     .fetch_all(pool)

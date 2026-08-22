@@ -55,9 +55,9 @@
 //! here would be the engine deciding a reality's vocabulary**, which is the rot
 //! this repo names by example.
 
+use dp::RealityId;
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
-use uuid::Uuid;
 
 use crate::errors::ProvisionerError;
 
@@ -124,7 +124,7 @@ pub struct Siting {
 /// two indistinguishable in the log.
 pub async fn site_in_cell(
     conn: &mut PgConnection,
-    reality: Uuid,
+    reality: &RealityId,
     entity_id: i64,
     siting: &Siting,
 ) -> Result<(), ProvisionerError> {
@@ -133,7 +133,7 @@ pub async fn site_in_cell(
          (reality_id, entity_id, entity_type, location_kind, cell_id, lifecycle_state) \
          VALUES ($1, $2, $3, 'in_cell', $4, $5)",
     )
-    .bind(reality)
+    .bind(reality.as_uuid())
     .bind(entity_id)
     .bind(siting.entity_type.as_str())
     .bind(siting.node)

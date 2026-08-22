@@ -161,6 +161,16 @@ STRUCTURALLY_EXEMPT: dict[str, str] = {
         "DROPS the reality's database. Its subject is a world being torn down, "
         "which by definition no longer accepts commands."
     ),
+    "services/world-service/src/world_seed": (
+        "the reality is in `seeding` while this runs and CANNOT bind. "
+        "`seed_world` is provision step 10, called between "
+        "`transition_to_seeding` and `transition_to_active`, so a "
+        "`SessionContext::bind` against it would be refused by the control "
+        "plane -- a reality that does not yet accept commands is exactly what "
+        "the bind checks for. Same ground as `provisioner` and `reality_seeder` "
+        "above; the writers that run AFTER `active` (`spawn`, `space_view`) do "
+        "take `&dp::RealityId`."
+    ),
     "services/world-service/src/reality_seeder": (
         "seeds a reality that is not yet open. The seeder runs between "
         "provisioning and activation, so a capability for it cannot exist yet — "
@@ -296,6 +306,15 @@ INPUT_BOUNDARY: dict[str, str] = {
         "`embedding_queue::bind_reality` is what turns it into a verified "
         "`dp::RealityId`, so it cannot already be one. Everything downstream of "
         "that call now takes `dp::RealityId`."
+    ),
+    "services/world-service/src/server/handlers/space": (
+        "the HTTP INPUT the bind consumes, and the same shape as the "
+        "`actor_control` entry beside it. The two sites are wire DTO fields -- "
+        "`SpaceViewRequest.reality_id` and `SpaceViewResponse.reality_id` -- "
+        "carrying a uuid decoded from a request body before any control-plane "
+        "call exists. The handler binds on its very next statement and passes "
+        "`&dp::RealityId` downward: `space_view::assemble` and `node_at` both "
+        "take the verified type as of `C3`."
     ),
     "services/world-service/src/server/handlers/actor_control": (
         "the HTTP INPUT the bind consumes. The sites are wire DTO fields — "

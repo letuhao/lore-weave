@@ -103,7 +103,7 @@ pub async fn view(
         .await
         .map_err(crate::server::handlers::actor_control::to_problem)?;
 
-    let view = space_view::assemble(&pool, reality.as_uuid(), req.node, budget).await;
+    let view = space_view::assemble(&pool, &reality, req.node, budget).await;
     pool.close().await;
 
     match view {

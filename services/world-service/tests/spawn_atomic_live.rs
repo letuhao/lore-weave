@@ -144,7 +144,7 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
     //       letting an INSERT double as a move makes them indistinguishable in
     //       the log, which is `R-52`'s evacuate-never-delete losing its subject.
     let mut conn = pool.acquire().await.map_err(|e| format!("acquire: {e}"))?;
-    if world_service::spawn::site_in_cell(&mut conn, raw, sited.entity_id, &siting).await.is_ok() {
+    if world_service::spawn::site_in_cell(&mut conn, &reality, sited.entity_id, &siting).await.is_ok() {
         return Err("an already-sited entity was sited a second time -- spawn is \
                     silently acting as move"
             .into());

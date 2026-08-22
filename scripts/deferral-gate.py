@@ -265,6 +265,18 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-HALF-APPLIED-ANNOTATION-NEEDS-A-PARSER": (
+        "TRIGGER: a token-level matcher scoped to `pub NAME: TYPE` "
+        "declarations exists -- a PARSER, not a regex. Prose-only ON PURPOSE: the "
+        "regex version WAS prototyped across 386 docs and produced 47 "
+        "candidates, mostly false (`was` matches ordinary prose; substring "
+        "matching catches `tier` inside `tier_metadata`). Inventing a "
+        "colour-changing check today would BE that gate again, and a "
+        "47-finding baseline in front of a real one is worse than no gate. "
+        "The adjacent case is already mechanised: `amendment-rot-gate` check E "
+        "catches a RETIRED AMENDMENT ID cited as live; this is the "
+        "TYPE-DECLARATION case that check cannot reach."
+    ),
     "D-REPLAY-PIN-REFUSAL-UNDEFINED": (
         "TRIGGER: the first comparison site — a rebuild that resolves a ruleset and "
         "has a pin to disagree with it. Escalated out of the 2026-08-02 command round "
