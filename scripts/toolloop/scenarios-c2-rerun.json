@@ -48,7 +48,8 @@
       },
       "defects": [],
       "_rerun_note": "Re-run alone: the batch-15 arm had 1 of 5 runs die on a ReadTimeout, and a transport failure is not a model result. The other 4 were consistent, but the gate counts the errored run and is right to — so this is a clean K=5 rather than an argument about it.",
-      "_rerun_of": "batch15-tpl"
+      "_rerun_of": "batch15-tpl",
+      "_teardown_defect_2026_08_23": "🔴 D-SEED-FIXTURE-LEFT-ARCHIVED-BREAKS-EVERY-LATER-RUN. This scenario is the only one in the file whose seed uses a FIXED code ('throwaway-loop-skeleton-b15') where its siblings use {run_word}. composition_arc_extract_template reuses the row by code rather than creating a new one, the model then ARCHIVES it (that is the scenario), and teardown never restores it — so the seed_assert 'status <> archived' reads 0 on every subsequent run and the whole scenario provisions-fails. The row was created 2026-08-20 and the batch of 2026-08-22 22:37 ran fine against it; the run after that failed 5/5. Restored to 'active' by hand on 2026-08-23, which is what this scenario's own seed_assert `why` already required: 'This row must still be unarchived afterwards.' The durable fix is a per-run code, but that also needs seed_assert to accept the placeholder, so it is recorded here rather than half-done."
     },
     {
       "id": "composition-authoring-run-review",
