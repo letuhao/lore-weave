@@ -1,0 +1,65 @@
+
+composition_arc_import_analyze   required=['import_source_id']
+  absent   refused    MCP composition_arc_import_analyze error: Error executing tool composition_arc_import_analyze: not found or not accessible
+  tenancy  refused    MCP composition_arc_import_analyze error: Error executing tool composition_arc_import_analyze: not found or not accessible
+  empty    refused    MCP composition_arc_import_analyze error: Error executing tool composition_arc_import_analyze: import_source_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is th
+  oracle   identical
+
+composition_arc_template_drift   required=['node_id', 'project_id']
+  absent   refused    MCP composition_arc_template_drift error: Error executing tool composition_arc_template_drift: not found or not accessible
+  tenancy  refused    MCP composition_arc_template_drift error: Error executing tool composition_arc_template_drift: not found or not accessible
+  empty    refused    MCP composition_arc_template_drift error: Error executing tool composition_arc_template_drift: node_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual c
+  oracle   identical
+
+composition_authoring_run_manage   required=['op', 'book_id']
+  absent   refused    MCP composition_authoring_run_manage error: Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit
+  tenancy  refused    MCP composition_authoring_run_manage error: Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit
+  empty    refused    MCP composition_authoring_run_manage error: Error executing tool composition_authoring_run_manage: op=create requires plan_run_id, budget_usd, and pause_after_each_unit
+  oracle   identical
+
+composition_decompile_arcs   required=['book_id']
+  absent   refused    MCP composition_decompile_arcs error: Error executing tool composition_decompile_arcs: not found or not accessible
+  tenancy  refused    MCP composition_decompile_arcs error: Error executing tool composition_decompile_arcs: not found or not accessible
+  empty    refused    MCP composition_decompile_arcs error: Error executing tool composition_decompile_arcs: book_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual cause.
+  oracle   identical
+
+composition_scene_link_edit   required=['op']
+  absent   refused    MCP composition_scene_link_edit error: Error executing tool composition_scene_link_edit: op=create requires project_id, from_node_id, and to_node_id
+  tenancy  refused    MCP composition_scene_link_edit error: Error executing tool composition_scene_link_edit: op=create requires project_id, from_node_id, and to_node_id
+  empty    refused    MCP composition_scene_link_edit error: Error executing tool composition_scene_link_edit: op=create requires project_id, from_node_id, and to_node_id
+  oracle   identical
+
+kg_add_nodes   required=['mode']
+  absent   refused    MCP kg_add_nodes error: Error executing tool kg_add_nodes: {"message": "invalid arguments: (root): Value error, mode=manual requires name and kind"}
+  tenancy  refused    MCP kg_add_nodes error: Error executing tool kg_add_nodes: {"message": "invalid arguments: (root): Value error, mode=manual requires name and kind"}
+  empty    refused    MCP kg_add_nodes error: Error executing tool kg_add_nodes: {"message": "invalid arguments: (root): Value error, mode=manual requires name and kind"}
+  oracle   identical
+
+kg_ontology_propose   required=['op']
+  absent   refused    MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {"message": "op=schema_edit requires verb, level, and code"}
+  tenancy  refused    MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {"message": "op=schema_edit requires verb, level, and code"}
+  empty    refused    MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {"message": "op=schema_edit requires verb, level, and code"}
+  oracle   identical
+
+── TARGETED FOLLOW-UPS (2026-08-23) ─────────────────────────────────────────────────────────
+Four of the seven are dispatch-style (only `op` or `mode` required), so the generic sweep's three
+cases all landed on the dispatch refusal and never touched an id. Re-probed with a valid
+discriminator plus the id under test:
+
+composition_authoring_run_manage (op=gate, book_id/run_id)
+  absent/tenancy refused IDENTICALLY "not found or not accessible"; empty names the op requirement.
+composition_scene_link_edit (op=delete, project_id + link_id)
+  absent/tenancy refused IDENTICALLY "not found or not accessible"; empty names the requirement.
+kg_add_nodes (mode=manual, name+kind, project_id)
+  absent/tenancy refused IDENTICALLY "project not found"; empty: "no project in scope".
+kg_ontology_propose (op=schema_edit, verb/level/code, project_id)
+  absent/tenancy refused IDENTICALLY "project not found"; empty: "no project in scope".
+
+🔴 AND A CORRECTION TO MYSELF, recorded because I came within one commit of filing it as a platform
+defect. I read these schemas with a helper that did `inner = list($defs.values())[0] if $defs else s`
+— it takes the NESTED type whenever a tool has $defs at all. For kg_ontology_propose that made me
+read `KgSyncDecision` (node_type/code/choice) as the tool's own arguments, conclude that the
+published schema "does not describe the tool the server implements", and start writing up a serious
+catalogue defect. The schema is FINE: its top-level properties include op, verb, level, project_id,
+decisions and more, and required is ['op'] with op ∈ [schema_edit, adopt_template, sync_apply].
+69 of the 315 catalogue tools carry $defs, so that reader would have misread any of them.

@@ -3675,9 +3675,9 @@
       "answer_expect": null,
       "falsifier_sha": "cbb131eae9874e0f",
       "ship_audit": {
-        "gate": "OWED — Tier W and it spends.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 1/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "This scenario IS the absent case — there is no import source, so the refusal is the evidence.",
-        "tenancy": "OWED — user-scoped; another account's import source must be refused."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -4181,7 +4181,7 @@
       "falsifier_sha": "7e259cc9f1d9718a",
       "ship_audit": {
         "absent_case": "This scenario IS the absent case — an arc with no template pin. The refusal is the evidence.",
-        "tenancy": "OWED — book-scoped, and project_id is a second scope that must be checked independently."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -4740,10 +4740,10 @@
       "answer_expect": null,
       "falsifier_sha": "9c8e873f1acf275e",
       "ship_audit": {
-        "gate": "OWED — Tier W, cost-bearing, and the confirm-token IS the audit for this tool.",
-        "absent_case": "OWED — a plan_run_id or run_id that does not exist must be refused.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 4/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
+        "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
         "idempotency": "OWED — op=start on an already-started run must not start a second one.",
-        "tenancy": "OWED — book-scoped; another account's book must not be drivable, and spend is the consequence."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -6075,10 +6075,10 @@
       "answer_expect": null,
       "falsifier_sha": "51eb02c4c905a5a1",
       "ship_audit": {
-        "gate": "OWED — Tier W; $0 and deterministic is not the same as ungated.",
-        "empty_case": "OWED — a book with no chapters has nothing to group and must say so rather than mint an empty arc layer.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 5/5, suspended-on-card 0/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
+        "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
         "idempotency": "OWED — decompiling a book that ALREADY has an arc layer must not silently duplicate it.",
-        "tenancy": "OWED — book-scoped."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -9506,10 +9506,10 @@
       "answer_expect": null,
       "falsifier_sha": "332fa0e08330d548",
       "ship_audit": {
-        "gate": "OWED — Tier A.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 1/5, suspended-on-card 1/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
         "absent_case": "This scenario IS the absent case — there are no scene nodes to link.",
         "idempotency": "OWED — the same edge twice must not create two rows.",
-        "tenancy": "OWED — book-scoped via project_id."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -12992,9 +12992,9 @@
       "answer_expect": null,
       "falsifier_sha": "a8bd93e698a4e358",
       "ship_audit": {
-        "gate": "OWED — Tier A: the card must be raised, not bypassed.",
-        "absent_case": "OWED — mode='manual' without a name/kind must be refused, not create an unnamed node.",
-        "tenancy": "OWED — project-scoped."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 4/5, suspended-on-card 5/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
+        "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
@@ -13500,11 +13500,11 @@
       "answer_expect": null,
       "falsifier_sha": "f2f8531d292b76c9",
       "ship_audit": {
-        "gate": "OWED — Tier W and high-impact.",
-        "empty_case": "OWED — op=adopt_template with no source_schema_id must be refused (probed: it is).",
-        "absent_case": "OWED — a source_schema_id that does not exist must be refused.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier W, called 1/5, suspended-on-card 4/5, and THE OWNING STORE IS UNCHANGED ON ALL 5 RUNS — no write reached it without an approval. The only store movement recorded on these runs is loreweave_knowledge.extraction_pending, the async knowledge-extraction OUTBOX, which is not this tool's owning store: a relay fills it from domain events and the FIXTURE's own book creation causes rows that land inside the snapshot window. Measured across the corpus, 81 of 176 store-changed runs change nothing else.",
+        "empty_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an empty value is refused and the missing field is NAMED.",
+        "absent_case": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle.",
         "idempotency": "OWED — adopting the same template twice must not duplicate the ontology.",
-        "tenancy": "OWED — project-scoped, and batch 32 could NOT establish this: the cross-tenant probe died in validation before the ownership check ran."
+        "tenancy": "EXERCISED by probe (docs/eval/toolloop/2026-08-14/c5-ship-probe.txt): an absent id and a foreign id refuse IDENTICALLY, so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
