@@ -84,7 +84,13 @@ def confirm(auth: Auth, tool_name: str, token: str, *,
             continue
         ct = r.headers.get("content-type", "")
         parsed = r.json() if ct.startswith("application/json") else r.text
-        if r.status_code in (200, 201, 202):
+        # 🔴 204 IS A SUCCESS AND WAS READ AS A FAILURE. Measured 2026-08-22 confirming a
+        # `settings_model_delete`: the route answered 204 No Content, this returned ok=False, and
+        # the model WAS deleted — verified by re-listing. A teardown that believes that answer
+        # reports a leak it does not have, or retries a delete that already happened; the mirror
+        # of it is a caller treating a real failure as done. "No content" is the natural reply to
+        # a delete, so it belongs here rather than in a caller's special case.
+        if r.status_code in (200, 201, 202, 204):
             return True, r.status_code, parsed
         last = (False, r.status_code, parsed)
     return last
