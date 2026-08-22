@@ -3333,6 +3333,18 @@
    "invariant": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
    "measured": "jobs_get declares the contiguous phrases 'job detail' and 'job status'. The request said 'the full detail of my most recent job — status, cost' — the same words, separated and reordered. answerable_tools matched none and the model reached for tool_list on all three runs, the signature of a missing surface.",
    "dq": "DQ-T32 asks whether to relax the matcher, and how."
+  },
+  "D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE": {
+   "state": "open — found 2026-08-22, blast radius SWEPT and bounded, chokepoint fix pending",
+   "found": "2026-08-22, while asking whether the Postgres exhaustion could have damaged evidence already on disk",
+   "service": "scripts/toolloop/store_snapshot.py (the harness, not the platform)",
+   "invariant": "A snapshot that FAILED is not a snapshot. A probe that could not run must make the RUN unusable — never appear as a value the diff can compare.",
+   "measured": "store_snapshot._psql returns the STRING '__error__:<stderr>' on a non-zero exit, and _counts files it under out['__error__']. That key then flows into the run's `store` as though it were a table, and `store_diff` reports {'loreweave_composition.__error__': {'before': null, 'after': '__error__:... too many clients'}} — A DIFF, which the gate reads as the owning store having MOVED. The affected entry's wrote_count is 1 entirely because of it.",
+   "the_second_exit_of_the_same_class": "_scoped_tables filters the sentinel out and returns [] — so a failed information_schema probe produces an EMPTY snapshot that is indistinguishable from 'no tables matched'. Silent where the first is merely wrong.",
+   "why_it_matters_in_both_directions": "For a read-intent tool the phantom diff is a false 'this read WROTE to the store' failure. For a write tool an empty snapshot is a false 'nothing landed'. Either way the DATA bar — the loop's strongest assertion — is decided on a measurement that never happened.",
+   "blast_radius": "🔴 SWEPT, not sampled: 1,581 runs across every evidence file on disk. EXACTLY ONE carries the sentinel — batch19-v4, composition_motif_link_edit, run 1 — and ZERO have an empty store.before. That tool's ledger row cites batch19-v5, a later arm, so the damaged run drove no conclusion. The evidence base is intact and this is a latent defect rather than a correction.",
+   "cause_of_the_trigger": "The stack idles at 96 of 100 Postgres connections (default max_connections, never overridden), leaving four for tooling. Raised to 300 the same day — see the infra commit. That removes the trigger; it does not remove the defect, because any failed probe takes the same path.",
+   "fix": "PENDING — raise from _psql instead of returning a sentinel, so a failed probe surfaces as a run error and the gate's existing 'LIVE clean' bar refuses the batch. Held back deliberately while a 125-run live batch was using the module."
   }
  },
  "deferred_questions": {
@@ -3843,7 +3855,7 @@
   "tools_proven": 133,
   "tools_blocked": 65,
   "defects_proven": 25,
-  "defects_open": 10,
+  "defects_open": 11,
   "deferred_questions": 15,
   "last_batch": "batch-41 (2026-08-14)",
   "evidence_split": {
@@ -3858,7 +3870,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 44,
+  "defects_total": 45,
   "defects_other": 9
  },
  "observations": [
