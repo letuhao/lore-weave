@@ -230,7 +230,18 @@ class Gate:
             # 51% of everything this bar sees is unattributable bookkeeping. The per-project neo4j
             # counts stay in scope; only the deliberately-global one is excluded, and only from
             # read-is-read.
-            _QUEUES = ("loreweave_knowledge.extraction_pending", "neo4j.Fact.total")
+            # 🔴 AND AN ACCESS LOG IS WRITTEN *BY* READING, so counting it makes read-is-read
+            # fail every read tool that touches an entity — the exact tools it exists to protect.
+            # entity_access_log gained rows on all 5 runs of tool_load, a read whose scenario never
+            # even called it.
+            #
+            # MEASURED 2026-08-23 across every evidence file: of 182 runs with any store change, 135
+            # — 74% — changed NOTHING BUT these three bookkeeping keys, and only 47 carried a real
+            # owning-store change. Those 47 are exactly the tools that should show one:
+            # book_chapter_create, glossary_ontology_upsert, plan_propose_spec,
+            # composition_outline_node_edit. The bar's signal was buried under three-to-one noise.
+            _QUEUES = ("loreweave_knowledge.extraction_pending", "neo4j.Fact.total",
+                       "loreweave_knowledge.entity_access_log")
 
             def _owning(pair):
                 b = {k: v for k, v in (pair["before"] or {}).items() if k not in _QUEUES}

@@ -1594,7 +1594,7 @@
    "note": "Called 3/3, store unchanged 3/3 on both fixtures, no fabricated edge types — the specific risk in its falsifier, since an invented schema invites writes that will be rejected. Tenancy refused 'project not found' at PROJECT scope. Declared this session."
   },
   "tool_load": {
-   "cycle": "batch-3",
+   "cycle": "batch-41 (2026-08-14)",
    "date": "2026-08-14",
    "counts_toward_release": true,
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
@@ -1602,7 +1602,8 @@
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
    "evidence_class": "gate-backed",
    "state": "blocked",
-   "note": "BLOCKED, not proven. Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read instead of loading the schema. Plausible and NOT sourced from the contract this tool exists to expose. The LIVE bar is not met: the tool was never exercised by the model. Cause recorded as D-TOOL-LOAD-NOT-USED-FOR-SCHEMA and it is NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. Store unchanged and tenancy not-applicable (it loads schemas, identical for every caller)."
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c10-run.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and P10's statement is CONFIRMED on its own question — which the re-baseline had not asked. Measured K=5 on scenarios-batch3's prompt ('What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess'): SURFACED 5/5, CALLED 0/5, ZERO errors. On every run the model called glossary_list_system_standards and kg_project_create and answered 'To add a new character to your story bible, I need two things from you: 1. The Character's Name...' — plausible, and NOT sourced from the contract this tool exists to expose. That is P10's invariant verbatim: when the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.\n\n🔴 THE RE-BASELINE MEASURED THE WRONG QUESTION AND REPORTED 5/5 CALLED. It carried DQ-T3's scenario — 'Load the tool called glossary_book_sync_apply BY NAME' — which instructs the model to use tool_load, so it could not have said anything about this problem. Two bugs in build_rerun_set.py put it there: the generator read its own output, and 'last file wins' is alphabetical, so scenarios-dqt3 beat scenarios-batch3. Both are fixed; the alphabetical tie-break is documented rather than replaced, because choosing between two genuine scenarios is a judgement, not a sort order.\n\nIts `defects` list held the bare string 'DQ-T3'. A deferred question is not a defect with a test and a RED proof — it belongs in the ledger's deferred_questions, where DQ-T3 already is — so the entry is removed rather than dressed up to satisfy the CODE bar.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c10-run.json"
   },
   "memory_recall_entity": {
    "state": "proven",
