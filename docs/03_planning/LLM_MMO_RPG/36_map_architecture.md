@@ -432,6 +432,47 @@ This **reverses** `RTM-D Q4` (*instanced dedicated combat scene*) in the same ma
 same justification pattern as [`AUD-F1`](10_medium_blast_radius_audit.md) reversing `COMB_001`'s
 abstract-arena stance: the original reason was cost, and the cost is gone. Recorded as `SPG-D1`.
 
+### SPG-A19 — An `Encounter` is not an `Arena`, and the CLOSURE is the correctness boundary (`SDF-R4`, applied 2026-08-22)
+
+> **⚠ `SPG-D1` AS WRITTEN IS NOT SATISFIABLE, and `R-7` is why.** The decision above frames the question
+> as *which node the fight lives in*. That framing is the problem.
+
+**`R-6` — the structural finding.** The `Encounter` **always** exists during a fight; the `Arena` node is
+**optional**, merely a space the Encounter may point at. Foundry VTT is the shipped proof: its `Combat`
+document holds `scene` as a **foreign key, not ownership**, and `combatants` as *references*. Multiple
+Combats run on one Scene at once.
+
+Without the split, in-place combat forces one of two bad outcomes: **carve an `Arena` anyway** just to
+have somewhere to hang grid, initiative and status state — which defeats `SPG-D1` entirely — or give
+**every** `Locale` and `Domain` combat-shaped fields that are null 99.9 % of the time.
+
+> **`SPG-A19` — the `Encounter` is a first-class thing with its own identity; `carved_arena:
+> Option<NodeId>` is the whole difference between the two branches.** `None` is in place, `Some` is
+> carved, and everything else is identical. **The hybrid decision becomes a one-line branch instead of two
+> code paths.**
+
+**`R-7` — and the half `SPG-D1` never addressed: replay.** XCOM 2's replay works because a tactical
+mission is a **closed world** — a start frame, an append-only chain, nothing external injecting. **An
+in-place fight in a persistent shared `Locale` is an OPEN world**: a wandering NPC, a day/night tick,
+another party's AoE or a weather change can all perturb it. Under this project's own constraint — *a
+fight must replay identically from its event log* — `SPG-D1` as written cannot hold.
+
+> **The reframing that rescues it without reversing the PO's decision: IN PLACE means "no separate
+> SPACE". It does not mean "no isolation boundary".** The `Arena` node is a spatial convenience; the
+> **`Encounter` CLOSURE is the correctness boundary, and it exists in BOTH branches.**
+
+Three rules, and they are structural rather than mechanical:
+
+1. **Everything the fight reads is SNAPSHOTTED at siting** into the log's opening frame — ≈2.3 KB for a
+   24×24 terrain slice, which is cheap enough that the closed-world property costs nothing.
+2. **Anything crossing mid-fight is an EXPLICIT EVENT**, never an ambient effect.
+3. **Nothing outside the closure is mutated until an atomic commit at disposal.**
+
+> **What this axiom deliberately does NOT say.** Damage, initiative, turn order, action budgets, status
+> stacking — **`COMB_*`'s, every one.** This tier states that a boundary exists, where it sits, and what
+> crosses it; **what happens inside it is not the map's to design**, and writing it from this chair is
+> the encroachment the actor round exists to stop.
+
 ---
 
 ## 3 — `MapKind` — the closed set
