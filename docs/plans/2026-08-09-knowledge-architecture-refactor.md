@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 62 of 109 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 63 of 110 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (11/18) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6041,6 +6041,70 @@ vectors and validity intervals live in different stores.
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ---
+  ### ✅ T25p 2026-08-23 — **`D-T25B-PG-ANCHOR-SCORE` is ANSWERED: join it, do not copy it**
+
+  ```
+  the hypothesis  "anchor_score is really binary, just copy it"   -> REFUTED, 394 fractional
+  the fact that moved   AGE_DB_URL and VECTOR_DB_URL are the SAME database (since T54)
+  the answer      JOIN at query time — proven live, one statement
+  ```
+
+  📐 **I tried to talk myself out of the sealed decision and the measurement stopped me.**
+  `anchor_score` is written `1.0` on the glossary-anchor path and `0.0` on a reset, which reads
+  like a flag. Measured on the dev graph rather than read:
+
+  ```
+  1.0          4310
+  fractional    394      <- 17/22, 7/11, 4/29 … genuinely recomputed ratios
+  0.0           358
+  ```
+
+  **§3.3 is right**: 394 entities carry a bucket-relative value, so a copy on the vector row
+  would be confidently stale. Rule 2 applied to a decision I was inclined to overturn, and it
+  came back defending the decision.
+
+  🎯 **What changed is a FACT the reasoning rested on, not the reasoning.** §3.3 was written
+  2026-08-13 with the authority in Neo4j and the vectors in Postgres — two stores, so the only
+  moves were *copy* (stale) or *stay*. Since T54 the graph is AGE, and both DSNs resolve to
+  **`knowledge-pg:5432/loreweave_knowledge_vectors`** — one database. A third option exists
+  that did not then.
+
+  **Proven live on `lw-iso`, backend `age` — the two-layer product in ONE statement:**
+
+  ```
+   entity_id                        |  raw   |    anchor_score    | weighted
+  ----------------------------------+--------+--------------------+----------
+   25cc8dde2a8fd9d7e86eeea4ec42aa02 | 1.0000 | 0.7727272727272727 |   0.7727
+  ```
+
+  ⚠️ **The first run of that probe returned a NULL `anchor_score`, and I did not accept it.**
+  A NULL cannot distinguish *the join worked and the value is absent* from *the join failed* —
+  it is the empty-200 shape in another costume. The value above is a real fractional score set
+  on the vertex and read back through the join.
+
+  ⚖️ **Decided (§3.3c): `PgVectorStore` keeps OMITTING the score.** The staleness argument is
+  untouched and `glossary.py`'s `KeyError` safeguard stays exactly as written — the entity
+  search JOINS from the AGE vertex in the same statement, so the value is read from its
+  authority on every query. No copy, no second round trip, and **no port growth**: `GraphStore`
+  does not gain an `entities_by_ids` it would only have needed to work around two databases.
+
+  ⛔ **This unblocks T25 step 4; it does not perform it.** Building the joined search in
+  `PgVectorStore`, flipping `knowledge_vector_read_primary` for the entity scope, and deleting
+  the entity/event DDL remain. It also does not touch `find_entities_by_vector`'s
+  `CALL db.index.vector.queryNodes` — §3.1 deletes that rather than porting it.
+
+  📐 **Why a sealed decision gets re-read rather than obeyed.** §3.3 was right for its facts.
+  Rule 13 asks which side is wrong; here neither was — **the workload moved underneath a
+  correct conclusion**, and nothing would have noticed, because a decision that reads as
+  settled is the one nobody re-runs.
+
+  **QC (a) gates:** four plan gates green; no code changed, so no suite moved.
+  **QC (b) live smoke:** the joined query above, on the rebuilt `lw-iso` stack, backend `age`.
+  **QC (c) real data:** the 4310/394/358 distribution is the DEV graph read-only; the join is
+  a real row on iso, not a fixture.
+
 
   ### ✅ T25o 2026-08-22 — **③ lands: dev is cut over and the passage vector DDL is DELETED**
 

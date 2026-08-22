@@ -398,6 +398,72 @@ Go-const-block shape this repo has a gate for. `test_the_two_real_backends_agree
 reads the Neo4j keys out of the adapter's **AST** and compares them to `_PASSAGE_ATTRS`, so a
 key added to one and not the other reds by name.
 
+
+### 3.3c `D-T25B-PG-ANCHOR-SCORE` is ANSWERED — join it, do not copy it — **DECIDED (T25p, 2026-08-23)**
+
+§3.3 left entity vector reads on Neo4j because `PgVectorStore` cannot carry `anchor_score`:
+it is *"bucket-relative and recomputed on its own schedule, so a copy on the vector row would
+be confidently stale"*. **That reasoning is correct and was re-verified before being acted on,
+not assumed away.**
+
+Measured on the dev graph (read-only), against the hypothesis that the score is really a
+binary anchored/not flag that could simply be copied:
+
+```
+anchor_score = 1.0     4310
+fractional              394      <- 17/22, 7/11, 4/29 … genuinely recomputed ratios
+anchor_score = 0.0      358
+```
+
+**The hypothesis is refuted.** 394 entities carry a computed bucket-relative value, so a copy
+on the vector row would drift exactly as §3.3 says. The sealed decision stands on its own
+terms.
+
+🎯 **What changed is not the reasoning — it is a FACT the reasoning depended on.** §3.3 was
+written 2026-08-13, when the authority for `anchor_score` was Neo4j and the vectors were in
+Postgres. Two stores, so the only options were *copy it* (stale) or *stay on Neo4j*. Since T54
+the graph is AGE, and:
+
+```
+KNOWLEDGE_AGE_DB_URL     knowledge-pg:5432/loreweave_knowledge_vectors
+KNOWLEDGE_VECTOR_DB_URL  knowledge-pg:5432/loreweave_knowledge_vectors     <- the SAME database
+```
+
+**The vectors and the authority are now in one database.** A third option exists that did not
+on 2026-08-13: *join it at query time*.
+
+**Proven live on `lw-iso`, backend `age` — one query, one database, the two-layer product:**
+
+```
+ entity_id                        |  raw   |    anchor_score    | weighted
+----------------------------------+--------+--------------------+----------
+ 25cc8dde2a8fd9d7e86eeea4ec42aa02 | 1.0000 | 0.7727272727272727 |   0.7727
+```
+
+The `anchor_score` there is a real fractional value set on the vertex and read back through
+the join — **not** a NULL, deliberately: a NULL result cannot distinguish "the join worked and
+the value is absent" from "the join failed", and the first run of this probe returned exactly
+that ambiguous NULL.
+
+**Decided.** `PgVectorStore` keeps OMITTING `anchor_score` from its own rows — the staleness
+argument is untouched and the `KeyError` safeguard in
+`app/context/selectors/glossary.py` stays exactly as it is. The entity search JOINS the score
+from the AGE vertex in the same statement, so the value is read from its authority on every
+query and can never be stale. No copy, no second round trip, and no port growth: `GraphStore`
+does not gain an `entities_by_ids` it would only have needed to work around two databases.
+
+⚠️ **What this does NOT do.** It unblocks T25 step 4; it does not perform it. Building the
+joined entity search in `PgVectorStore`, flipping `knowledge_vector_read_primary` for the
+entity scope, and deleting the entity/event vector DDL remain the work. It also does not touch
+`find_entities_by_vector`'s Neo4j `CALL db.index.vector.queryNodes` — that function is one of
+the two `MAX_VECTOR_PROCEDURE_SITES` owners and §3.1 deletes it rather than porting it.
+
+📐 **And this is why a sealed decision gets re-read rather than obeyed.** §3.3 was right for
+its facts. Rule 13 says prove which side is wrong from the workload — here neither side was
+wrong; the workload moved underneath a correct conclusion, and nothing would have noticed
+because the decision reads as settled.
+
+
 ### 3.3 QC-3 is SIGNED OFF — halfvec HNSW replaces StreamingDiskANN — **DECIDED (PO 2026-08-21)**
 
 The checkpoint's owed evidence was delivered (real-corpus recall/latency on both backends,
