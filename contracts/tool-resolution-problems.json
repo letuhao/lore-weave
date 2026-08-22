@@ -144,7 +144,10 @@
         "IT CANNOT HELP glossary_entity_restore. No supplier exists: a soft-deleted entity is invisible to glossary search, chapter text and project memory, so there is nothing to name and nothing to arm. D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE — 10 restore tools ship and only 4 of the things they restore can be listed.",
         "IT DOES NOT ADDRESS THE HOT-SEED STARVATION ITSELF. Three composition suppliers are cut by HOT_SEED_TOKEN_BUDGET (900/356/223 tokens against 2000, 120 candidates keeping 21). The arming is REACTIVE — it rescues them only once the tool has been called and refused. A first turn that needs the supplier before any refusal still cannot see it, and ALWAYS_HOT_READS was deliberately not widened: its own docstring says every addition spends the authoring surface's prefix and to revisit with evidence rather than intuition.",
         "THE ARMING IS CAPPED AT 3 AND RANKS BY NAME LENGTH. A refusal naming four or more catalogue tools arms only three of them, chosen by a rule that has nothing to do with which one unblocks the call."
-      ]
+      ],
+      "predicted_moves_out": {
+        "composition_generate": "PREDICTED BEFORE THE VERIFICATION EVIDENCE LANDED, and measured offline. Its cause is SIBLING-SUBSTITUTION (P5), not this cycle's invariant. On its own recorded prompt — 'Write chapter — draft the prose for this chapter with the cowrite engine.' — FIVE tools are answerable and THREE tie at synonym length 13: book_chapter_create, book_chapter_save_draft and composition_generate. The domain tool declares 'write chapter'; the generic declares 'write the chapter' and 'write chapter prose'. There is no precedence between them, so the model breaks the tie — and when it picks book_chapter_save_draft it supplies prose it wrote ITSELF, which is D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE.\n\nThis also explains why the cycle-2 arming cannot help it: the arming is REACTIVE and fires on a refusal, so a tool the model never CALLS never produces one. settings_list_models can only be armed after composition_generate has been called and refused at least once."
+      }
     },
     {
       "id": "P5-SIBLING-WINS",
