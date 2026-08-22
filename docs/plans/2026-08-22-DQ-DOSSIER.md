@@ -198,9 +198,27 @@ subsequence with a bounded gap; (c) weight by word rarity across the catalogue.
 > > 1. **Adopt (b) at gap=3.** 14 of 27 for 0.24 extra tools per turn and exactly one write-tier
 > >    tool newly matched on one read turn. Order-free buys one more tool for double the noise and
 > >    triple the consent risk — not worth it.
-> > 2. **Close mode 3 with a LINT, not by hand.** The cross-product gaps and spelling variants are
-> >    mechanically detectable, and `scripts/lint_superseded_synonyms.py` is the precedent. A
-> >    hand-edit is correct the day it is made and silent the next time a tool is added.
+> > 2. **Mode 3 is NOT mechanically closable — I tried, and this is corrected too.** I claimed the
+> >    cross-product gaps were "mechanically detectable". Three lint designs were prototyped against
+> >    the live catalogue and all three are too noisy to act on: a distinctive word of the tool's own
+> >    NAME missing from its synonyms (**49 flags, 2 real**); a verb declared with one of the
+> >    *family's* object nouns but not another (**178 flags, 9 real**); a tool's own verb × noun
+> >    cross-product (**150 flags, 5 real**, producing cells like `book book`, `draft draft`,
+> >    `open detail`). The third fails because the declared pairs are not all verb-noun —
+> >    `book detail`, `story bible` and `table contents` are noun-noun. The second fails because
+> >    **whether two nouns name the same object is not derivable from the declarations**: in
+> >    `world_map_*` it lumps `map`, `image` and `detail` in with `region`. A lint flagging 178 of
+> >    267 tools is a lint nobody reads.
+> >
+> >    What IS exact is the spelling slice, and it now ships:
+> >    `scripts/lint_synonym_spelling_variants.py` + a baseline + a gate, **5 real findings**
+> >    including the one that started this (`settings_model_set_favorite` declares `favorite`; the
+> >    author typed "favou**r**ite"). *That lint's first version reproduced the very fault it was
+> >    written to avoid* — the pair `draft`/`draught` flagged eight tools and every one was noise,
+> >    because a draught is a current of air. It is removed, and a test asserts it stays removed.
+> >
+> >    **The rest of mode 3 closes with `answerability_probe.py` run against REAL measured turns**,
+> >    which knows what authors actually said. No lint over declarations can.
 > > 3. **Pronoun reference is out of scope for answerability** and should be recorded as its own
 > >    question rather than absorbed here.
 >

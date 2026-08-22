@@ -86,6 +86,15 @@
      "the_residue": "Pronoun reference — 'Stop THE TRANSLATION ONE', 'Deactivate THE LAST ONE'. answerability cannot see it: the referent is in the previous turn. Out of scope, recorded rather than absorbed.",
      "self_correction": "THIS IS THE SECOND RECOMMENDATION OF MINE THE MEASUREMENT OVERTURNED IN ONE DAY. First DQ-T36 option (a) — inert, because the synonyms never matched. Then DQ-T32 option (b) as a sufficient fix — it covers less than half. Both were reasonable; both were wrong.",
      "classifier_correction": "My FIRST decomposition used str.split() and mis-classified three tools, because _answer_norm drops stop-words and keeps trailing punctuation ('workflow.' is one token). Redone with the platform's own word-boundary regex, mode 1 moved 10 -> 12. A tokenizer of my own is a measurement of my own."
+    },
+    "mode_3_is_NOT_mechanically_closable": {
+     "correction": "I recorded that mode 3's declaration gaps were 'mostly mechanical' and closable by a LINT. Prototyped against the live catalogue, THREE designs were all too noisy to act on.",
+     "measured": "name-word missing from synonyms: 49 flags, 2 real. Family verb x object-noun cross-product: 178 flags of 267 declaring tools, 9 real. A tool's OWN verb x noun cross-product: 150 flags, 5 real, with cells like 'book book', 'draft draft', 'open detail'.",
+     "why_they_fail": "The declared pairs are not all verb-noun — 'book detail', 'story bible' and 'table contents' are noun-noun, so a cross-product invents nonsense. And whether two nouns name the SAME OBJECT is not derivable from the declarations: in world_map_* the family-noun design lumps map, image and detail in with region.",
+     "what_shipped_instead": "scripts/lint_synonym_spelling_variants.py — the one slice that is EXACT, because a spelling pair is the same word in the same sense. 5 findings, baseline + gate. It catches settings_model_set_favorite, the mode-3 tool that started this.",
+     "the_lint_reproduced_its_own_fault_first": "🔴 The first version's pair list included ('draft','draught'), which flagged EIGHT tools, all noise — a draught is a current of air; the manuscript sense is 'draft' in both dialects. 8 of 13 initial findings. Removed, with a test asserting it stays removed.",
+     "what_actually_closes_mode_3": "scripts/toolloop/answerability_probe.py run against REAL measured turns. It knows what authors actually said; no lint over declarations can.",
+     "third_correction_of_the_day": "DQ-T36 option (a) -> inert. DQ-T32 option (b) -> covers less than half. 'Close mode 3 with a lint' -> not mechanically closable. Every one was reasonable when written."
     }
    }
   },
