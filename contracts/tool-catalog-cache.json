@@ -3425,6 +3425,7 @@
         }
        ],
        "default": null,
+       "description": "the arc template to act on (UUID). NOT a name \u2014 list the caller's templates with composition_arc_template_list and pass the id it returns.",
        "title": "Arc Id"
       },
       "arc_roster": {
@@ -3633,6 +3634,7 @@
       }
      ],
      "default": null,
+     "description": "the arc template to act on (UUID). NOT a name \u2014 list the caller's templates with composition_arc_template_list and pass the id it returns.",
      "title": "Arc Id"
     },
     "arc_roster": {
@@ -4932,6 +4934,7 @@
        "type": "string"
       },
       "run_id": {
+       "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
        "title": "Run Id",
        "type": "string"
       }
@@ -4950,6 +4953,7 @@
      "type": "string"
     },
     "run_id": {
+     "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
      "title": "Run Id",
      "type": "string"
     }
@@ -5166,6 +5170,7 @@
        "type": "string"
       },
       "run_id": {
+       "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
        "title": "Run Id",
        "type": "string"
       }
@@ -5184,6 +5189,7 @@
      "type": "string"
     },
     "run_id": {
+     "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
      "title": "Run Id",
      "type": "string"
     }
@@ -5650,6 +5656,7 @@
        "type": "string"
       },
       "run_id": {
+       "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
        "title": "Run Id",
        "type": "string"
       }
@@ -5668,6 +5675,7 @@
      "type": "string"
     },
     "run_id": {
+     "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
      "title": "Run Id",
      "type": "string"
     }
@@ -5844,6 +5852,7 @@
        "type": "string"
       },
       "run_id": {
+       "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
        "title": "Run Id",
        "type": "string"
       }
@@ -5862,6 +5871,7 @@
      "type": "string"
     },
     "run_id": {
+     "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
      "title": "Run Id",
      "type": "string"
     }
@@ -5909,6 +5919,7 @@
        "type": "string"
       },
       "run_id": {
+       "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
        "title": "Run Id",
        "type": "string"
       },
@@ -5952,6 +5963,7 @@
      "type": "string"
     },
     "run_id": {
+     "description": "the authoring run to act on (UUID). NOT a name and NOT yours to invent \u2014 list the book's runs with composition_authoring_run_list and pass the id it returns. A book may have NONE, and 'there are no runs' is the correct answer when it does: a structurally valid id that matches no run is the worst outcome, because the card it mints looks exactly like a real one.",
      "title": "Run Id",
      "type": "string"
     },
@@ -11008,6 +11020,7 @@
         }
        ],
        "default": null,
+       "description": "the motif the edge starts FROM (UUID). NOT a name \u2014 search motifs by name with composition_motif_search and pass the id it returns.",
        "title": "From Motif Id"
       },
       "kind": {
@@ -11070,6 +11083,7 @@
         }
        ],
        "default": null,
+       "description": "the motif the edge points TO (UUID). NOT a name \u2014 search motifs by name with composition_motif_search and pass the id it returns.",
        "title": "To Motif Id"
       }
      },
@@ -11104,6 +11118,7 @@
       }
      ],
      "default": null,
+     "description": "the motif the edge starts FROM (UUID). NOT a name \u2014 search motifs by name with composition_motif_search and pass the id it returns.",
      "title": "From Motif Id"
     },
     "kind": {
@@ -11166,6 +11181,7 @@
       }
      ],
      "default": null,
+     "description": "the motif the edge points TO (UUID). NOT a name \u2014 search motifs by name with composition_motif_search and pass the id it returns.",
      "title": "To Motif Id"
     }
    },
@@ -24543,7 +24559,7 @@
      "type": "string"
     },
     "world_id": {
-     "description": "the world this map belongs to (UUID; you must own it)",
+     "description": "the world this map belongs to (UUID; you must own it). NOT a name \u2014 if you have the world's NAME, call world_list first and match it to get the id",
      "type": "string"
     }
    },
