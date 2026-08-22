@@ -189,7 +189,7 @@ async def test_create_relation_maintain_chain_fires_after_create(mock_run):
         valid_from_ordinal=300, maintain_chain=True,
     )
     cyphers = [c.args[1] for c in mock_run.await_args_list]
-    assert rm._CREATE_RELATION_CYPHER == cyphers[0]
+    assert render(rm._CREATE_RELATION_CYPHER, "neo4j") == cyphers[0]
     assert render(tm.MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j") == cyphers[-1]
 
 
@@ -204,7 +204,7 @@ async def test_create_relation_legacy_path_unchanged(mock_run):
         predicate="ally_of", object_id=_OBJ,
     )
     assert mock_run.await_count == 1
-    assert mock_run.await_args_list[0].args[1] == rm._CREATE_RELATION_CYPHER
+    assert mock_run.await_args_list[0].args[1] == render(rm._CREATE_RELATION_CYPHER, "neo4j")
 
 
 @pytest.mark.asyncio
@@ -224,7 +224,7 @@ async def test_single_active_and_maintain_chain_are_distinct(mock_run):
     )
     cyphers = [c.args[1] for c in mock_run.await_args_list]
     assert cyphers[0] == rm._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
-    assert cyphers[1] == rm._CREATE_RELATION_CYPHER
+    assert cyphers[1] == render(rm._CREATE_RELATION_CYPHER, "neo4j")
     assert cyphers[2] == render(tm.MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j")
 
 
@@ -294,3 +294,40 @@ def test_the_pinned_EFF_bound_is_the_authored_close_not_the_open_ceiling():
     as still holding forever — the exact opposite of what the author said."""
     for name, cy in _chain_cyphers().items():
         assert "THEN coalesce(cur.valid_to_ordinal, $open_ceiling)" in cy, name
+
+
+def test_extraction_BACKFILLS_a_story_position_but_never_MOVES_one():
+    """F3, and it had NO guard until T71 — found by a bite that nothing caught.
+
+    `create_relation` is the EXTRACTION path: an edge first written positionless gains a
+    position when a later positioned source re-mentions it, and an edge that already has one
+    keeps it. That is `coalesce(r.valid_from_ordinal, $valid_from_ordinal)` — stored first.
+
+    `recreate_relation` is the AUTHOR path and is deliberately the OPPOSITE:
+    `coalesce($valid_from_ordinal, r.valid_from_ordinal)` — parameter first, because an author
+    supplying a position may MOVE an edge that had one.
+
+    ⚠️ The two differ only in argument order, which is exactly the kind of difference a merge
+    flattens by accident. Flipping create's order lets a re-extraction shove an edge to a
+    different chapter — invisible at write time, and it moves what every as-of read returns.
+    Both directions are pinned here so neither can drift into the other.
+    """
+    import re
+
+    from app.db.neo4j_repos import relations as rm
+
+    assert re.search(
+        r"r\.valid_from_ordinal\s*=\s*coalesce\(\s*r\.valid_from_ordinal\s*,",
+        rm._CREATE_RELATION_CYPHER,
+    ), (
+        "create_relation must be coalesce(r.valid_from_ordinal, $valid_from_ordinal) — "
+        "STORED first. The other order lets a re-extraction MOVE an edge that was already "
+        "placed, which silently changes every as-of read."
+    )
+    assert re.search(
+        r"r\.valid_from_ordinal\s*=\s*coalesce\(\s*\$valid_from_ordinal\s*,",
+        rm._RECREATE_RELATION_CYPHER,
+    ), (
+        "recreate_relation must be coalesce($valid_from_ordinal, r.valid_from_ordinal) — "
+        "PARAMETER first, so an author may reposition an edge (T36)."
+    )

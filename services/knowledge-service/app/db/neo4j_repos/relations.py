@@ -196,82 +196,63 @@ WHERE subj.user_id = $user_id
 MATCH (obj:Entity {id: $object_id})
 WHERE obj.user_id = $user_id
 MERGE (subj)-[r:RELATES_TO {id: $relation_id}]->(obj)
-ON CREATE SET
-  r.user_id = $user_id,
-  r.subject_id = $subject_id,
-  r.object_id = $object_id,
-  r.predicate = $predicate,
-  r.confidence = $confidence,
-  r.source_event_ids = CASE
-    WHEN $source_event_id IS NULL THEN []
-    ELSE [$source_event_id]
-  END,
-  r.source_chapter = $source_chapter,
-  r.valid_from = coalesce($valid_from, datetime()),
-  r.valid_until = NULL,
-  // F3 — story valid-time axis. valid_from_ordinal is the chapter ordinal the
-  // edge was established at; a fresh edge opens its interval (valid_to_ordinal
-  // NULL → eff = +∞ null-sink). The interval CLOSE is done by
-  // temporal.maintain_chain after the merge, never here.
-  r.valid_from_ordinal = $valid_from_ordinal,
-  r.valid_to_ordinal = NULL,
-  r.valid_to_ordinal_eff = $open_ceiling,
-  // dec-3 — detected in-story date (optional valid-time refinement). NULL when the
-  // prose carried no explicit calendar date. Additive: never participates in the
-  // ordinal chain, only annotates/sorts.
-  r.event_date_iso = $event_date_iso,
-  r.pending_validation = $pending_validation,
-  // KG customizable-ontology (L7) — stamp the resolved-schema version this edge
-  // was written under (M3) + the layer-4 partition seam (M2, NULL at v1). Both
-  // additive; NULL for legacy/un-adopted writes (no behavior change).
-  r.schema_version = $schema_version,
-  r.graph_id = $graph_id,
-  r.created_at = datetime(),
-  // T4.1 flywheel — the extraction job that first minted this relation (net-new).
-  r.created_job_id = $job_id,
-  r.updated_at = datetime()
-ON MATCH SET
-  r.source_event_ids = CASE
-    WHEN $source_event_id IS NULL OR $source_event_id IN r.source_event_ids
-      THEN r.source_event_ids
-    ELSE r.source_event_ids + $source_event_id
-  END,
-  r.confidence = CASE
-    WHEN $confidence > r.confidence THEN $confidence
-    ELSE r.confidence
-  END,
-  r.pending_validation = CASE
-    WHEN $confidence > r.confidence THEN $pending_validation
-    ELSE r.pending_validation
-  END,
-  // KG customizable-ontology (L7 activation) — re-confirm the schema version on a
-  // re-matched edge so an edge first written pre-activation (NULL) gets stamped on
-  // the next extraction under the resolved schema. COALESCE so a legacy/un-adopted
-  // persist (schema_version NULL) NEVER wipes an existing stamp — only a non-NULL
-  // new value updates. graph_id is intentionally NOT touched on MATCH: it is NULL
-  // at v1 everywhere, and overwriting would clobber a future partition assignment
-  // (M2). The ON CREATE branch still sets graph_id for fresh edges.
-  r.schema_version = coalesce($schema_version, r.schema_version),
-  // F3 — backfill the story-time lower bound on a later positioned re-extraction
-  // (an edge first written positionless keeps NULL until a positioned source
-  // re-mentions it); never overwrite an existing one. valid_to_ordinal is owned
-  // by maintain_chain, so it is NOT touched on MATCH here.
-  r.valid_from_ordinal = coalesce(r.valid_from_ordinal, $valid_from_ordinal),
-  r.valid_to_ordinal_eff = coalesce(
-    r.valid_to_ordinal_eff,
-    CASE WHEN r.valid_to_ordinal IS NULL THEN $open_ceiling ELSE r.valid_to_ordinal END
-  ),
-  // dec-3 — prefer the MORE precise (longer truncated-ISO) in-story date on
-  // re-mention (mirrors :Event/:Fact): a less-precise re-mention never downgrades
-  // the stored precision; NULL new leaves the stored one; NULL stored adopts the
-  // new (backfill on a later positioned re-extraction).
-  r.event_date_iso = CASE
-    WHEN $event_date_iso IS NULL THEN r.event_date_iso
-    WHEN r.event_date_iso IS NULL THEN $event_date_iso
-    WHEN size($event_date_iso) > size(r.event_date_iso) THEN $event_date_iso
-    ELSE r.event_date_iso
-  END,
-  r.updated_at = datetime()
+// §10.1/§10.2 — engine-neutral. FIVE different merge semantics live in this one query and
+// they are NOT interchangeable (T70); each is preserved exactly:
+//   create-only        coalesce(field, value)
+//   accumulate         a CASE whose FIRST arm handles the absent list/value, so it produces
+//                      the initial state on create instead of needing an ON CREATE arm
+//   stored-wins        coalesce(r.field, $param)   — F3 backfill: never move a placed edge
+//   incoming-wins      coalesce($param, r.field)   — schema_version re-stamps a legacy edge
+//   precision-wins     the event_date_iso CASE, which already handles a NULL stored side
+//
+// ⚠️ `valid_from_ordinal` is `coalesce(r.…, $…)` here and `coalesce($…, r.…)` in
+// `_RECREATE_RELATION_CYPHER`, and that difference is deliberate: extraction BACKFILLS a
+// position and must never move one, while an author recreating an edge MAY move it.
+SET r.user_id            = coalesce(r.user_id, $user_id),
+    r.subject_id         = coalesce(r.subject_id, $subject_id),
+    r.object_id          = coalesce(r.object_id, $object_id),
+    r.predicate          = coalesce(r.predicate, $predicate),
+    r.source_chapter     = coalesce(r.source_chapter, $source_chapter),
+    r.valid_from         = coalesce(r.valid_from, $valid_from, {NOW}),
+    // 🔴 `valid_until` and `valid_to_ordinal` are NOT set here, and that is the whole
+    // F5 invariant. Both were ON CREATE ONLY: an absent property IS null, so creating
+    // without them is identical to the old `= NULL`. Setting them unconditionally would
+    // make a RE-EXTRACTION resurrect a relation an author had invalidated, and hand
+    // `valid_to_ordinal` back from `maintain_chain`, which owns it. Caught by
+    // test_recreate_cypher_resurrects_valid_until when the merge got it wrong (T71).
+    r.graph_id           = coalesce(r.graph_id, $graph_id),
+    r.created_at         = coalesce(r.created_at, {NOW}),
+    r.created_job_id     = coalesce(r.created_job_id, $job_id),
+    r.source_event_ids = CASE
+      WHEN r.source_event_ids IS NULL
+        THEN CASE WHEN $source_event_id IS NULL THEN [] ELSE [$source_event_id] END
+      WHEN $source_event_id IS NULL OR $source_event_id IN r.source_event_ids
+        THEN r.source_event_ids
+      ELSE r.source_event_ids + $source_event_id
+    END,
+    r.confidence = CASE
+      WHEN r.confidence IS NULL THEN $confidence
+      WHEN $confidence > r.confidence THEN $confidence
+      ELSE r.confidence
+    END,
+    r.pending_validation = CASE
+      WHEN r.confidence IS NULL THEN $pending_validation
+      WHEN $confidence > r.confidence THEN $pending_validation
+      ELSE r.pending_validation
+    END,
+    r.schema_version     = coalesce($schema_version, r.schema_version),
+    r.valid_from_ordinal = coalesce(r.valid_from_ordinal, $valid_from_ordinal),
+    r.valid_to_ordinal_eff = coalesce(
+      r.valid_to_ordinal_eff,
+      CASE WHEN r.valid_to_ordinal IS NULL THEN $open_ceiling ELSE r.valid_to_ordinal END
+    ),
+    r.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN r.event_date_iso
+      WHEN r.event_date_iso IS NULL THEN $event_date_iso
+      WHEN size($event_date_iso) > size(r.event_date_iso) THEN $event_date_iso
+      ELSE r.event_date_iso
+    END,
+    r.updated_at         = {NOW}
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
        properties(obj) AS obj
@@ -371,7 +352,7 @@ async def create_relation(
         )
     result = await run_write(
         session,
-        _CREATE_RELATION_CYPHER,
+        render(_CREATE_RELATION_CYPHER, "neo4j"),
         user_id=user_id,
         relation_id=rid,
         subject_id=subject_id,
@@ -1262,30 +1243,31 @@ WHERE subj.user_id = $user_id
 MATCH (obj:Entity {id: $object_id})
 WHERE obj.user_id = $user_id
 MERGE (subj)-[r:RELATES_TO {id: $relation_id}]->(obj)
-ON CREATE SET
-  r.user_id = $user_id,
-  r.subject_id = $subject_id,
-  r.object_id = $object_id,
-  r.predicate = $predicate,
-  r.confidence = 1.0,
-  r.source_event_ids = [],
-  r.source_chapter = $source_chapter,
-  r.valid_from = datetime(),
-  r.valid_until = NULL,
-  r.valid_from_ordinal = $valid_from_ordinal,
-  r.pending_validation = false,
-  r.created_at = datetime(),
-  r.updated_at = datetime()
-ON MATCH SET
-  r.confidence = 1.0,
-  r.pending_validation = false,
-  r.valid_until = NULL,
-  // T36 — an author supplying a position PLACES an edge that had none, and may
-  // move one that was placed. coalesce(...) rather than a bare SET so an author
-  // editing an edge WITHOUT a position does not silently strip the story axis
-  // off an edge that had one.
-  r.valid_from_ordinal = coalesce($valid_from_ordinal, r.valid_from_ordinal),
-  r.updated_at = datetime()
+// §10.1/§10.2 — engine-neutral, and the three groups here are NOT uniform (T70):
+//   create-only            -> coalesce(field, value)
+//   identical in BOTH arms -> unconditional. `confidence`, `pending_validation` and
+//                             `valid_until` are a RECREATE deliberately resetting the edge,
+//                             and both branches already set the same values.
+//   incoming-wins          -> `valid_from_ordinal` keeps its ORIGINAL argument order, which
+//                             is the opposite of the create-only ones: the parameter is
+//                             first, the stored value is the fallback.
+SET r.user_id          = coalesce(r.user_id, $user_id),
+    r.subject_id       = coalesce(r.subject_id, $subject_id),
+    r.object_id        = coalesce(r.object_id, $object_id),
+    r.predicate        = coalesce(r.predicate, $predicate),
+    r.source_event_ids = coalesce(r.source_event_ids, []),
+    r.source_chapter   = coalesce(r.source_chapter, $source_chapter),
+    r.valid_from       = coalesce(r.valid_from, {NOW}),
+    r.created_at       = coalesce(r.created_at, {NOW}),
+    r.confidence       = 1.0,
+    r.pending_validation = false,
+    r.valid_until      = NULL,
+    // T36 — an author supplying a position PLACES an edge that had none, and may move one
+    // that was placed. Parameter first so an author editing an edge WITHOUT a position does
+    // not silently strip the story axis off an edge that had one; on CREATE the stored side
+    // is null, so this yields the parameter exactly as the old ON CREATE arm did.
+    r.valid_from_ordinal = coalesce($valid_from_ordinal, r.valid_from_ordinal),
+    r.updated_at       = {NOW}
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
        properties(obj) AS obj
@@ -1341,7 +1323,7 @@ async def recreate_relation(
     )
     result = await run_write(
         session,
-        _RECREATE_RELATION_CYPHER,
+        render(_RECREATE_RELATION_CYPHER, "neo4j"),
         user_id=user_id,
         relation_id=rid,
         subject_id=subject_id,

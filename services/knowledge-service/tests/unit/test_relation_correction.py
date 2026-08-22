@@ -52,11 +52,18 @@ def test_recreate_cypher_resurrects_valid_until():
     MATCH (resurrect), and it MUST be a DIFFERENT query than create_relation
     (whose ON MATCH never touches valid_until — so extraction can't resurrect)."""
     from app.db.neo4j_repos import relations as m
-    assert "r.valid_until = NULL" in m._RECREATE_RELATION_CYPHER
-    assert "ON MATCH SET" in m._RECREATE_RELATION_CYPHER
+    import re as _re
+    # whitespace-insensitive: the merged SET aligns its `=` signs (T71), and pinning that
+    # alignment would make a cosmetic reformat look like a broken invariant.
+    assert _re.search(r"r\.valid_until\s*=\s*NULL", m._RECREATE_RELATION_CYPHER)
+    # RESTATED (T71): the branch keyword is gone; the RULE is that re-creating an EXISTING
+    # edge clears valid_until, which the unconditional assignment does.
+    assert _re.search(r"r\.valid_until\s*=\s*NULL", m._RECREATE_RELATION_CYPHER)
     # create_relation's ON MATCH must NOT clear valid_until (the invariant F5 protects).
-    create_on_match = m._CREATE_RELATION_CYPHER.split("ON MATCH SET")[1]
-    assert "valid_until" not in create_on_match
+    assert "r.valid_until" not in m._CREATE_RELATION_CYPHER, (
+        "create_relation must not assign valid_until at all — merged into one SET, any "
+        "assignment fires on match and resurrects an invalidated edge (F5)."
+    )
 
 
 @pytest.mark.asyncio

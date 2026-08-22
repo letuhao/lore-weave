@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `relations` ON CREATE/MATCH — 82 dialect sites left, 12 of the 16 branches done.**
+**RESUME: `passages` + `facts` + `events` ON CREATE/MATCH — 70 dialect sites left, 14 of 16 branches done.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,78 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T71 2026-08-22 — **`relations` translated; a test caught a bug I introduced, and a BITE found another rule missing**
+
+  ```
+  relations: both ON CREATE/MATCH branches      dialect 82 -> 70
+  knowledge unit 4303 -> 4304 · DB integration 605 passed, two consecutive clean full runs
+  ```
+
+  🔴 **I BROKE THE F5 INVARIANT AND THE SUITE CAUGHT IT.** `_CREATE_RELATION_CYPHER` had
+  `r.valid_until = NULL` on the **ON CREATE arm only**. Merging the branches, I made it
+  unconditional — which means **a re-extraction would resurrect a relation the author had
+  invalidated**. `test_recreate_cypher_resurrects_valid_until` and
+  `test_multi_active_does_not_close` went red immediately.
+
+  The fix is that the merged query must not assign `valid_until` **at all**: an absent property
+  IS null on create, so omitting it is exactly what the old arm did, and any assignment fires on
+  match too. Same for `valid_to_ordinal`, which `maintain_chain` owns. **This is T70's lesson
+  landing on me one cycle later — I classified a create-only field as "identical in both arms"
+  without checking the match arm actually contained it.**
+
+  📐 **Five different merge semantics live in `_CREATE_RELATION_CYPHER`**, and flattening any of
+  them is silent:
+
+  ```
+  create-only     coalesce(field, value)            user_id, predicate, source_chapter, …
+  accumulate      CASE with a NULL first arm         source_event_ids, confidence,
+                                                     pending_validation
+  stored-wins     coalesce(r.field, $param)          valid_from_ordinal  (F3 backfill)
+  incoming-wins   coalesce($param, r.field)          schema_version      (L7 re-stamp)
+  precision-wins  the event_date_iso CASE            already NULL-safe on the stored side
+  never-assign    valid_until, valid_to_ordinal      F5, and maintain_chain's property
+  ```
+
+  🎯 **AND `valid_from_ordinal`'s ARGUMENT ORDER IS OPPOSITE IN THE TWO QUERIES.** Extraction
+  (`create_relation`) is `coalesce(r.…, $…)` — stored first, **backfill but never move**. The
+  author path (`recreate_relation`) is `coalesce($…, r.…)` — parameter first, because an author
+  **may** reposition an edge (T36). Two queries, one difference, and it is only the argument
+  order.
+
+  🔴 **BITE 36 SHOWED NOTHING GUARDED THAT EITHER.** Flipping create's order to the author's —
+  letting a re-extraction shove an edge into a different chapter, which silently changes every
+  as-of read — **passed the whole suite**.
+  `test_extraction_BACKFILLS_a_story_position_but_never_MOVES_one` now pins **both** directions,
+  so neither can drift into the other. That is the second cycle running where a bite found a
+  missing rule rather than confirming one (T70's bite 34 was the first), and both were the same
+  shape: **two adjacent queries encoding opposite policies, only the more memorable one tested.**
+
+  **BITE ×2:**
+
+  ```
+  35. valid_until reinstated in create (the F5 resurrection)
+        FAILED — "create_relation assigns valid_until — on a re-extraction that would
+                  resurrect an edge the author closed"
+  36. valid_from_ordinal's argument order flipped
+        BEFORE: whole suite passed
+        AFTER : FAILED — "create_relation must be coalesce(r.valid_from_ordinal,
+                          $valid_from_ordinal) — STORED first"
+  ```
+
+  ⚠️ **Nine unit tests moved, and the split matters.** Seven compared the *executed* query to
+  the raw template and were repointed at `render(CONST, "neo4j")`. Two asserted a rule through
+  `split("ON MATCH SET")`, whose keyword the merge removes — restated as what the rule MEANS on
+  the form that exists (*"must not assign `valid_until` at all"*). Two more pinned exact
+  whitespace and were made spacing-insensitive, because the merged `SET` aligns its `=` and a
+  cosmetic reformat should not read as a broken invariant.
+
+  **QC (a) gates:** unit **4304**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **82 → 70** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ two consecutive full DB integration runs on a fresh throwaway Neo4j
+  with AGE live — 605 passed, 0 failed each.
+  **QC (c) real data:** relations created, re-created, auto-closed and chained in a real Neo4j
+  through the rewritten queries.
 
   ### ✅ T70 2026-08-22 — **`enrichment` translated, and a BITE found a safety rule nobody had written**
 

@@ -110,7 +110,11 @@ def test_merge_fact_cypher_sets_event_date_iso_on_create():
 
 
 def test_create_relation_cypher_sets_event_date_iso_on_create():
-    assert "r.event_date_iso = $event_date_iso" in rm._CREATE_RELATION_CYPHER
+    # RESTATED (T71): the ON CREATE arm is merged away, so "set on create" is now the
+    # first arm of the precision CASE — `WHEN r.event_date_iso IS NULL THEN $event_date_iso`
+    # — which is what actually assigns it on a fresh edge.
+    assert "WHEN r.event_date_iso IS NULL THEN $event_date_iso" in re.sub(
+        r"\s+", " ", rm._CREATE_RELATION_CYPHER)
 
 
 def test_merge_fact_cypher_on_match_is_precision_preserving():
