@@ -158,12 +158,55 @@ subsequence with a bounded gap; (c) weight by word rarity across the catalogue.
 > and cycle 1's fix is gated on your answer to it.** It is now the single highest-leverage decision
 > in the dossier.
 >
-> **RECOMMENDED: (b), measured against the live catalogue before it ships.** (a) is working and
-> scales with every phrasing a user can invent, which is not a bound. **The risk is real and must
-> be measured, not argued:** `_synonym_pattern`'s word-boundary work exists because `cat` matched
-> inside `category` and cost a live run, and **the consent check now depends on answerability too**
-> — a read-only turn sets a standing write grant aside — so widening the matcher changes *consent*
-> behaviour, not just surfacing. Cycle 8 should A/B it across all 315 tools before adopting.
+> ### CORRECTED 2026-08-22 — MEASURED, and option (b) alone fixes barely half
+>
+> I said this needed measuring against the live catalogue before it shipped. It has been:
+> `scripts/toolloop/answerability_relax_ab.py`, over the real `answerable_tools`, the 315-tool
+> catalogue and all 192 distinct measured turns on disk.
+>
+> | candidate | recall on the 27 | extra tools/turn | chitchat | new writes on a READ turn |
+> |---|---:|---:|---:|---:|
+> | contiguous *(today)* | 3/27 | 0.01 | 0 | 0 |
+> | in-order, gap=1 | 8/27 | 0.09 | 0 | 1 |
+> | in-order, gap=2 | 12/27 | 0.17 | 0 | 1 |
+> | **in-order, gap=3** | **14/27** | **0.24** | **0** | **1** |
+> | in-order, gap=5 | 14/27 | 0.32 | 0 | 1 |
+> | order-free (all words) | 15/27 | 0.52 | 0 | 3 |
+>
+> **Option (b) tops out at 14 of 27**, because the misses are not one failure but three, and only
+> the first is about gaps:
+>
+> | mode | n | example |
+> |---|---:|---|
+> | **1 INTERPOSED** — words present, in order, split | 12 | `turn off skill` vs "Turn off the **glossary** skill" |
+> | **2 REORDERED** — words present, wrong order | 3 | `workflow steps` vs "the **steps of the** … **workflow**" |
+> | **3 ABSENT** — the declared word was never said | 12 | `rename region` vs "Rename the **area** called The North" |
+>
+> **Mode 3 is a DECLARATION gap and no matcher can reach it** — and it is mostly mechanical: a
+> missing cross-product cell (the map family declares {move, relabel, drag, rebind} × {pin, marker}
+> and fills only some), a near-synonym the platform already uses on the *sibling* tool ("area"), a
+> spelling variant (`favorite` vs "favou**r**ite"), or the tool's own noun (`kg_ontology_propose`
+> declares "graph template" and the author said "**ontology** template"). The residue is pronoun
+> reference — "Stop **the translation one**", "Deactivate **the last one**" — which answerability
+> cannot see, because the referent is in the previous turn.
+>
+> The boundary regression holds at every setting: `cat` still does not match inside `category`. The
+> consent risk is reported **by name** rather than as an average, because one wrong write matched on
+> a read turn is the whole risk. At gap=3 it is one tool on one turn (`glossary_propose_entities`).
+>
+> > **REVISED RECOMMENDATION — three parts, and only the first is yours to approve:**
+> > 1. **Adopt (b) at gap=3.** 14 of 27 for 0.24 extra tools per turn and exactly one write-tier
+> >    tool newly matched on one read turn. Order-free buys one more tool for double the noise and
+> >    triple the consent risk — not worth it.
+> > 2. **Close mode 3 with a LINT, not by hand.** The cross-product gaps and spelling variants are
+> >    mechanically detectable, and `scripts/lint_superseded_synonyms.py` is the precedent. A
+> >    hand-edit is correct the day it is made and silent the next time a tool is added.
+> > 3. **Pronoun reference is out of scope for answerability** and should be recorded as its own
+> >    question rather than absorbed here.
+>
+> **This is the second recommendation of mine the measurement overturned today** — the first was
+> DQ-T36 option (a). Both were reasonable and both were wrong, which is why the loop measures
+> before it fixes.
 
 ### DQ-T33 — when a turn ends with no user-visible text, show the last TOOL error?
 
