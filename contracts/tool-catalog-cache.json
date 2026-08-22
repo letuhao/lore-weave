@@ -23021,7 +23021,7 @@
   }
  },
  "settings_list_models": {
-  "description": "List the user's registered AI models (their BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets.",
+  "description": "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets. \ud83d\udd34 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead \u2014 answering that question from this list is wrong in exactly the case it was asked to detect.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
