@@ -22,6 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 __all__ = [
@@ -178,38 +179,32 @@ def passage_canonical_id(
 # function to raise "returned no row" despite the matching SET
 # running. Dynamic Cypher sidesteps that entirely.
 _UPSERT_PASSAGE_CYPHER_TEMPLATE = """
-MERGE (p:Passage {{id: $id}})
-ON CREATE SET
-  p.user_id = $user_id,
-  p.project_id = $project_id,
-  p.source_type = $source_type,
-  p.source_id = $source_id,
-  p.chunk_index = $chunk_index,
-  p.text = $text,
-  p.embedding_model = $embedding_model,
-  p.is_hub = $is_hub,
-  p.chapter_index = $chapter_index,
-  p.canon = $canon,
-  p.block_index = $block_index,
-  p.source_lang = $source_lang,
-  p.mixed = $mixed,
-  p.content_hash = $content_hash,
-  p.{embed_prop} = $embedding,
-  p.created_at = datetime(),
-  p.updated_at = datetime()
-ON MATCH SET
-  p.text = $text,
-  p.embedding_model = $embedding_model,
-  p.is_hub = $is_hub,
-  p.chapter_index = $chapter_index,
-  p.canon = $canon,
-  p.block_index = $block_index,
-  p.source_lang = $source_lang,
-  p.mixed = $mixed,
-  p.content_hash = $content_hash,
-  p.{embed_prop} = $embedding,
-  p.updated_at = datetime()
-WITH p WHERE p.user_id = $user_id
+// §10.1/§10.2 — engine-neutral. The split here is unusually clean: the MATCH arm REPLACES
+// every content field (a re-ingest is meant to overwrite text, embedding and hash), so those
+// stay unconditional. Only the identity tuple and `created_at` are create-only.
+//
+// ⚠️ `user_id` moved into the MERGE KEY and the trailing `WITH p WHERE p.user_id` is gone —
+// on AGE that filter SILENTLY DISCARDS the write (T58), and on Neo4j it let a cross-tenant id
+// collision overwrite another tenant's passage TEXT and report nothing. `passage_id` hashes
+// `user_id` (line 164), so the pair cannot disagree. Third query in this migration to carry
+// that shape (provenance T68, entity_status T69, this).
+MERGE (p:Passage {{id: $id, user_id: $user_id}})
+SET p.project_id      = coalesce(p.project_id, $project_id),
+    p.source_type     = coalesce(p.source_type, $source_type),
+    p.source_id       = coalesce(p.source_id, $source_id),
+    p.chunk_index     = coalesce(p.chunk_index, $chunk_index),
+    p.created_at      = coalesce(p.created_at, {{NOW}}),
+    p.text            = $text,
+    p.embedding_model = $embedding_model,
+    p.is_hub          = $is_hub,
+    p.chapter_index   = $chapter_index,
+    p.canon           = $canon,
+    p.block_index     = $block_index,
+    p.source_lang     = $source_lang,
+    p.mixed           = $mixed,
+    p.content_hash    = $content_hash,
+    p.{embed_prop}    = $embedding,
+    p.updated_at      = {{NOW}}
 RETURN p
 """
 
@@ -273,9 +268,13 @@ async def upsert_passage(
 
     # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
     # so this f-string substitution has no injection surface.
-    cypher = _UPSERT_PASSAGE_CYPHER_TEMPLATE.format(
+    # ⚠️ ORDER: `.format()` FIRST, then `render()`. The other way round substitutes
+    # `{NOW}` -> `datetime()` and `.format()` then reads `{datetime()}` as a format
+    # field and raises KeyError. This template is BOTH a str.format template and a
+    # dialect template; only one order works.
+    cypher = render(_UPSERT_PASSAGE_CYPHER_TEMPLATE.format(
         embed_prop=f"embedding_{embedding_dim}",
-    )
+    ), "neo4j")
 
     result = await run_write(
         session,

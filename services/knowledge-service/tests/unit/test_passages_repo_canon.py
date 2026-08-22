@@ -80,7 +80,17 @@ async def test_upsert_passage_wires_canon_into_write(monkeypatch):
     # canon reaches the write …
     assert captured["kwargs"]["canon"] is False
     # … the cypher actually sets it (both ON CREATE and ON MATCH) …
-    assert captured["cypher"].count("p.canon = $canon") == 2
+    # RESTATED (T72): the two branches merged into one unconditional SET (§10.1), so the
+    # assignment appears ONCE and applies on BOTH paths — which is what "wired into both"
+    # meant and is strictly stronger than counting two occurrences. It must NOT be a
+    # coalesce: a re-ingest that flips draft->canon has to take effect.
+    assert "p.canon           = $canon" in captured["cypher"] or (
+        "p.canon = $canon" in captured["cypher"]
+    ), "canon is not assigned at all"
+    assert "coalesce(p.canon" not in captured["cypher"], (
+        "canon is coalesced — a re-ingest flipping draft to canon would silently "
+        "keep the old value"
+    )
     # … and it round-trips onto the projection.
     assert p.canon is False
 

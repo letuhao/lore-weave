@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `passages` + `facts` + `events` ON CREATE/MATCH — 70 dialect sites left, 14 of 16 branches done.**
+**RESUME: `facts` + `events` ON CREATE/MATCH — the last two of the 16 branches; 65 dialect sites left.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,62 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T72 2026-08-22 — **`passages` translated; a template that is BOTH a format and a dialect template**
+
+  ```
+  passages::_UPSERT_PASSAGE_CYPHER_TEMPLATE     dialect 70 -> 65
+  knowledge unit 4304 · DB integration 605 passed, 0 failed on a fresh throwaway Neo4j
+  ```
+
+  The cleanest split so far: the MATCH arm **replaces every content field** — a re-ingest is
+  meant to overwrite text, embedding, hash and canon flag — so those stay unconditional, and
+  only the identity tuple plus `created_at` are create-only.
+
+  🔴 **`.format()` MUST run before `render()`, and the other order raises.** This template is
+  the only one that is *both* a `str.format` template (`{embed_prop}` selects the
+  dimension-suffixed embedding property) and a dialect template (`{NOW}`). Rendering first
+  turns `{NOW}` into `datetime()`, and `.format()` then reads `{datetime()}` as a format field:
+
+  ```
+  KeyError: 'datetime()'      app/db/neo4j_repos/passages.py:275
+  ```
+
+  Format first, render second. Recorded at the call site because the failure is a `KeyError`
+  naming a Cypher function, which reads like anything other than an ordering bug.
+
+  ⚠️ **`user_id` moved into the MERGE key; the trailing `WITH p WHERE p.user_id` is gone.**
+  **Third query in this migration to carry that shape** — `provenance` (T68), `entity_status`
+  (T69), now `passages`. On AGE it silently discards the write (T58); on Neo4j it let a
+  cross-tenant id collision overwrite another tenant's passage TEXT and report nothing found.
+  `passage_id` hashes `user_id`, so the pair cannot disagree. **Three of six translated queries
+  have had it — this is a pattern in the layer, not a series of accidents.**
+
+  ⚠️ **One test restated: `count("p.canon = $canon") == 2`.** It counted the assignment once per
+  branch — a mechanism, not a rule. Merged, it appears **once and applies on both paths**, which
+  is what "wired into both" meant and is strictly stronger. The restatement also adds what the
+  count could not say: it must **not** be a `coalesce`, or a re-ingest flipping draft→canon
+  would silently keep the old value.
+
+  **BITE ×2:**
+
+  ```
+  37. render/format order flipped back
+        KeyError: 'datetime()'   at passages.py:275
+  38. canon becomes a coalesce
+        FAILED — test_upsert_passage_wires_canon_into_write
+  ```
+
+  Bite 38 is the one the old assertion could not have caught: counting occurrences says nothing
+  about whether the assignment is conditional, and `coalesce(p.canon, $canon)` appears exactly
+  as often as `p.canon = $canon`.
+
+  **QC (a) gates:** unit **4304**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **70 → 65** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ full DB integration suite on a fresh throwaway Neo4j with AGE live —
+  605 passed, 0 failed.
+  **QC (c) real data:** passages ingested, re-ingested and canon-flipped in a real Neo4j through
+  the rewritten template.
 
   ### ✅ T71 2026-08-22 — **`relations` translated; a test caught a bug I introduced, and a BITE found another rule missing**
 

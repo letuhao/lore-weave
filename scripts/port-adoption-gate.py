@@ -731,7 +731,7 @@ _DIALECT_PATTERNS = (
 #: this backlog was counted rather than estimated. The 2026-08-11 probe predicted "~33
 #: anchoring rewrites + 157 renames + 14 CALL{}"; measured inside the repo layer it is 37
 #: anchoring, 106 renames, 14 CALL{}, plus 3 FOREACH and 1 apoc the probe did not look for.
-MAX_NEO4J_DIALECT_SITES = 70
+MAX_NEO4J_DIALECT_SITES = 65
 
 
 def _code_strings(src: str) -> str:
