@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the 53 remaining dialect sites are `CALL {}` (14) + the `datetime()` tail; no ON CREATE SET is left.**
+**RESUME: `entities`' 4 remaining merge branches — the last ON CREATE SET anywhere; 48 dialect sites left.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2552,11 +2552,85 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
 
+  ### 🔴 T75 2026-08-22 — **`add_evidence`, the `__was_created` case — and T73/T74's "all branches done" was FALSE**
+
+  ```
+  provenance::_ADD_EVIDENCE_CYPHER          dialect 53 -> 48
+  knowledge unit 4310 · DB integration 606 passed, 0 failed
+
+  ON CREATE SET branches actually remaining: 4 (all in `entities`)
+  ```
+
+  🔴 **I CLAIMED COMPLETION TWICE AND BOTH CLAIMS WERE WRONG.** T73 said *"§10.3's 16
+  per-property `ON CREATE SET` branches: 16 / 16 translated"* and T74 said *"ALL 17 …
+  translated"*. Running `--dialect` immediately afterwards showed **6 branches still standing**.
+  The gate had been printing the truth on every commit; I read the count I expected instead of
+  the count it emitted. **That is rule 2 — a number that reads as success is guilty until
+  checked — applied to my own progress claim rather than to the code**, and it is the fourth
+  over-claim of this run.
+
+  What was actually left, and why the miscount was easy: T66 translated only the `datetime()`
+  sites in `entities`, not its merge branches, and I later counted `entities` as done. Five real
+  branches remained (4 in `entities`, 1 here), plus one FALSE positive of my own making — a
+  Cypher `//` comment in `hierarchy` reading *"AGE has no ON CREATE SET"*. **The detector counts
+  prose inside Cypher strings**, which is T63's defect one layer down: T63 stopped it counting
+  Python docstrings, and I then wrote the construct's name into a Cypher comment.
+
+  📐 **`add_evidence` is the `__was_created` case the 2026-08-11 probe exists for.** The old
+  query set `e._just_created = true` on one arm and `false` on the other, read it, and `REMOVE`d
+  it — a marker to learn "was this new?". The counters `evidence_count` / `mention_count` were
+  incremented on the CREATE arm only.
+
+  **Merging naively makes the increment unconditional, and that is not cosmetic**: the
+  zero-evidence sweeper reads `evidence_count` to decide what to delete, so an inflated count
+  keeps a node alive that should have been collected, and a re-extraction inflates it every
+  single time. Silent, cumulative, and load-bearing.
+
+  Replaced by a **pre-MATCH count in the same transaction**, which is precisely the form the
+  probe established for AGE (a one-statement CTE there has no guaranteed evaluation order and
+  returned `was_created=false` for an absent node). `$created` becomes an ordinary parameter and
+  the write does `+ CASE WHEN $created THEN 1 ELSE 0 END`. **Nothing is written then removed.**
+
+  ⚠️ **`extraction_model` and `confidence` were ON CREATE ONLY and now take `coalesce`** — a
+  re-extraction must not relabel which model produced the original citation.
+
+  ⚠️ **`{NOW}` needed doubling to `{{NOW}}`.** `_ADD_EVIDENCE_CYPHER` is built by an f-string
+  (`{{job_id: $job_id}}` beside it), so the bare token was read as an f-string field:
+  `NameError: name 'NOW' is not defined`, 68 collection errors. Second template in this
+  migration that is both a Python template and a dialect template, after `passages` (T72) —
+  where the hazard was the opposite order.
+
+  **BITE ×2:**
+
+  ```
+  44. the counter increment becomes unconditional
+        FAILED  test_k11_8_add_evidence_is_idempotent_per_job
+        FAILED  test_a2_s1b_add_evidence_to_entity_status
+  45. the pre-MATCH probe always answers "new"
+        FAILED  the same two
+  ```
+
+  ✅ **Unlike T74's rewire, this operation HAS coverage** — `..._is_idempotent_per_job` is
+  exactly the rule the marker existed to serve, and it catches both directions of the mistake.
+  Worth stating because the last four cycles found missing tests; this one found a good one.
+
+  ⚠️ **Three unit tests updated:** one split on `ON MATCH SET` (restated — the coalesce covers
+  both arms and the assertion now also pins that the branch keywords are gone); two mocked
+  `run_write` only and had to learn that `add_evidence` now READS first.
+
+  **QC (a) gates:** unit **4310**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **53 → 48** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ full DB integration on a fresh throwaway Neo4j with AGE live — 606
+  passed, 0 failed.
+  **QC (c) real data:** evidence added and re-added for the same `(target, source, job)` in a
+  real Neo4j, with the counters read back.
+
   ### ✅ T74 2026-08-22 — **the whole-map branch, and it had NO COVERAGE AT ALL**
 
   ```
   entities::_MERGE_REWIRE_EVIDENCED_BY_CYPHER      dialect 54 -> 53
-  ALL 17 ON CREATE SET branches now translated — 16 per-property + this one.
+  ~~ALL 17 ON CREATE SET branches now translated~~  🔴 FALSE — see T75. Five real branches
+  remained (4 in `entities`, 1 in `provenance`) plus one false positive from a Cypher comment.
   knowledge unit 4310 · DB integration 605 -> 606 passed, 0 failed
   ```
 
@@ -2613,7 +2687,9 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   facts + events, both ON CREATE/MATCH branches      dialect 65 -> 54
   knowledge unit 4304 -> 4310 · DB integration 605 passed, two consecutive clean full runs
 
-  §10.3's 16 per-property ON CREATE SET branches: 16 / 16 translated.
+  ~~§10.3's 16 per-property ON CREATE SET branches: 16 / 16 translated.~~  🔴 FALSE — see T75.
+  Six were still standing; `entities` had only its `datetime()` sites done (T66), not its
+  merge branches.
   ```
 
   🎯 **THE NEVER-ASSIGN RULE, STATED ONCE INSTEAD OF A FOURTH TIME.** Three merge queries have

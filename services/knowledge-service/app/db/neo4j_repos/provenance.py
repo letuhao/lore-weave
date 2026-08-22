@@ -314,32 +314,36 @@ WHERE target.user_id = $user_id
 MATCH (src:ExtractionSource {{id: $source_id}})
 WHERE src.user_id = $user_id
 MERGE (target)-[e:EVIDENCED_BY {{job_id: $job_id}}]->(src)
-ON CREATE SET
-  e.extracted_at = datetime(),
-  e.extraction_model = $extraction_model,
-  e.confidence = $confidence,
-  // F3 — the EXACT supporting quote (verbatim span from the source chapter), so
-  // a KG fact/edge is evidence-grounded like the glossary `evidences` table
-  // (original_text). NULL when the extractor didn't surface a quote (legacy /
-  // positionless). Stored on the per-(target, source, job) citation edge so two
-  // sources citing the same fact each keep their own quote.
-  e.quote = $quote,
-  e._just_created = true,
-  target.evidence_count = coalesce(target.evidence_count, 0) + 1,
-  target.mention_count = coalesce(target.mention_count, 0) + 1,
-  target.updated_at = datetime()
-ON MATCH SET
-  e.extracted_at = datetime(),
-  // F3 — backfill the quote on a re-extraction that DOES carry one (an edge
-  // first written quoteless keeps NULL until a quote-bearing re-mention);
-  // coalesce so a quoteless re-run never wipes an existing quote.
+SET
+  // Always: the extraction stamp, and the model/confidence of whoever wrote it. These were
+  // ON CREATE ONLY for `extraction_model`/`confidence`, so they take `coalesce` — a
+  // re-extraction must not relabel which model produced the original citation.
+  e.extracted_at = {{NOW}},
+  e.extraction_model = coalesce(e.extraction_model, $extraction_model),
+  e.confidence = coalesce(e.confidence, $confidence),
+  // F3 — the EXACT supporting quote (verbatim span from the source chapter), so a KG
+  // fact/edge is evidence-grounded like the glossary `evidences` table. `coalesce($quote,
+  // e.quote)` covers BOTH old arms: on create the stored side is null so the parameter
+  // wins, and on match a quoteless re-run never wipes an existing quote.
   e.quote = coalesce($quote, e.quote),
-  e._just_created = false
-WITH target, e, coalesce(e._just_created, false) AS created
-REMOVE e._just_created
+  // 🔴 THE COUNTERS ARE THE WHOLE DIFFICULTY. They were ON CREATE ONLY, and the old query
+  // learned "was this new?" from a `_just_created` marker it set on one branch, read, and
+  // REMOVEd. Merging the branches naively makes the increment unconditional and inflates
+  // `evidence_count` on EVERY re-extraction — silently, and the zero-evidence sweeper reads
+  // this number to decide what to delete.
+  //
+  // `$created` is computed by a pre-MATCH count in the SAME TRANSACTION, which is exactly
+  // the `__was_created` form the 2026-08-11 construct probe established for AGE (a
+  // single-statement CTE there has no guaranteed evaluation order). One parameter replaces
+  // the marker, and nothing has to be written then removed.
+  target.evidence_count = coalesce(target.evidence_count, 0)
+                          + CASE WHEN $created THEN 1 ELSE 0 END,
+  target.mention_count  = coalesce(target.mention_count, 0)
+                          + CASE WHEN $created THEN 1 ELSE 0 END,
+  target.updated_at = {{NOW}}
 RETURN target.evidence_count AS evidence_count,
        target.mention_count AS mention_count,
-       created
+       $created AS created
 """
 
 
@@ -352,6 +356,20 @@ _ADD_EVIDENCE_CYPHER: dict[str, str] = {
 # names, so defining them here made the port import its own implementation. Re-exported
 # so existing importers keep working; the adoption gate records callers moving off.
 from app.domain.graph_models import EvidenceWriteResult  # noqa: F401
+
+
+def _evidence_exists_cypher(label: str) -> str:
+    """Does this exact `(target, source, job_id)` citation already exist?
+
+    Read in the SAME TRANSACTION as the write below. `label` comes from the same closed
+    `TARGET_LABELS` set the write uses — never from user input.
+    """
+    return f"""
+MATCH (target:{label} {{id: $target_id}})-[e:EVIDENCED_BY {{job_id: $job_id}}]->(
+      src:ExtractionSource {{id: $source_id}})
+WHERE target.user_id = $user_id AND src.user_id = $user_id
+RETURN count(e) AS n
+"""
 
 
 async def add_evidence(
@@ -403,10 +421,21 @@ async def add_evidence(
     if confidence < 0.0 or confidence > 1.0:
         raise ValueError(f"confidence must be in [0,1], got {confidence}")
 
-    cypher = _ADD_EVIDENCE_CYPHER[target_label]
+    # §10.2/§10.3 — the pre-MATCH count that replaces the `_just_created` marker. Same
+    # transaction as the write, per the 2026-08-11 probe: a one-statement CTE has no
+    # guaranteed evaluation order on AGE and returned `was_created=false` for an absent node.
+    probe = await run_read(
+        session, _evidence_exists_cypher(target_label),
+        user_id=user_id, target_id=target_id, source_id=source_id, job_id=job_id,
+    )
+    probe_row = await probe.single()
+    created = (probe_row is None) or int(probe_row["n"]) == 0
+
+    cypher = render(_ADD_EVIDENCE_CYPHER[target_label], "neo4j")
     result = await run_write(
         session,
         cypher,
+        created=created,
         user_id=user_id,
         target_id=target_id,
         source_id=source_id,
