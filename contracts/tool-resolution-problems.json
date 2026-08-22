@@ -113,7 +113,6 @@
       "tools": [
         "composition_arc_template_edit",
         "composition_authoring_run_review",
-        "composition_generate",
         "composition_motif_link_edit",
         "glossary_entity_restore",
         "world_delete",
@@ -147,6 +146,9 @@
       ],
       "predicted_moves_out": {
         "composition_generate": "PREDICTED BEFORE THE VERIFICATION EVIDENCE LANDED, and measured offline. Its cause is SIBLING-SUBSTITUTION (P5), not this cycle's invariant. On its own recorded prompt — 'Write chapter — draft the prose for this chapter with the cowrite engine.' — FIVE tools are answerable and THREE tie at synonym length 13: book_chapter_create, book_chapter_save_draft and composition_generate. The domain tool declares 'write chapter'; the generic declares 'write the chapter' and 'write chapter prose'. There is no precedence between them, so the model breaks the tie — and when it picks book_chapter_save_draft it supplies prose it wrote ITSELF, which is D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE.\n\nThis also explains why the cycle-2 arming cannot help it: the arming is REACTIVE and fires on a refusal, so a tool the model never CALLS never produces one. settings_list_models can only be armed after composition_generate has been called and refused at least once."
+      },
+      "moved_out": {
+        "composition_generate": "MOVED to P5-SIBLING-WINS 2026-08-23 by the partition rule — re-run at K=5 and blocked on a DIFFERENT NAMED CAUSE, and the cause was registered BEFORE the evidence existed (ae2a69cb9). Reachability is FIXED: it surfaced 5/5 with ZERO errors, and its refusal now names and arms settings_list_models (verified against the deployed builder). It was called 0/5 because a SIBLING wins the request: on its own prompt three tools tie at synonym length 13 — book_chapter_create, book_chapter_save_draft and composition_generate. The domain tool declares 'write chapter'; the generic declares 'write the chapter' and 'write chapter prose'. No precedence exists, so the model breaks the tie, and when it lands on book_chapter_save_draft it supplies prose it wrote ITSELF.\n\nAND CYCLE 2'S FIX STRUCTURALLY CANNOT REACH IT: the arming is REACTIVE and fires on a refusal, so a tool the model never CALLS never produces one. That is a property of the fix, stated rather than discovered later."
       }
     },
     {
@@ -160,6 +162,7 @@
       "worst_measured": "settings_provider_inventory — the model answered from settings_list_models and presented REGISTERED rows as 'what your providers currently offer'. Registry and live inventory are different sets: a model retired upstream still sits in the registry. The answer is confidently wrong in exactly the case the question was asked to detect. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.",
       "tools": [
         "composition_arc_edit",
+        "composition_generate",
         "glossary_deep_research",
         "registry_list_workflows",
         "settings_provider_inventory",
@@ -177,6 +180,9 @@
         "hot_seed": "glossary_deep_research (336 tok) is STARVED from the hot seed on every surface and composition_arc_edit (1749 tok, the largest in the set) on studio — so their presence depends ENTIRELY on answerability, which is a much thinner guarantee than 'advertised'.",
         "real_collisions": "composition_arc_edit TIES composition_arc_create at synonym length 10, and settings_provider_inventory OUTRANKS settings_list_models 11 vs 6 and still lost 3/3 — so for that one, ranking is not the mechanism and the problem statement's 'stated precedence' would not have helped.",
         "declaration_gap": "settings_provider_inventory.provider_credential_id is described as 'the provider credential whose live model inventory to list (UUID)' and names NO supplier, though settings_list_providers is the only source and takes no arguments. Same class cycle 2 measured at 105 of 467 required arguments."
+      },
+      "moved_in": {
+        "composition_generate": "MOVED IN from P3-NAME-TO-ID 2026-08-23. It is the clearest instance this problem has: a three-way synonym TIE with no declared precedence, measured offline before the live evidence landed. Its worst outcome is also this problem's worst — the sibling that wins carries prose the model wrote itself (D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, open). See also DQ-T35, which asks whether model_ref should be optional with a server-resolved default as 16 of its 19 siblings already declare."
       }
     },
     {
