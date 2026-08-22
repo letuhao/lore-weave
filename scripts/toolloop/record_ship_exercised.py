@@ -35,7 +35,12 @@ SCEN = ROOT / "scripts" / "toolloop" / "scenarios-c2-rerun.json"
 E_SHIP = "docs/eval/toolloop/2026-08-14/c2-ship-probe.txt"
 E_OPD = "docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt"
 E_IDEM = "docs/eval/toolloop/2026-08-14/c2-idem.json"
-E_RUN = "docs/eval/toolloop/2026-08-14/c2-verify.json"
+E_RUN = "docs/eval/toolloop/2026-08-14/c2-arc.json"
+E_IDEM2 = "docs/eval/toolloop/2026-08-14/c2-idem2.json"
+E_IDEM3 = "docs/eval/toolloop/2026-08-14/c2-idem3.txt"   # the probe crashed before
+#: writing JSON, so the terminal output is preserved instead — a citation must point at
+#: something that exists.
+E_IDEM4 = "docs/eval/toolloop/2026-08-14/c2-idem4.json"
 
 #: scenario id -> {case: exercised sentence}. Absent keys are LEFT ALONE.
 RECORD: dict[str, dict[str, str]] = {
@@ -44,13 +49,15 @@ RECORD: dict[str, dict[str, str]] = {
                        "'world not found — check the world_id (call world_list for valid ids)'.",
         "tenancy": f"EXERCISED by direct probe ({E_SHIP}): another owner's id is refused "
                    "IDENTICALLY to an absent one, so the refusal is no existence oracle.",
-        "gate": f"EXERCISED live ({E_RUN}): left SUSPENDED on a Tier-A approval card on 5 of 5 "
-                "runs. The card was never approved — this is a HARD delete.",
-        "idempotency": f"VACUOUS, NOT PASSED ({E_IDEM}). The probe reported 'STRICTLY IDEMPOTENT' "
-                       "and flagged its own verdict: the FIRST call changed nothing in the store "
-                       "diff either, so it measured two no-ops. The owning store is not captured "
-                       "for this scope, which is a DATA blind spot rather than an idempotency "
-                       "result. Recorded as unproven.",
+        "gate": f"EXERCISED live ({E_RUN}): called 4/5, left SUSPENDED on a Tier-A approval card on "
+                "3 of 5 runs, and the store is UNCHANGED across all five. The card was never "
+                "approved — this is a HARD delete.",
+        "idempotency": f"EXERCISED and PASSED ({E_IDEM2}), on the SECOND attempt. The first was "
+                       f"vacuous ({E_IDEM}) — _world_counts never counted the `worlds` table, so a "
+                       "real delete produced an empty diff and the probe refused to call that a "
+                       "pass. After f9d6a7c10 the same probe shows loreweave_book.worlds rows=1 -> "
+                       "null on the first call and {} on the second, which refuses. The first call "
+                       "MOVES the store, so the second call's no-op means something.",
     },
     "world-map-delete": {
         "absent_case": f"EXERCISED by direct probe ({E_SHIP}): an absent map_id is refused with "
@@ -63,6 +70,15 @@ RECORD: dict[str, dict[str, str]] = {
                        "The verdict comes from the STORE, not from the tool's two responses.",
     },
     "composition-arc-template-edit": {
+        "gate": f"EXERCISED live ({E_RUN}): called 5/5 with the store UNCHANGED across all five "
+                "runs, so a confirm token was minted and nothing was archived without approval.",
+        "idempotency": f"NOT PROVEN, and blocked on a NAMED cause rather than unrun "
+                       f"({E_IDEM3}): D-DATA-BAR-BLIND-TO-ACCOUNT-SCOPED-ARC-TEMPLATE. The probe "
+                       "archived a real template — verified active -> archived by direct SQL — and "
+                       "store_diff was {} on BOTH calls, because arc_template's book_id is NULL on "
+                       "51 of 57 rows and the snapshot sweeps by book_id. The tool's own responses "
+                       "were correct (already_archived false, then true); it is the STORE claim "
+                       "that cannot be made. Do not read this as a pass.",
         "absent_case": f"EXERCISED by targeted probe ({E_OPD}). The generic sweep could NOT reach "
                        "this: the tool's only required argument is `op`, so all three of its cases "
                        "landed on the op-dispatch refusal and never touched arc_id. Re-probed with "
@@ -75,14 +91,14 @@ RECORD: dict[str, dict[str, str]] = {
                        "op=create with absent from/to motif ids is refused 'not found or not "
                        "accessible'.",
         "tenancy": f"EXERCISED by targeted probe ({E_OPD}): foreign ids refuse IDENTICALLY.",
-        "gate": f"EXERCISED live ({E_RUN}): left SUSPENDED on a Tier-A approval card on 3 of 5 "
-                "runs, and the tool was called on 4 of 5.",
+        "gate": f"EXERCISED live ({E_RUN}): called 4/5, left SUSPENDED on a Tier-A approval card on "
+                "2 of 5 runs, store unchanged.",
     },
     "composition-authoring-run-review": {
         "tenancy": f"EXERCISED by direct probe ({E_SHIP}): another account's run_id is refused "
                    "'not found or not accessible', identical to an absent one.",
-        "gate": f"EXERCISED live ({E_RUN}): left SUSPENDED on a Tier-A approval card on 4 of 5 "
-                "runs, with the tool called 5/5.",
+        "gate": f"EXERCISED live ({E_RUN}): called 5/5, left SUSPENDED on a Tier-A approval card on "
+                "3 of 5 runs, store unchanged.",
     },
     "composition-generate": {
         "absent_case": f"EXERCISED by direct probe ({E_SHIP}): an absent project_id is refused "
@@ -91,6 +107,11 @@ RECORD: dict[str, dict[str, str]] = {
                    "IDENTICALLY to an absent one.",
     },
     "glossary-entity-restore": {
+        "idempotency": f"EXERCISED and PASSED ({E_IDEM4}): first call {{restored: true}} and "
+                       "loreweave_glossary.glossary_entities moves (its `latest` advances); second "
+                       "call {{restored: false}} and the store is untouched. book_id had to be "
+                       "passed explicitly — chat-service injects it from the ambient book and a "
+                       "direct MCP call has none, which the tool correctly refused first.",
         "absent_case": f"EXERCISED by direct probe ({E_SHIP}): an absent entity_id is refused "
                        "'book not accessible'.",
         "tenancy": f"EXERCISED by direct probe ({E_SHIP}): a foreign entity_id refuses IDENTICALLY.",
