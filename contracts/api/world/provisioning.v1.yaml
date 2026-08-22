@@ -413,6 +413,49 @@ paths:
             is a fault rather than a shrug.
           $ref: "#/components/responses/Problem"
 
+  /internal/v1/world/seed:
+    post:
+      operationId: seedWorld
+      summary: Give an existing reality its world structure
+      description: |
+        `A4`. Seeds the `channels` / `map_layout` / `place` rows for a reality
+        that **already exists**.
+
+        `seed_world`'s only production caller was the provisioner's
+        `seed_world_structure` step, which runs at provision time and only then.
+        Every reality provisioned before that step existed therefore had no way
+        to reach the producer at all — leaving hand-written `INSERT`s as the only
+        route, which is what `I-3` refuses for migrations and for the same reason.
+
+        It is the **same function** the provisioner calls, so `PF_001` §5,
+        `SPG-A3`'s containment matrix and `DP-Ch1`'s depth are enforced once.
+
+        **Idempotent.** A re-seed answers `200` with three zeroes — the honest
+        "nothing to do", and distinguishable by the caller from a first seed.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SeedWorldRequest" }
+      responses:
+        "200":
+          description: |
+            What was written. Zeroes are the idempotent case, not a failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeedWorldResponse" }
+        "400":
+          description: |
+            Includes `world-rejected`, carrying the `rule_id` of the clause that
+            refused — a refusal is the operator's to fix and retrying without
+            changing the declaration will refuse again, which is why it is
+            separated from the `500` rather than collapsed into it.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/Problem" }
+
 components:
   securitySchemes:
     internalToken:
@@ -794,6 +837,51 @@ components:
           type: [string, "null"]
           description: '`null` unless the node is a `Domain` carrying a `place` row.'
 
+    SeedWorldRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, world]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+          description: The reality to seed. It must already exist and be bindable.
+        world:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items: { $ref: "#/components/schemas/NodeDecl" }
+          description: |
+            The authored declaration, as `contracts/world/*.json` spells it.
+
+            **Required, with no default.** `ProvisionRequest.world` defaults to
+            empty because there empty means "this provision does not seed"; here
+            an empty body would mean "seed nothing" and would answer `200` with
+            three zeroes — indistinguishable from a successful re-seed.
+
+            `maxItems` is BINARY CAPACITY, not a world limit: it bounds what one
+            request may cost the process, and a larger world is not wrong, only
+            not something to push through a single HTTP call.
+
+    SeedWorldResponse:
+      type: object
+      additionalProperties: false
+      required: [reality_id, channels_written, layouts_written, places_written]
+      properties:
+        reality_id: { type: string, format: uuid }
+        channels_written:
+          type: integer
+          format: int64
+          description: New `channels` rows. Zero on a re-seed.
+        layouts_written:
+          type: integer
+          format: int64
+          description: New `map_layout` rows. Zero on a re-seed.
+        places_written:
+          type: integer
+          format: int64
+          description: New `place` rows. Zero on a re-seed.
+
     WhereIsRequest:
       type: object
       additionalProperties: false
@@ -835,9 +923,9 @@ components:
           type: integer
           format: int64
           description: '`in_cell` only — the `channels.id` the entity occupies.'
-        kind_of_node:
+        node_kind:
           type: string
-          description: 'The node''s `MapKind`. Named `node_kind` and not `kind` because the discriminant already owns `kind` -- a field of that name would emit a DUPLICATE JSON key and destroy the tag.'
+          description: 'The node''s `MapKind`. Named `node_kind` and not `kind` because the discriminant already owns `kind` -- a field of that name would emit a DUPLICATE JSON key and destroy the tag. The rename reached the description here before it reached this KEY, which read `kind_of_node` and matched nothing on the wire.'
         level_name:
           type: string
           description: '`in_cell` only — the reality''s own word for the level (`DP-A13`).'

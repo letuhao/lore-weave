@@ -10,7 +10,7 @@ use axum::routing::post;
 use service_http::{health, require_internal};
 use tower_http::timeout::TimeoutLayer;
 
-use crate::server::handlers::{actor_control, realities, space};
+use crate::server::handlers::{actor_control, realities, space, world};
 use crate::server::state::AppState;
 
 /// 256 KiB request-body cap. A provision request is a handful of scalars;
@@ -78,6 +78,11 @@ pub const ROUTES: &[RouteSpec] = &[
     // `A4` — "where is entity N". Internal for the same reason: the request
     // names the entity it asks about.
     RouteSpec { method: "post", path: "/internal/v1/space/where-is", gate: Gate::Internal },
+    // `A4` — "give THIS reality a world". The only production caller of
+    // `seed_world` was the provision step, which runs at provision time and
+    // only then, so for a reality that already exists the producer was
+    // unreachable. Internal because it WRITES the shape of a world.
+    RouteSpec { method: "post", path: "/internal/v1/world/seed", gate: Gate::Internal },
 ];
 
 /// Assemble the service router.
@@ -92,6 +97,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/actor-control/subject", post(actor_control::resolve_subject))
         .route("/internal/v1/space/view", post(space::view))
         .route("/internal/v1/space/where-is", post(space::where_is))
+        .route("/internal/v1/world/seed", post(world::seed_world))
         .layer(from_fn_with_state(state.clone(), require_internal::<AppState>));
 
     Router::new()

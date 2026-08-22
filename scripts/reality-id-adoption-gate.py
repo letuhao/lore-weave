@@ -316,6 +316,18 @@ INPUT_BOUNDARY: dict[str, str] = {
         "`&dp::RealityId` downward: `space_view::assemble` and `node_at` both "
         "take the verified type as of `C3`."
     ),
+    "services/world-service/src/server/handlers/world": (
+        "the HTTP INPUT the bind consumes, and the same shape as the `space` "
+        "entry beside it. The two sites are wire DTO fields -- "
+        "`SeedWorldRequest.reality_id` and `SeedWorldResponse.reality_id` -- "
+        "carrying a uuid decoded from a request body before any control-plane "
+        "call exists. The handler binds on its next statement. It then hands "
+        "the RAW uuid to `world_seed::seed_world`, and that is not an oversight "
+        "being waved through: `seed_world` is shared with the PROVISIONER, "
+        "which is mid-provision and has no reality to bind yet -- the same "
+        "reason `provisioner` is structurally exempt. Adopting there would mean "
+        "adopting a type the provisioner cannot produce."
+    ),
     "services/world-service/src/server/handlers/actor_control": (
         "the HTTP INPUT the bind consumes. The sites are wire DTO fields — "
         "`GrantRequest`/`RevokeRequest`/`CreateActorRequest` and the two "

@@ -22,6 +22,12 @@ The place can now be built and an actor can now be put in it. **No running reali
 
 ## 1 · Why this run exists — measured 2026-08-22 at `f1e09a64d`
 
+> **EVERY NUMBER IN THIS SECTION IS NOW HISTORY.** It is the state the run STARTED from and is kept
+> because a board that quietly rewrites its own premise cannot be audited. As of the close: all ten
+> realities are at `0030_encounter` with the seven tables, and one of them has a world. The title
+> above says *"no running reality has a world"* — that was true when it was written and is the thing
+> this board fixed.
+
 | what | measured |
 |---|---|
 | realities on this shard | **10** (`lw_reality_*`), all `status=active` — **the first draft of this table said 9; see `WD-2`** |
@@ -253,7 +259,7 @@ refusing it.
 | `"market"` restored | *"node 5 declares place_type `market`, which `0026_place`'s `place_type_closed` would refuse"* — **without a database** |
 
 **Live evidence:** `A3 AUTHORED WORLD: 5 nodes, 2 places, from contracts/world/demo_v1.json`.
-| `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[~]` | **THE CHAIN IS BUILT AND PROVEN END TO END — §3.8 — on the THROWAWAY demo stack. 2 passed on chromium; the bite (unsite the actor) reds.** What remains is the substitution onto one of the ten, which is `A2`'s authorisation |
+| `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[x]` | **DONE 2026-08-22 — §3.8, §3.9. THE SUBSTITUTION IS MADE: `lw_reality_00c7e2c5cabc`, one of the ten, has a world, an actor in the tavern, and a browser saying so. 2 passed on chromium; the bite reds with *"no place"*.** Every write went through an endpoint — the seed producer had to be BUILT first, because it was unreachable for a reality that already existed |
 
 #### 3.1 · `A1` — what `migrate` actually does, read at `HEAD`
 
@@ -334,6 +340,80 @@ the assertion reds with *"no place — is the actor sited…"*. Restored; green 
 **What is borrowed:** the demo's reality lives in `loreweave_kernel_state_smoke_*`, a throwaway. It
 is not one of the ten. `A4` therefore stays `[~]`: **the mechanism is proven, the subject is not the
 real one**, and swapping it is exactly what `A2`'s authorisation unlocks.
+
+#### 3.9 · `A4` — the substitution, and the producer that had to be built to make it
+
+**Swapping the reality was not a one-line change, and the reason is the finding.**
+
+`seed_world` had exactly ONE production caller: the provisioner's `seed_world_structure` step, which
+runs **at provision time and only then**. All ten realities were provisioned before that step
+existed. So for every reality that actually exists, the producer was **unreachable** — not missing,
+not deferred, *unreachable*, **which reads exactly like reachable until somebody tries**. It is
+`A3`/`OR-3` one level up: that row asked *"does anything DECLARE a world"*, and the answer turned out
+to be *"yes, and nothing can apply it to a reality that already exists"*.
+
+That left hand-written `INSERT`s as the only route — what `kernel-state-demo.sh` does, under a
+comment saying so, and what `I-3` refuses for migrations for the same reason. Rule 8 says a
+`BLOCKED` that means *"I would have to build it"* is not a blocker, so:
+
+**`POST /internal/v1/world/seed`** — `handlers/world.rs`, contract, route table, gate exemption and
+baseline. It validates nothing itself: it binds the reality and calls **the same `seed_world`** the
+provisioner calls, so `PF_001` §5, `SPG-A3` and `DP-Ch1` are enforced in one place for both callers.
+A refusal is a `400` carrying the `rule_id`; a database failure is a `500` — `SeedError` already
+separates them, and collapsing them at the one boundary a human reads would waste that.
+
+**`scripts/smoke/world-in-a-running-reality.sh` — and NOT ONE `INSERT` IN IT.** That is the whole
+difference from the demo script it sits beside: every write goes through `/world/seed`, `/actors`,
+`/actor-control/grant`, and the run is verified by `/space/where-is`. **A demo that reaches past the
+API proves the database, not the system.** It also refuses twice before touching anything: an unknown
+reality, and a reality behind the manifest — the second checked against the ledger `A2` gave a writer.
+
+**Live, against `lw_reality_00c7e2c5cabc`:**
+
+```
+  == reality 00c7e2c5-… -> lw_reality_00c7e2c5cabc (at 0030_encounter)
+  == seeding the authored world (contracts/world/demo_v1.json)
+  == creating an actor sited in node 4
+     {"actor_id":"4d471d50-…","entity_id":4}
+  == where is entity 4?
+     {"whereabouts":{"kind":"in_cell","entity_id":4,"node":4,
+                     "node_kind":"domain","level_name":"yen-vu-lau","place_name":"Yen Vu Lau"}}
+
+  running-reality.spec.ts  ·  2 passed (chromium)
+```
+
+**Three defects found by running it, and the third is the one that outlives the row:**
+
+| # | defect | how it surfaced |
+|---|---|---|
+| 1 | `curl`/`python` are WINDOWS binaries and resolve `/tmp/x` against the current drive, while bash's `/tmp` is under AppData | every response was written to one path and read from the other: *"No such file or directory"* for a body it had just received. `cygpath -m` is the one spelling all three read |
+| 2 | `expect_200` on `/actors`, which **CREATES and says `201`** | `!! actors -> HTTP 201` — a check failing on the thing it checks for. **Second of that shape this session**, after the after-check comparing a boolean to `t` |
+| 3 | **the script was not re-runnable** — `world/seed` is idempotent and `/actors` is not | three partial runs left three actors in the same tavern. Fixed by asking `/actor-control/subject` FIRST: the driver's own binding is the idempotence key, read through the API like everything else |
+
+**And the grant needed the REAL meta-bridge.** `kernel-state-demo` never noticed, because it `INSERT`s
+`actor_control_binding` straight into its own throwaway meta — precisely the shortcut this script
+exists not to take. A placeholder token answers `grant: 401 unauthorized`, five steps in.
+
+**THE BITE — additive, not destructive, and it isolates the right claim.** The earlier bite deleted
+the binding; deleting a row from a live reality to prove a test works is not a trade worth making, and
+`R-52` says evacuate rather than delete. So instead: a SECOND driver whose actor is created **with no
+siting** (`Siting` is optional and its absence is a real answer — the actor exists and is nowhere).
+`where-is` answers `{"kind":"unbound"}`, and the suite reds:
+
+```
+  Error: no place — is the actor sited, does its node carry a place row, …
+  2 failed
+```
+
+**`you are entity 5` rendered first and passed.** So the failure is at the place and only at the
+place — the bite proves the assertion DISCRIMINATES rather than merely that it can fail. Restored by
+pointing the room back at the sited driver: **2 passed**.
+
+**What this run deliberately does NOT assert, said rather than left to be assumed:** no roster entry
+and no turn number. A real reality has no committed events; asserting `turn 0` would assert nothing,
+and committing one would mean running the spine against it — which `G3` already proves on a stack
+built for it. The claim is exactly: *the world exists in a real reality, an actor is in it, and the
+browser renders where.*
 #### 3.5 · `B1` — the fourth stale reflection, corrected precisely
 
 The game-tier board's slice table read `| **3** | RealityId + SessionContext | ⬜ *board TBD* |`.
@@ -442,6 +522,8 @@ and counted rather than lumped.
 |---|---|---|
 | **OR-1** | **Three tables stay deferred with triggers** — `portal`, `encounter`, `layer_registry` — and this board does not reopen them. `space_producer_triggers.rs` reds when each owner arrives | already mechanised; `deferral-gate` counts them |
 | **OR-2** | **`reality_seeder` still has 0 production constructors.** Decided in the predecessor's `A2`: the `seeding` stage works synchronously and the orchestrator is a named debt | seeding work outgrowing an HTTP request |
+| **OR-6** | **NO playwright suite runs in CI — not this run's new one, and not `kernel-state` either.** Found while looking for where to register `running-reality.spec.ts`: `.github/workflows/*.yml` contains no `playwright` step at all, so every browser assertion in this repo is a thing a human runs by hand. Both suites SKIP without `LOREWEAVE_E2E_FULL=1`, so a naive leg would go green having asserted nothing — which is why this is an open row and not a one-line patch | a CI leg that stands the stack up AND fails when the suite skips; the Rust side solved the same problem with `live-suite-registry-gate`'s subject floor |
+| **OR-7** | **The world declaration is one file and every reality gets the same five nodes.** `demo_v1.json` is a DEMO, and `/world/seed` will happily apply it to all ten. Nothing yet says which world a given reality is supposed to have — `D-3` refused a hardcoded starter world, and this is the same question one layer out | a reality knowing its own world declaration, rather than the caller choosing |
 
 ---
 
@@ -451,6 +533,8 @@ and counted rather than lumped.
 
 | id | what happened |
 |---|---|
+| **WD-4** | **Plan mode proved the plan and I read it as proving the run.** Nine green dry runs stood behind `A2` for a whole session, and the first `--confirm` immediately hit an allowlist path that dry run never resolves, then an after-check that had never executed and could only ever fail. **Neither was a new defect** — both were sitting in the file the plans were run against. A dry run is evidence about the DECISION, not about the code that carries it out, and I had been treating "nine plans, rc=0" as though it were the latter |
+| **WD-3** | **Three orphan actors in a real reality, left by my own partial runs.** `world/seed` is idempotent and `/actors` is not; before the `subject`-first fix, each failed run created one more actor sited in the same tavern. `lw_reality_00c7e2c5cabc` now holds **5 actors, 4 sited**, of which entities 1, 2 and 3 are litter with no live binding. **They are being LEFT, deliberately**: removing them means hand-run `DELETE`s against a live reality to tidy up my own mistake, which is a worse act than the litter and is what `R-52` (evacuate, never delete) exists to refuse. Recorded here so the next reader knows what they are rather than finding three unexplained actors |
 | **WD-2** | **I wrote "nine realities" and there are TEN.** It reached the board's §1, the RESUME line, the goal prompt and a commit message before `A1` counted properly. The original probe loop listed ten rows and I read nine — **a number I produced from a listing rather than from a `count(*)`**, which is the same class as `PD-4` (a claim taken from a document instead of measured). `A1` also found the fleet is not uniform: **two cohorts, not one** |
 | **WD-1** | **The verification script for the previous goal was WRONG, and it said the goal was not met.** It took the FIRST `#[cfg(test)]` in a file as a cut-off; `provisioner_live.rs` has one at line 483 followed by 250 lines of production, so the real `seed_world` call at 632 was filed as test and reported `prod=0`. **The controls did not catch it** — in both control files every `#[cfg(test)]` sits below every call site, so the cut-off happened to land correctly. *A control only proves what it exercises.* The tool can only UNDER-report, so no earlier conclusion changed |
 
@@ -458,7 +542,7 @@ and counted rather than lumped.
 
 ## 7 · RESUME
 
-**RESUME: `A2` — STOPPED FOR AUTHORISATION (§3.3). It is now the ONLY thing left: `A1`, `A3`, `B1`, `B2`, `C1` are done and `A4`'s whole chain is built and proven end to end on the throwaway stack (§3.8), browser included. What `A2` unlocks is the substitution of a REAL reality for the borrowed one — nothing else.**
+**RESUME: THE BOARD IS CLOSED — 7 of 7. `lw_reality_00c7e2c5cabc`, one of the ten that already existed on this shard, has a world, an actor in the tavern, and a browser saying `at Yen Vu Lau`; all ten are at `0030_encounter`. The next run starts from `OR-6` (no playwright suite runs in CI) and `OR-7` (every reality would get the same five nodes) — both found by closing this one, and neither reopened here.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is
