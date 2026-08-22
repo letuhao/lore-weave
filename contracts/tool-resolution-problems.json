@@ -255,6 +255,11 @@
       "notes": {
         "glossary_propose_translation": "Batch 12's CONTROL — the only tool whose declared synonyms appeared VERBATIM in the prompt, surfaced 3/3 in both arms, and it went 1/3 -> 0/3 called, answering with Vietnamese name suggestions in prose. With surfacing fixed everywhere, this is the residual class.",
         "propose_edit": "Declares NO synonyms at all, so answerability cannot reach it; only the frontend advertisement puts it in play. Asked to make a line darker AND to show the change first, the model offered three rewrites as chat prose — the author gets text to copy instead of an Apply button, which is the entire value of the tool."
+      },
+      "prep_2026_08_22": {
+        "propose_edit": "MEASURED: it declares NO synonyms, so answerable_tools can never reach it and only the editor-surface frontend advertisement puts it in play. Its row says surfaced 3/3, called 0/3: asked to darken the opening line AND show the change before it goes in, the model returned three rewrites as prose - the author gets text to copy instead of an Apply button, which is the tool's entire value.\n\n🔴 THE FIX BELONGS IN ai-gateway, NOT WHERE THE TOOL APPEARS. Since P2.2 the tool is owned by services/ai-gateway/src/mcp/propose-edit-tool.ts (a CONSUMER-LOCAL tool) whose _meta is {tier:'R', scope:'none'} with no synonyms field at all. chat-service's PROPOSE_EDIT_TOOL is a leftover advertisement fallback that its own comment requires to stay BYTE-IDENTICAL to the gateway copy, pinned by TestResidualAdvertisedDefsMatchContract::test_description_matches_ai_gateway. Editing the copy would break that gate and change nothing the model sees.",
+        "tool_load": "NOT a defect and must not be 'fixed' the same way. It also declares no synonyms, but answerability is keyed on the AUTHOR's words and no author asks to load a tool schema. P10-TOOL-LOAD is about the MODEL reaching for the lazy tail; synonyms there would be aimed at the wrong reader entirely.",
+        "kg_triage_schema_write": "Its row is a SURFACING row (0/5) and is in the re-baseline batch. It is also one of the 31 tools whose refusal now names and arms a supplier (kg_triage_list), verified against the deployed builder."
       }
     },
     {
