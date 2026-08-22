@@ -59,7 +59,6 @@ from __future__ import annotations
 # (its docstring explains why INT64_MAX over INT32_MAX), and F3 must not mint a
 # second, drifting copy.
 from app.db.neo4j_repos.events import _NULL_ORDER_SENTINEL
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_write
 
 __all__ = [
@@ -283,7 +282,7 @@ async def restitch_chains_after_retract(
     """
     fact_res = await run_write(
         session,
-        render(_RESTITCH_ALL_FACT_CHAINS_CYPHER, "neo4j"),
+        _RESTITCH_ALL_FACT_CHAINS_CYPHER,
         user_id=user_id,
         project_id=project_id,
         open_ceiling=ORDINAL_OPEN_CEILING,
@@ -291,7 +290,7 @@ async def restitch_chains_after_retract(
     fact_row = await fact_res.single()
     rel_res = await run_write(
         session,
-        render(_RESTITCH_ALL_RELATION_CHAINS_CYPHER, "neo4j"),
+        _RESTITCH_ALL_RELATION_CHAINS_CYPHER,
         user_id=user_id,
         project_id=project_id,
         open_ceiling=ORDINAL_OPEN_CEILING,

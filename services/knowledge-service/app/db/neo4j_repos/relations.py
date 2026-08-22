@@ -40,7 +40,6 @@ from pydantic import BaseModel, Field
 # Re-exported below for back-compat with non-extraction call sites.
 from loreweave_extraction.canonical import relation_id
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.temporal import (
     MAINTAIN_RELATION_CHAIN_CYPHER,
@@ -344,7 +343,7 @@ async def create_relation(
     if cardinality == "single_active":
         await run_write(
             session,
-            render(_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER, "neo4j"),
+            _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER,
             user_id=user_id,
             relation_id=rid,
             subject_id=subject_id,
@@ -352,7 +351,7 @@ async def create_relation(
         )
     result = await run_write(
         session,
-        render(_CREATE_RELATION_CYPHER, "neo4j"),
+        _CREATE_RELATION_CYPHER,
         user_id=user_id,
         relation_id=rid,
         subject_id=subject_id,
@@ -382,7 +381,7 @@ async def create_relation(
         await run_write(
             session,
             # §10.2 — engine-chosen timestamp token.
-            render(MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j"),
+            MAINTAIN_RELATION_CHAIN_CYPHER,
             user_id=user_id,
             subject_id=subject_id,
             predicate=predicate,
@@ -533,11 +532,17 @@ WHERE (subj.id = $entity_id OR obj.id = $entity_id)
   AND ($include_archived_peer
        OR (subj.id = $entity_id AND obj.archived_at IS NULL)
        OR (obj.id = $entity_id AND subj.archived_at IS NULL))
+// ⚠️ Ordered on `r`, NOT on the `rel` alias the RETURN creates. Neo4j allows either; AGE
+// compiles the RETURN into a SQL select list and cannot see an alias defined there from its
+// ORDER BY — `could not find rte for rel`. Found by running this function against AGE (T83),
+// not by review. The two single-direction templates above already order on `r` for the same
+// reason they always did: it reads better. This one had drifted.
+WITH r, subj, obj
+ORDER BY r.confidence DESC, r.predicate ASC
+LIMIT $limit
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
        properties(obj) AS obj
-ORDER BY rel.confidence DESC, rel.predicate ASC
-LIMIT $limit
 """
 
 _DIRECTION_TO_CYPHER: dict[str, str] = {
@@ -1312,7 +1317,7 @@ async def recreate_relation(
     )
     result = await run_write(
         session,
-        render(_RECREATE_RELATION_CYPHER, "neo4j"),
+        _RECREATE_RELATION_CYPHER,
         user_id=user_id,
         relation_id=rid,
         subject_id=subject_id,
@@ -1369,7 +1374,7 @@ async def invalidate_relation(
         raise ValueError("relation_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_INVALIDATE_RELATION_CYPHER, "neo4j"),
+        _INVALIDATE_RELATION_CYPHER,
         user_id=user_id,
         relation_id=relation_id,
         valid_until=valid_until,

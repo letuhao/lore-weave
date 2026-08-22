@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: class (d) 34 — the modules needing a port operation that does not exist. The dialect path is closed; this is the other one.**
+**RESUME: extend the AGE proof past 12 — `facts`, `events`, `hierarchy` and the temporal chain are untried on it.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,94 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 🔴 T83 2026-08-22 — **"dialect 0" was NOT portability, in three ways — and the repo layer now runs on AGE**
+
+  ```
+  12 / 12 real neo4j_repos functions run against a live AGE graph, UNCHANGED
+  engine literals in the repo layer   51  ->  0     (a NEW ratchet; the old one could not see them)
+  knowledge unit 4329 -> 4336 · DB integration 624 -> 626 passed, 0 failed
+  ```
+
+  📐 §10.1 names **two** things binding the layer to Neo4j: *"the Cypher dialect **and the
+  session type**"*. T82 closed the dialect and the ratchet read zero. **That reading was not the
+  claim it looked like**, and running the layer against the other engine — which nothing had
+  ever done — found three separate reasons why.
+
+  🔴 **1 · 51 hardcoded engine literals the dialect scan cannot see.** Every call site said
+  `render(TEMPLATE, "neo4j")` — 51 of them across 11 modules. A string naming the engine is not
+  a Neo4j-only Cypher construct, so the number stayed at zero while the layer named one engine
+  51 times. The very first repo call against AGE failed on `function datetime does not exist`.
+  The engine now comes from the session (`engine_of`), rendering moved into
+  `run_read`/`run_read_any_owner`/`run_write`, and a **new ratchet counts the literals** —
+  because the defect was invisible to the old one by construction.
+
+  🔴 **2 · Seven call sites bypass those helpers, and lost their render with the other 51.**
+  `enrichment` (5), `entities._GLOSSARY_ANCHOR_SYNC_CYPHER`, `hierarchy._UPSERT_CYPHER`. Four
+  unit suites and 620 integration tests were green at that moment; the only thing that could
+  tell was a query reaching a real database — `Invalid input '}': expected ':'`, because Cypher
+  reads a bare `{NOW}` as a map literal. My regex fixed 6 of 7; **the AST-derived test I then
+  wrote found the seventh on its first run.**
+
+  🔴 **3 · Two queries were valid Cypher on Neo4j and rejected outright by AGE** — both written
+  days earlier in this same migration, both passing every Neo4j test:
+
+  ```
+  RETURN DISTINCT e … ORDER BY   ->  for SELECT DISTINCT, ORDER BY expressions must appear
+                                     in select list          (now `WITH DISTINCT e`)
+  ORDER BY rel.confidence        ->  could not find rte for rel — AGE cannot order by an alias
+                                     the RETURN defines       (now ordered on `r`)
+  ```
+
+  ⚙️ **The adapter's own header was wrong, and it was load-bearing.** `age_graph_store` states
+  as difference 4 that *"parameters do not reach Cypher"* and that values are therefore
+  interpolated — which is why `_lit` exists and calls itself *"the tenancy boundary, not a
+  formatting helper"*. Measured against AGE **1.7.0 / PostgreSQL 18.4**:
+
+  ```
+  named $user_id from the agtype map      OK        a LIST parameter                  OK
+  several parameters at once              OK        a parameter in MERGE + SET        OK
+  a NULL parameter in an optional filter  OK        a hostile string                  OK — as DATA
+  ```
+
+  So values bind, and a hand-rolled escaper stands where the engine offers the property
+  structurally. `app/db/age_session.py` binds; the header is corrected rather than left for
+  someone to inherit as fact. Migrating the adapter itself onto bound parameters is a separate
+  unit — the claim is what is fixed here.
+
+  🔬 **Six bites, and the sixth found a criterion that could not fail.**
+
+  ```
+  1  AgeCypherSession drops `engine = "age"`        RED  both AGE tests
+  2  the helpers hardcode "neo4j" again             RED  4 tests
+  3  one bypass site loses its render               RED  the AST scan, by name
+  4  RETURN DISTINCT + ORDER BY restored            RED  the AGE run
+  5  AgeVertex exposes the ENVELOPE, not properties RED  the AGE run
+  6  one engine literal reintroduced             ✅GREEN  -> THE RATCHET WAS BLIND
+  ```
+
+  ⚠️ Bite 6's green was the new ratchet's own regex: `\\1` had collapsed to a literal `\\x01`
+  control character in the pattern — the **third heredoc backslash loss this run** — leaving
+  `(['"])(neo4j|age)\\x01`, which matches nothing. A ratchet added in the same commit as the
+  fix it protects, that could never fire. Rebuilt with a named backreference and validated on
+  five cases including `"neo4jish"` and a Cypher comment; bite 6 now fails it by name.
+
+  ⚠️ **And `AgeCypherSession`'s first run omitted `engine = "age"`** — `engine_of` fell back to
+  Neo4j and every query failed at the database. That fallback is correct for a Bolt session and
+  silently wrong for anything else, which is the same hazard as the 51 literals one layer up.
+  It is asserted now, not trusted.
+
+  **What this does and does not establish.** Twelve functions across `entities`, `relations` and
+  `provenance` — merge, resolve, read, archive, relate, 1-hop, extraction-source, evidence —
+  execute on both engines from the same source with no branch in them. It does **not** yet cover
+  `facts`, `events`, `hierarchy` or the temporal chain, and `_PROVEN_ON_AGE` is a floor so that
+  number can only rise.
+
+  **QC (a) gates:** unit 4336, `port-adoption-gate` PASS with dialect 0/0 and the new engine
+  literals 0/0 — both ceilings moved in this commit — `--selftest` PASS, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved.
+  **QC (c) real data:** 12 repo functions executed against a live AGE 1.7.0 graph and a
+  throwaway Neo4j, returning domain objects their own Pydantic models accept.
 
   ### ✅ T82 2026-08-22 — **the dialect backlog reaches ZERO: `neo4j_repos` is engine-agnostic**
 

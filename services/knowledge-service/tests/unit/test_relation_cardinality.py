@@ -84,10 +84,10 @@ async def test_single_active_closes_prior_then_creates(mock_run):
     assert mock_run.await_count == 2
     # first query is the close
     first_cypher = mock_run.await_args_list[0].args[1]
-    assert first_cypher == render(m._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER, "neo4j")
+    assert first_cypher == m._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
     # second is the create
     second_cypher = mock_run.await_args_list[1].args[1]
-    assert second_cypher == render(m._CREATE_RELATION_CYPHER, "neo4j")
+    assert second_cypher == m._CREATE_RELATION_CYPHER
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_multi_active_does_not_close(mock_run):
     assert rel is not None
     # only the create query — no close
     assert mock_run.await_count == 1
-    assert mock_run.await_args_list[0].args[1] == render(m._CREATE_RELATION_CYPHER, "neo4j")
+    assert mock_run.await_args_list[0].args[1] == m._CREATE_RELATION_CYPHER
 
 
 @pytest.mark.asyncio
@@ -117,4 +117,4 @@ async def test_none_cardinality_is_legacy_no_close(mock_run):
     )
     assert rel is not None
     assert mock_run.await_count == 1
-    assert mock_run.await_args_list[0].args[1] == render(m._CREATE_RELATION_CYPHER, "neo4j")
+    assert mock_run.await_args_list[0].args[1] == m._CREATE_RELATION_CYPHER

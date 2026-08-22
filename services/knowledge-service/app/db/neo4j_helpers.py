@@ -33,7 +33,7 @@ import asyncio
 import re
 from typing import Any, Protocol
 
-from app.db.cypher_dialect import assert_rendered
+from app.db.cypher_dialect import Engine, assert_rendered, render
 
 __all__ = [
     "CypherSafetyError",
@@ -114,6 +114,30 @@ def assert_user_id_param(cypher: str) -> None:
         )
 
 
+
+
+def engine_of(session: Any) -> Engine:
+    """Which dialect `session` speaks.
+
+    ⚠️ **This function exists because "the dialect backlog is zero" did not mean "the layer is
+    engine-agnostic".** T77-T82 took every Neo4j-only construct out of `neo4j_repos`, and the
+    ratchet duly read 0 — while **51 call sites across 11 modules still said
+    `render(TEMPLATE, "neo4j")`**, naming the engine in a string literal the dialect scan
+    cannot see. Running a real repo function against AGE failed on `function datetime does not
+    exist`: the templates were portable and the RENDERING was pinned.
+
+    So the engine comes from the session, which is the only thing that knows it. A session that
+    declares `engine` is authoritative; one that does not is a Bolt `AsyncSession` or its
+    transaction — the Neo4j driver's own types, which cannot be anything else. That fallback is
+    a FACT about the type, not a default standing in for a missing declaration.
+    """
+    engine = getattr(session, "engine", None)
+    # Only a STRING counts as a declaration. A `MagicMock` answers every attribute with another
+    # mock, so `is not None` would hand `render` a mock and raise from inside two hundred unit
+    # tests that legitimately do not care which engine they are pretending to be.
+    return engine if isinstance(engine, str) else "neo4j"
+
+
 async def run_read(
     session: CypherSession,
     cypher: str,
@@ -127,6 +151,7 @@ async def run_read(
     is structurally impossible. The `assert_user_id_param` call is
     the belt to the driver's suspenders.
     """
+    cypher = render(cypher, engine_of(session))
     assert_user_id_param(cypher)
     assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)
@@ -166,6 +191,7 @@ async def run_read_any_owner(
         raise CypherSafetyError(
             "cypher references $user_id — use run_read(), which enforces the filter"
         )
+    cypher = render(cypher, engine_of(session))
     assert_rendered(cypher)
     return await session.run(cypher, **params)
 
@@ -182,6 +208,7 @@ async def run_write(
     future read/write transaction router (K11.2) can route queries
     to different Neo4j routing contexts without parsing the cypher.
     """
+    cypher = render(cypher, engine_of(session))
     assert_user_id_param(cypher)
     assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)

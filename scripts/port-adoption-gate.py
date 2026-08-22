@@ -780,6 +780,49 @@ _DIALECT_PATTERNS = (
 MAX_NEO4J_DIALECT_SITES = 0
 
 
+#: Engine names written as a string LITERAL inside the repo layer. Zero as of T83.
+#:
+#: 🔴 This ratchet exists because the dialect one reached zero WITHOUT the layer becoming
+#: engine-agnostic. `MAX_NEO4J_DIALECT_SITES` counts Neo4j-only CONSTRUCTS; it cannot see
+#: `render(TEMPLATE, "neo4j")`, and there were **51 of those across 11 modules** when the
+#: dialect number first read 0. Running a real repo function against AGE failed immediately on
+#: `function datetime does not exist`: the templates were portable and the RENDERING was pinned.
+#:
+#: The engine now comes from the session (`neo4j_helpers.engine_of`). A literal here puts the
+#: pin back, in one line, without moving the dialect number at all — which is exactly the shape
+#: of defect §1.3 records about this gate's own ceiling.
+MAX_ENGINE_LITERALS = 0
+
+#: `"neo4j"`/`"age"` as a quoted literal. Matched in CODE STRINGS' surroundings rather than in
+#: the strings themselves: the name appears legitimately INSIDE Cypher (a `:Neo4j` label would
+#: be absurd, but a comment naming the engine is normal), so the scan runs over source lines
+#: with comments removed instead of over `_code_strings`.
+_ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
+
+
+def scan_engine_literals() -> dict[str, list[str]]:
+    """`{module: [offending source lines]}` for engine names hardcoded in the repo layer."""
+    out: dict[str, list[str]] = {}
+    if not os.path.isdir(_DIALECT_ROOT):
+        return out
+    for fname in sorted(os.listdir(_DIALECT_ROOT)):
+        if not fname.endswith(".py"):
+            continue
+        try:
+            src = open(os.path.join(_DIALECT_ROOT, fname), encoding="utf-8",
+                       errors="replace").read()
+        except OSError:
+            continue
+        hits = []
+        for lineno, line in enumerate(src.splitlines(), 1):
+            code = _CYPHER_COMMENT.sub("", line.split("#", 1)[0])
+            if _ENGINE_LITERAL.search(code):
+                hits.append(f"{lineno}: {line.strip()[:100]}")
+        if hits:
+            out[fname[:-3]] = hits
+    return out
+
+
 def _code_strings(src: str) -> str:
     """Every string literal in the module that is NOT a docstring, joined.
 
@@ -1046,6 +1089,24 @@ def main() -> int:
     else:
         print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
               f"the repo layer — §10.1's second path to class (d) zero")
+    literals = scan_engine_literals()
+    n_lit = sum(len(v) for v in literals.values())
+    if n_lit > MAX_ENGINE_LITERALS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {n_lit} hardcoded engine name(s) in the "
+              f"repo layer (ceiling {MAX_ENGINE_LITERALS}).{chr(10)}")
+        for mod, hits in literals.items():
+            for h in hits:
+                print(f"    {mod}.py:{h}")
+        print(f"{chr(10)}  The engine belongs to the SESSION — `run_read`/`run_write` render "
+              f"with{chr(10)}  `engine_of(session)`. A literal here pins the layer to one "
+              f"engine while the{chr(10)}  dialect count still reads zero (T83).{chr(10)}")
+        return 1
+    if n_lit < MAX_ENGINE_LITERALS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — engine literals fell to {n_lit}, the "
+              f"ceiling still says {MAX_ENGINE_LITERALS}.{chr(10)}")
+        return 1
+    print(f"[port-adoption-gate] engine literals {n_lit}/{MAX_ENGINE_LITERALS} — the repo "
+          f"layer names no engine; the session does")
     print("[port-adoption-gate] PASS — exactly at the ceiling; it can only fall")
     return 0
 

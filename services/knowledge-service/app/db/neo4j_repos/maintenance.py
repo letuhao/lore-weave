@@ -22,7 +22,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from app.db.cypher_dialect import assert_rendered, render
-from app.db.neo4j_helpers import CypherSession, assert_user_id_param, run_write
+from app.db.neo4j_helpers import (
+    CypherSession,
+    assert_user_id_param,
+    engine_of,
+    run_write,
+)
 
 # T17 A10 / spec §1.2 — the two label vocabularies are facts about the CORPUS, so they live
 # in `app/domain/` and are re-exported here. One definition; every existing importer keeps
@@ -148,11 +153,13 @@ async def invalidate_stale_quarantined_facts(
     # NOT run_write: it types user_id as str, and this is the one caller that legitimately
     # passes None. The $user_id reference check still applies — the Cypher handles the NULL
     # branch explicitly via `($user_id IS NULL OR f.user_id = $user_id)`.
-    cypher = render(_QUARANTINE_CLEANUP_CYPHER, "neo4j")
+    # T83 moved rendering into `run_read`/`run_write`, keyed on the SESSION's engine rather
+    # than a hardcoded literal. This is the one repo call that bypasses those helpers, so it
+    # is the one place that still has to render for itself — and the one place `assert_rendered`
+    # still has teeth. `engine_of` is used rather than `"neo4j"`: naming the engine here would
+    # reintroduce, in a single line, exactly the defect T83 removed from 54 others.
+    cypher = render(_QUARANTINE_CLEANUP_CYPHER, engine_of(session))
     assert_user_id_param(cypher)
-    # This is the one repo call that bypasses `run_write` (see above), so it is also the one
-    # place `assert_rendered`'s chokepoint does not cover. Called explicitly rather than left
-    # to the fact that `render` happens to run one line up.
     assert_rendered(cypher)
     result = await session.run(
         cypher,
@@ -241,7 +248,7 @@ async def reconcile_evidence_count_for_label(
     if label not in RECONCILE_LABELS:
         raise ValueError(f"label must be one of {RECONCILE_LABELS}, got {label!r}")
     result = await run_write(
-        session, render(_RECONCILE_CYPHER[label], "neo4j"),
+        session, _RECONCILE_CYPHER[label],
         user_id=user_id, project_id=project_id, limit=limit,
     )
     record = await result.single()

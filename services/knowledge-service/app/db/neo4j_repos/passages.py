@@ -22,7 +22,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 __all__ = [
@@ -268,13 +267,15 @@ async def upsert_passage(
 
     # Dim was validated above against the closed set SUPPORTED_PASSAGE_DIMS,
     # so this f-string substitution has no injection surface.
-    # ⚠️ ORDER: `.format()` FIRST, then `render()`. The other way round substitutes
-    # `{NOW}` -> `datetime()` and `.format()` then reads `{datetime()}` as a format
-    # field and raises KeyError. This template is BOTH a str.format template and a
-    # dialect template; only one order works.
-    cypher = render(_UPSERT_PASSAGE_CYPHER_TEMPLATE.format(
+    #
+    # ⚠️ This template is BOTH a `str.format` template and a dialect template, which is why it
+    # writes `{{NOW}}`: `.format()` turns that into `{NOW}`, and `run_write` renders it for the
+    # session's engine. Rendering FIRST would leave `.format()` reading `{datetime()}` as a
+    # format field and raising `KeyError`. Only one order works, and now only one order is
+    # possible — the render moved into `run_write` (T83), so nothing here can get it wrong.
+    cypher = _UPSERT_PASSAGE_CYPHER_TEMPLATE.format(
         embed_prop=f"embedding_{embedding_dim}",
-    ), "neo4j")
+    )
 
     result = await run_write(
         session,
@@ -524,7 +525,7 @@ async def set_source_lang_for_source(
     """
     result = await run_write(
         session,
-        render(_SET_SOURCE_LANG_CYPHER, "neo4j"),
+        _SET_SOURCE_LANG_CYPHER,
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
@@ -570,7 +571,7 @@ async def set_canon_for_source(
     """
     result = await run_write(
         session,
-        render(_SET_CANON_CYPHER, "neo4j"),
+        _SET_CANON_CYPHER,
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,

@@ -205,7 +205,7 @@ async def test_merge_fact_absent_date_is_null_safe_with_ordinal_chain(mock_run):
     assert first["valid_from_ordinal"] == 500     # ordinal axis intact
     cyphers = [c.args[1] for c in mock_run.await_args_list]
     # §10.2 — compare the RENDERED query; the template carries `{NOW}`.
-    assert render(fm.MAINTAIN_FACT_CHAIN_CYPHER, "neo4j") in cyphers  # chain still maintained
+    assert fm.MAINTAIN_FACT_CHAIN_CYPHER in cyphers  # chain still maintained
 
 
 # ── create_relation threads the value ───────────────────────────────────

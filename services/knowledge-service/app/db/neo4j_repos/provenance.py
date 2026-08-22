@@ -40,7 +40,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.entities import delete_entities_with_zero_evidence
 from app.db.neo4j_repos.entity_status import (
@@ -199,7 +198,7 @@ async def upsert_extraction_source(
     )
     result = await run_write(
         session,
-        render(_UPSERT_SOURCE_CYPHER, "neo4j"),
+        _UPSERT_SOURCE_CYPHER,
         user_id=user_id,
         id=sid,
         project_id=project_id,
@@ -431,7 +430,7 @@ async def add_evidence(
     probe_row = await probe.single()
     created = (probe_row is None) or int(probe_row["n"]) == 0
 
-    cypher = render(_ADD_EVIDENCE_CYPHER[target_label], "neo4j")
+    cypher = _ADD_EVIDENCE_CYPHER[target_label]
     result = await run_write(
         session,
         cypher,
@@ -596,7 +595,7 @@ async def remove_evidence_for_source(
         raise ValueError("source_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_REMOVE_EVIDENCE_FOR_SOURCE_CYPHER, "neo4j"),
+        _REMOVE_EVIDENCE_FOR_SOURCE_CYPHER,
         user_id=user_id,
         source_id=source_id,
     )

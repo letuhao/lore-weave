@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field, computed_field
 from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import (
     CypherSession,
+    engine_of,
     in_retried_transaction,
     run_read,
     run_read_any_owner,
@@ -388,7 +389,7 @@ async def merge_entity(
 
     result = await run_write(
         session,
-        render(_MERGE_ENTITY_CYPHER, "neo4j"),
+        _MERGE_ENTITY_CYPHER,
         user_id=user_id,
         id=canonical_id,
         project_id=project_id,
@@ -456,7 +457,7 @@ async def merge_entity_at_id(
     # let the caller fall through.
     result = await run_write(
         session,
-        render("""
+        """
         MATCH (e:Entity {id: $id})
         WHERE e.user_id = $user_id
         SET e.aliases = CASE
@@ -479,7 +480,7 @@ async def merge_entity_at_id(
             e.version = coalesce(e.version, 1) + 1,
             e.updated_at = {NOW}
         RETURN e
-        """, "neo4j"),
+        """,
         user_id=user_id,
         id=id,
         name=name,
@@ -680,7 +681,7 @@ async def upsert_glossary_anchor_counted(
 
     result = await run_write(
         session,
-        render(_UPSERT_ANCHOR_CYPHER, "neo4j"),
+        _UPSERT_ANCHOR_CYPHER,
         user_id=user_id,
         was_created=was_created,
         id=canonical_id,
@@ -1010,7 +1011,13 @@ WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND (size($exclude_project_ids) = 0
        OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
-RETURN DISTINCT e
+// ⚠️ `WITH DISTINCT e`, not `RETURN DISTINCT e … ORDER BY`. Neo4j accepts both; AGE compiles
+// the RETURN into `SELECT DISTINCT` and then rejects the ORDER BY — *"for SELECT DISTINCT,
+// ORDER BY expressions must appear in select list"*. Deduplicating in a WITH puts the DISTINCT
+// before the sort, which is what it always meant. Found by running this function against AGE
+// (T83); it is valid Cypher on Neo4j and was never going to fail there.
+WITH DISTINCT e
+RETURN e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
@@ -1166,7 +1173,13 @@ WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
   AND (size($exclude_project_ids) = 0
        OR NOT coalesce(e.project_id, '') IN $exclude_project_ids)
-RETURN DISTINCT e
+// ⚠️ `WITH DISTINCT e`, not `RETURN DISTINCT e … ORDER BY`. Neo4j accepts both; AGE compiles
+// the RETURN into `SELECT DISTINCT` and then rejects the ORDER BY — *"for SELECT DISTINCT,
+// ORDER BY expressions must appear in select list"*. Deduplicating in a WITH puts the DISTINCT
+// before the sort, which is what it always meant. Found by running this function against AGE
+// (T83); it is valid Cypher on Neo4j and was never going to fail there.
+WITH DISTINCT e
+RETURN e
 ORDER BY e.anchor_score DESC, e.confidence DESC, e.name ASC
 """
 
@@ -1388,7 +1401,7 @@ async def archive_entity(
     """
     result = await run_write(
         session,
-        render(_ARCHIVE_CYPHER, "neo4j"),
+        _ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
@@ -1421,7 +1434,7 @@ async def user_archive_entity(
     """
     result = await run_write(
         session,
-        render(_USER_ARCHIVE_CYPHER, "neo4j"),
+        _USER_ARCHIVE_CYPHER,
         user_id=user_id,
         id=canonical_id,
         reason=reason,
@@ -1449,7 +1462,7 @@ async def restore_entity(
     """
     result = await run_write(
         session,
-        render(_RESTORE_CYPHER, "neo4j"),
+        _RESTORE_CYPHER,
         user_id=user_id,
         id=canonical_id,
     )
@@ -1488,7 +1501,7 @@ async def restore_entity_by_glossary_id(
     """
     result = await run_write(
         session,
-        render(_RESTORE_BY_GLOSSARY_ID_CYPHER, "neo4j"),
+        _RESTORE_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
         project_id=project_id,
         glossary_entity_id=glossary_entity_id,
@@ -1947,7 +1960,7 @@ async def link_to_glossary(
 
     result = await run_write(
         session,
-        render(_PROMOTE_TO_ANCHOR_CYPHER, "neo4j"),
+        _PROMOTE_TO_ANCHOR_CYPHER,
         user_id=user_id,
         id=canonical_id,
         glossary_entity_id=glossary_entity_id,
@@ -2090,7 +2103,7 @@ async def unlink_from_glossary(
         raise ValueError("canonical_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_UNLINK_GLOSSARY_CYPHER, "neo4j"),
+        _UNLINK_GLOSSARY_CYPHER,
         user_id=user_id,
         id=canonical_id,
     )
@@ -2159,7 +2172,7 @@ async def reset_glossary_anchors(
     """
     result = await run_write(
         session,
-        render(_RESET_GLOSSARY_ANCHORS_CYPHER, "neo4j"),
+        _RESET_GLOSSARY_ANCHORS_CYPHER,
         user_id=user_id,
     )
     record = await result.single()
@@ -2227,7 +2240,7 @@ async def recompute_anchor_score(
     """
     result = await run_write(
         session,
-        render(_RECOMPUTE_ANCHOR_SCORE_CYPHER, "neo4j"),
+        _RECOMPUTE_ANCHOR_SCORE_CYPHER,
         user_id=user_id,
         project_id=project_id,
     )
@@ -2848,7 +2861,7 @@ async def update_entity_fields(
     async def _attempt(tx) -> tuple:
         record = await (await run_write(
             tx,
-            render(_LOCK_AND_READ_ENTITY_CYPHER, "neo4j"),
+            _LOCK_AND_READ_ENTITY_CYPHER,
             user_id=user_id,
             id=entity_id,
         )).single()
@@ -2862,7 +2875,7 @@ async def update_entity_fields(
                 before_raw = record["before"]
                 applied = await (await run_write(
                     tx,
-                    render(_APPLY_ENTITY_FIELDS_CYPHER, "neo4j"),
+                    _APPLY_ENTITY_FIELDS_CYPHER,
                     user_id=user_id,
                     id=entity_id,
                     name=name,
@@ -2921,7 +2934,7 @@ async def unlock_entity_user_edited(
     updated Entity or None when no row matches (router 404s)."""
     result = await run_write(
         session,
-        render(_UNLOCK_ENTITY_CYPHER, "neo4j"),
+        _UNLOCK_ENTITY_CYPHER,
         user_id=user_id,
         id=entity_id,
     )
@@ -3411,7 +3424,7 @@ async def merge_entities(
         if rewire_edges:
             await run_write(
                 tx,
-                render(_MERGE_REWIRE_RELATES_TO_CYPHER, "neo4j"),
+                _MERGE_REWIRE_RELATES_TO_CYPHER,
                 user_id=user_id,
                 edges=rewire_edges,
             )
@@ -3434,7 +3447,7 @@ async def merge_entities(
         #    happens here; dedupe happens below after refetch.
         update_result = await run_write(
             tx,
-            render(_MERGE_UPDATE_TARGET_CYPHER, "neo4j"),
+            _MERGE_UPDATE_TARGET_CYPHER,
             user_id=user_id,
             source_id=source_id,
             target_id=target_id,
@@ -3470,7 +3483,7 @@ async def merge_entities(
     ):
         await run_write(
             session,
-            render(_MERGE_DEDUPE_TARGET_CYPHER, "neo4j"),
+            _MERGE_DEDUPE_TARGET_CYPHER,
             user_id=user_id,
             target_id=target_id,
             aliases=deduped_aliases,
@@ -3764,7 +3777,7 @@ async def sync_glossary_entity_node(
         None if project_id == GLOBAL_PROJECT_SENTINEL else project_id,
         name, kind)
     result = await session.run(
-        render(_GLOSSARY_ANCHOR_SYNC_CYPHER, "neo4j"),
+        render(_GLOSSARY_ANCHOR_SYNC_CYPHER, engine_of(session)),
         user_id=user_id, project_id=project_id,
         glossary_entity_id=glossary_entity_id, canonical_id=canonical_id,
         name=name, canonical_name=canonical_name, kind=kind,

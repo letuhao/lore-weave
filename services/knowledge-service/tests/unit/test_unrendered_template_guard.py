@@ -1,22 +1,24 @@
-"""T79 — a dialect token must never reach the driver, and the guard must be WIRED.
+"""T79/T83 — a dialect token must never reach the driver, and the RENDER must be wired.
 
-`{NOW}` (spec §10.2) is substituted by `render(template, engine)` at the call site that knows
-the engine. The scheme has exactly one failure mode and it is the quiet one: a template gains
-the token and its call site never gains the `render()`. Neo4j then receives a literal `{NOW}`,
-which is a **map literal** in Cypher rather than a syntax error at the point of the mistake, so
-the message comes back about something else entirely. It already happened twice during T64 —
-`.format()` running after `render()` (`KeyError: 'datetime()'`), and `{NOW}` inside an f-string
-needing `{{NOW}}` (68 collection errors).
+`{NOW}` (spec §10.2) is substituted for the session's engine. **T83 moved that substitution
+from the call sites into `run_read`/`run_read_any_owner`/`run_write`**, and the reason is worth
+keeping: with 51 call sites each saying `render(TEMPLATE, "neo4j")`, the dialect ratchet read
+zero while the layer named one engine 51 times, and a real repo function run against AGE failed
+on `function datetime does not exist`.
 
-⚠️ **This file exists because bite B found the guard undefended.** Bite A — dropping the
-`render()` from one call site — went red in 15 places, so the guard demonstrably works. Bite B
-then deleted `assert_rendered` from all three `run_*` entry points and **the whole suite stayed
-green**: nothing pinned the call. A guard that works but is not pinned is one edit from being
-removed by someone tidying up, and the failure it prevents is invisible until production.
+⚠️ **That move CHANGED WHAT THESE TESTS CAN PROVE, and pretending otherwise would leave a
+criterion that cannot fail.** Before, the entry points refused an unrendered template; now they
+render it, so "refuses" is no longer true of them and asserting it would be asserting the old
+design. What replaced it is stronger and is what is pinned below:
 
-So these tests go through the REAL entry points with a fake session. Calling `assert_rendered`
-directly would prove the function works, not that anything calls it — which is precisely the
-distinction `port-adoption-gate`'s own selftest got wrong one cycle earlier.
+  * each entry point RENDERS, keyed on `engine_of(session)` — not on a literal, and not on a
+    default that would silently make every session Neo4j;
+  * `assert_rendered` still has teeth in the ONE place the chokepoint does not reach:
+    `maintenance.invalidate_stale_quarantined_facts` bypasses the helpers because its `user_id`
+    is legitimately `None`, and renders for itself.
+
+Bite B (deleting `assert_rendered` from all three entry points) is what showed the guard was
+undefended in T79; bites B1/B2/B3 still pin the pieces that remain load-bearing.
 """
 
 from __future__ import annotations
@@ -54,21 +56,56 @@ class _ExplodingSession:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("entry", ["run_read", "run_read_any_owner", "run_write"])
-async def test_every_entry_point_REFUSES_an_unrendered_template(entry):
-    """Bite B removed the call from all three at once and nothing noticed. Each is checked
-    separately so removing it from just one is caught too."""
-    session = _ExplodingSession()
-    with pytest.raises(UnrenderedTemplateError) as exc:
+async def test_every_entry_point_RENDERS_for_the_sessions_engine(entry):
+    """The property that replaced "refuses". Each entry point is checked separately so losing
+    the render from just one is caught."""
+    for engine, expected in (("neo4j", "datetime()"), ("age", "timestamp()")):
+        seen: list[str] = []
+
+        class _Recording:
+            def __init__(self) -> None:
+                self.engine = engine
+
+            async def run(self, cypher: str, **params):  # noqa: ANN003
+                seen.append(cypher)
+                return "ok"
+
+        session = _Recording()
         if entry == "run_read":
             await run_read(session, _UNRENDERED, user_id="u-1")
         elif entry == "run_read_any_owner":
             await run_read_any_owner(session, _UNRENDERED_ANY)
         else:
             await run_write(session, _UNRENDERED, user_id="u-1")
-    assert "§10.2" in str(exc.value), (
-        "the error must name the spec section that defines the token — rule 9"
+        assert seen and "{NOW}" not in seen[0], (
+            f"{entry} handed the driver an unrendered template — the database reads `{{NOW}}` "
+            f"as a map literal and fails somewhere else entirely"
+        )
+        assert expected in seen[0], (
+            f"{entry} rendered for the wrong engine: expected {expected!r} for engine "
+            f"{engine!r}, got {seen[0]!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_session_that_declares_NO_engine_is_treated_as_neo4j():
+    """A Bolt `AsyncSession` and its transaction have no `engine` attribute, and cannot be
+    anything but Neo4j — so the fallback is a fact about the type, not a default hiding a
+    missing declaration. A mock answers every attribute, which is why only a `str` counts."""
+    from unittest.mock import MagicMock
+
+    from app.db.neo4j_helpers import engine_of
+
+    assert engine_of(object()) == "neo4j"
+    assert engine_of(MagicMock()) == "neo4j", (
+        "a MagicMock's auto-attribute was read as an engine declaration — every mock-session "
+        "unit test would then hand `render` a mock and raise"
     )
-    assert not session.calls, "the guard raised only AFTER handing the query to the driver"
+
+    class _Age:
+        engine = "age"
+
+    assert engine_of(_Age()) == "age"
 
 
 @pytest.mark.asyncio

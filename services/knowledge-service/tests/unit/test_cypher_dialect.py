@@ -7,7 +7,12 @@ happened to emit the same string for both would be a no-op wearing a seam's clot
 
 from __future__ import annotations
 
+import re
+
 import pytest
+
+#: A Cypher `//` comment — the engine-literal scan must not read prose as code.
+_CYPHER_COMMENT = re.compile(r"//[^" + chr(92) + "n]*")
 
 from app.db.cypher_dialect import NOW_BY_ENGINE, render
 
@@ -59,35 +64,44 @@ def test_an_unknown_engine_RAISES_rather_than_defaulting_to_neo4j():
         render(_TEMPLATE, "memgraph")  # type: ignore[arg-type]
 
 
-def test_the_repo_layer_has_no_leftover_token_in_an_UNRENDERED_query():
-    """A `{NOW}` that reaches the driver is a syntax error at runtime, not at import.
+def test_NO_repo_call_site_NAMES_an_engine():
+    """The rule this replaces was the exact inverse, and it was enforcing the defect.
 
-    So every template carrying the token must be rendered by its caller. This checks the
-    inverse of the ratchet in `port-adoption-gate`: that one counts `datetime()` still present,
-    this one catches a template that lost its `datetime()` and gained a token nobody renders.
+    ⚠️ Until T83 this file asserted that every `{NOW}` template had a `render(NAME` somewhere —
+    i.e. that each call site chose the engine itself. The dialect ratchet duly reached zero
+    while **51 call sites across 11 modules said `render(TEMPLATE, "neo4j")`**, and running a
+    real repo function against AGE failed on `function datetime does not exist`. The templates
+    were portable; the RENDERING was pinned, and this test was holding it there.
 
-    ⚠️ Scanned PACKAGE-wide, not per module — the first cut checked the defining module and
-    failed on `MAINTAIN_FACT_CHAIN_CYPHER`, which `temporal` defines and `facts` renders. A
-    template and its renderer do not have to share a file, and requiring it would have forced
-    the wrong refactor to satisfy the test.
+    The engine now comes from the SESSION, in `run_read`/`run_write`/`run_read_any_owner`. A
+    literal engine name anywhere in the repo layer puts it back, so that is what is forbidden.
+
+    One site is exempt and named: `maintenance.invalidate_stale_quarantined_facts` bypasses the
+    helpers (its `user_id` is legitimately `None`), so it renders for itself — using
+    `engine_of(session)`, not a literal, which is why it passes this check unaided.
     """
     import pathlib
 
-    from app.db.neo4j_repos import facts, relations, temporal
+    from app.db.neo4j_repos import facts
 
-    root = pathlib.Path(facts.__file__).resolve().parents[2]
-    corpus = chr(10).join(
-        p.read_text(encoding="utf-8", errors="replace") for p in root.rglob("*.py")
+    root = pathlib.Path(facts.__file__).resolve().parent
+    offenders = []
+    for path in sorted(root.glob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            code = _CYPHER_COMMENT.sub("", line.split("#", 1)[0])
+            for engine in ('"neo4j"', "'neo4j'", '"age"', "'age'"):
+                if engine in code:
+                    offenders.append(f"{path.name}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "the repo layer names an engine in a string literal. The engine belongs to the "
+        "session — `run_read`/`run_write` render with `engine_of(session)` — and a literal "
+        "here pins the layer to one engine while the dialect ratchet still reads zero:\n  "
+        + ("\n  ".join(offenders))
     )
-    for mod in (facts, relations, temporal):
-        for name in dir(mod):
-            if not name.endswith("CYPHER"):
-                continue
-            template = getattr(mod, name)
-            if not isinstance(template, str) or "{NOW}" not in template:
-                continue
-            assert f"render({name}" in corpus, (
-                f"{mod.__name__}.{name} carries a `{{NOW}}` token but NOTHING under app/ "
-                f"renders it — an unrendered token reaches the driver as a map projection "
-                f"and fails at query time, not at import"
-            )
+
+
+def test_the_engine_LITERAL_scan_can_see_one():
+    """Non-vacuity, on a case it was not derived from: the scan must ignore a mention in a
+    comment (where this file's own prose lives) and catch one in code."""
+    assert '"neo4j"' in _CYPHER_COMMENT.sub("", 'x = render(Q, "neo4j")')
+    assert '"neo4j"' not in _CYPHER_COMMENT.sub("", '// render(Q, "neo4j") is what T83 removed')

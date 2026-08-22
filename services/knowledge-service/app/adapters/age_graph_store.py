@@ -27,10 +27,20 @@ plain one advances.
 table-valued function, and `UNION`/`LATERAL`/CTEs do what the subquery did. That is not a
 workaround — for the correlated per-row case it is the better tool.
 
-**4 · Parameters do not reach Cypher.** AGE takes a `$1`-style argument to `cypher()` only
-as a whole agtype map, and referencing it inside the query is limited. Values are therefore
-**interpolated**, which makes escaping a correctness AND a security concern rather than a
-formatting detail — see `_lit`.
+**4 · Parameters DO reach Cypher — this entry used to say the opposite and was wrong.**
+It read: *"AGE takes a `$1`-style argument to `cypher()` only as a whole agtype map, and
+referencing it inside the query is limited. Values are therefore interpolated."* Measured
+2026-08-22 (T83) against the AGE this project runs — **1.7.0 on PostgreSQL 18.4** — a named
+`$user_id` resolves from that map, and so do several parameters at once, a NULL in an optional
+filter, a list, a parameter inside `MERGE`/`SET`, and a hostile string, which comes back
+treated as DATA rather than as Cypher.
+
+So `_lit` and its interpolation are a **choice this adapter is still making, not a constraint
+the engine imposes** — and the choice costs something specific: `_lit`'s own docstring calls
+itself "the tenancy boundary", which means a hand-rolled escaper stands where a bound parameter
+would make the property structural. `app/db/age_session.py` binds instead, and 12 repo
+functions run through it against a live AGE graph. Migrating this adapter onto bound parameters
+is a separate unit; the claim is corrected here so nobody inherits it as a fact.
 
 THE EVENT SURFACE — implemented 2026-08-12, and it used to raise
 -----------------------------------------------------------------

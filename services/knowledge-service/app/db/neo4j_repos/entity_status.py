@@ -32,7 +32,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 logger = logging.getLogger(__name__)
@@ -159,7 +158,7 @@ async def merge_entity_status(
         raise ValueError("from_order must be an int (reading-axis event_order)")
     sid = entity_status_id(user_id, project_id, entity_id, from_order, status)
     result = await run_write(
-        session, render(_MERGE_CYPHER, "neo4j"),
+        session, _MERGE_CYPHER,
         user_id=user_id, id=sid, project_id=project_id, entity_id=entity_id,
         status=status, from_order=from_order, source_type=source_type,
         source_chapter=source_chapter or None, provenance=provenance,

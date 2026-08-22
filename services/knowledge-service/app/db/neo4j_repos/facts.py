@@ -35,7 +35,6 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
 from app.db.neo4j_repos.temporal import (
@@ -292,7 +291,7 @@ async def merge_fact(
     )
     result = await run_write(
         session,
-        render(_MERGE_FACT_CYPHER, "neo4j"),
+        _MERGE_FACT_CYPHER,
         user_id=user_id,
         id=fid,
         project_id=project_id,
@@ -335,7 +334,7 @@ async def merge_fact(
                 session,
                 # §10.2 — the timestamp token is engine-chosen. This repo runs on Neo4j;
                 # the AGE arm renders the same template with `timestamp()`.
-                render(MAINTAIN_FACT_CHAIN_CYPHER, "neo4j"),
+                MAINTAIN_FACT_CHAIN_CYPHER,
                 user_id=user_id,
                 entity_id=subject_id,
                 attr=type,
@@ -804,7 +803,7 @@ async def invalidate_fact(
         raise ValueError("fact_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_INVALIDATE_FACT_CYPHER, "neo4j"),
+        _INVALIDATE_FACT_CYPHER,
         user_id=user_id,
         id=fact_id,
         valid_until=valid_until,
@@ -841,7 +840,7 @@ async def revalidate_fact(
     if not fact_id:
         raise ValueError("fact_id must be a non-empty string")
     result = await run_write(
-        session, render(_REVALIDATE_FACT_CYPHER, "neo4j"), user_id=user_id, id=fact_id,
+        session, _REVALIDATE_FACT_CYPHER, user_id=user_id, id=fact_id,
     )
     record = await result.single()
     if record is None:
@@ -895,7 +894,7 @@ async def invalidate_facts_for_day(
         raise ValueError("invalidate_facts_for_day requires user_id, project_id and event_date")
     result = await run_write(
         session,
-        render(_INVALIDATE_FACTS_FOR_DAY_CYPHER, "neo4j"),
+        _INVALIDATE_FACTS_FOR_DAY_CYPHER,
         user_id=user_id,
         project_id=project_id,
         event_date=event_date,
@@ -938,7 +937,7 @@ async def invalidate_all_facts_for_project(
         raise ValueError("invalidate_all_facts_for_project requires user_id and project_id")
     result = await run_write(
         session,
-        render(_INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER, "neo4j"),
+        _INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER,
         user_id=user_id,
         project_id=project_id,
         valid_until=valid_until,

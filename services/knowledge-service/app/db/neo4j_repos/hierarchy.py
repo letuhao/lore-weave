@@ -21,7 +21,7 @@ from typing import Any
 from typing import Literal
 
 from app.db.cypher_dialect import render
-from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_helpers import engine_of, CypherSession
 
 __all__ = [
     "count_child_chapters",
@@ -100,7 +100,7 @@ async def upsert_hierarchy_chain(
     the module docstring.
     """
     await session.run(
-        render(_UPSERT_CYPHER, "neo4j"),
+        render(_UPSERT_CYPHER, engine_of(session)),
         book_path=book_path, book_id=book_id, book_title=book_title,
         part_path=part_path, part_id=part_id, part_index=part_index, part_title=part_title,
         chapter_path=chapter_path, chapter_id=chapter_id,
@@ -247,7 +247,7 @@ async def write_summary_to_node(
     if level not in _SUMMARY_LEVELS:
         raise ValueError(f"level must be one of {_SUMMARY_LEVELS}, got {level!r}")
     await session.run(
-        render(_WRITE_SUMMARY_CYPHER.format(label=level.capitalize()), "neo4j"),
+        _WRITE_SUMMARY_CYPHER.format(label=level.capitalize()),
         path=node_path, text=summary_text, embedding=embedding,
         model_uuid=embedding_model_uuid,
     )

@@ -38,7 +38,7 @@ from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL
 from loreweave_extraction.canonical import entity_canonical_id
 
 from app.db.cypher_dialect import render
-from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_helpers import engine_of, CypherSession
 
 __all__ = [
     "promote_enriched_facts",
@@ -223,11 +223,11 @@ async def upsert_enriched_anchor(
     rec = await res.single()
     eid = rec["eid"] if rec else canon_id
     await session.run(
-        render(_FREE_STALE_GLOSSARY_ANCHOR_CYPHER, "neo4j"),
+        render(_FREE_STALE_GLOSSARY_ANCHOR_CYPHER, engine_of(session)),
         user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
     )
     await session.run(
-        render(_UPSERT_ANCHOR_CYPHER, "neo4j"),
+        render(_UPSERT_ANCHOR_CYPHER, engine_of(session)),
         user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
         name=name, canon_name=canon_name, kind=kind, project_id=project_id,
         anchor_confidence=anchor_confidence, anchor_source_type=anchor_source_type,
@@ -255,7 +255,7 @@ async def upsert_enriched_fact(
     """One enriched fact plus the edge attaching it to the anchor. `confidence` is capped
     below 1.0 by the caller (H0) — a write-back is never canon."""
     await session.run(
-        render(_UPSERT_ENRICHED_FACT_CYPHER, "neo4j"),
+        render(_UPSERT_ENRICHED_FACT_CYPHER, engine_of(session)),
         user_id=user_id, canon_id=canon_id, node_id=node_id, edge_id=edge_id,
         project_id=project_id, dimension=dimension, content=content,
         confidence=confidence, source_type=source_type, origin=origin,
@@ -274,7 +274,7 @@ async def promote_enriched_facts(
 ) -> int:
     """Promote one proposal's enriched facts to canon. Returns the fact count."""
     result = await session.run(
-        render(_PROMOTE_CYPHER, "neo4j"),
+        render(_PROMOTE_CYPHER, engine_of(session)),
         user_id=user_id, origin=origin, proposal_id=proposal_id,
         promoted_by=promoted_by, promoted_at=promoted_at,
     )
@@ -287,7 +287,8 @@ async def retract_enriched_facts(
 ) -> int:
     """Soft-retract one proposal's enriched facts. Returns the fact count."""
     result = await session.run(
-        render(_RETRACT_CYPHER, "neo4j"), user_id=user_id, origin=origin, proposal_id=proposal_id,
+        render(_RETRACT_CYPHER, engine_of(session)),
+        user_id=user_id, origin=origin, proposal_id=proposal_id,
     )
     record = await result.single()
     return int(record["affected"]) if record else 0

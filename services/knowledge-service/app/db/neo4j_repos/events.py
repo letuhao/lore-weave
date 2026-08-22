@@ -32,7 +32,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field, model_serializer
 
-from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import (
     CypherSession,
     in_retried_transaction,
@@ -320,7 +319,7 @@ async def merge_event(
     normalized_time_cue = time_cue or None
     result = await run_write(
         session,
-        render(_MERGE_EVENT_CYPHER, "neo4j"),
+        _MERGE_EVENT_CYPHER,
         user_id=user_id,
         id=eid,
         project_id=project_id,
@@ -504,7 +503,7 @@ async def update_event_fields(
     async def _attempt(tx) -> tuple:
         record = await (await run_write(
             tx,
-            render(_LOCK_AND_READ_EVENT_CYPHER, "neo4j"),
+            _LOCK_AND_READ_EVENT_CYPHER,
             user_id=user_id,
             id=event_id,
         )).single()
@@ -518,7 +517,7 @@ async def update_event_fields(
                 before_raw = record["before"]
                 applied = await (await run_write(
                     tx,
-                    render(_APPLY_EVENT_FIELDS_CYPHER, "neo4j"),
+                    _APPLY_EVENT_FIELDS_CYPHER,
                     user_id=user_id,
                     id=event_id,
                     title=title,
@@ -574,7 +573,7 @@ async def archive_event(
         raise ValueError("event_id must be a non-empty string")
     result = await run_write(
         session,
-        render(_ARCHIVE_EVENT_CYPHER, "neo4j"),
+        _ARCHIVE_EVENT_CYPHER,
         user_id=user_id,
         id=event_id,
     )
@@ -738,7 +737,7 @@ async def set_narrative_threads(
     if not rows:
         return 0
     result = await run_write(
-        session, render(_SET_NARRATIVE_THREADS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
+        session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0
@@ -772,7 +771,7 @@ async def set_realized_motifs(
     if not rows:
         return 0
     result = await run_write(
-        session, render(_SET_REALIZED_MOTIFS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
+        session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0
@@ -808,7 +807,7 @@ async def set_mined_motif_codes(
     if not rows:
         return 0
     result = await run_write(
-        session, render(_SET_MINED_MOTIFS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
+        session, _SET_MINED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0
