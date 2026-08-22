@@ -139,8 +139,17 @@ def test_the_call_site_arms_what_it_names():
     i = SRC.index("_unread = _unanswered_data_question_reads(")
     block = SRC[i:i + 3000]
     assert "_dq_armed = [" in block
-    assert "active_tool_names.update(_dq_armed)" in block
-    assert "merge_activated_tools(" in block
+    # 🔴 RETARGETED 2026-08-22, and the INTENT is unchanged: this site must still arm what it
+    # names. It asserted the mutation inline (`active_tool_names.update(_dq_armed)` +
+    # `merge_activated_tools(`) — three copies of that mutation existed and a fourth path, the
+    # missing-argument refusal, had none, so a refusal saying "call world_map_list first" armed
+    # nothing and the model was told to call a tool that was not on the turn (measured: supplier
+    # advertised on 0/5 runs). The mutation now lives in `_arm_tools`, so pinning its old inline
+    # spelling here would pin the shape that made the omission possible.
+    assert "_arm_tools(" in block, "the DQ-T30 arm names tools it never puts on the wire"
+    assert "_dq_armed, active_tool_names=active_tool_names" in block, (
+        "it arms SOMETHING, but not the set it just computed and is about to name"
+    )
 
 
 def test_the_fixture_still_matches_the_live_declaration():

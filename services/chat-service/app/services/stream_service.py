@@ -2672,6 +2672,57 @@ def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> l
     return sorted(found[:_RECOVERY_ARM_CAP])
 
 
+def _arm_tools(
+    names,
+    *,
+    active_tool_names: set,
+    activation_state: dict | None,
+    discovery_catalog,
+    context_length,
+) -> list[str]:
+    """Put `names` on the wire for the rest of this turn. THE one place that does it.
+
+    🔴 **THE MUTATION WAS COPIED THREE TIMES AND THE THIRD SITE WAS THE ONE THAT DID NOT EXIST.**
+    `active_tool_names.update(...)` + `merge_activated_tools(...)` + `dirty = True` appeared
+    verbatim under D-NARRATED-WRITE (a tool named in PROSE) and under D-FJ-4 (a tool named in a
+    dispatch REFUSAL). The pre-dispatch missing-argument refusal — the largest refusal class on
+    this platform, 266 failures over 87 sessions — `continue`s before either, so the sentence
+    `_missing_args_message` writes ("call world_map_list first and match it to get the id") armed
+    nothing at all. `_missing_args_message`'s own comment claimed otherwise: *"Naming it also ARMS
+    it ... so one sentence fixes both the instruction and the reachability."* It did not.
+
+    MEASURED 2026-08-22, 35 live runs over the 7 P3-NAME-TO-ID tools that have a supplier, reading
+    `advertised` off each turn's own agentSurface event:
+
+        supplier advertised & called          8
+        supplier advertised & NOT called      0    <- the cell "the model will not walk it" needs
+        NOT advertised & called               0
+        NOT advertised & NOT called          27
+
+    Agreement on 35 of 35 runs, no disagreements. The model walks a supplier chain exactly when it
+    can see the supplier. `world_map_delete` was refused with *call world_map_list first*, that tool
+    was advertised on 0 of 5 runs, and the turn ended "I'll find the ID for you now. One moment."
+    — recorded until now as the model failing to keep its word.
+
+    Returns what it actually armed (already-active names are not re-armed), so a caller can decide
+    whether to say anything. It does NOT write the [SYSTEM] note: the three callers are telling the
+    model three different things, and one shared sentence would be wrong for two of them.
+    """
+    from app.services.tool_surface import merge_activated_tools
+
+    fresh = [n for n in names if n not in active_tool_names]
+    if not fresh:
+        return []
+    active_tool_names.update(fresh)
+    if activation_state is not None:
+        activation_state["activated_tools"] = merge_activated_tools(
+            activation_state["activated_tools"], fresh,
+            catalog=discovery_catalog, context_length=context_length,
+        )
+        activation_state["dirty"] = True
+    return fresh
+
+
 #: The reserved all-zero UUID. Never a row in any table here, so an `*_id` argument carrying it is
 #: an invention that happens to parse. Compared through UUID() rather than by string so the
 #: braced/urn/uppercase spellings cannot slip past a literal match.
@@ -2941,8 +2992,21 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
         # D-FJ-12 — NAME THE TOOL THAT EMITS IT. "Establish that context first (e.g. list or open
         # the book you mean)" is a book-flavoured example, not an instruction, and a model told only
         # that retried the SAME tool twice. The emitter is declared data (`emitted_by`), so say it.
-        # Naming it also ARMS it: `_tools_named_in_refusal` keys off catalogue names in the refusal
-        # text, so one sentence fixes both the instruction and the reachability.
+        #
+        # 🔴 THIS COMMENT USED TO END *"Naming it also ARMS it: `_tools_named_in_refusal` keys off
+        # catalogue names in the refusal text, so one sentence fixes both the instruction and the
+        # reachability."* THAT WAS FALSE FOR EVERY MESSAGE THIS FUNCTION BUILDS. `_tools_named_in_
+        # refusal` ran only on the DISPATCH result, and the caller that builds these messages
+        # returns before dispatch — so the arming this sentence promised had never once happened
+        # here. Measured 2026-08-22: `world_map_delete` refused with *call world_map_list first*
+        # and world_map_list was advertised on 0 of 5 runs; across 35 runs the supplier was called
+        # on every run it was advertised and on none where it was not (35/35 agreement).
+        #
+        # It is true NOW because the caller was fixed, not because this function does it — see
+        # D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE at the `_missing_args` arm, which passes this
+        # text through `_tools_named_in_refusal` and `_arm_tools`. Naming a tool here is therefore
+        # load-bearing for reachability, and a message that names an off-catalogue tool arms
+        # nothing: keep the names exact.
         _reg = _tool_contract_registry()
         _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})
         _how = (
@@ -4254,15 +4318,12 @@ async def _stream_with_tools(
                             nm for nm in _narrated
                             if discovery and nm in cat_index and nm not in active_tool_names
                         ]
-                        if _armed:
-                            from app.services.tool_surface import merge_activated_tools
-                            active_tool_names.update(_armed)
-                            if activation_state is not None:
-                                activation_state["activated_tools"] = merge_activated_tools(
-                                    activation_state["activated_tools"], _armed,
-                                    catalog=discovery_catalog, context_length=context_length,
-                                )
-                                activation_state["dirty"] = True
+                        _arm_tools(
+                            _armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
                         # The two arms must not share one sentence: the stalled-rail arm never read
                         # the prose, so logging "named in prose" for it would assert something
                         # unmeasured — the same false-report shape the directive above is careful
@@ -4353,15 +4414,12 @@ async def _stream_with_tools(
                             nm for nm in _unread
                             if discovery and nm in cat_index and nm not in active_tool_names
                         ]
-                        if _dq_armed:
-                            from app.services.tool_surface import merge_activated_tools
-                            active_tool_names.update(_dq_armed)
-                            if activation_state is not None:
-                                activation_state["activated_tools"] = merge_activated_tools(
-                                    activation_state["activated_tools"], _dq_armed,
-                                    catalog=discovery_catalog, context_length=context_length,
-                                )
-                                activation_state["dirty"] = True
+                        _arm_tools(
+                            _dq_armed, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
                         logger.warning(
                             "DQ-T30 (session=%s): the turn is ending with a data question "
                             "answered from memory — %s declare(s) this request and none was "
@@ -6184,6 +6242,38 @@ async def _stream_with_tools(
                         ), dict) else {}
                         _ma_msg = _missing_args_message(
                             c["name"], _missing_args, _c_block, _ma_props)
+                    # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────
+                    # This refusal SAYS "call world_map_list first and match it to get the id".
+                    # Until now it armed nothing: `_tools_named_in_refusal` runs on the dispatch
+                    # result far below, and this arm `continue`s before reaching it. So the largest
+                    # refusal class on the platform issued an instruction naming a tool that was
+                    # not on the turn, and the model did the only thing left — retried the same
+                    # failing call, then promised the author it would go and look.
+                    #
+                    # MEASURED over 35 live runs (7 tools, K=5): supplier ADVERTISED and not called
+                    # happened ZERO times, supplier absent and not called 27 times, agreement 35/35.
+                    # The model walks the chain exactly when it can see the supplier.
+                    if discovery:
+                        _ma_recovery = _tools_named_in_refusal(
+                            _ma_msg or "", cat_index, active_tool_names)
+                        if _arm_tools(
+                            _ma_recovery, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        ):
+                            _ma_msg = (_ma_msg or "") + (
+                                "\n\n[SYSTEM] " + ", ".join(_ma_recovery) + " "
+                                + ("is" if len(_ma_recovery) == 1 else "are")
+                                + " now available to you on this turn — no tool_load needed. Call "
+                                + ("it" if len(_ma_recovery) == 1 else "them")
+                                + " to get the value, then retry. Do not repeat the call that just "
+                                "failed without changing something."
+                            )
+                            logger.info(
+                                "armed recovery tool(s) %s named in %s's missing-argument refusal "
+                                "(session=%s)", _ma_recovery, c["name"], session_id,
+                            )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": "missing_required_args", "message": _ma_msg}),
@@ -6561,14 +6651,12 @@ async def _stream_with_tools(
                 # proceed: the model already decided correctly, so making it round-trip through
                 # tool_list/tool_load to be told "yes, that one" is ceremony a weak model fails.
                 if discovery and c["name"] in cat_index and c["name"] not in active_tool_names:
-                    from app.services.tool_surface import merge_activated_tools
-                    active_tool_names.add(c["name"])
-                    if activation_state is not None:
-                        activation_state["activated_tools"] = merge_activated_tools(
-                            activation_state["activated_tools"], [c["name"]],
-                            catalog=discovery_catalog, context_length=context_length,
-                        )
-                        activation_state["dirty"] = True
+                    _arm_tools(
+                        [c["name"]], active_tool_names=active_tool_names,
+                        activation_state=activation_state,
+                        discovery_catalog=discovery_catalog,
+                        context_length=context_length,
+                    )
                     logger.info(
                         "auto-loaded off-surface tool %r (session=%s) — it is in the catalog and "
                         "the model asked for it by name", c["name"], session_id,
@@ -6752,15 +6840,12 @@ async def _stream_with_tools(
                             t for t in _rail_all_step_tools
                             if t in cat_index and t not in active_tool_names
                         ]
-                        if _rearm:
-                            from app.services.tool_surface import merge_activated_tools
-                            active_tool_names.update(_rearm)
-                            if activation_state is not None:
-                                activation_state["activated_tools"] = merge_activated_tools(
-                                    activation_state["activated_tools"], _rearm,
-                                    catalog=discovery_catalog, context_length=context_length,
-                                )
-                                activation_state["dirty"] = True
+                        if _arm_tools(
+                            _rearm, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        ):
                             logger.info(
                                 "rail advanced on %s — re-armed step tools now on the wire: %s",
                                 c["name"], ", ".join(sorted(_rearm)),
@@ -6889,14 +6974,12 @@ async def _stream_with_tools(
                     _recovery = _tools_named_in_refusal(
                         envelope.get("error") or "", cat_index, active_tool_names)
                     if _recovery:
-                        from app.services.tool_surface import merge_activated_tools
-                        active_tool_names.update(_recovery)
-                        if activation_state is not None:
-                            activation_state["activated_tools"] = merge_activated_tools(
-                                activation_state["activated_tools"], _recovery,
-                                catalog=discovery_catalog, context_length=context_length,
-                            )
-                            activation_state["dirty"] = True
+                        _arm_tools(
+                            _recovery, active_tool_names=active_tool_names,
+                            activation_state=activation_state,
+                            discovery_catalog=discovery_catalog,
+                            context_length=context_length,
+                        )
                         _tool_content = (_tool_content or "") + (
                             "\n\n[SYSTEM] " + ", ".join(_recovery) + " "
                             + ("is" if len(_recovery) == 1 else "are")
