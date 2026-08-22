@@ -37,6 +37,7 @@ from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL
 
 from loreweave_extraction.canonical import entity_canonical_id
 
+from app.db.cypher_dialect import render
 from app.db.neo4j_helpers import CypherSession
 
 __all__ = [
@@ -69,60 +70,60 @@ RETURN coalesce(byId.id, byAnchor.id, $canon_id) AS eid
 _FREE_STALE_GLOSSARY_ANCHOR_CYPHER = """
 MATCH (stale:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
 WHERE stale.id <> $canon_id
-SET stale.glossary_entity_id = NULL, stale.updated_at = datetime()
+SET stale.glossary_entity_id = NULL, stale.updated_at = {NOW}
 """
 
 _UPSERT_ANCHOR_CYPHER = """
-MERGE (e:Entity {id: $canon_id})
-ON CREATE SET
-  e.user_id = $user_id,
-  e.glossary_entity_id = $glossary_entity_id,
-  e.name = $name,
-  e.canonical_name = $canon_name,
-  e.kind = $kind,
-  e.project_id = $project_id,
-  e.confidence = $anchor_confidence,
-  e.source_type = $anchor_source_type,
-  e.source_types = [$anchor_source_type],
-  e.origin = $origin,
-  e.pending_validation = true,
-  e.promoted_from_proposal_id = $proposal_id,
-  e.original_technique = $technique,
-  e.created_at = datetime(),
-  e.updated_at = datetime()
-ON MATCH SET
-  e.glossary_entity_id = coalesce(e.glossary_entity_id, $glossary_entity_id),
-  e.updated_at = datetime()
+// §10.1/§10.2 — engine-neutral. `coalesce` for every create-only field; `updated_at` was in
+// BOTH branches so it stays unconditional; `glossary_entity_id` was ALREADY a coalesce on the
+// MATCH arm and the create arm set it outright, which is the same thing on an absent node.
+//
+// ⚠️ `user_id` moved into the MERGE KEY. Unlike `provenance` and `entity_status` this query
+// had no trailing `WITH … WHERE`, so no tenancy filter is being replaced — the key is what
+// there is. `$canon_id` is the derived canonical entity id, which already scopes to the user.
+MERGE (e:Entity {id: $canon_id, user_id: $user_id})
+SET e.glossary_entity_id       = coalesce(e.glossary_entity_id, $glossary_entity_id),
+    e.name                     = coalesce(e.name, $name),
+    e.canonical_name           = coalesce(e.canonical_name, $canon_name),
+    e.kind                     = coalesce(e.kind, $kind),
+    e.project_id               = coalesce(e.project_id, $project_id),
+    e.confidence               = coalesce(e.confidence, $anchor_confidence),
+    e.source_type              = coalesce(e.source_type, $anchor_source_type),
+    e.source_types             = coalesce(e.source_types, [$anchor_source_type]),
+    e.origin                   = coalesce(e.origin, $origin),
+    e.pending_validation       = coalesce(e.pending_validation, true),
+    e.promoted_from_proposal_id = coalesce(e.promoted_from_proposal_id, $proposal_id),
+    e.original_technique       = coalesce(e.original_technique, $technique),
+    e.created_at               = coalesce(e.created_at, {NOW}),
+    e.updated_at               = {NOW}
 """
 
 _UPSERT_ENRICHED_FACT_CYPHER = """
 MATCH (e:Entity {id: $canon_id})
-MERGE (f:Fact {id: $node_id})
-ON CREATE SET
-  f.user_id = $user_id,
-  f.project_id = $project_id,
-  f.type = 'enrichment',
-  f.dimension = $dimension,
-  f.content = $content,
-  f.confidence = $confidence,
-  f.pending_validation = true,
-  f.source_type = $source_type,
-  f.source_types = [$source_type],
-  f.origin = $origin,
-  f.promoted_from_proposal_id = $proposal_id,
-  f.original_technique = $technique,
-  f.valid_until = NULL,
-  f.created_at = datetime(),
-  f.updated_at = datetime()
-ON MATCH SET
-  f.content = $content,
-  f.confidence = $confidence,
-  f.pending_validation = true,
-  f.source_type = $source_type,
-  f.source_types = [$source_type],
-  f.origin = $origin,
-  f.valid_until = NULL,
-  f.updated_at = datetime()
+// §10.1/§10.2 — engine-neutral, and note this one is NOT all-coalesce. Its ON MATCH branch
+// deliberately OVERWRITES content/confidence/pending_validation/source_type(s)/origin/
+// valid_until: an enrichment re-run REPLACES its own output, which is last-write-wins by
+// design. Those stay unconditional. Only the fields the MATCH arm never touched — the
+// identity, the dimension, the proposal provenance, created_at — take `coalesce`.
+//
+// ⚠️ Reading the two branches as "create sets everything, match accumulates" and coalescing
+// the lot would have frozen every enriched fact at its first value — a re-run would report
+// success and change nothing.
+MERGE (f:Fact {id: $node_id, user_id: $user_id})
+SET f.project_id                = coalesce(f.project_id, $project_id),
+    f.type                      = coalesce(f.type, 'enrichment'),
+    f.dimension                 = coalesce(f.dimension, $dimension),
+    f.promoted_from_proposal_id = coalesce(f.promoted_from_proposal_id, $proposal_id),
+    f.original_technique        = coalesce(f.original_technique, $technique),
+    f.created_at                = coalesce(f.created_at, {NOW}),
+    f.content                   = $content,
+    f.confidence                = $confidence,
+    f.pending_validation        = true,
+    f.source_type               = $source_type,
+    f.source_types              = [$source_type],
+    f.origin                    = $origin,
+    f.valid_until               = NULL,
+    f.updated_at                = {NOW}
 MERGE (e)-[r:RELATES_TO {id: $edge_id}]->(f)
 SET r.user_id = $user_id,
     r.predicate = '补充',
@@ -135,7 +136,7 @@ SET r.user_id = $user_id,
     r.promoted_from_proposal_id = $proposal_id,
     r.original_technique = $technique,
     r.valid_until = NULL,
-    r.updated_at = datetime()
+    r.updated_at = {NOW}
 """
 
 _PROMOTE_CYPHER = """
@@ -149,7 +150,7 @@ SET f.source_type = 'glossary',
     f.pending_validation = false,
     f.promoted_by = $promoted_by,
     f.promoted_at = $promoted_at,
-    f.updated_at = datetime()
+    f.updated_at = {NOW}
 WITH count(f) AS nfacts
 MATCH ()-[r:RELATES_TO]->()
 WHERE r.user_id = $user_id
@@ -160,7 +161,7 @@ SET r.source_type = 'glossary',
     r.pending_validation = false,
     r.promoted_by = $promoted_by,
     r.promoted_at = $promoted_at,
-    r.updated_at = datetime()
+    r.updated_at = {NOW}
 RETURN nfacts AS affected
 """
 
@@ -169,13 +170,13 @@ MATCH (f:Fact)
 WHERE f.user_id = $user_id
   AND f.origin = $origin
   AND f.promoted_from_proposal_id = $proposal_id
-SET f.valid_until = datetime(), f.updated_at = datetime()
+SET f.valid_until = {NOW}, f.updated_at = {NOW}
 WITH count(f) AS nfacts
 MATCH ()-[r:RELATES_TO]->()
 WHERE r.user_id = $user_id
   AND r.origin = $origin
   AND r.promoted_from_proposal_id = $proposal_id
-SET r.valid_until = datetime(), r.updated_at = datetime()
+SET r.valid_until = {NOW}, r.updated_at = {NOW}
 RETURN nfacts AS affected
 """
 
@@ -222,11 +223,11 @@ async def upsert_enriched_anchor(
     rec = await res.single()
     eid = rec["eid"] if rec else canon_id
     await session.run(
-        _FREE_STALE_GLOSSARY_ANCHOR_CYPHER,
+        render(_FREE_STALE_GLOSSARY_ANCHOR_CYPHER, "neo4j"),
         user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
     )
     await session.run(
-        _UPSERT_ANCHOR_CYPHER,
+        render(_UPSERT_ANCHOR_CYPHER, "neo4j"),
         user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
         name=name, canon_name=canon_name, kind=kind, project_id=project_id,
         anchor_confidence=anchor_confidence, anchor_source_type=anchor_source_type,
@@ -254,7 +255,7 @@ async def upsert_enriched_fact(
     """One enriched fact plus the edge attaching it to the anchor. `confidence` is capped
     below 1.0 by the caller (H0) — a write-back is never canon."""
     await session.run(
-        _UPSERT_ENRICHED_FACT_CYPHER,
+        render(_UPSERT_ENRICHED_FACT_CYPHER, "neo4j"),
         user_id=user_id, canon_id=canon_id, node_id=node_id, edge_id=edge_id,
         project_id=project_id, dimension=dimension, content=content,
         confidence=confidence, source_type=source_type, origin=origin,
@@ -273,7 +274,7 @@ async def promote_enriched_facts(
 ) -> int:
     """Promote one proposal's enriched facts to canon. Returns the fact count."""
     result = await session.run(
-        _PROMOTE_CYPHER,
+        render(_PROMOTE_CYPHER, "neo4j"),
         user_id=user_id, origin=origin, proposal_id=proposal_id,
         promoted_by=promoted_by, promoted_at=promoted_at,
     )
@@ -286,7 +287,7 @@ async def retract_enriched_facts(
 ) -> int:
     """Soft-retract one proposal's enriched facts. Returns the fact count."""
     result = await session.run(
-        _RETRACT_CYPHER, user_id=user_id, origin=origin, proposal_id=proposal_id,
+        render(_RETRACT_CYPHER, "neo4j"), user_id=user_id, origin=origin, proposal_id=proposal_id,
     )
     record = await result.single()
     return int(record["affected"]) if record else 0

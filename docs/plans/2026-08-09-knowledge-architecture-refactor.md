@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `enrichment` + `relations` ON CREATE/MATCH — 100 dialect sites left, 10 of the 16 branches done.**
+**RESUME: `relations` ON CREATE/MATCH — 82 dialect sites left, 12 of the 16 branches done.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,66 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T70 2026-08-22 — **`enrichment` translated, and a BITE found a safety rule nobody had written**
+
+  ```
+  enrichment: both ON CREATE/MATCH branches + 4 datetime()   dialect 100 -> 82
+  knowledge unit 4302 -> 4303 · DB integration 605 passed, two consecutive clean full runs
+  ```
+
+  🎯 **The two queries in this module need OPPOSITE treatments, and that is the finding.**
+
+  * `_UPSERT_ANCHOR_CYPHER` must **never** overwrite an existing canon anchor — its old
+    `ON MATCH` deliberately touched almost nothing, so every provenance field folds to
+    `coalesce`.
+  * `_UPSERT_ENRICHED_FACT_CYPHER` is the **reverse**: its `ON MATCH` assigned `content`,
+    `confidence`, `origin` and `source_type` outright, because an enrichment re-run REPLACES
+    its own output. Those stay unconditional; only identity, dimension, proposal provenance
+    and `created_at` take `coalesce`.
+
+  ⚠️ **Coalescing "everything" is the obvious way to merge the branches and it would have been
+  silently wrong here.** A re-run would leave the FIRST value in place, report success, and
+  bump `updated_at` — stale content wearing a fresh timestamp, which is the one thing a
+  reviewer reads the timestamp to rule out.
+
+  🔴 **BITE 34 FOUND THAT NOTHING GUARDED IT.** Mutating `f.content` to `coalesce(f.content,
+  $content)` — the exact wrong merge — **passed every test in the repository**. The anchor rule
+  had a guard (bite 33 reds it by name); its opposite had none, so the module was one careless
+  merge away from freezing every enriched fact forever.
+  `test_an_enrichment_RE_RUN_replaces_its_own_output` now asserts it, and bite 34 re-run fails
+  by name.
+
+  **BITE ×2:**
+
+  ```
+  33. a provenance field stops being guarded  (e.origin -> unconditional)
+        FAILED — "e.origin is assigned unconditionally — enrichment would overwrite what an
+                  existing canon anchor claims about itself"
+  34. the enriched-fact content becomes coalesce   BEFORE: everything passed
+        AFTER : FAILED — "f.content is coalesced — an enrichment re-run would leave the
+                          FIRST value in place and report success"
+  ```
+
+  ⚠️ **Three unit tests were RESTATED, not deleted, and the distinction matters.** They asserted
+  a real property — *"ON MATCH must never touch a canon anchor's provenance"* — through a
+  mechanism (`cypher.split("ON MATCH SET")`) that the merge removes. The property is unchanged;
+  it is now *"the assignment must be a `coalesce` of its own field"*, which says the same thing
+  on the form that exists. **A test whose mechanism disappears is not evidence that its rule
+  did.**
+
+  🐞 **The recorded backslash-collapse hazard bit again, and cost twenty minutes.** A `\b` in a
+  generated regex became a literal `\x08` on disk. `sed` renders a backspace invisibly, so the
+  line looked correct while `re.search` compiled `…coalesce\(e\.source_type\x08` and matched
+  nothing — a test failing for a reason not visible in its own source. Found by printing the
+  compiled pattern's `repr`. All six touched files audited for `\x08`: clean.
+
+  **QC (a) gates:** unit **4303**; `port-adoption-gate` PASS at 54/19/2, class (d) 34/34,
+  dialect **100 → 82** moved in this commit (rule 5); four plan gates green.
+  **QC (b) the seam:** ✅ two consecutive full DB integration runs on a fresh throwaway Neo4j
+  with AGE live — 605 passed, 0 failed each.
+  **QC (c) real data:** enriched anchors and facts written, re-written and retracted in a real
+  Neo4j through the rewritten queries.
 
   ### 🐞 T69 2026-08-22 — **the "flake" was mine, and enumerating readers had failed twice**
 
