@@ -1,6 +1,76 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `4a740ce41` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-21
+**HEAD:** `a0fac93ba` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-23
+
+## 📕 2026-08-22 → 08-23 — the RESOLUTION loop: cycle 2 in verification, 12 of 13 problems open
+
+**Where it stands, derived not typed** — `python scripts/toolloop/problem_remaining.py`:
+
+```
+problems=13 cleared=1 remaining=12  |  tools_in_denominator=65 proven=17 still_blocked=48
+```
+
+The predecessor loop closed its denominator (198/198 concluded, 133 proven, 65 blocked). **This
+loop's unit is ONE ROOT-CAUSE PROBLEM per cycle**, over those 65. `contracts/tool-resolution-problems.json`
+is the frozen partition (MECE, guarded); `problem_remaining.py` recomputes the cycle ORDER from the
+ordering rule on every run and REFUSES if the stored numbers disagree.
+
+**Owner decisions, settled — do not re-litigate:**
+1. **Cleared** = invariant fixed AND every tool in the cluster re-run LIVE at **K≥5** — not one representative.
+2. **Spend** — destructive/cost-bearing arms MAY be approved against the run's OWN throwaway fixture,
+   torn down after; never the dogfood book, never a pre-existing object. Bound waste, don't ban it.
+3. **DQs** — I recommend, the owner decides, in one sitting. 10 remain open.
+
+### Cycle 1 — P1-SURFACE — CLEARED 17/17
+Surfacing 2/25 → 24/25 → 20/20; 37 declarations widened across 8 services. Largest find was a
+platform defect: **a required argument set to `false` was reported missing** — 37 arguments on 36
+tools, so an author could not turn anything off, accept the first unit (`unit_index: 0`), or place
+a pin on a map's left edge (`x: 0`).
+
+### Cycle 2 — P3-NAME-TO-ID — fix shipped, verification in flight
+The problem statement said the model *"will not walk a supplier chain that is ON THE SAME WIRE"*.
+Nobody had measured the wire. Re-run with the `agentSurface` event kept: **35/35 agreement**, and
+*supplier advertised and NOT called* occurred **zero** times. **Refuted.**
+
+Two defects behind it, both shipped:
+* **`D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE`** — `_missing_args_message` says *"call
+  world_map_list first"*, and a comment claimed naming a tool armed it. It never had: the arming ran
+  on the DISPATCH result and this refusal returns before reaching it. The mutation existed verbatim
+  at three sites and was missing at the fourth. Now one chokepoint, `_arm_tools`.
+* **a required id with no description explains nothing** — **105 of 467 required arguments carry an
+  EMPTY description, 75 id-shaped**. Five declarations widened; verified against the DEPLOYED
+  builder, **31 tools** now have a refusal that names and arms a supplier, **11 of them blocked** —
+  and six of those eleven are outside P3 entirely.
+
+My own first build was wrong and its log line said so — it armed *the tool that had just failed*,
+because every refusal opens with that tool's name and candidates rank longest-first into a cap of 3.
+Fixed with `exclude`; both guards proved red against the bug.
+
+### 🔴 THE FINDING THAT GOVERNS EVERY REMAINING CYCLE
+Cycles 2, 3 and 5 each opened by testing their problem statement and all three found the same thing:
+**the evidence predates cycle 1's 37 declaration widenings and nobody re-measured it.** Swept with
+the platform's own `answerable_tools`, **46 of the 48 still-blocked tools are ANSWERABLE** against
+their own recorded prompts. So **every `surfaced 0/N` in the ledger is suspect**, and a problem's
+stated size is a number this loop should not act on. P4-PRECONDITION is the clearest case: six of
+its 21 rows are surfacing rows, and *a tool that never reached the wire was never blocked by its
+fixture*.
+
+`scripts/toolloop/scenarios-rebaseline.json` re-runs the 40 blocked tools outside cycle 2 at K=5
+with the surface kept. **Queued behind cycle 2's verification** — two concurrent batches against one
+platform is what exhausted Postgres earlier in this loop (125 runs killed, 95 fixtures leaked).
+
+The two NOT answerable are `propose_edit` (a real gap — declares no synonyms, and the fix belongs at
+its **ai-gateway** owner, not the pinned chat-service copy) and `tool_load` (**not** a gap —
+answerability keys on the AUTHOR's words and no author asks to load a tool schema).
+
+### Instruments added this loop
+`supplier_probe.py` (reads `advertised` off a run's own event), `hotseed_starvation_probe.py`
+(imports the platform's budgeter rather than reimplementing it, and carries a control that replays
+it against observed runs), `problem_remaining.py`, `answerability_probe.py`, `ship_probe.py` — whose
+docstring now records that it **reported 3-for-3 on two tools it never actually reached**, because
+their only required argument is `op`.
+
+---
 
 ## 📘 2026-08-14 → 08-21 — the tool deep-dive loop: COMPLETE — 198 of 198 shippable tools concluded
 
