@@ -1,0 +1,469 @@
+{
+ "composition_conformance_status": {
+  "required": [
+   "book_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP composition_conformance_status error: Error executing tool composition_conformance_status: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP composition_conformance_status error: Error executing tool composition_conformance_status: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP composition_conformance_status error: Error executing tool composition_conformance_status: book_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual c"
+  ],
+  "indistinguishable": true
+ },
+ "glossary_book_sync_apply": {
+  "required": [
+   "items"
+  ],
+  "absent": [
+   "refused",
+   "MCP glossary_book_sync_apply error: book not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP glossary_book_sync_apply error: book not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP glossary_book_sync_apply error: book_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "jobs_cancel": {
+  "required": [
+   "service",
+   "job_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP jobs_cancel error: Error executing tool jobs_cancel: {\"message\": \"not found or not accessible\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP jobs_cancel error: Error executing tool jobs_cancel: {\"message\": \"not found or not accessible\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP jobs_cancel error: Error executing tool jobs_cancel: invalid input for query argument $2: '' (invalid UUID '': length must be between 32..36 characters, got 0)"
+  ],
+  "indistinguishable": true
+ },
+ "jobs_pause": {
+  "required": [
+   "service",
+   "job_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP jobs_pause error: Error executing tool jobs_pause: {\"message\": \"not found or not accessible\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP jobs_pause error: Error executing tool jobs_pause: {\"message\": \"not found or not accessible\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP jobs_pause error: Error executing tool jobs_pause: invalid input for query argument $2: '' (invalid UUID '': length must be between 32..36 characters, got 0)"
+  ],
+  "indistinguishable": true
+ },
+ "kg_entity_edge_timeline": {
+  "required": [
+   "entity_id",
+   "edge_type"
+  ],
+  "absent": [
+   "refused",
+   "MCP kg_entity_edge_timeline error: Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP kg_entity_edge_timeline error: Error executing tool kg_entity_edge_timeline: {\"message\": \"entity not found\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP kg_entity_edge_timeline error: Error executing tool kg_entity_edge_timeline: {\"message\": \"invalid arguments: entity_id: String should have at least 1 character; edge_type: String should have at least 1 character\"}"
+  ],
+  "indistinguishable": true
+ },
+ "kg_ontology_propose": {
+  "required": [
+   "op"
+  ],
+  "absent": [
+   "refused",
+   "MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP kg_ontology_propose error: Error executing tool kg_ontology_propose: {\"message\": \"op=schema_edit requires verb, level, and code\"}"
+  ],
+  "indistinguishable": true
+ },
+ "kg_triage_place_edge": {
+  "required": [
+   "triage_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP kg_triage_place_edge error: Error executing tool kg_triage_place_edge: {\"message\": \"project not found\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP kg_triage_place_edge error: Error executing tool kg_triage_place_edge: {\"message\": \"project not found\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP kg_triage_place_edge error: Error executing tool kg_triage_place_edge: {\"message\": \"invalid arguments: triage_id: String should have at least 1 character\"}"
+  ],
+  "indistinguishable": true
+ },
+ "kg_triage_resolve": {
+  "required": [
+   "signature",
+   "action"
+  ],
+  "absent": [
+   "refused",
+   "MCP kg_triage_resolve error: Error executing tool kg_triage_resolve: {\"message\": \"project not found\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP kg_triage_resolve error: Error executing tool kg_triage_resolve: {\"message\": \"project not found\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP kg_triage_resolve error: Error executing tool kg_triage_resolve: {\"message\": \"invalid arguments: signature: String should have at least 1 character\"}"
+  ],
+  "indistinguishable": true
+ },
+ "kg_triage_schema_write": {
+  "required": [
+   "signature",
+   "action"
+  ],
+  "absent": [
+   "refused",
+   "MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}"
+  ],
+  "empty": [
+   "refused",
+   "MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"invalid arguments: signature: String should have at least 1 character\"}"
+  ],
+  "indistinguishable": true
+ },
+ "memory_timeline": {
+  "required": [],
+  "absent": [
+   "refused",
+   "MCP memory_timeline error: Error executing tool memory_timeline: {\"message\": \"project not found\"}"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP memory_timeline error: Error executing tool memory_timeline: {\"message\": \"project not found\"}"
+  ],
+  "empty": [
+   "SUCCEEDED",
+   "{\"events\": [{\"title\": \"A calèche overtakes the coach\", \"event_date\": null, \"participants\": [\"the driver\", \"the passenger\"]}, {\"title\": \"A calèche overtakes the coach\", \"event_date\": null, \"participants\": [\"the driver\", \""
+  ],
+  "indistinguishable": true
+ },
+ "plan_keep_material": {
+  "required": [
+   "book_id",
+   "run_id",
+   "kept"
+  ],
+  "absent": [
+   "refused",
+   "MCP plan_keep_material error: Error executing tool plan_keep_material: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP plan_keep_material error: Error executing tool plan_keep_material: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP plan_keep_material error: Error executing tool plan_keep_material: book_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual cause."
+  ],
+  "indistinguishable": true
+ },
+ "plan_run_pass": {
+  "required": [
+   "book_id",
+   "run_id",
+   "pass_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP plan_run_pass error: Error executing tool plan_run_pass: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP plan_run_pass error: Error executing tool plan_run_pass: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP plan_run_pass error: Error executing tool plan_run_pass: book_id must be a UUID — received ''. Compare it against the id you meant to send; a repeated or dropped group is the usual cause."
+  ],
+  "indistinguishable": true
+ },
+ "registry_get_workflow": {
+  "required": [
+   "slug"
+  ],
+  "absent": [
+   "refused",
+   "MCP registry_get_workflow error: workflow not found: probe-00000000"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP registry_get_workflow error: workflow not found: probe-11111111"
+  ],
+  "empty": [
+   "refused",
+   "MCP registry_get_workflow error: slug is required"
+  ],
+  "indistinguishable": false
+ },
+ "registry_set_skill_enabled": {
+  "required": [
+   "slug",
+   "enabled"
+  ],
+  "absent": [
+   "refused",
+   "MCP registry_set_skill_enabled error: skill not found: probe-00000000"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP registry_set_skill_enabled error: skill not found: probe-11111111"
+  ],
+  "empty": [
+   "refused",
+   "MCP registry_set_skill_enabled error: skill not found: "
+  ],
+  "indistinguishable": false
+ },
+ "registry_update_skill": {
+  "required": [
+   "slug"
+  ],
+  "absent": [
+   "refused",
+   "MCP registry_update_skill error: skill not found: probe-00000000"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP registry_update_skill error: skill not found: probe-11111111"
+  ],
+  "empty": [
+   "refused",
+   "MCP registry_update_skill error: skill not found: "
+  ],
+  "indistinguishable": false
+ },
+ "registry_update_workflow": {
+  "required": [
+   "slug"
+  ],
+  "absent": [
+   "refused",
+   "MCP registry_update_workflow error: book not found"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP registry_update_workflow error: book not found"
+  ],
+  "empty": [
+   "refused",
+   "MCP registry_update_workflow error: workflow not found: "
+  ],
+  "indistinguishable": true
+ },
+ "settings_model_set_active": {
+  "required": [
+   "user_model_id",
+   "value"
+  ],
+  "absent": [
+   "refused",
+   "MCP settings_model_set_active error: not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP settings_model_set_active error: not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP settings_model_set_active error: user_model_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "settings_model_set_favorite": {
+  "required": [
+   "user_model_id",
+   "value"
+  ],
+  "absent": [
+   "refused",
+   "MCP settings_model_set_favorite error: not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP settings_model_set_favorite error: not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP settings_model_set_favorite error: user_model_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "settings_model_update": {
+  "required": [
+   "user_model_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP settings_model_update error: not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP settings_model_update error: not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP settings_model_update error: user_model_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "translation_patch_block": {
+  "required": [
+   "book_id",
+   "chapter_id",
+   "base_version_id",
+   "target_language",
+   "block_index",
+   "block"
+  ],
+  "absent": [
+   "refused",
+   "MCP translation_patch_block error: Error executing tool translation_patch_block: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP translation_patch_block error: Error executing tool translation_patch_block: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP translation_patch_block error: Error executing tool translation_patch_block: not found or not accessible"
+  ],
+  "indistinguishable": true
+ },
+ "translation_set_active_version": {
+  "required": [
+   "book_id",
+   "chapter_id",
+   "version_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP translation_set_active_version error: Error executing tool translation_set_active_version: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP translation_set_active_version error: Error executing tool translation_set_active_version: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP translation_set_active_version error: Error executing tool translation_set_active_version: not found or not accessible"
+  ],
+  "indistinguishable": true
+ },
+ "translation_update_settings": {
+  "required": [
+   "book_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP translation_update_settings error: Error executing tool translation_update_settings: not found or not accessible"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP translation_update_settings error: Error executing tool translation_update_settings: not found or not accessible"
+  ],
+  "empty": [
+   "refused",
+   "MCP translation_update_settings error: Error executing tool translation_update_settings: not found or not accessible"
+  ],
+  "indistinguishable": true
+ },
+ "world_map_remove_region": {
+  "required": [
+   "region_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP world_map_remove_region error: region not found"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP world_map_remove_region error: region not found"
+  ],
+  "empty": [
+   "refused",
+   "MCP world_map_remove_region error: region_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "world_map_update_marker": {
+  "required": [
+   "marker_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP world_map_update_marker error: marker not found"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP world_map_update_marker error: marker not found"
+  ],
+  "empty": [
+   "refused",
+   "MCP world_map_update_marker error: marker_id must be a UUID"
+  ],
+  "indistinguishable": true
+ },
+ "world_map_update_region": {
+  "required": [
+   "region_id"
+  ],
+  "absent": [
+   "refused",
+   "MCP world_map_update_region error: region not found"
+  ],
+  "tenancy": [
+   "refused",
+   "MCP world_map_update_region error: region not found"
+  ],
+  "empty": [
+   "refused",
+   "MCP world_map_update_region error: region_id must be a UUID"
+  ],
+  "indistinguishable": true
+ }
+}
