@@ -60,7 +60,60 @@ The previous board proved the producers are reachable: `seed_world` ← `provisi
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `A1` | **MEASURE the migrate path before touching a real reality.** What does `migration-orchestrator/cmd/migrate` do to an existing reality — which migrations, in what order, with what dry-run? Does it read the manifest, and does it refuse a reality it cannot reach? **Read-only.** | `[x]` | **DONE 2026-08-22 — §3.1. Read-only throughout; nothing was written.** Two of `D-1`'s assumptions are NOT expressible with this CLI — see `§3.2` |
-| `A2` | **The ten realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[ ]` | |
+| `A2` | **The ten realities come forward to the manifest head — or a decision says which do not.** `I-1` applies: these are NOT throwaways. Dry-run first, on one reality, with the diff shown; **the PO authorises before any live write** | `[~]` | **STOPPED FOR AUTHORISATION — §3.3, and that is `D-2` working, not a failure.** Option **(b)** taken: `--reality` and a fleet-resolving `--dry-run` are built, tested (6 arms), bitten, and REHEARSED against an exact copy of a real reality — **9 of 9 applied clean**. The live write is the only step left |
+#### 3.3 · `A2` — built, rehearsed, and stopped at the live write
+
+**Decision: option (b) from §3.2 — add `--reality`.** The other two were worse. **(a)** narrowing the
+fleet by editing `reality_registry.status` is *a live write to the meta database made in order to make
+a live write safer*. **(c)** a fleet-wide first attempt is the caution `D-1` intended, abandoned.
+
+**Two things shipped, neither of which touches a reality:**
+
+- **`--reality <id[,id]>`** narrows the fan-out. The fleet was all-or-nothing; `ActiveRealities`
+  returns every drainable row and nothing filtered it. **An id outside the fleet is a REFUSAL** —
+  a typo would otherwise select nothing, `runLive` would print *"no active realities to migrate"*,
+  exit **0**, and an operator would believe a migration reached a reality it never touched.
+- **`--dry-run` with `--meta-dsn` now resolves the REAL fleet** and prints the plan. Until now a dry
+  run never opened a database, so there was no way to ASK for authorisation with anything concrete;
+  the only way to learn what a migration would do was to run it.
+
+**Against the real registry, read-only:**
+
+```
+  PLAN (nothing is written)
+    route          : internal/runner with concurrency=10
+    drainable fleet: 10
+    would apply to : 1
+      00c7e2c5-cabc-421a-b3a2-c49a23288e4f  lw_reality_00c7e2c5cabc @ pg-shard-0.internal
+
+  ERROR: --reality 00000000-dead-beef-... is not in the drainable fleet of 10;
+         refusing rather than narrowing to nothing
+```
+
+**Six unit arms, and the bite is the refusal.** Making an unknown id `continue` instead of erroring
+reds two of them — including `a,typo`, which silently applied to `a` alone. Restored byte-identical.
+
+**REHEARSED on a throwaway that is an exact copy of a real reality** (`pg_dump --schema-only` plus the
+`schema_migrations` ledger: **17 migrations, newest `0021_turn_slot`** — identical to the source):
+
+```
+  0022_actors .. 0030_encounter        9 applied, 0 failed
+  map_layout=true entity_binding=true place=true portal=true
+  layer_registry=true encounter=true actors=true
+```
+
+**The harness that said that is proven able to say the opposite** — fed a deliberately broken
+statement it reports `ERROR: relation "map_layout" already exists`. It had already caught a real
+mistake: MSYS path translation mangled `/tmp/m.sql` and **all nine reported FAILED**, which is what a
+harness is for.
+
+**The rehearsal's one gap, measured rather than waved at.** It carried schema and ledger but no other
+data, so the single data-touching migration — `0027`, which adds a foreign key — was not exercised
+against rows. So the rows were counted: **all ten realities have 0 `channel_writer_state` rows and 0
+orphans.** The gap is empty in practice, and `0027` adds the key `NOT VALID` in any case.
+
+**`A2` STOPS HERE.** Everything that can be done without writing to a non-throwaway reality is done.
+The remaining step is nine live invocations against real realities, which is `D-2` and the STOP list.
 | `A3` | **Something DECLARES a world** — `OR-3` from the previous board. Every caller passes an empty declaration today, so the seed step reports `Skipped` on every path. Where the declaration LIVES is this row's decision | `[ ]` | |
 | `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[ ]` | |
 
@@ -148,7 +201,7 @@ live write** — that half of `D-1` stands untouched.
 
 ## 7 · RESUME
 
-**RESUME: `A2` — bring the fleet forward, and READ §3.2 FIRST: `D-1`'s "dry-run on one reality with the diff shown" is NOT expressible with this CLI — there is no `--reality` flag and `--dry-run` never opens a database. Decide among the three options in §3.2, record the decision, and STOP for authorisation before any live write (`D-2`). The fleet is TEN realities, all `active`, in two cohorts (7 at `0019_channels`, 3 at `0021_turn_slot`), and all ten are missing `0022`–`0030`.**
+**RESUME: `A2` is STOPPED FOR AUTHORISATION (§3.3) — the tooling is built, tested, bitten and rehearsed 9-of-9 clean against an exact copy of a real reality; only the live write remains. Do NOT proceed without the PO's word. If authorisation is refused or deferred, `A3` (something DECLARES a world) can proceed independently — it is a code/decision row that needs no live reality.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is
