@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import pathlib
 import re
 import sys
@@ -398,10 +399,66 @@ async def run_scenario(client, auth, sc, idx, fx):
     return res
 
 
+def _other_runner_pids() -> list[int]:
+    """PIDs of OTHER live fe_runner processes. Windows-aware on purpose — see the caller.
+
+    Returns [] when it cannot tell. A probe that cannot see the thing must not be read as
+    evidence the thing is absent, so this refuses to guess: an empty list means "nothing found",
+    and the caller treats that as permission to run, exactly as it did before this existed.
+    """
+    import subprocess as _sp
+    me = os.getpid()
+    try:
+        if sys.platform == "win32":
+            out = _sp.run(["powershell", "-NoProfile", "-Command",
+                           "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+                           "ForEach-Object { $_.ProcessId.ToString() + '::' + $_.CommandLine }"],
+                          capture_output=True, text=True, timeout=25).stdout
+        else:
+            out = _sp.run(["ps", "-eo", "pid,args"], capture_output=True,
+                          text=True, timeout=25).stdout
+    except Exception:
+        return []
+    pids: list[int] = []
+    for line in out.splitlines():
+        if "fe_runner" not in line:
+            continue
+        head = line.split("::")[0] if "::" in line else line.strip().split(" ")[0]
+        try:
+            pid = int(head.strip())
+        except ValueError:
+            continue
+        if pid != me:
+            pids.append(pid)
+    return pids
+
+
 async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     auth = Auth(*read_credential())
     sem = asyncio.Semaphore(concurrency)
     results = []
+
+    # 🔴 ONE RUNNER AT A TIME, AND THIS IS CHECKED RATHER THAN ASSUMED. Measured 2026-08-23:
+    # two fe_runners ran concurrently against the same harness account for several minutes because
+    # the kill that was supposed to stop the first one silently did nothing — `ps aux | grep
+    # fe_runner` under Git Bash does not enumerate native Windows processes, so it printed nothing
+    # and "no output" was read as "stopped".
+    #
+    # The cost is not politeness. Two runners seed into the SAME account-scoped library, so each
+    # one's store diff sees the other's writes, each one's provider calls contend with the other's
+    # (PARALLEL 4 upstream), and the transport-error rate one of them measures is partly the other
+    # one's load. That confound was already recorded once in this loop against
+    # composition_motif_link_edit and then reintroduced by accident.
+    _other = _other_runner_pids()
+    if _other:
+        print("REFUSED — another fe_runner is already running: " +
+              ", ".join(str(x) for x in _other))
+        print("  Two runners seed into the same account and each measures the other's contention.")
+        print("  Stop it first. On Windows, `ps aux` does NOT see it — use:")
+        print("    powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter "
+              "\\\"Name='python.exe'\\\" | Where-Object { $_.CommandLine -like '*fe_runner*' } | "
+              "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"")
+        raise SystemExit(2)
 
     # 🔴 SWEEP BEFORE, NOT ONLY AFTER. 16 fixtures leaked from one batch when teardown failed,
     # and on the next run the model found one through `book_list` and proposed writes into it. A
