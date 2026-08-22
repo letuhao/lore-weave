@@ -1,9 +1,11 @@
-//! Channel identity + tier — mirrors MAP_001 `MapKind` (5 V1 closed enum)
+//! Channel identity + KIND — the closed `MapKind` set (doc 36 `SPG-A3`), SEVEN
+//! variants plus a reserved `Vessel` this service does not accept.
 //! and DP-K1 `ChannelId`.
 //!
-//! Per TMP-A1, **Cell tier is excluded** from any `tilemap_view` — CSC_001
+//! Per TMP-A1, **`Domain` is excluded** from any `tilemap_view` — CSC_001
 //! is authoritative for the in-scene 16×16 interior. tilemap-service only
-//! generates tile data for the four non-cell tiers.
+//! generates tile data for `Region` and `Locale` (`SPG-R9`; see
+//! `generates_tilemap`, whose scope ambiguity is recorded on that row).
 
 use serde::{Deserialize, Serialize};
 

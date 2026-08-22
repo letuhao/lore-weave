@@ -234,14 +234,14 @@ impl TilemapView {
     /// Engine-only generation; empty zones/terrain/objects; cell anchors empty.
     pub fn empty(
         channel_id: ChannelId,
-        tier: MapKind,
+        kind: MapKind,
         grid_size: GridSize,
         template_id: TilemapTemplateId,
         seed: u64,
     ) -> Self {
         Self {
             channel_id,
-            tier,
+            tier: kind,
             grid_size,
             template_id,
             seed,

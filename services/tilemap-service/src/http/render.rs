@@ -94,7 +94,9 @@ pub async fn render(
     State(_state): State<AppState>,
     JsonProblem(req): JsonProblem<RenderRequest>,
 ) -> Result<Json<TilemapView>, ProblemDetails> {
-    let RenderRequest { template, channel_id, tier, grid_size, seed } = req;
+    // The wire field is `tier` and the binding is `kind` -- one rename stops at
+    // the contract boundary, which is where `SPG-R14` says it should stop.
+    let RenderRequest { template, channel_id, tier: kind, grid_size, seed } = req;
 
     // MED-1 from /review-impl: reject oversized requests BEFORE
     // spawn_blocking allocates the grid. Internal Bearer auth limits the
@@ -126,7 +128,7 @@ pub async fn render(
     );
 
     let view = tokio::task::spawn_blocking(move || {
-        place_tilemap(&template, channel_id, tier, grid_size, TilemapSeed(seed))
+        place_tilemap(&template, channel_id, kind, grid_size, TilemapSeed(seed))
     })
     .await
     .map_err(|err| {
