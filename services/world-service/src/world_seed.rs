@@ -92,6 +92,60 @@ impl MapKind {
     }
 }
 
+/// `SPG-A3`'s CONTAINMENT MATRIX — is `parent -> child` a legal edge?
+///
+/// ## Why this exists here, and it is a gap rather than an addition
+///
+/// `SPG-A3` is doc 36's central axiom: *"A node declares its `MapKind`. A
+/// parent-child edge is legal iff the containment matrix `allowed(parent_kind,
+/// child_kind)` permits it. There is no level number, no required depth, no
+/// mandatory sequence of rungs."* It is the thing that replaced `MAP_001`'s
+/// ordinal ladder, and the reject id `map.containment_violation` is registered.
+///
+/// **Grepped 2026-08-22: `containment_violation` appeared in exactly two places
+/// in the whole repository, both of them this file naming it for its STRUCTURAL
+/// half (cycles and roots). `allowed(parent, child)` was implemented nowhere.**
+/// The matrix was sealed, cited by fifteen amendment rows, and never once
+/// consulted.
+///
+/// ## The table is transcribed as DATA, on purpose
+///
+/// Written as nested `match` arms it would be forty-nine hand-typed booleans
+/// that no reader could diff against doc 36 §3.1. As a row per parent kind, in
+/// the doc's own order, a reviewer can read the two side by side.
+const fn allowed_children(parent: MapKind) -> &'static [MapKind] {
+    use MapKind::*;
+    match parent {
+        // Universe -> Universe is legal, and `SPG-A3` calls that out: it is what
+        // proves the matrix is a RELATION and not a disguised ladder.
+        Universe => &[Universe, World, Domain, Passage],
+        World => &[Region, Locale, Domain, Passage],
+        Region => &[Region, Locale, Domain, Passage],
+        Locale => &[Domain, Passage, Arena],
+        // Domain -> World is the inner-world case (`SPG-A2`): legal, rare, and
+        // ruleset-gated. `SDF-F7` prices it at up to 500x the authored world and
+        // `SDF-A19` bounds it by SCALE rather than forbidding it -- see the note
+        // on `ContainmentViolation` for why the scale half is not checked here.
+        Domain => &[World, Domain, Passage, Arena],
+        Passage => &[Domain, Arena],
+        // "Arena is a leaf by construction."
+        Arena => &[],
+    }
+}
+
+/// `allowed(parent_kind, child_kind)` — `SPG-A3`, evaluated.
+pub fn allowed(parent: MapKind, child: MapKind) -> bool {
+    let mut i = 0;
+    let row = allowed_children(parent);
+    while i < row.len() {
+        if row[i] as u8 == child as u8 {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
 /// `PF_001` §3.1's scalar core. The declaration an author writes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaceDecl {
@@ -148,6 +202,16 @@ pub enum SeedReject {
     CyclicParent { node: i64 },
     /// `DP-Ch1`'s `depth <= 16`, checked before the database has to.
     TooDeep { node: i64, depth: i32 },
+    /// `map.containment_violation` proper — the matrix refuses this edge.
+    ///
+    /// ⚠ THE SCALE HALF IS NOT CHECKED HERE, and that is stated rather than
+    /// silently skipped. `SDF-A19` bounds `Domain -> World` to `WorldScale::Pocket`
+    /// instead of forbidding it, because a quota is the wrong instrument -- it is
+    /// arbitrary, it fails at runtime rather than at authoring time, and it tells
+    /// an author nothing about what they may build. Checking it needs a SCALE on
+    /// the declaration, which `NodeDecl` does not carry. That is `SDF-R7`'s row,
+    /// and this is where it will hook.
+    ContainmentViolation { node: i64, parent_kind: &'static str, child_kind: &'static str },
     /// A root is a node with no parent. `0019`'s `channels_root_single` permits
     /// exactly one per reality.
     MultipleRoots { first: i64, second: i64 },
@@ -162,7 +226,8 @@ impl SeedReject {
         match self {
             Self::MissingPlaceDecl { .. } => "place.missing_decl",
             Self::PlaceOnNonDomain { .. } => "place.invalid_place_type_for_channel_tier",
-            Self::DuplicateNode { .. }
+            Self::ContainmentViolation { .. }
+            | Self::DuplicateNode { .. }
             | Self::UnknownParent { .. }
             | Self::CyclicParent { .. }
             | Self::TooDeep { .. }
@@ -233,6 +298,22 @@ pub fn validate(decls: &[NodeDecl]) -> Result<Vec<(i64, i32)>, SeedReject> {
                 })
             }
             _ => {}
+        }
+    }
+
+    // `SPG-A3`. Every edge, not just the suspicious ones.
+    for d in decls {
+        if let Some(parent) = d.parent {
+            let p = by_id
+                .get(&parent)
+                .ok_or(SeedReject::UnknownParent { node: d.id, parent })?;
+            if !allowed(p.kind, d.kind) {
+                return Err(SeedReject::ContainmentViolation {
+                    node: d.id,
+                    parent_kind: p.kind.as_str(),
+                    child_kind: d.kind.as_str(),
+                });
+            }
         }
     }
 
@@ -384,6 +465,60 @@ mod tests {
                 None
             },
         }
+    }
+
+    #[test]
+    fn the_matrix_permits_the_two_edges_that_prove_it_is_a_relation() {
+        // `SPG-A3` calls this one out by name: Universe -> Universe is legal, and
+        // it is what proves the matrix is a RELATION rather than a disguised
+        // ladder. A ladder cannot contain itself.
+        assert!(allowed(MapKind::Universe, MapKind::Universe));
+        // And the inner-world case (`SPG-A2`, 内天地): an interior containing an
+        // entire world. Legal, rare, ruleset-gated -- and the row `SDF-F7` prices
+        // at up to 500x the authored world.
+        assert!(allowed(MapKind::Domain, MapKind::World));
+    }
+
+    #[test]
+    fn the_matrix_refuses_an_upside_down_edge() {
+        // A Locale cannot contain a Region: that is the ladder running backwards,
+        // and a matrix that permitted it would permit anything.
+        assert!(!allowed(MapKind::Locale, MapKind::Region));
+        assert!(!allowed(MapKind::Domain, MapKind::Region));
+        assert!(!allowed(MapKind::World, MapKind::Universe));
+    }
+
+    #[test]
+    fn arena_is_a_leaf_by_construction() {
+        for k in [
+            MapKind::Universe, MapKind::World, MapKind::Region, MapKind::Locale,
+            MapKind::Domain, MapKind::Passage, MapKind::Arena,
+        ] {
+            assert!(!allowed(MapKind::Arena, k), "Arena must contain nothing, got {k:?}");
+        }
+    }
+
+    #[test]
+    fn a_declaration_with_an_illegal_edge_is_refused() {
+        // Locale -> Region, declared. The whole point is that `validate` catches
+        // it BEFORE anything is written.
+        let d = vec![
+            node(1, None, MapKind::World),
+            node(2, Some(1), MapKind::Locale),
+            node(3, Some(2), MapKind::Region),
+        ];
+        assert_eq!(
+            validate(&d).unwrap_err(),
+            SeedReject::ContainmentViolation {
+                node: 3,
+                parent_kind: "locale",
+                child_kind: "region",
+            }
+        );
+        assert_eq!(
+            validate(&d).unwrap_err().rule_id(),
+            "map.containment_violation"
+        );
     }
 
     #[test]
