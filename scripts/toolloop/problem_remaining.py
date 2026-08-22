@@ -60,6 +60,26 @@ def main() -> int:
     probs, ledger = load()
     ordered = sorted(probs["problems"], key=order_key)
 
+    # 🔴 THE PARTITION MUST STAY MECE, AND A DUPLICATE ONCE SLIPPED THROUGH. Moving a tool into a
+    # problem that already listed it put `memory_timeline` in P13 twice, and the denominator read
+    # 66 where the contract says 65. It was caught because I happened to read the number — which is
+    # not a control. The denominator is the one thing in this loop that may never drift, so a tool
+    # appearing twice, or vanishing, is a refusal rather than a line in a report.
+    seen: dict[str, str] = {}
+    dupes: list[str] = []
+    for p in probs["problems"]:
+        for t in p["tools"]:
+            if t in seen:
+                dupes.append(f"{t} (in {seen[t]} and {p['id']})")
+            seen[t] = p["id"]
+    if dupes:
+        print("PARTITION IS NOT MECE — a tool appears in more than one problem, so the "
+              "denominator is wrong in both directions at once:")
+        for d in dupes:
+            print(f"  {d}")
+        print("Fix the file, not this script.")
+        return 2
+
     # The stored cycle numbers must be the rule's output, not someone's preference.
     stored = [p["id"] for p in sorted(probs["problems"], key=lambda p: p["cycle"])]
     computed = [p["id"] for p in ordered]
