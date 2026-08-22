@@ -937,11 +937,23 @@ approached, twice, before a line shipped.
 |---|---|---|
 | `3A` | **`DpError` (`DP-K3`)** — the settled enum slice 1 named as its own missing prerequisite | ✅ 17 variants + a doc-parsing oracle, 3 bites |
 | `3B` | **`DP-R6`'s backpressure partition, in code** — `is_backpressure()` | ✅ and the non-backpressure arm is enumerated, so a new variant cannot be silently unclassified |
-| `3C` | **the id newtypes** (`RealityId`/`SessionId`/`ChannelId`/`NodeId`) | ⬜ **blocked on a PRODUCER, not on effort** — see below |
-| `3D` | **`CapabilityToken` + `SessionContext`** | ⬜ needs `3C` and a control-plane seam (slice 5) |
-| `3E` | **adoption** — the bare `reality_id` sites | ⬜ **880 across 99 files**, measured; the plan's "457" is stale |
+| `3C` | **the id newtypes** (`RealityId`/`SessionId`/`ChannelId`/`NodeId`) | ✅ **DONE — verified 2026-08-22 by `B1` of the space-producers board, not by this one.** The producer arrived and nobody ticked the row. `crates/dp/src/ids.rs` carries all four; the row's OWN done-criterion `cargo clippy -p dp --all-targets -- -D warnings` **exits 0**, so `new_verified` is no longer dead code; and the row's OWN bite (field → `pub`) reds `tests/ui/forged_reality_id.rs` with the `E0603` arm gone, leaving only `E0624`. |
+| `3D` | **`CapabilityToken` + `SessionContext`** | ✅ **DONE — verified 2026-08-22 by `B1`.** All four steps are live in `crates/dp/src/session.rs`: `CapabilityToken` with `is_live`, `trait ControlPlane` (`:245`), `SessionContext`, and a `#[cfg(test)]` double. `services/world-service/tests/support/mod.rs` binds through it, which is the in-crate caller `3C` was waiting for — **`3C` and `3D` did land as one unit, exactly as §0.6c required.** |
+| `3E` | **adoption** — the bare `reality_id` sites | ⬜ **STILL OPEN, re-measured 2026-08-22 by `B1`:** 195 `reality_id: Uuid` against 11 `reality_id: dp::RealityId`, across 48 files. (A narrower predicate than this row's own 880/99, so the two numbers do not contradict — this one counts declarations only.) The embedding queue HAS adopted; the rest has not. Stays parked behind slice 5. |
 
 ### `3C` — an unforgeable mint is dead code until something can mint
+
+> **✅ CLOSED 2026-08-22 — the mint got something that can mint.** Everything below
+> is still the correct account of why `3C` was reverted; it is history, not an open
+> question. `ids.rs` is back, `3D`'s `ControlPlane` is the producer it was waiting
+> for, and `services/world-service/tests/support/mod.rs` binds through it. Verified
+> by this row's own two criteria — `cargo clippy -p dp --all-targets -- -D warnings`
+> exits **0**, and the field → `pub` bite still reds `forged_reality_id`.
+>
+> **Nobody ticked the row when the work landed.** It was found by another board's
+> `B1` needing a `dp::RealityId` and discovering the constructor already there. That
+> is the third time this shape has appeared in a week: the work ships, the register
+> is never told, and the next reader treats a finished row as a blocker.
 
 `RealityId` was written, tested and reverted inside an hour, and the revert is
 the finding. `DP-K1` specifies *"module-private constructor — cannot be forged

@@ -340,16 +340,42 @@ that file is ungoverned history, and a third copy is the drift this run keeps fi
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `B1` | **reality-layer `3C` + `3D` as ONE commit** — `ids.rs` re-added, `CapabilityToken`, `trait ControlPlane`, `SessionContext`, the `#[cfg(test)]` double. The producer `3C` was waiting for is the control-plane seam, and `3D` *is* that seam | `[ ]` | |
+| `B1` | **reality-layer `3C` + `3D` as ONE commit** — `ids.rs` re-added, `CapabilityToken`, `trait ControlPlane`, `SessionContext`, the `#[cfg(test)]` double. The producer `3C` was waiting for is the control-plane seam, and `3D` *is* that seam | `[x]` | **DONE 2026-08-22 — §3.7. ALREADY BUILT; the board was never told.** Verified by the rows' OWN criteria: `clippy -p dp -D warnings` **rc=0**, and the field → `pub` bite reds `forged_reality_id`. Both boards updated |
 | `B2` | **kernel-state `G5` automated.** Its status cell ticks the MANUAL leg and leaves the AUTOMATED leg unticked — the browser render is proven by hand and by nothing that runs again | `[ ]` | |
 | `B3` | **game-tier `1b5-*` — eight rows marked `⬜ OPEN` at `:1700`–`:1707` that a discharge table at `:1787` closes.** The work shipped; the register was never told | `[ ]` | |
 | `B4` | **lore-bible `LB1`/`LB2`/`LB3` — unpark or park with a trigger.** `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep. A board parked for a *good* reason still needs the reason written where the next reader looks | `[ ]` | |
+
+#### 3.7 · `B1` — verified, not built
+
+**`3C` and `3D` were already done, and the board still said `⬜ blocked on a PRODUCER`.** `OR-4`
+suspected it; `B1` verified it by the rows' **own** stated criteria rather than by presence:
+
+| criterion (the board's words) | result |
+|---|---|
+| `3C.1` *"`cargo clippy -p dp --all-targets -D warnings` exit 0, i.e. no dead code, which is the whole test of whether the producer exists"* | **rc=0** |
+| `3C.2` *"the pins READ, not blessed; bite = field → `pub` breaks it"* | **bitten** — with `pub`, the `E0603` arm disappears and `forged_reality_id` reds on the mismatch, leaving only `E0624`. Restored byte-identical |
+| `3D.1`–`3D.4` | `CapabilityToken` + `is_live`, `trait ControlPlane` (`crates/dp/src/session.rs:245`), `SessionContext`, and a `#[cfg(test)]` double — all live |
+
+**`3C` and `3D` did land as one unit, exactly as §0.6c required**, and the in-crate caller `3C` was
+waiting for is `services/world-service/tests/support/mod.rs` binding through `ControlPlane`. `A3`
+found it by needing a `dp::RealityId` — **the third time in a week that work shipped and the register
+was never told** (`SPG-Q6`, the `1b5-*` rows, now this).
+
+**`3E` is genuinely still open**, re-measured: **195 `reality_id: Uuid` against 11
+`reality_id: dp::RealityId`, across 48 files.** That is a narrower predicate than the row's own
+880/99 — declarations only — so the two numbers do not contradict. The embedding queue has adopted;
+the rest has not. Stays parked behind slice 5, and `OUT-2` is unchanged.
+
+**And `B1` produced `C1`'s second half.** Ticking `3C`/`3D` made the reality-layer board read
+**0 open of 35** while `3E` was still `⬜` — because **`⬜` is not in `goal-prompt.py`'s vocabulary**.
+Measured across every board: **27 open rows are invisible for that reason alone**, and they are not
+incidental rows — they are `1b5-H1..L5` (`B3`'s subject), `LB1..LB3` (`B4`'s subject), `3E` and `W8`.
 
 ### Lane C — the tooling that hid the work
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `C1` | **`goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards | `[ ]` | |
+| `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[ ]` | |
 | `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[ ]` | |
 | `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
 | `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[ ]` | |
@@ -412,7 +438,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `B1` — reality-layer `3C`+`3D`. `OR-4` says they look ALREADY DONE: `crates/dp/src/ids.rs` exists with a crate-private `new_verified`, and `ControlPlane`, `SessionContext`, `VerifiedBind` and `BindRequest` are all live and used by `services/world-service/tests/support/mod.rs`. VERIFY rather than build — and if it is done, this is `B3`'s shape a second time and the reality-layer board needs telling, not the code. **Lane A is CLOSED: all five rows.**
+**RESUME: `B2` — kernel-state `G5`'s automated leg. Then `B3`/`B4`. Note what `B1` produced: `C1` now has TWO measured gaps, and the second (`⬜` invisible, 27 rows) covers the very rows `B3` and `B4` are about — so `C1` may be worth pulling ahead of them, since a fix there makes both verifiable instead of hand-checked.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
