@@ -281,3 +281,50 @@ async def test_the_MERGE_path_REFUSES_to_delete_a_node_carrying_an_edge_it_canno
                 "BEFORE the delete, not after")
         finally:
             await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)
+
+
+async def test_one_malformed_node_does_not_ABORT_the_whole_backfill(neo4j_driver):
+    """⚠️ Found by T80's bite 5, and by the residue that provoked it.
+
+    `run_recanon_backfill` reads CROSS-TENANT — that is the point of an operator-run
+    re-canonicalisation — so it meets every node in the database, including ones no repo
+    function wrote. `entity_canonical_id` RAISES on an empty `kind`, and the reader's skip list
+    guarded `id`, `user_id` and `name` but not `kind`. One node with no `kind` therefore
+    aborted the run before it planned a single action, and on the shared dev graph that is
+    1819 re-keys and 1 merge not happening because of one row.
+
+    Skipping the row is what the other three fields already do. This is the empty-input trap
+    from the other side: not a loop that silently does nothing, but a single bad element that
+    stops everything.
+    """
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    pid = f"p-{uuid.uuid4().hex[:8]}"
+    good = f"ent-{uuid.uuid4().hex[:8]}"
+    bad = f"ent-{uuid.uuid4().hex[:8]}"
+    async with neo4j_driver.session() as s:
+        try:
+            await _seed(s, uid=uid, pid=pid, eid=good, name=_NAME, cn=_STALE_CN, anchor=None)
+            # No `kind` AND no `canonical_name` — the shape a probe, an import or an older
+            # writer leaves behind, and the exact shape that provoked this.
+            #
+            # ⚠️ The first version of this test gave the bad node `canonical_name:'x'` to match
+            # its name, and was GREEN under the bite: a row whose stored canonical already
+            # equals the re-canonicalisation is scored `clean` and `continue`d BEFORE
+            # `entity_canonical_id` is ever called, so it never reached the line that raises.
+            # The node has to be DRIFTED for `kind` to matter at all.
+            await s.run(
+                "CREATE (e:Entity {id:$i, user_id:$u, project_id:$p, name:$n})",
+                i=bad, u=uid, p=pid, n=_NAME,
+            )
+
+            plan = await run_recanon_backfill(s, apply=False)
+
+            assert plan.scanned >= 1, "the malformed node stopped the walk before it planned"
+            planned_ids = {a.from_id for a in plan.actions}
+            assert good in planned_ids, (
+                f"the drifted node was not planned — one malformed row took the whole run "
+                f"down with it: {plan!r}"
+            )
+            assert bad not in planned_ids, "the malformed node was planned, not skipped"
+        finally:
+            await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)

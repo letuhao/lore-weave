@@ -39,8 +39,16 @@ def _result(record):
 
 def test_update_event_cypher_captures_before_and_bumps_version():
     from app.db.neo4j_repos import events as m
-    assert "AS before" in m._UPDATE_EVENT_FIELDS_CYPHER
-    assert "e.version = current_version + 1" in m._UPDATE_EVENT_FIELDS_CYPHER
+    # T80 split the OCC path into two statements in one transaction (the FOREACH form was
+    # not atomic — see the measurement on `entities._LOCK_AND_READ_ENTITY_CYPHER`). The
+    # `before` snapshot still comes from the LOCKED READ, and the new version still comes
+    # from the version read under that lock, not from the caller's expected_version.
+    assert "AS before" in m._LOCK_AND_READ_EVENT_CYPHER
+    assert "SET e.version = coalesce(e.version, 1)" in m._LOCK_AND_READ_EVENT_CYPHER, (
+        "the locked read lost its lock-taking write — the transaction alone leaves the race "
+        "exactly as it was (measured: 39 of 40 concurrent pairs both apply)"
+    )
+    assert "e.version = $next_version" in m._APPLY_EVENT_FIELDS_CYPHER
     # merge_event ON CREATE seeds version=1; ON MATCH must NOT bump it (so a
     # user's If-Match baseline survives extraction re-mentions).
     # RESTATED (T73): the branches merged into one SET (§10.1), so "ON MATCH must not touch
@@ -69,45 +77,66 @@ def test_update_event_cypher_captures_before_and_bumps_version():
     )
 
 
+def _tx_session(records: list):
+    """A session whose transaction hands back `records` in order, one per `run`.
+
+    These stay MOCK tests of the control flow. A mock has no lock, which is exactly why the
+    race the two-statement form fixes was invisible at this level for as long as it was — the
+    property itself is pinned live in `tests/integration/db/test_occ_is_actually_atomic.py`.
+    """
+    tx = MagicMock()
+    tx.run = AsyncMock(side_effect=[_result(r) for r in records])
+    tx.commit = AsyncMock()
+    tx.__aenter__ = AsyncMock(return_value=tx)
+    tx.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.begin_transaction = AsyncMock(return_value=tx)
+    return session, tx
+
+
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_write", new_callable=AsyncMock)
-async def test_update_event_applies_and_returns_before(mock_run):
-    post = _event_node(title="The Sworn Oath", version=4)
-    mock_run.return_value = _result({
-        "e": post, "applied": True,
-        "before": {"title": "The Oath", "summary": "...", "time_cue": "dawn",
-                   "event_date_iso": "0184", "participants": ["Liu"]},
-    })
-    ev, before = await update_event_fields(
-        session=MagicMock(), user_id=str(_USER), event_id=_EID,
+async def test_update_event_applies_and_returns_before():
+    before = {"title": "The Oath", "summary": "...", "time_cue": "dawn",
+              "event_date_iso": "0184", "participants": ["Liu"]}
+    locked = {"e": _event_node(title="The Oath", version=3), "current_version": 3,
+              "before": before}
+    post = {"e": _event_node(title="The Sworn Oath", version=4)}
+    session, tx = _tx_session([locked, post])
+    ev, got = await update_event_fields(
+        session=session, user_id=str(_USER), event_id=_EID,
         title="The Sworn Oath", summary=None, time_cue=None, event_date_iso=None,
         expected_version=3,
     )
     assert ev is not None and ev.version == 4
-    assert before["title"] == "The Oath"
+    assert got["title"] == "The Oath"
+    assert tx.run.await_args_list[1].kwargs["next_version"] == 4, (
+        "the new version must be derived from the version read UNDER THE LOCK"
+    )
+    tx.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_write", new_callable=AsyncMock)
-async def test_update_event_raises_on_version_mismatch(mock_run):
-    mock_run.return_value = _result({"e": _event_node(version=5), "applied": False})
+async def test_update_event_raises_on_version_mismatch():
+    locked = {"e": _event_node(version=5), "current_version": 5, "before": None}
+    session, tx = _tx_session([locked])
     with pytest.raises(VersionMismatchError):
         await update_event_fields(
-            session=MagicMock(), user_id=str(_USER), event_id=_EID,
+            session=session, user_id=str(_USER), event_id=_EID,
             title="X", summary=None, time_cue=None, event_date_iso=None,
             expected_version=3,
         )
+    assert tx.run.await_count == 1, "a mismatched version still ran the write"
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_write", new_callable=AsyncMock)
-async def test_update_event_none_on_missing(mock_run):
-    mock_run.return_value = _result(None)
+async def test_update_event_none_on_missing():
+    session, tx = _tx_session([None])
     ev, before = await update_event_fields(
-        session=MagicMock(), user_id=str(_USER), event_id="missing",
+        session=session, user_id=str(_USER), event_id="missing",
         title="X", summary=None, time_cue=None, event_date_iso=None, expected_version=1,
     )
     assert ev is None and before is None
+    assert tx.run.await_count == 1
 
 
 @pytest.mark.asyncio

@@ -227,7 +227,13 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
     rows: list[EntityRow] = []
     result = await session.run(_LIST_ENTITIES_CYPHER)
     async for rec in result:
-        if not rec["id"] or not rec["user_id"] or not rec["name"]:
+        # `kind` belongs in this list and was missing from it. `entity_canonical_id` REQUIRES
+        # it and raises when it is empty, so one malformed node — a node written by something
+        # other than `merge_entity`, which is what an operator-run cross-tenant walk exists to
+        # find — aborted the whole backfill before it planned a single action. Skipping the row
+        # is what the other three fields already do, and it keeps the run's own `scanned`
+        # count honest rather than turning a bad row into zero work.
+        if not rec["id"] or not rec["user_id"] or not rec["name"] or not rec["kind"]:
             continue
         rows.append(EntityRow(
             id=rec["id"], user_id=rec["user_id"], project_id=rec["project_id"],

@@ -33,7 +33,12 @@ from typing import Any
 from pydantic import BaseModel, Field, computed_field, model_serializer
 
 from app.db.cypher_dialect import render
-from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_helpers import (
+    CypherSession,
+    in_retried_transaction,
+    run_read,
+    run_write,
+)
 from app.db.neo4j_repos.canonical import canonicalize_text
 from app.db.repositories import VersionMismatchError
 
@@ -438,26 +443,38 @@ async def get_event(
 # OLD title still dedupes onto this node (rename has no downstream consequence
 # beyond display). merge_event ON MATCH does NOT bump version, so a user's
 # If-Match baseline survives extraction re-mentions.
-_UPDATE_EVENT_FIELDS_CYPHER = """
+# 🔴 T80 — the FOREACH form this replaces was NOT atomic; see the long note on
+# `entities._LOCK_AND_READ_ENTITY_CYPHER`, which carries the measurement. The same bug lived
+# here in the same shape: 39 of 40 concurrent pairs both passed the gate and both were told
+# `applied: true`. Two statements in one transaction, with a lock-taking write BEFORE the
+# version is read, is the only shape measured at 0 double-apply and 0 deadlocks — and it is
+# also the AGE-expressible one (§10.1), so the migration and the fix are the same edit.
+_LOCK_AND_READ_EVENT_CYPHER = """
 MATCH (e:Event {id: $id})
 WHERE e.user_id = $user_id
-WITH e, coalesce(e.version, 1) AS current_version,
-     {title: e.title, summary: e.summary, time_cue: e.time_cue,
-      event_date_iso: e.event_date_iso,
-      participants: coalesce(e.participants, [])} AS before
-FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
-  SET
-    e.title = CASE WHEN $title IS NULL THEN e.title ELSE $title END,
-    e.canonical_title = CASE
-      WHEN $canonical_title IS NULL THEN e.canonical_title ELSE $canonical_title END,
-    e.summary = CASE WHEN $summary IS NULL THEN e.summary ELSE $summary END,
-    e.time_cue = CASE WHEN $time_cue IS NULL THEN e.time_cue ELSE $time_cue END,
-    e.event_date_iso = CASE
-      WHEN $event_date_iso IS NULL THEN e.event_date_iso ELSE $event_date_iso END,
-    e.version = current_version + 1,
-    e.updated_at = {NOW}
-)
-RETURN e, current_version = $expected_version AS applied, before
+// THE LOCK — writing the version back at its own value takes the exclusive lock for the rest
+// of the transaction. Without this line the race is unchanged by the transaction alone.
+SET e.version = coalesce(e.version, 1)
+RETURN e, e.version AS current_version,
+       {title: e.title, summary: e.summary, time_cue: e.time_cue,
+        event_date_iso: e.event_date_iso,
+        participants: coalesce(e.participants, [])} AS before
+"""
+
+_APPLY_EVENT_FIELDS_CYPHER = """
+MATCH (e:Event {id: $id})
+WHERE e.user_id = $user_id
+SET
+  e.title = CASE WHEN $title IS NULL THEN e.title ELSE $title END,
+  e.canonical_title = CASE
+    WHEN $canonical_title IS NULL THEN e.canonical_title ELSE $canonical_title END,
+  e.summary = CASE WHEN $summary IS NULL THEN e.summary ELSE $summary END,
+  e.time_cue = CASE WHEN $time_cue IS NULL THEN e.time_cue ELSE $time_cue END,
+  e.event_date_iso = CASE
+    WHEN $event_date_iso IS NULL THEN e.event_date_iso ELSE $event_date_iso END,
+  e.version = $next_version,
+  e.updated_at = {NOW}
+RETURN e
 """
 
 
@@ -481,27 +498,55 @@ async def update_event_fields(
     ``(None, None)`` when no row matches. None fields mean "leave unchanged".
     """
     canonical_title = canonicalize_text(title) if title is not None else None
-    result = await run_write(
-        session,
-        render(_UPDATE_EVENT_FIELDS_CYPHER, "neo4j"),
-        user_id=user_id,
-        id=event_id,
-        title=title,
-        canonical_title=canonical_title,
-        summary=summary,
-        time_cue=time_cue,
-        event_date_iso=event_date_iso,
-        expected_version=expected_version,
-    )
-    record = await result.single()
-    if record is None:
+    # Contract: `session` must be a fresh AsyncSession with no open transaction — Neo4j async
+    # sessions do not nest, and the transaction is what holds statement 1's lock across
+    # statement 2. See `entities.update_entity_fields` for the measurement.
+    async def _attempt(tx) -> tuple:
+        record = await (await run_write(
+            tx,
+            render(_LOCK_AND_READ_EVENT_CYPHER, "neo4j"),
+            user_id=user_id,
+            id=event_id,
+        )).single()
+        if record is None:
+            outcome: tuple = ("missing",)
+        else:
+            current_version = int(record["current_version"])
+            if current_version != expected_version:
+                outcome = ("mismatch", _node_to_event(record["e"]))
+            else:
+                before_raw = record["before"]
+                applied = await (await run_write(
+                    tx,
+                    render(_APPLY_EVENT_FIELDS_CYPHER, "neo4j"),
+                    user_id=user_id,
+                    id=event_id,
+                    title=title,
+                    canonical_title=canonical_title,
+                    summary=summary,
+                    time_cue=time_cue,
+                    event_date_iso=event_date_iso,
+                    next_version=current_version + 1,
+                )).single()
+                if applied is None:
+                    raise RuntimeError(
+                        f"update_event_fields: the row vanished between the locked read and "
+                        f"the write for id={event_id!r} — impossible while the lock is held"
+                    )
+                outcome = ("ok", _node_to_event(applied["e"]),
+                           dict(before_raw) if before_raw is not None else None)
+        return outcome
+
+    # Retried as a WHOLE transaction — see `entities.update_entity_fields`.
+    outcome = await in_retried_transaction(session, _attempt)
+
+    # Raised OUTSIDE the transaction — raising inside rolls back the version normalisation
+    # the locked read performed.
+    if outcome[0] == "missing":
         return None, None
-    event = _node_to_event(record["e"])
-    if not record["applied"]:
-        raise VersionMismatchError(event)
-    before_raw = record["before"]
-    before = dict(before_raw) if before_raw is not None else None
-    return event, before
+    if outcome[0] == "mismatch":
+        raise VersionMismatchError(outcome[1])
+    return outcome[1], outcome[2]
 
 
 # ── archive_event (Phase B C2 — user delete) ──────────────────────────

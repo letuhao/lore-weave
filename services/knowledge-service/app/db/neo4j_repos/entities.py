@@ -29,7 +29,13 @@ from typing import Any, Literal, get_args
 from pydantic import BaseModel, Field, computed_field
 
 from app.db.cypher_dialect import render
-from app.db.neo4j_helpers import CypherSession, run_read, run_read_any_owner, run_write
+from app.db.neo4j_helpers import (
+    CypherSession,
+    in_retried_transaction,
+    run_read,
+    run_read_any_owner,
+    run_write,
+)
 from app.db.repositories import VersionMismatchError
 from app.db.neo4j_repos.canonical import (
     canonicalize_entity_name,
@@ -2727,40 +2733,60 @@ async def get_neighborhood_by_glossary_id(
 # hash depends on it) so renaming an entity doesn't re-key it; only
 # the display property + canonical_name change.
 
-# C9 (D-K19d-γa-01): atomic optimistic-concurrency via FOREACH. The
-# Cypher MATCHes the row; FOREACH conditionally mutates only when the
-# caller's expected_version matches `coalesce(e.version, 1)`. Returns
-# the node + an `applied` flag:
-#   - applied=True  → post-write state; helper returns Entity
-#   - applied=False → pre-check state (unchanged); helper raises
-#                     VersionMismatchError carrying the current Entity
-#   - MATCH produces no row → helper returns None (router 404s)
-# Single round-trip, atomic under `run_write`'s transaction.
-_UPDATE_ENTITY_FIELDS_CYPHER = """
+# C9 (D-K19d-γa-01) — optimistic concurrency, as TWO statements in ONE transaction.
+#
+# 🔴 THE FOREACH FORM IT REPLACES WAS NOT ATOMIC, and its own comment said it was
+# ("Single round-trip, atomic under `run_write`'s transaction"). Neo4j takes NO write lock at
+# MATCH, so `current_version` was read unlocked; two concurrent editors both read 1, both
+# passed the CASE, both wrote `version = 2`, and BOTH were told `applied: true`. One edit is
+# discarded and its client sees a 200. Measured on a real Neo4j, 40 barrier-synchronised pairs
+# both sending `expected_version=1`:
+#
+#     no lock write (the shipped shape)          double-apply 39/40   final version 2, never 3
+#     one statement, lock-first                  double-apply  0/40   BUT deadlock 20/40
+#     two statements, one explicit tx            double-apply  0/40   deadlock  0/40
+#     ...the same tx with NO lock write          double-apply 39/40   <- the CONTROL
+#
+# The control is the point: the transaction alone changes nothing. What removes the race is
+# writing to the node BEFORE reading its version — that takes the exclusive lock and the
+# transaction holds it across both statements. `SET e.version = coalesce(e.version, 1)` writes
+# the value back unchanged, so it needs no new property, and it normalises the 4272 of 4926
+# dev nodes that carry no `version` at all.
+#
+# So §10.1's `FOREACH` → "two statements in one transaction" is not a concession to AGE. It
+# is the only one of the three shapes that is CORRECT, and the engine-agnostic rewrite fixes a
+# live data-loss bug on Neo4j.
+#
+# Returns the node + the pre-edit `{name, kind, aliases}` snapshot (design §6.3), still read
+# in the same transaction so before/after stay TOCTOU-consistent:
+#   - version matches   → helper returns (Entity, before)
+#   - version differs   → helper raises VersionMismatchError carrying the CURRENT Entity
+#   - no row matched    → helper returns (None, None) and the router 404s
+_LOCK_AND_READ_ENTITY_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-// Phase B: capture the pre-edit snapshot in the SAME query (design §6.3 —
-// same-Cypher, NOT read-before-write, so before/after are TOCTOU-consistent).
-// The WITH materialises `before` eagerly, before the FOREACH SET mutates e.
-WITH e, coalesce(e.version, 1) AS current_version,
-     {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
-FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
-  SET
-    e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
-    e.canonical_name = CASE
-      WHEN $canonical_name IS NULL THEN e.canonical_name
-      ELSE $canonical_name
-    END,
-    e.kind = CASE WHEN $kind IS NULL THEN e.kind ELSE $kind END,
-    e.aliases = CASE
-      WHEN $aliases IS NULL THEN e.aliases
-      ELSE $aliases
-    END,
-    e.user_edited = true,
-    e.version = current_version + 1,
-    e.updated_at = {NOW}
-)
-RETURN e, current_version = $expected_version AS applied, before
+// THE LOCK. Writing the version back at its own value acquires the exclusive lock for the
+// rest of the transaction. Without this line the measurement above is 39/40.
+SET e.version = coalesce(e.version, 1)
+RETURN e, e.version AS current_version,
+       {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
+"""
+
+_APPLY_ENTITY_FIELDS_CYPHER = """
+MATCH (e:Entity {id: $id})
+WHERE e.user_id = $user_id
+SET
+  e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
+  e.canonical_name = CASE
+    WHEN $canonical_name IS NULL THEN e.canonical_name
+    ELSE $canonical_name
+  END,
+  e.kind = CASE WHEN $kind IS NULL THEN e.kind ELSE $kind END,
+  e.aliases = CASE WHEN $aliases IS NULL THEN e.aliases ELSE $aliases END,
+  e.user_edited = true,
+  e.version = $next_version,
+  e.updated_at = {NOW}
+RETURN e
 """
 
 
@@ -2810,26 +2836,58 @@ async def update_entity_fields(
     canonical_name = (
         canonicalize_entity_name(name) if name is not None else None
     )
-    result = await run_write(
-        session,
-        render(_UPDATE_ENTITY_FIELDS_CYPHER, "neo4j"),
-        user_id=user_id,
-        id=entity_id,
-        name=name,
-        canonical_name=canonical_name,
-        kind=kind,
-        aliases=aliases,
-        expected_version=expected_version,
-    )
-    record = await result.single()
-    if record is None:
+    # Contract: `session` must be a fresh AsyncSession with no open transaction — the same
+    # contract `merge_entities` documents, for the same reason (Neo4j async sessions do not
+    # nest). The transaction is not optional decoration: it is what holds the lock taken in
+    # statement 1 across statement 2, and without it the measurement in the query's own
+    # comment is 39 of 40 pairs both applying.
+    async def _attempt(tx) -> tuple:
+        record = await (await run_write(
+            tx,
+            render(_LOCK_AND_READ_ENTITY_CYPHER, "neo4j"),
+            user_id=user_id,
+            id=entity_id,
+        )).single()
+        if record is None:
+            outcome: tuple = ("missing",)
+        else:
+            current_version = int(record["current_version"])
+            if current_version != expected_version:
+                outcome = ("mismatch", _node_to_entity(record["e"]))
+            else:
+                before_raw = record["before"]
+                applied = await (await run_write(
+                    tx,
+                    render(_APPLY_ENTITY_FIELDS_CYPHER, "neo4j"),
+                    user_id=user_id,
+                    id=entity_id,
+                    name=name,
+                    canonical_name=canonical_name,
+                    kind=kind,
+                    aliases=aliases,
+                    next_version=current_version + 1,
+                )).single()
+                if applied is None:
+                    raise RuntimeError(
+                        f"update_entity_fields: the row vanished between the locked read and "
+                        f"the write for id={entity_id!r} — impossible while the lock is held"
+                    )
+                outcome = ("ok", _node_to_entity(applied["e"]),
+                           dict(before_raw) if before_raw is not None else None)
+        return outcome
+
+    # Retried as a WHOLE transaction: the locked read deadlocks with a concurrent editor
+    # often enough to matter, and a replay re-reads the version, so the retry cannot turn a
+    # mismatch into a stale success. See `in_retried_transaction`.
+    outcome = await in_retried_transaction(session, _attempt)
+
+    # Raised OUTSIDE the transaction: raising inside would roll back the version
+    # normalisation the locked read performed, which is a real (if harmless) write.
+    if outcome[0] == "missing":
         return None, None
-    entity = _node_to_entity(record["e"])
-    if not record["applied"]:
-        raise VersionMismatchError(entity)
-    before_raw = record["before"]
-    before = dict(before_raw) if before_raw is not None else None
-    return entity, before
+    if outcome[0] == "mismatch":
+        raise VersionMismatchError(outcome[1])
+    return outcome[1], outcome[2]
 
 
 # C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute
@@ -3408,16 +3466,30 @@ async def merge_entities(
 # ── erase_entity_subgraph (WS-2.6c — the scoped-erasure primitive @ entity) ──
 
 
-_ERASE_ENTITY_SUBGRAPH_CYPHER = """
+# §10.1 — the third and last `FOREACH`, and the only one that was a plain list iteration
+# rather than the OCC gate. `UNWIND facts AS x` is the usual rewrite and is WRONG here: on an
+# entity with no facts the list is empty, `UNWIND` produces zero rows, and the `DETACH DELETE e`
+# after it never runs — a forget that silently does nothing for exactly the entities that are
+# easiest to forget. So this is two statements in one transaction, which needs no collect at
+# all: the facts are matched and deleted by pattern, and the entity by its own.
+#
+# Ordering is load-bearing: facts first, then the entity. `(:Fact)-[:ABOUT]->(:Entity)` is the
+# only path to them, so deleting the entity first would strand every fact it named.
+_ERASE_ENTITY_FACTS_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+DETACH DELETE f
+RETURN count(*) AS facts_deleted
+"""
+
+_ERASE_ENTITY_NODE_CYPHER = """
 MATCH (e:Entity {id: $entity_id})
 WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
-OPTIONAL MATCH (f:Fact)-[:ABOUT]->(e)
-WHERE f.user_id = $user_id
-WITH e, collect(DISTINCT f) AS facts, count(DISTINCT f) AS n
-FOREACH (x IN facts | DETACH DELETE x)
 DETACH DELETE e
-RETURN n AS facts_deleted
+RETURN count(*) AS entities_deleted
 """
 
 
@@ -3443,17 +3515,26 @@ async def erase_entity_subgraph(
     (D-R31). Returns entities_deleted=0 when the id doesn't resolve (idempotent re-forget)."""
     if not entity_id:
         raise ValueError("entity_id must be a non-empty string")
-    result = await run_write(
-        session,
-        _ERASE_ENTITY_SUBGRAPH_CYPHER,
-        user_id=user_id,
-        entity_id=entity_id,
-        project_id=project_id,
-    )
-    record = await result.single()
-    if record is None:
-        return {"entities_deleted": 0, "facts_deleted": 0}
-    return {"entities_deleted": 1, "facts_deleted": int(record["facts_deleted"])}
+    # One transaction so a crash between the two deletes cannot leave the facts gone and the
+    # person still there — the half-state a forget must never produce. Contract: `session` is
+    # a fresh AsyncSession with no open transaction (Neo4j async sessions do not nest).
+    async def _attempt(tx):
+        facts_rec = await (await run_write(
+            tx, _ERASE_ENTITY_FACTS_CYPHER,
+            user_id=user_id, entity_id=entity_id, project_id=project_id,
+        )).single()
+        node_rec = await (await run_write(
+            tx, _ERASE_ENTITY_NODE_CYPHER,
+            user_id=user_id, entity_id=entity_id, project_id=project_id,
+        )).single()
+        return facts_rec, node_rec
+
+    facts_rec, node_rec = await in_retried_transaction(session, _attempt)
+    # An aggregation over zero rows still returns one row holding 0, so `None` here would be a
+    # driver anomaly rather than "nothing matched".
+    entities_deleted = int(node_rec["entities_deleted"]) if node_rec else 0
+    facts_deleted = int(facts_rec["facts_deleted"]) if facts_rec else 0
+    return {"entities_deleted": entities_deleted, "facts_deleted": facts_deleted}
 
 
 # ── alias-collision pre-check (C17, moved in plan T17) ───────────────

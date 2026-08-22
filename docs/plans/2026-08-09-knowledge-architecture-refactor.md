@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the last dialect class — `CALL {}` x11 and `FOREACH` x3, both with a measured AGE form (2026-08-11 probe).**
+**RESUME: the last dialect class — `CALL {}` x11, the one the 2026-08-11 probe DID measure (`LATERAL`/CTE).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,94 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 🔴 T80 2026-08-22 — **`FOREACH` reaches ZERO, and the OCC gate it implemented was NOT ATOMIC**
+
+  ```
+  3 FOREACH sites  ->  0.  Neo4j-only dialect 14 -> 11 (only CALL {} left)
+  entities + events OCC   FOREACH-gated SET  ->  two statements in one transaction
+  entities erase          FOREACH list-delete ->  two statements in one transaction
+  knowledge unit 4321 -> 4329 · DB integration 611 -> 616 passed, 0 failed
+  ```
+
+  🔴 **The construct's own comment claimed the property it did not have** — *"Single round-trip,
+  atomic under `run_write`'s transaction"*. Neo4j takes **no write lock at `MATCH`**, so
+  `current_version` was read unlocked: two concurrent editors both read 1, both passed the
+  `CASE`, both wrote 2, and **both were told `applied: true`**. One person's edit is discarded
+  and their client gets a 200. Measured on a real Neo4j, 40 barrier-synchronised pairs both
+  sending `expected_version=1`:
+
+  ```
+  no lock write (the SHIPPED shape)           double-apply 39/40   final version 2, never 3
+  one statement, lock-first                   double-apply  0/40   BUT deadlock 20/40
+  two statements, one explicit transaction    double-apply  0/40   deadlock  0/40
+  ...the same transaction with NO lock write  double-apply 39/40   <- the CONTROL
+  ```
+
+  **The control is the row that matters.** The transaction on its own changes nothing — a claim
+  that named it as the cure would have been green by construction on the other three rows. What
+  removes the race is writing to the node *before* reading its version (`SET e.version =
+  coalesce(e.version, 1)`, which needs no new property and normalises the 4272 of 4926 dev nodes
+  that have none); the transaction is what holds that lock across the apply.
+
+  🎯 So **§10.1's `FOREACH` → "two statements in one transaction" is not a concession to AGE.**
+  It is the only one of the three shapes that is correct, and the engine-agnostic rewrite fixes
+  a live data-loss bug on Neo4j. That reverses the framing this plan has carried since §1.3:
+  the migration was priced as a cost paid for portability.
+
+  ⚠️ **The plan said this construct had a measured AGE form. It did not.** T79's RESUME line
+  read *"`CALL {}` x11 and `FOREACH` x3, both with a measured AGE form (2026-08-11 probe)"* —
+  the probe measured `ON CREATE SET`, `ON MATCH SET`, `datetime()` and `CALL {}`, and never
+  looked at `FOREACH`. The AGE form was asserted from §10.1's prose. Struck rather than left to
+  stand; `CALL {}` really is measured.
+
+  🔬 **A deadlock is not an error here, it is the expected cost.** The lock-first shape can form
+  a cycle with a concurrent editor, and the first live run of the new test failed on a
+  `TransientError` before any retry existed. Neo4j documents these as retryable, so the WHOLE
+  transaction replays (`in_retried_transaction`, bounded at 3). Replaying is safe for optimistic
+  concurrency *specifically* because the operation re-derives its decision from a fresh read —
+  a retry can never turn a version mismatch into a stale success, and that is asserted rather
+  than assumed.
+
+  **The five bites, and the two holes they found:**
+
+  ```
+  1  entity locked read loses its lock write     RED  occ_is_actually_atomic (live)
+  2  EVENT locked read loses its lock write      RED  ...but only a STRING MATCH on the query
+  3  is_transient always False                   RED  7 tests, incl. both live concurrency ones
+  4  erase deletes the node only if a fact went  RED  erasing_an_entity_with_NO_facts
+  5  recanon drops `kind` from its skip list  ✅GREEN  <- no test at all
+  ```
+
+  Bite 2 is the interesting one: the event path carries the **identical** bug in the identical
+  shape and had nothing but a substring assertion, which cannot tell whether the transaction
+  still holds the lock. It has a live twin now.
+
+  ⚠️ **And my own new test for bite 5 was green by construction on its first cut.** It seeded
+  the malformed node with `canonical_name` matching its name — so `plan_recanon` scored it
+  `clean` and `continue`d **before** `entity_canonical_id` was ever called, and never reached
+  the line that raises. The node has to be DRIFTED for `kind` to matter. Corrected, then
+  re-bitten: it now fails by name.
+
+  🧹 The `kind` hole was found by residue from this row's own probe — 80 `:Entity` nodes with no
+  `kind`, left by a probe run that died on a deadlock before its cleanup. `run_recanon_backfill`
+  reads **cross-tenant** by design, so it meets every node in the database; its skip list
+  guarded `id`, `user_id` and `name` but not `kind`, and `entity_canonical_id` raises on an empty
+  one. **One malformed row aborted the entire backfill** — on the shared dev graph that is 1819
+  re-keys and 1 merge not happening. The empty-input trap from the other side: not a loop that
+  silently does nothing, but a single bad element that stops everything.
+
+  The third `FOREACH` was the plain list iteration `FOREACH (x IN facts | DETACH DELETE x)`, and
+  its obvious rewrite is wrong: `UNWIND facts AS x` on an empty list yields zero rows, so the
+  `DETACH DELETE e` after it never runs — a forget that silently does nothing for exactly the
+  entities easiest to forget, and reports success. Two statements need no `collect` at all.
+
+  **QC (a) gates:** unit 4329, `port-adoption-gate` PASS at 11/11 — ceiling moved in this commit
+  — `--selftest` PASS, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; no contract, route or event moved. 616
+  DB-integration tests ran on a throwaway Neo4j with AGE live.
+  **QC (c) real data:** the concurrency measurement above is real-run data — 40 pairs per shape
+  against a live Neo4j, plus 20 pairs per engine-side entity and event in the committed test.
 
   ### ✅ T79 2026-08-22 — **`datetime()` reaches ZERO — and the guard that makes `{NOW}` safe had no test**
 

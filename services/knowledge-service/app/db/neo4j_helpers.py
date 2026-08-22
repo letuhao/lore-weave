@@ -29,6 +29,7 @@ module.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Protocol
 
@@ -184,3 +185,59 @@ async def run_write(
     assert_user_id_param(cypher)
     assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)
+
+
+# ── transient-failure retry (T80) ────────────────────────────────────
+
+#: Neo4j's retryable class. Matched by CODE and by class NAME rather than by importing the
+#: driver, because this module is deliberately importable without the `neo4j` package (see
+#: `CypherSession`) — and because the same duck-typing lets a test raise a stand-in.
+_TRANSIENT_CODE_PREFIX = "Neo.TransientError."
+_TRANSIENT_CLASS_NAMES = frozenset({"TransientError", "ServiceUnavailable", "SessionExpired"})
+
+
+def is_transient(exc: BaseException) -> bool:
+    """Is `exc` the kind of failure that succeeds on a retry?"""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code.startswith(_TRANSIENT_CODE_PREFIX):
+        return True
+    return type(exc).__name__ in _TRANSIENT_CLASS_NAMES
+
+
+async def in_retried_transaction(
+    session: Any,
+    op: Any,
+    *,
+    attempts: int = 3,
+    base_delay: float = 0.02,
+) -> Any:
+    """Run `op(tx)` in an explicit transaction, retrying the whole transaction on a deadlock.
+
+    ⚠️ **A deadlock here is expected, not exceptional.** T80's optimistic-concurrency path
+    takes an exclusive lock and then reads under it, which is the only measured shape that
+    stops two concurrent editors both being told their edit landed. The cost is that two
+    transactions racing for the same node can form a lock cycle, and Neo4j resolves that by
+    killing one with a `TransientError` — which is a *retryable* outcome and, unretried, is
+    a 500 for a request that would have succeeded a millisecond later.
+
+    So the whole transaction is replayed, not just the failed statement: on the retry the
+    version is read again, and if the other writer won in the meantime the caller correctly
+    gets a version mismatch instead of a stale success. Retrying is therefore safe for OCC
+    specifically BECAUSE the operation re-derives its decision from the re-read state.
+
+    `op` must be idempotent-on-replay for that reason. Non-transient errors — including
+    `VersionMismatchError` when a caller raises inside — propagate on the first attempt.
+    """
+    last: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            async with await session.begin_transaction() as tx:
+                out = await op(tx)
+                await tx.commit()
+            return out
+        except BaseException as exc:  # noqa: BLE001 — re-raised unless retryable
+            if not is_transient(exc) or attempt == attempts - 1:
+                raise
+            last = exc
+            await asyncio.sleep(base_delay * (2 ** attempt))
+    raise last  # pragma: no cover — the loop always returns or raises above

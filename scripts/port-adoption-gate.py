@@ -766,9 +766,13 @@ _DIALECT_PATTERNS = (
 #: branches are gone.
 #:
 #: **`datetime()` is CLOSED at 14** (T79) — 25 renamed to `{NOW}`, plus the one `duration(`
-#: this list did not even scan for. What remains is 11 `CALL {}` and 3 `FOREACH`, both of
-#: which the 2026-08-11 probe measured an AGE form for.
-MAX_NEO4J_DIALECT_SITES = 14
+#: this list did not even scan for.
+#:
+#: **`FOREACH` is CLOSED at 11** (T80). The 2026-08-11 probe never looked at it, so its AGE
+#: form was asserted rather than measured — and the measurement, when it was finally taken,
+#: found the OCC gate the construct implemented was not atomic on NEO4J either. The last
+#: class is 11 `CALL {}`, which the probe DID measure (`LATERAL`/CTE).
+MAX_NEO4J_DIALECT_SITES = 11
 
 
 def _code_strings(src: str) -> str:
