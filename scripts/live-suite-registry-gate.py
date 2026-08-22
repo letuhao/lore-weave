@@ -9,8 +9,8 @@ source: `epoch_activation_live` reads its DSNs through a helper, and
 discovery pass that misses a suite reports complete coverage of an incomplete
 list, which is worse than no discovery at all.
 
-So this gate never greps Rust for env vars. It checks the registry against
-things that cannot lie about themselves:
+So this gate's four original checks never grep Rust for env vars. They check the
+registry against things that cannot lie about themselves:
 
   * **the coverage claim** — `foundation-ci.yml` must run
     `python scripts/live-suites.py` over the WHOLE registry. That single leg is
@@ -25,6 +25,26 @@ things that cannot lie about themselves:
   * **each target's own source**, for a skip announcement. A live suite that
     skips SILENTLY is indistinguishable from one that ran — both exit 0 — so
     the runner could report a clean sweep of no-ops.
+
+`C4` ADDED A FIFTH, AND THE PARAGRAPH ABOVE IS WHY IT IS BOUNDED
+--------------------------------------------------------------
+Nothing walked disk -> registry, so a suite nobody registered was invisible:
+the gate reported *"23 live suite(s), ALL run"* and was telling the truth about
+the 23 it could see. Four more sat on disk in no row at all, three of them
+shipped by an earlier run, and registering them then surfaced a SECOND latent
+defect -- none of the four announced its skip.
+
+So there is now a disk -> registry walk, and the warning above applies to it in
+full. **It can only ADD findings. It can never certify that everything is
+registered.** Measured 2026-08-22: it sees **19 of the 27** registered suites.
+The other 8 hide their DSN exactly as this docstring predicted -- through a
+helper (`epoch_activation_live`) or with the name as a PARAMETER
+(`spine_drain_once_live`) -- and a suite that both hides its DSN and is
+unregistered is still invisible.
+
+That is worth having anyway: all four suites it would have caught named the env
+var literally. What it must never be read as is a completeness claim, which is
+why the OK line still counts REGISTRY rows and not discovered files.
 
 Exit 0 clean · 1 finding · 2 misuse (the gate could not do its job).
 """
@@ -130,7 +150,52 @@ def package_dir(pkg: str) -> Path | None:
     return None
 
 
-def check(reg: dict, workflow_text: str) -> list[str]:
+#: A test file that reads one of these is a LIVE suite whatever else it is.
+#:
+#: `C4`. This gate walked registry -> disk and nothing walked disk -> registry,
+#: so a suite that was never registered was INVISIBLE to it. It reported
+#: "23 live suite(s), ALL run by the registry leg" and was telling the truth
+#: about the 23 it could see; four more sat on disk in no row at all, three of
+#: them shipped by an earlier run. Registering them then surfaced a second
+#: latent defect — none of the four announced its skip — so the missing
+#: direction was hiding two classes of problem, not one.
+LIVE_DSN_ENV = re.compile(
+    r"LOREWEAVE_TEST_PG_ADMIN_URL|LOREWEAVE_TEST_PG_URL|LOREWEAVE_TEST_REDIS_URL"
+)
+
+
+def live_suite_files(root: Path) -> list[tuple[str, str, Path]]:
+    """`(package, target, path)` for every `tests/*.rs` that reads a live DSN.
+
+    The package is the DIRECTORY name. That is what every registry row uses, and
+    a Cargo `name =` that disagrees with its directory would be caught by the
+    existing `package that does not exist` arm rather than here.
+    """
+    found: list[tuple[str, str, Path]] = []
+    for base in ("crates", "services"):
+        for tdir in sorted((root / base).glob("*/tests")):
+            if not tdir.is_dir():
+                continue
+            for f in sorted(tdir.glob("*.rs")):
+                try:
+                    if LIVE_DSN_ENV.search(f.read_text(encoding="utf-8", errors="replace")):
+                        found.append((tdir.parent.name, f.stem, f))
+                except OSError:
+                    continue
+    return found
+
+
+def unregistered_suites(reg: dict, root: Path) -> list[str]:
+    """Live suites on disk that NO registry row names. The missing direction."""
+    registered = {(s.get("package"), s.get("target")) for s in (reg.get("suites") or [])}
+    return [
+        f"{pkg}/{target}"
+        for pkg, target, _ in live_suite_files(root)
+        if (pkg, target) not in registered
+    ]
+
+
+def check(reg: dict, workflow_text: str, root: Path = REPO) -> list[str]:
     findings: list[str] = []
     suites = reg.get("suites") or []
     if not suites:
@@ -146,6 +211,25 @@ def check(reg: dict, workflow_text: str) -> list[str]:
             file=sys.stderr,
         )
         sys.exit(2)
+
+    # `C4` -- THE MISSING DIRECTION. Everything below walks registry -> disk;
+    # this walks disk -> registry. Without it a suite nobody registered is
+    # invisible, and the gate reports full coverage of the subset it can see.
+    on_disk = live_suite_files(root)
+    if not on_disk:
+        print(
+            "live-suite-registry-gate: MISUSE -- no test file anywhere reads a live DSN.\n"
+            "  Either the env names changed or the walk is looking in the wrong place;\n"
+            "  either way a clean disk -> registry result would mean nothing.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    for missing in unregistered_suites(reg, root):
+        findings.append(
+            f"`{missing}` reads a live DSN and is in NO registry row. The registry is the "
+            "only complete list of live suites, so an unregistered suite runs in no CI leg "
+            "and this gate cannot see it -- it would report full coverage of the rest."
+        )
 
     seen_ids: set[str] = set()
     uncovered = 0
@@ -333,9 +417,22 @@ def selftest() -> int:
     r["suites"].append(dict(r["suites"][1]))
     cases.append(("a duplicate id fails", r, ok_wf, 1))
 
+    # `C4`. The fixture cases are judged against a FAKE root holding exactly the
+    # two suites they name. Without it every one of them would also trip the new
+    # disk -> registry arm against the real repo's 27 live suites, and the arms
+    # above would be reporting something they were not written to judge.
+    tmp = tempfile.TemporaryDirectory()
+    fake = Path(tmp.name)
+    td = fake / 'crates' / 'dp-kernel' / 'tests'
+    td.mkdir(parents=True)
+    (td / 'integration_event_store.rs').write_text(
+        'std::env::var("LOREWEAVE_TEST_PG_ADMIN_URL")', encoding='utf-8')
+    (td / 'integration_writer_lease.rs').write_text(
+        'std::env::var("LOREWEAVE_TEST_PG_URL")', encoding='utf-8')
+
     bad = 0
     for name, registry, wf, want in cases:
-        got = len(check(registry, wf))
+        got = len(check(registry, wf, fake))
         got = 1 if got else 0
         mark = "ok  " if got == want else "FAIL"
         if got != want:
@@ -348,7 +445,7 @@ def selftest() -> int:
         ("a workflow with no cargo leg is misuse", reg(), "jobs:\n  build:\n    steps: []\n"),
     ):
         try:
-            check(registry, wf)
+            check(registry, wf, fake)
         except SystemExit as e:
             print(f"  {'ok  ' if e.code == 2 else 'FAIL'} {name}: rc={e.code} (want 2)")
             if e.code != 2:
@@ -356,6 +453,42 @@ def selftest() -> int:
         else:
             print(f"  FAIL {name}: it returned instead of refusing")
             bad = 1
+
+    # `C4` -- the DISK -> REGISTRY direction, both ways.
+    #
+    # Without these the new walk could return an empty list forever and every
+    # arm above would still pass: the exact shape that let four real suites sit
+    # unregistered while this gate reported full coverage.
+    extra = fake / 'services' / 'world-service' / 'tests'
+    extra.mkdir(parents=True)
+    (extra / 'orphan_live.rs').write_text(
+        'std::env::var("LOREWEAVE_TEST_PG_ADMIN_URL")', encoding='utf-8')
+    got = len(check(reg(), ok_wf, fake))
+    ok = got == 1
+    bad |= not ok
+    print(f"  {'ok  ' if ok else 'FAIL'} a live suite in NO registry row fails: findings={got} (want 1)")
+    (extra / 'orphan_live.rs').unlink()
+
+    # ...and it does not cry wolf on a test that reads no DSN at all.
+    (extra / 'plain_unit.rs').write_text('fn main() {}', encoding='utf-8')
+    got = len(check(reg(), ok_wf, fake))
+    ok = got == 0
+    bad |= not ok
+    print(f"  {'ok  ' if ok else 'FAIL'} a test that reads no DSN is not a live suite: findings={got} (want 0)")
+
+    # A root with NO live suite anywhere is MISUSE, not a clean disk -> registry
+    # result -- the subject floor.
+    empty = Path(tempfile.mkdtemp())
+    (empty / 'crates').mkdir()
+    try:
+        check(reg(), ok_wf, empty)
+    except SystemExit as e:
+        ok = e.code == 2
+        bad |= not ok
+        print(f"  {'ok  ' if ok else 'FAIL'} no live suite anywhere is misuse: rc={e.code} (want 2)")
+    else:
+        bad = 1
+        print('  FAIL no live suite anywhere is misuse: it returned instead of refusing')
 
     if bad:
         print("live-suite-registry-gate --self-test: FAIL")

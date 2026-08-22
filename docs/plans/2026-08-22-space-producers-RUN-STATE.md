@@ -474,10 +474,44 @@ letter-guards, with `folklore_bible` added as a near-miss on the other side. 7 c
 |---|---|---|---|
 | `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[x]` | **DONE 2026-08-22 — §3.11. All three fixed and bitten.** Boards parsing empty **30 → 15**; rows visible **~200 → 445**; five boards' state independently confirmed. A **fourth** dialect family measured and left open (`OR-5`) |
 | `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[x]` | **DONE 2026-08-22 — §3.12. 13.14 ms → 4.81 ms (2.7×), assembled bytes IDENTICAL.** 2 bites. `Q6` answered: it was never a tick cost |
-| `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
+| `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[x]` | **DONE 2026-08-22 — §3.14.** The direction now exists, with 3 arms and a real-repo bite. **Bounded honestly: it sees 19 of 27 and can only ADD findings, never certify completeness** |
 | `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[x]` | **DONE 2026-08-22 — §3.13. The first gate EXISTS, and I had broken it: my own `A3`/`A4` took world-service 0 → 6 ADOPTABLE.** Fixed, adoptable back to **0**, baselines moved, bitten. The second is registered `PROSE_ONLY` with a named trigger and deliberately NO fake mechanism |
 
 ---
+
+#### 3.14 · `C4` — the missing direction, and the reason it stays bounded
+
+`live-suite-registry-gate` walked registry → disk four ways and **nothing walked disk → registry**,
+so a suite nobody registered was invisible. It reported *"23 live suite(s), ALL run"* and was telling
+the truth about the 23 it could see. `A3` found four more on disk in no row at all — three from the
+predecessor run — and registering them surfaced a **second** latent defect: none of the four announced
+its skip, so a run that did nothing read as a pass.
+
+**Three arms, and the third is the one that matters:**
+
+| arm | result |
+|---|---|
+| a live suite in NO registry row | `findings=1` |
+| a test that reads no DSN is not a live suite | `findings=0` — it does not cry wolf |
+| **no live suite anywhere is MISUSE** | `rc=2` — a walk that found nothing would otherwise make every other arm pass forever |
+
+Plus a **real-repo bite**: an unregistered live test dropped into `services/world-service/tests/`
+reds with `` `world-service/c4_bite_unregistered` reads a live DSN and is in NO registry row ``.
+Removed; green again.
+
+**And the gate's own docstring said it *"never greps Rust for env vars"*, with a reason** — a
+discovery pass that misses a suite *"reports complete coverage of an incomplete list, which is worse
+than no discovery at all"*. That warning is correct and it applies to what I just added, so it is
+**measured rather than argued around**: the walk sees **19 of the 27** registered suites. The other 8
+hide their DSN exactly as predicted — through a helper (`epoch_activation_live`) or with the name as a
+PARAMETER (`spine_drain_once_live`).
+
+**So the check can only ADD findings; it can never certify that everything is registered**, and the
+docstring now says so in those words. It is worth having anyway — **all four suites it would have
+caught named the env var literally** — and the OK line still counts REGISTRY rows, never discovered
+files, so it cannot be misread as a completeness claim.
+
+**Lane C is CLOSED. The board is 13 of 13.**
 
 #### 3.13 · `C3` — one gate was never refused, and I had regressed it
 
@@ -644,7 +678,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `C4` — the LAST row. `live-suite-registry-gate` walks registry→disk and nothing walks disk→registry; `A3` found four live suites on disk in no row at all, three of them from the predecessor run. Give it the missing direction. **12 of 13 done.**
+**RESUME: THE BOARD IS CLOSED — 13 of 13, all three lanes. The space substrate has producers reachable by the production path (`A1`–`A5`), the four rows other boards held open are closed or carry a mechanism (`B1`–`B4`), and the tooling that hid the work has been fixed and bitten (`C1`–`C4`). What is left is NOT on this board: `OR-3` (nothing yet DECLARES a world), `OR-5` (15 boards still parse empty, a fourth dialect family), and three governed deferrals with triggers. The next work needs a new board.**
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
 lanes: |
