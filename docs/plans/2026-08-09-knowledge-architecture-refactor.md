@@ -16023,6 +16023,66 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ---
   ---
   ---
+  ---
+  ### ✅ T94 2026-08-23 — **the same workload on BOTH engines, and the answers COMPARED**
+
+  ```
+  write_counts · entities · subgraph_nodes · subgraph_edges · events · http
+  AGE vs NEO4J                                          ALL SIX FIELDS AGREE
+  ```
+
+  🎯 **This is the property the port exists for, and nothing had proven it.** T90 showed the
+  read surface passes on each engine; T93 showed the workload lands on AGE. **Passing
+  separately is not agreeing** — it is precisely T43's stated risk (*"two adapters can agree by
+  sharing a bug"*) in its weaker form, where they need not even agree. So: byte-identical
+  extraction candidates through `persist-pass2` on each backend, read back through the same
+  HTTP surface, normalised and compared.
+
+  ```
+  write_counts     entities_merged 3 · relations_created 2 · events_merged 2 · evidence 5
+  entities         [Corvin Ash|character] [Lyra Fenn|character] [Mordent Vex|faction]
+  subgraph_edges   [ally_of]
+  events           [The oath at Emberfall | 4000000]  [The siege breaks | 4000001]
+  ```
+
+  Ids and timestamps differ by construction — different projects, different runs — so the
+  comparison is over names, kinds, predicates, titles and **ordinals**. `4000000` / `4000001`
+  is chapter 4 × the 1e6 stride plus the intra-chapter offset, produced identically by both.
+
+  ⚠️ **"All fields agree" is worthless unless the comparison can DISAGREE, so it was
+  validated on cases it was not derived from:**
+
+  ```
+  perturb ONE event ordinal (4000000 -> 9999999)   DETECTED: ['events']
+  perturb ONE entity kind  (character -> faction)  DETECTED: ['entities']
+  ```
+
+  🔬 **And a discrepancy in the output turned out to be the system being right.** The write
+  reports `relations_created: 2` while the subgraph read shows **one** edge. Checked in both
+  stores rather than assumed:
+
+  ```
+  iso Neo4j    "ally_of" 0.88 · "opposes" 0.71      <- both PRESENT
+  AGE          "ally_of" 0.88 · "opposes" 0.71      <- both PRESENT
+  ```
+
+  The `opposes` edge is filtered by `relations_for`'s `min_confidence = 0.8` default, not lost
+  by the writer. **Both engines hold it and both filter it** — so they agree on what is present
+  AND on what is withheld, which is the stronger of the two agreements and the one a
+  count-only comparison would have missed.
+
+  **QC (a) gates:** all repo gates green; no production code changed by this row.
+  **QC (b) live smoke:** the subject. Two runs on `lw-iso` against REBUILT images, the backend
+  flipped between them by env override, `/health` confirming each.
+  **QC (c) real data:** both snapshots are real service responses to a real write; the
+  store-level check above went to the two databases directly rather than trusting either
+  service summary.
+
+  ⛔ **What it does not cover:** one chapter's worth of candidates, no LLM in the loop, and no
+  concurrent writers. It proves the two engines answer the same question the same way; it does
+  not prove they do so under load.
+
+
   ### ✅ T93b 2026-08-23 — **the reading-axis window is MECHANISED, and running it twice found a bug**
 
   ```
