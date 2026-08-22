@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T56 (b) — every gate prints its number unconditionally; generalise the port-adoption floor bug.**
+**RESUME: T56 (c) — an acceptance criterion carries a CONTROL ARM; generalise QC-5 clause 1a.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 66 of 115 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 67 of 116 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (1/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (2/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2551,6 +2551,70 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T56b 2026-08-22 — **a ratchet nobody sees on a green run — 2 of 8 were invisible**
+
+  ```
+  gate-number-visibility-gate   NEW · --selftest 13/13 · CI-wired (~27s, runs 8 gates)
+  8 gates carry an integer threshold · 2 never printed it · both fixed
+  gate-wiring-gate  109 -> 110 gates, all wired
+  ```
+
+  📐 §8.4: *"every gate prints its number unconditionally (the `port-adoption-gate` floor bug —
+  generalise it)."* The number **is** the mechanism: it is what makes a slow regression visible
+  commit by commit rather than turning up in an audit. Printed only on failure, it says nothing
+  on every green run, and by the time it speaks the drift is history rather than a diff.
+
+  Measured across all 72 gate scripts — 8 carry an integer threshold, and **2 never printed it**:
+
+  ```
+  file-ceiling-gate        CEILING = 400            printed nothing; the count is 114
+  plan-row-honesty-gate    MIN_DONE = 3, MAX_OWED = 1   printed neither
+  ```
+
+  The second pair is the worse one. Both are **tuned from observed data** — the plan records
+  that the three real finds carried 8, 13 and 18 completion markers while the rows correctly
+  left open carried 0–2 — and a tuned threshold nobody sees is one that quietly stops catching
+  anything. Both gates now print on the PASS path.
+
+  🔬 **Checked EMPIRICALLY, by running each gate and looking for the number in its output** —
+  not by reading the source. A static "the constant appears inside a `print(`" would pass on a
+  print that only runs on the failure path, which is the defect itself.
+
+  ⚠️ **My own selftest caught my own check passing for the wrong reason.** `str(400) in
+  "scanned 1400 files"` is `True`, so a gate would have passed because an unrelated count
+  contained its threshold's digits. Digit boundaries now, not `in` — and the case that exposed
+  it was a selftest line I had *labelled the wrong way round*, asserting the behaviour I wanted
+  rather than the behaviour the code had.
+
+  🔴 **AND THE GATE HAS A BLIND SPOT I CANNOT CLOSE, so it is written down instead of implied.**
+  A ratchet normally sits **at** its threshold — that is what *"exactly at the ceiling"* means —
+  so the measured COUNT and the THRESHOLD are the same digits. Bite 2 proved it: deleting
+  `/{MAX_PINNED_SESSIONS}` from `port-adoption-gate`'s line still leaves a standalone `9`, and
+  the gate stays green.
+
+  So the property enforced is the weaker, honest one: **the number reaches the output at all.**
+  That is exactly the `file-ceiling-gate` shape it was written from — count 114, ceiling 400,
+  nothing in common. Tightening to *"the threshold is labelled as such"* would mean imposing one
+  phrasing on eight gates that each say it differently, trading a real check for a lint. The
+  limitation is a selftest case of its own so it cannot be quietly assumed away later.
+
+  ```
+  1  file-ceiling-gate stops printing its ceiling   RED, by name — the founding case
+  2  port-adoption drops /{MAX_PINNED_SESSIONS}   ✅GREEN — the documented blind spot
+  ```
+
+  ⛔ **Scope guard honoured**: gates only. The two fixes are one f-string each on a PASS line;
+  no gate's *logic* moved, and no production code was touched. §8.4's item (c) — an acceptance
+  criterion carries a control arm — is a separate unit and is not claimed here.
+
+  **QC (a) gates:** `--selftest` 13/13 and provably red under bite 1, live scan OK across all 8
+  threshold-carrying gates, `gate-wiring-gate` 110/110 with the new gate in `foundation-ci.yml`
+  (scan + selftest, **CI only** — it runs eight gates and takes ~27s, too slow for a hook),
+  four plan gates green.
+  **QC (b) live smoke:** N/A — a static gate; nothing runtime moved.
+  **QC (c) real data:** the 8-and-2 figures are the real `scripts/` tree, and both fixes are
+  visible in this run's own pre-commit output.
 
   ### ✅ T56a 2026-08-22 — **built-but-unselectable now has a gate, and it found one live**
 

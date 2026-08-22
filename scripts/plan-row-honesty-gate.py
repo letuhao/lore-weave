@@ -392,7 +392,12 @@ def main() -> int:
     suspects = scan(text)
 
     if not suspects:
-        print("[plan-row-honesty-gate] OK — no `[~]` row reads as finished")
+        # T56(b) — both thresholds on the PASS path. They are tuned from observed data
+        # (the three real finds carried 8/13/18 completion markers; the rows correctly left
+        # open carried 0-2), and a tuned number nobody sees on a green run is a number that
+        # drifts until it stops catching anything.
+        print(f"[plan-row-honesty-gate] OK — no `[~]` row reads as finished "
+              f"(flags at >= {MIN_DONE} completion markers with <= {MAX_OWED} owed)")
         return 0
 
     print(f"[plan-row-honesty-gate] {len(suspects)} `[~]` row(s) READ AS FINISHED — "

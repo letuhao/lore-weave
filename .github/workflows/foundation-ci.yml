@@ -228,6 +228,9 @@ jobs:
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/adapter-selectability-gate.py
       - run: python scripts/adapter-selectability-gate.py --selftest
+      # CI only, not pre-commit: it RUNS eight gates, ~27s.
+      - run: python scripts/gate-number-visibility-gate.py
+      - run: python scripts/gate-number-visibility-gate.py --selftest
       - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
