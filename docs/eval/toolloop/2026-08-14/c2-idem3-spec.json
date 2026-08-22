@@ -1,0 +1,11 @@
+[
+  {"scenario": "composition-arc-template-edit",
+   "tool": "composition_arc_template_edit",
+   "args": {"op": "archive", "arc_id": "{sql:loreweave_composition:SELECT id::text FROM arc_template WHERE code='throwaway-loop-skeleton-b15' LIMIT 1}"},
+   "why": "arc_id is resolved from the STORE, not from the seed's return value: composition_arc_extract_template collides on the scenario's FIXED code and returns an error rather than a row, which is D-SEED-FIXTURE-LEFT-ARCHIVED-BREAKS-EVERY-LATER-RUN. Archiving an already-archived template must not report success over zero rows - the exact defect (archived:true over 0 rows, with an undo hint) found and fixed earlier in this loop. THE ROW IS RESTORED TO 'active' IMMEDIATELY AFTER, because leaving it archived is what broke five runs."},
+
+  {"scenario": "glossary-entity-restore",
+   "tool": "glossary_entity_restore",
+   "args": {"entity_id": "{sql:loreweave_glossary:SELECT entity_id::text FROM glossary_entities WHERE entity_snapshot->>'name'='Mira Solene' AND deleted_at IS NOT NULL ORDER BY created_at DESC LIMIT 1}"},
+   "why": "Restoring twice must not double-restore or corrupt the row. SCHEMA READ, NOT GUESSED: my first attempt queried a table `entities` that does not exist - the table is glossary_entities, the key is entity_id, and the NAME lives inside the entity_snapshot jsonb. The id has to come from SQL because no tool lists a soft-deleted entity, which is this tool's own blocking finding."}
+]
