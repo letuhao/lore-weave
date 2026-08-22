@@ -1,5 +1,48 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ THE SPACE SUBSTRATE CLOSED, AND CLOSING IT REVEALED THE NEXT BOARD (2026-08-22, branch `feat/game-logic`)
+
+> **[`2026-08-02-space-substrate-RUN-STATE.md`](../plans/2026-08-02-space-substrate-RUN-STATE.md) is
+> 35/35 with an empty register** — all eighteen `SDF-Q*` resolved, all nine `SDF-R*` applied, every
+> `SPG-R*`/`WSA-R*` applied, verified, retired or decided, and `T3`/`T4`/`T9` built. Six migrations
+> (`0024`–`0030`, plus `0027`'s `FLOW-19` key), `world_seed`, `space_view`, two new gates.
+>
+> **Then the producers were counted, and that is the next board.**
+>
+> ```
+> 0024_map_layout      producer: world_seed.rs:462     0028_portal          producer: TESTS ONLY
+> 0026_place           producer: world_seed.rs:477     0029_layer_registry  producer: NOTHING
+> 0025_entity_binding  producer: TESTS ONLY            0030_encounter       producer: NOTHING
+> ```
+>
+> **`world_seed::seed_world` and `space_view::assemble` have zero callers outside `tests/`.** Both are
+> `pub mod` in `lib.rs`; neither is on a route, in a bin, or in a bootstrap path. `reality_seeder` —
+> what actually runs when a reality is born — records its phases as *validate · fetch_book_meta ·
+> load_checkpoint · transition_active*, and **there is no space phase**.
+>
+> This is reality-layer `3C` at seven times the scale: *"an unforgeable mint is dead code until
+> something can mint."* One TYPE was reverted inside an hour for that property; six tables and two
+> modules shipped with it. The difference is visibility — `clippy -D warnings` sees an uncalled
+> crate-private constructor, and **nothing in this repo sees an uncalled `pub` module or an unwritten
+> table.**
+>
+> **▶ The board is [`2026-08-22-space-producers-RUN-STATE.md`](../plans/2026-08-22-space-producers-RUN-STATE.md).**
+> Twelve rows in three lanes — producers · the four rows other boards still hold open · the tooling
+> that hid the work. **RESUME is `A1`: measure the `provision_flow` → `reality_seeder` seam before
+> touching it.**
+>
+> **⚠ Two things it found that are not tasks.**
+>
+> 1. **`goal-prompt.py` reads ZERO rows from 30 of 51 boards** — it needs a backticked id, and most
+>    boards write `| **1** | … | **DONE** |`. `2026-08-02-actor-substrate` carries **218 bolded
+>    pipe-rows and parses as empty.** The 2026-08-22 overview nearly shipped as *"49 of 51 closed"* on
+>    that reading; **a board whose rows are invisible is indistinguishable from a board with none
+>    open.** It was caught only because one board disagreed with work done the same day.
+> 2. **The Writing Studio / Work Assistant / Book-Package boards are OUT of scope and NOT closed** —
+>    `studio-tool-gui` is **192 slices, every one `TODO`, never started**. Recorded as `OUT-1` on the
+>    new board so the closed count cannot be misread.
+
+
 ## ▶ ALL FOUR BOARDS CLOSED, AND THE OPEN REGISTERS ARE EMPTY (2026-08-21, branch `feat/game-logic`)
 
 > **`HEAD` after this commit.** Four boards — [player-edge](../plans/2026-08-21-player-edge-RUN-STATE.md)
