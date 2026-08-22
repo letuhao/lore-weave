@@ -109,26 +109,38 @@ class TestTheProgressNumeratorObeysTheDenominatorRule:
     they sat in the numerator and not the denominator.
     """
 
-    def test_the_recorder_filters_on_the_flag(self):
-        src = pathlib.Path(gate.__file__).read_text(encoding="utf-8")
-        i = src.index('"tools_concluded":')
-        assert "_counts(v)" in src[i:i + 200], (
-            "tools_concluded counts every terminal row again — a deprecated tool would re-enter "
-            "the numerator while the denominator excludes it")
+    # 🔴 THESE THREE USED TO ASSERT OVER gate.py's SOURCE TEXT — `"_counts(v)" in src[i:i+200]`
+    # and `'"tools_concluded_including_deprecated"' in src`. They went RED on 2026-08-22 for a
+    # RENAME, while the behaviour they describe was intact, and a substring gate fails the other
+    # way too: it stays green over a recompute that lists the right words and computes the wrong
+    # number. The subject is now the chokepoint itself — gate.recompute_progress() — driven with a
+    # synthetic ledger, so a rename cannot break it and a wrong number cannot pass it.
+    @staticmethod
+    def _ledger(rows: dict) -> dict:
+        return {"tools": rows, "defects": {}, "deferred_questions": {},
+                "denominator": {"federated_tools": 2, "group_sizes": {"A": 2}}, "progress": {}}
 
-    def test_a_deprecated_row_is_excluded(self):
+    def test_a_deprecated_row_is_excluded_from_the_numerator(self):
         rows = {
             "kept": {"state": "proven", "counts_toward_release": True},
             "deprecated": {"state": "proven", "counts_toward_release": False},
             "unflagged": {"state": "proven"},
         }
-        def counts(v):
-            return v.get("counts_toward_release") is not False
-        assert sum(1 for v in rows.values() if v["state"] == "proven" and counts(v)) == 2, (
+        pr = gate.recompute_progress(self._ledger(rows))
+        assert pr["tools_proven"] == 2, (
             "an explicit False must be excluded; a MISSING flag must still count, so the rule "
             "cannot silently drop rows that simply predate it")
+        assert pr["tools_concluded"] == 2
+        assert pr["concluded_in_release_surface"] == 2, (
+            "the release-surface counter drifted independently once already — it read 40 while "
+            "the rows held 198 — so it is asserted beside the one it must always equal")
 
     def test_the_total_work_is_still_reported(self):
         """Excluding them from the release count must not erase them: the work happened."""
-        src = pathlib.Path(gate.__file__).read_text(encoding="utf-8")
-        assert '"tools_concluded_including_deprecated"' in src
+        rows = {
+            "kept": {"state": "proven", "counts_toward_release": True},
+            "deprecated": {"state": "proven", "counts_toward_release": False},
+        }
+        pr = gate.recompute_progress(self._ledger(rows))
+        assert pr["tools_concluded"] == 1
+        assert pr["tools_concluded_including_deprecated"] == 2

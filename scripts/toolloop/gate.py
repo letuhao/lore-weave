@@ -38,6 +38,7 @@ import argparse
 import json
 import hashlib
 import pathlib
+import re
 import sys
 
 
@@ -327,6 +328,117 @@ def cmd_refresh(a) -> int:
     return 0
 
 
+def recompute_progress(ledger: dict) -> dict:
+    """🔴 EVERY COUNTER IN `progress` IS DERIVED HERE, OR IT DOES NOT BELONG IN `progress`.
+
+    Measured 2026-08-22, after the deep-dive closed at 198/198: SEVEN fields of the `progress`
+    block disagreed with the ledger's own rows, and a reader opening the file saw **40 of 198**.
+
+        concluded_in_release_surface  40   rows say 198
+        remaining_in_release_surface 158   rows say 0
+        last_batch            batch-17     evidence on disk goes to batch 41
+        evidence_split.gate_backed    62   rows say 173
+        evidence_split.prose_note     30   rows say 25
+        defects_proven                23   defects say 25
+        deferred_questions             7   there are 12
+
+    The block's own text claims it "is now RECOMPUTED from this ledger's own rows" — which was
+    true of the five counters the previous fix covered and false of these seven, because the
+    recompute was an inline `pr.update({...})` inside `_record` that listed the fields it happened
+    to care about. A partial recompute that advertises itself as total is worse than no recompute:
+    the stale half is now stamped as derived.
+
+    THE INVARIANT, and why it is a function rather than a longer literal: there is ONE place that
+    knows what `progress` means, both `_record` (which writes it) and `cmd_audit` (which refuses
+    when it drifts) call it, and a field that cannot be derived from the rows must not be a
+    counter here at all. `_note`, `_stale_block_note` and `_numerator_note` are prose and are left
+    exactly as they are.
+
+    WHAT IT DOES NOT FIX: nothing checks that a `state` in a row is TRUE about the tool. This
+    guards the arithmetic between the rows and the headline, not the honesty of a row.
+    """
+    tools = ledger["tools"]
+    defects = ledger.get("defects") or {}
+    den = ledger.get("denominator") or {}
+
+    # A DEPRECATED tool (visibility=legacy ∪ superseded_by) is not part of what ships. The five
+    # already-concluded rows the denominator correction moved out keep their evidence and carry
+    # `counts_toward_release: false`, because the work happened and is still true about those
+    # tools — but they are not the numerator. Counting them read 114/198 where the shippable
+    # figure was 109/198, which is this same class one level down: a number not derived from the
+    # SSOT drifts toward "done".
+    def counts(v: dict) -> bool:
+        return v.get("counts_toward_release") is not False
+
+    live = [v for v in tools.values() if counts(v)]
+    concluded = sum(1 for v in live if v.get("state") in TERMINAL)
+    surface = den.get("federated_tools")
+
+    # `last_batch` from the evidence actually on disk, not from whoever last remembered to type
+    # it. Both naming conventions are in use — `batch40.json` and `b41-norail.json` — and an
+    # anchored `batch(\d+)` silently stopped at 40 while four batch-41 files sat beside it.
+    best = (-1, "")
+    for v in tools.values():
+        f = v.get("evidence_file") or ""
+        m = re.search(r"/(?:batch|b)(\d+)", f)
+        if m and int(m.group(1)) > best[0]:
+            best = (int(m.group(1)), f)
+    last_batch = ledger.get("progress", {}).get("last_batch")
+    if best[0] >= 0:
+        parts = best[1].split("/")
+        date = parts[-2] if len(parts) > 1 else ""
+        last_batch = f"batch-{best[0]} ({date})" if date else f"batch-{best[0]}"
+
+    def defect_state(d) -> str:
+        return str((d.get("state") or d.get("status") or "") if isinstance(d, dict) else "")
+
+    proven_d = sum(1 for d in defects.values() if defect_state(d).startswith("proven"))
+    open_d = sum(1 for d in defects.values() if defect_state(d).startswith("open"))
+    return {
+        "tools_declared": sum((den.get("group_sizes") or {}).values()) or None,
+        "tools_concluded": concluded,
+        "tools_in_cycle": sum(1 for v in tools.values() if v.get("state") == "in_cycle"),
+        "tools_proven": sum(1 for v in live if v.get("state") == "proven"),
+        "tools_blocked": sum(1 for v in live if v.get("state") == "blocked"),
+        "defects_proven": proven_d,
+        "defects_open": open_d,
+        # Neither counter above claims the total, so the difference is stated rather than lost.
+        # Three of these rows are shipped invariant fixes recorded with `commit`/`test` and no
+        # `state` at all — a shape the two counters would silently drop.
+        "defects_total": len(defects),
+        "defects_other": len(defects) - proven_d - open_d,
+        "deferred_questions": len(ledger.get("deferred_questions") or {}),
+        "last_batch": last_batch,
+        "release_surface": surface,
+        "shippable_denominator": surface,
+        "concluded_in_release_surface": concluded,
+        "remaining_in_release_surface": (surface - concluded) if surface is not None else None,
+        "evidence_split": {
+            **(ledger.get("progress", {}).get("evidence_split") or {}),
+            "gate_backed": sum(1 for v in live if v.get("evidence_class") == "gate-backed"),
+            "prose_note_pre_gate": sum(
+                1 for v in live
+                if v.get("state") in TERMINAL and v.get("evidence_class") != "gate-backed"),
+        },
+        "tools_concluded_including_deprecated": sum(
+            1 for v in tools.values() if v.get("state") in TERMINAL),
+    }
+
+
+def progress_drift(ledger: dict) -> dict:
+    """{field: (stored, derived)} for every counter that disagrees. Empty dict = consistent."""
+    stored = ledger.get("progress") or {}
+    out = {}
+    for k, want in recompute_progress(ledger).items():
+        if k == "evidence_split":
+            for sk, sv in want.items():
+                if stored.get(k, {}).get(sk) != sv:
+                    out[f"{k}.{sk}"] = (stored.get(k, {}).get(sk), sv)
+        elif stored.get(k) != want:
+            out[k] = (stored.get(k), want)
+    return out
+
+
 def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
     """🔴 THE GATE USED TO SAY "may be recorded" AND WRITE NOTHING.
 
@@ -359,35 +471,8 @@ def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
     tools[a.tool] = {**prev, "state": a.state, "cycle": ledger.get("progress", {}).get("last_batch"),
                      "note": note, "evidence_file": path.as_posix(),
                      "evidence_class": "gate-backed", "counts_toward_release": True}
-    # 🔴 THE NUMERATOR MUST OBEY THE SAME RULE AS THE DENOMINATOR. The RUNBOOK is explicit that a
-    # DEPRECATED tool (visibility=legacy ∪ superseded_by) is not part of what ships, and that the
-    # five already-concluded rows it moved out are "kept with their evidence, marked
-    # counts_toward_release: false, because the work happened and is still true about those
-    # tools". The rows carry the flag correctly. This counter ignored it, so every batch since
-    # `_record` landed reported 114/198 when the true figure against the shippable set was
-    # 109/198 — book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links and
-    # glossary_web_search are all `proven` and all deprecated.
-    #
-    # Over-counting by five is the same class this loop already named for the DENOMINATOR: a
-    # progress number that is not derived from the SSOT drifts toward "done". Here it was the
-    # numerator, and it drifted the same way.
-    def _counts(v: dict) -> bool:
-        return v.get("counts_toward_release") is not False
-
-    pr = ledger["progress"]
-    pr.update({
-        "tools_concluded": sum(1 for v in tools.values()
-                               if v.get("state") in ("proven", "blocked") and _counts(v)),
-        "tools_in_cycle": sum(1 for v in tools.values() if v.get("state") == "in_cycle"),
-        "tools_proven": sum(1 for v in tools.values()
-                            if v.get("state") == "proven" and _counts(v)),
-        "tools_blocked": sum(1 for v in tools.values()
-                             if v.get("state") == "blocked" and _counts(v)),
-        # Kept alongside so the two are never confused again: the total work done, including the
-        # rows the denominator correction moved out.
-        "tools_concluded_including_deprecated": sum(
-            1 for v in tools.values() if v.get("state") in ("proven", "blocked")),
-    })
+    # Every counter, from one place. See recompute_progress() for why it is not an inline literal.
+    ledger["progress"].update(recompute_progress(ledger))
     LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10), encoding="utf-8")
 
 
@@ -408,12 +493,33 @@ def cmd_audit(a) -> int:
         for e in (d.get("tools") or []):
             if isinstance(e, dict) and e.get("tool") and e["tool"] not in tools:
                 orphans.setdefault(e["tool"], f.as_posix())
-    if not orphans:
-        print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows)")
+    # 🔴 THE SECOND SEAM: the rows can be complete while the HEADLINE lies about them.
+    # `audit` checked only that evidence on disk has a row. Measured 2026-08-22 with 203 rows and
+    # a clean audit, the `progress` block still read `concluded_in_release_surface: 40` against
+    # 198 — so "audit clean" was true and the file's own summary was wrong by 158. Both are the
+    # same question (does the ledger agree with itself?) and they are now answered together.
+    drift = progress_drift(ledger)
+    if not orphans and not drift:
+        print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
+              "and `progress` agrees with them")
         return 0
-    print(f"REFUSED — {len(orphans)} tool(s) have evidence on disk and NO ledger row:")
-    for n, f in sorted(orphans.items(), key=lambda x: (x[1], x[0])):
-        print(f"  {n:40} {f}")
+    if orphans:
+        print(f"REFUSED — {len(orphans)} tool(s) have evidence on disk and NO ledger row:")
+        for n, f in sorted(orphans.items(), key=lambda x: (x[1], x[0])):
+            print(f"  {n:40} {f}")
+    if drift:
+        print(f"REFUSED — `progress` disagrees with the rows in {len(drift)} field(s). "
+              "It is DERIVED; re-run any `conclude`, or fix the rows — never the number:")
+        for k, (stored, want) in sorted(drift.items()):
+            print(f"  {k:36} stored={stored!r:24} rows say {want!r}")
+        # --fix-progress is NOT "edit the gate to make it pass". It recomputes the block FROM the
+        # rows, which is the only legitimate repair; nothing here can move a number the rows do
+        # not support, and every change it makes is printed above before it is written.
+        if getattr(a, "fix_progress", False):
+            ledger["progress"].update(recompute_progress(ledger))
+            LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
+                              encoding="utf-8")
+            print(f"  -> rewrote {len(drift)} field(s) from the rows. Re-run `audit` to confirm.")
     return 1
 
 
@@ -489,6 +595,8 @@ def main() -> int:
     d.add_argument("--state", required=True)
     d.set_defaults(fn=cmd_conclude)
     au = sub.add_parser("audit")
+    au.add_argument("--fix-progress", action="store_true",
+                    help="recompute the `progress` block FROM the rows (never the other way)")
     au.set_defaults(fn=cmd_audit)
     a = ap.parse_args()
     return a.fn(a)

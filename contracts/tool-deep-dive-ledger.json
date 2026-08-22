@@ -3266,6 +3266,73 @@
    "live_confirmation": "batch 25, glossary_entity_restore, 5 of 5 runs. A real soft-deleted entity was seeded and the model was asked to restore it by NAME. It searched the glossary, the chapter text and project memory, found nothing — because a deleted row is invisible to all of them — and said so: 'I couldn't find \"Mira Solene\" in the story bible or the current chapter's text. Since I can't see her in the trash (the recycle bin) without an ID, I'll need you to provide her element ID.' That is the correct answer and the tool is unreachable because of it.",
    "the_control_that_narrowed_it": "My first count said no restore tool had a lister, from a grep for include_archived-style FLAGS. That was too crude: motifs and arc templates are discoverable through a `status` enum instead, which the flag search missed. Re-measured across both mechanisms, the gap is 6 of 10 rather than 10 of 10.",
    "not_fixed_and_why": "The remedy is a listing surface per family — a filter on an existing list tool, or a recycle-bin read — and which of those is right is an owner call per domain, not a loop call. Recorded with the measurement."
+  },
+  "D-LAZY-TAIL-UNUSED": {
+   "state": "open — the resolution loop's cycle 1",
+   "found": "2026-08-14",
+   "registered": "2026-08-22",
+   "service": "chat-service (tool surfacing) + ai-gateway (federation)",
+   "invariant": "A tool the turn's own request NAMES must be reachable in that turn — and when it is not reachable, the turn may not claim its effect.",
+   "measured": "30 of 65 blocked tools surfaced 0/N across clean runs. Cause UNKNOWN; ranking, tier/scope/family and batch composition are all RETIRED by measurement. See DQ-T36 for the evidence and the options.",
+   "blast_radius": "Its benign form is a tool the model reaches through tool_list -> tool_load. Its dangerous form is a WRITE tool missing from a write turn, which produced a FALSE SUCCESS on world_map_update_marker (5/5), kg_triage_resolve (5/5), plan_keep_material (4/5) and world_map_remove_region (1/5).",
+   "note": "It had 14 mentions in this file's prose and no row until 2026-08-22 — the loop's dominant blocker, invisible to anyone reading the registry."
+  },
+  "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ": {
+   "state": "open",
+   "found": "2026-08-21 (batch 33)",
+   "registered": "2026-08-22",
+   "service": "knowledge-service / kg",
+   "invariant": "A store that accepts a write must have a read that can find it, or the write must refuse.",
+   "measured": "kg_add_nodes answers 'node ready'. kg_graph_query is `MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)`, so it projects nodes FROM EDGES and an edgeless node is structurally invisible. Every node this fixture can create is edgeless, because placing an edge needs an approved card.",
+   "correction": "Batch 32's write-up blamed the MODEL for fabricating an absence. The control showed the model's 'no information in the book's connection map' was TRUE. The diagnosis was retracted in a dedicated commit."
+  },
+  "D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED": {
+   "state": "open",
+   "found": "2026-08-21 (batch 34)",
+   "registered": "2026-08-22",
+   "service": "knowledge-service / memory",
+   "invariant": "Same as D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ.",
+   "measured": "memory_remember stores a fact and the store confirms it. memory_search cannot find it until the project is indexed, reporting 'degraded': {'semantic': 'not_indexed'} — so memory_forget is told the fact does not exist and correctly declines. The model was RIGHT and the store proves both halves."
+  },
+  "D-EMPTY-TRANSLATION-SAVED-AS-A-VERSION": {
+   "state": "fixed",
+   "found": "2026-08-21 (batch 36)",
+   "registered": "2026-08-22",
+   "service": "translation-service",
+   "commit": "dd2dbfe41",
+   "invariant": "An empty artefact must not be saved as a real one.",
+   "chokepoint": "app/models.py validator AND app/mcp/server.py — 🔴 THE MODEL-ONLY FIX WAS INERT, because the MCP tool writes its INSERT directly and never constructs the model. Caught only by a live re-probe after an md5-verified deploy."
+  },
+  "D-EMPTY-SKILL-BODY-PROPOSED": {
+   "state": "fixed",
+   "found": "2026-08-21",
+   "registered": "2026-08-22",
+   "service": "agent-registry-service",
+   "commit": "8fb20fe56",
+   "chokepoint": "internal/api/skills.go — body_md is required.",
+   "invariant": "Same class as D-EMPTY-TRANSLATION-SAVED-AS-A-VERSION.",
+   "why_it_matters_beyond_the_tool": "🔴 THE CLASS HAD BEEN DECLARED CLOSED ONE BATCH EARLIER and this violated it. The check was a SNAPSHOT of the members known at the time, not a SWEEP of the class. `book_chapter_bulk_create`'s empty `chapters` list is the one member still unexercised, OWED since batch 26."
+  },
+  "D-RAIL-PINNED-TURN-NEVER-COMPLETES": {
+   "state": "open",
+   "found": "2026-08-22",
+   "registered": "2026-08-22",
+   "service": "chat-service",
+   "commit_of_the_diagnosis": "861f61cd6",
+   "invariant": "A turn must emit an assistant message. A rail that drives itself to exhaustion is still a turn the author is waiting on.",
+   "measured": "Server log for the exact prompt: `intent pinned workflow(s) ['translation-pass']`, `rail translation-pass: 0/3 steps done, next=translation_coverage`, then `CP-0.4 orphaned turn: no assistant row, outcome 'abandoned_by_user' stamped`. The client waits out its budget and reports an empty upstream error.",
+   "not_slowness": "Raising the harness turn budget 180s -> 900s changed only the error's NAME (STREAM_ERROR -> ReadTimeout). Slowness would have been fixed by more time.",
+   "the_control": "Same tool, same fixture, same machinery, and the ONLY change is phrasing that does not pin the rail — still from the tool's own declared synonyms. 'Set the target language for this book's translation to Vietnamese' -> never completes. 'Change this book's translation model to my default one' -> 5/5 CLEAN, 0 errors.",
+   "why_it_matters_beyond_the_tool": "The words that pin the rail are ordinary ones an author would use, and the failure is not a visible error to them — it is a chat turn that simply never answers. Seven arms were recorded as 'transport errors' before this was diagnosed."
+  },
+  "D-ANSWERABILITY-MISSES-WORD-ORDER": {
+   "state": "open",
+   "found": "2026-08-14",
+   "registered": "2026-08-22",
+   "service": "chat-service (answerability pre-filter)",
+   "invariant": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
+   "measured": "jobs_get declares the contiguous phrases 'job detail' and 'job status'. The request said 'the full detail of my most recent job — status, cost' — the same words, separated and reordered. answerable_tools matched none and the model reached for tool_list on all three runs, the signature of a missing surface.",
+   "dq": "DQ-T32 asks whether to relax the matcher, and how."
   }
  },
  "deferred_questions": {
@@ -3340,6 +3407,39 @@
    "evidence": "Across the catalogue 16 of 19 `model_ref` properties are optional and state the convention outright — 'omit to use the author's default planner model' (plan_*), 'omit to use the user's default' (glossary_*). Only THREE are required: composition_generate, composition_library_translate, kg_build_wiki. composition_generate is the outlier on the one tool where the cost of getting it wrong is highest, and both measured failure modes (placeholder, then abandonment) vanish if the runtime supplies the model it already knows.",
    "why_it_is_not_mine_to_decide": "Three resolution tiers were checked and none is a clean answer. SESSION: composer_model_source/composer_model_ref are EMPTY on every harness session. WORK: of 664 composition_work rows, 0 carry the `model_roles` map and 13 the legacy default_model_ref — so a Work-tier default is inert for 98% of books. ACCOUNT: user_default_models IS populated and keyed by `capability`, but the capabilities are chat|distill|planner|rerank — there is no composer/prose capability, so defaulting would mean choosing to spend the author's money through the `chat` model on a prose-generation call. Which capability a spending tool falls back to is a product call, and the resolver (resolve_user_default_model) lives in knowledge-service, not composition-service.",
    "what_shipped_meanwhile": "model_ref is now DECLARED as a UUID naming its supplier, so the placeholder no longer reaches the tool and approve-then-fail is gone. The abandonment is not fixed."
+  },
+  "DQ-T36": {
+   "state": "open",
+   "raised": "2026-08-14",
+   "escalated": "2026-08-22 — registered. It had 14 mentions in this ledger's prose and was never a row, which is how the loop's DOMINANT blocker stayed invisible to anyone reading the registry.",
+   "blocked_by": "a product decision about how the turn's tool catalogue is built",
+   "question": "What decides which tools are advertised on a turn, and should a tool the request NAMES be guaranteed a place?",
+   "measured": "30 of the 65 blocked tools were never advertised (surfaced 0/N across clean runs, zero transport errors). THREE hypotheses are RETIRED BY MEASUREMENT and must not be re-run: (1) RANKING — world_map_update_marker scores #1 of 315 and world_map_update_region #2 for their own measured prompts, using the shipped scorer offline, and both surfaced 0/5. (2) TIER/SCOPE/FAMILY — settings_model_set_active, _set_favorite and _update surfaced 0/5 in the same batch where settings_update_profile surfaced 5/5 and carded 5/5; same account scope, same tier, same family. (3) BATCH COMPOSITION — memory_timeline surfaced 5/5 inside a 5-scenario batch, then 0/5 alone, 0/5 alone again, then 0/5 inside a 5-scenario batch.",
+   "why_it_is_not_merely_a_reachability_question": "A budget-dropped tool is still reachable via tool_list -> tool_load, and the model DOES use that path (registry_get_workflow: 'I do not have access to its internal instructions without loading it first'). What is not survivable is the OTHER outcome: when the missing tool is a WRITE, the turn reports the write as DONE. world_map_update_marker 5/5, kg_triage_resolve 5/5 (which rendered the post-resolution state to make it convincing), plan_keep_material 4/5 with zero tool calls, world_map_remove_region 1/5. Same condition produced honest refusals elsewhere, so the model is not uniformly at fault and the surface is the variable.",
+   "options_seen_none_chosen": "(a) reserve a slot for any tool whose declared synonyms match the request, so a named tool is never silently absent; (b) leave selection as-is and make the ABSENCE explicit to the model, the way DQ-T3's withheld-stamp already does for gated tools; (c) leave both and rely on tool_list -> tool_load, accepting that a write tool may be missing from a write turn.",
+   "note": "Option (c) is the status quo and is measured to produce false success. It is listed so the decision is made rather than defaulted into.",
+   "cycle": "P1-SURFACE, cycle 1 of the resolution loop — 25 tools."
+  },
+  "DQ-T37": {
+   "state": "open",
+   "raised": "2026-08-21",
+   "registered": "2026-08-22 — it existed only in docs/eval/toolloop/2026-08-14/batch38.json.",
+   "blocked_by": "an architecture decision about where the registry learns the tool catalogue",
+   "question": "Should registry_propose_workflow validate that a step's `tool` names a tool that exists?",
+   "measured": "Of 10 proposed steps across 5 live cards, 3 named `chapter_compose`, which is not among the 315 federated tools — checked against the catalogue, not by eye. A direct probe confirms it at the boundary: a step with tool='totally_not_a_real_tool' is accepted and proposed. Three of five proposals would have created a recipe that cannot run, saved under a name the author will trust later. The tool already declares closed sets for `surfaces[]` and `steps[].gate`; `steps[].tool` is a free string.",
+   "why_it_is_a_decision": "agent-registry-service has no access to the federated catalogue — that lives behind ai-gateway. Validating at proposal time means choosing WHERE the registry learns it: a call at propose time, a periodic sync, or a shared contract file.",
+   "options_seen_none_chosen": "(a) call ai-gateway at propose time and reject an unknown tool; (b) sync the catalogue periodically and validate against the snapshot, accepting a staleness window; (c) publish a contract file both services read; (d) accept free strings and fail at RUN time with a message naming the missing tool."
+  },
+  "DQ-T38": {
+   "state": "open",
+   "raised": "2026-08-21",
+   "registered": "2026-08-22.",
+   "blocked_by": "a question about a pipeline this loop did not trace",
+   "question": "Why does the public catalogue list nothing while 44 books are marked public?",
+   "measured": "loreweave_sharing.sharing_policies holds 44 rows with visibility='public' (against 13 private, 1 unlisted). catalog_list_public_books returns {items: [], total: 0}. catalog_get_book returns 'book not found' for an unknown id, for the caller's OWN private book, AND for a book_id that IS marked public — uniformly, which is correct (it is no existence oracle) but also no help. Asked what public books exist, the assistant truthfully reports none, and any book the author believes they published is unreachable through the catalogue tools.",
+   "not_diagnosed_further_deliberately": "loreweave_catalog holds only catalog_runtime_state, so the listing is built elsewhere. Whether this is a projection that was never populated or a publish step beyond the sharing policy is a question about that pipeline; guessing would have been the sixth prose-shaped hypothesis this loop had to retract.",
+   "same_shape_as": "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ and D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED. Three subsystems, one pattern: the write side confirms, the read that surfaces it returns nothing, and the model's 'it isn't there' is TRUE.",
+   "cycle": "P7-FALSE-ABSENCE, cycle 7 of the resolution loop."
   }
  },
  "carried_observations": [
@@ -3742,22 +3842,24 @@
   "tools_in_cycle": 0,
   "tools_proven": 133,
   "tools_blocked": 65,
-  "defects_proven": 23,
-  "defects_open": 0,
-  "deferred_questions": 7,
-  "last_batch": "batch-17 (2026-08-14)",
+  "defects_proven": 25,
+  "defects_open": 10,
+  "deferred_questions": 15,
+  "last_batch": "batch-41 (2026-08-14)",
   "evidence_split": {
-   "gate_backed": 62,
-   "prose_note_pre_gate": 30,
+   "gate_backed": 173,
+   "prose_note_pre_gate": 25,
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
-  "concluded_in_release_surface": 40,
-  "remaining_in_release_surface": 158,
+  "concluded_in_release_surface": 198,
+  "remaining_in_release_surface": 0,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
-  "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator."
+  "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
+  "defects_total": 44,
+  "defects_other": 9
  },
  "observations": [
   {
