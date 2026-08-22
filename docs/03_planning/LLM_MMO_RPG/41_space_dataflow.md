@@ -6,9 +6,9 @@
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
 > decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **ALL NINE APPLIED** —
-> open `SDF-Q1..Q18`, of which **seventeen are resolved**. **One remains: `Q15`**, which needs a space
-> view to measure and that view is not built. `Q12` closed in §18 — `SDF-F8` turned out to be a unit
-> error that `SDF-A31` exposed.)
+> open `SDF-Q1..Q18` — **ALL EIGHTEEN RESOLVED.** The last two fell to the same move: `Q12` because
+> `SDF-F8` was a unit error `SDF-A31` exposed, and `Q15` because *"no view exists to measure"* is a
+> blocker only until the view is built. §18, §19.)
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
@@ -541,7 +541,7 @@ is therefore *"add `PortalSet` **and say which relation a spatial read means**"*
 | ~~`SDF-Q8`~~ | ~~history-derived layers~~ **✅ RESOLVED §13.2 — `SDF-A29`**: they are **PROJECTIONS, not layers**, and the tier already ships (`crates/projections`). A layer is read AND written by the sim; a projection is only read. Reads must be against a **pinned** projection version, or it is `SDF-A4` rule 5 in a new costume. ~~ — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
 | ~~`SDF-Q9`~~ | ~~space-side read contract~~ **✅ RESOLVED §12.5 — `SDF-A26`**: the projection is declared **per LAYER by its owner**, never per reader — otherwise the prompt is a function of which features are loaded, which is `SDF-A4` rule 2 reappearing where nobody would look. The reader picks a **budget**, never a set. ~~ — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
 | ~~`SDF-Q10`~~ | ~~volume-keyed layers~~ **✅ RESOLVED §12.3 — `SDF-A24`, by DELETING a storage class rather than adding one**: a shape is an authoring/command concept that resolves to a node-set at WRITE time and stores as `Sparse`. The only case that defeats it is a topology change under the shape — and `SDF-A16` already makes that an event, so the re-resolve is a **subscriber, not a scan**. ~~ (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
-| `SDF-Q15` | **Fan-out and occupant caps** for the space view — same shape as `SDF-Q12`: needs a measured prompt-assembly cost that does not exist. (§12.6) |
+| ~~`SDF-Q15`~~ | ~~fan-out and occupant caps~~ **✅ MEASURED §19 — `SDF-A36`: `portal_ring: 12` / `occupants: 24`.** Built the view, then measured it: **12.5 B per included node, 14.10 ms per assembly**. §8.1's stated falsifier did NOT fire — occupancy is 64 B against the ancestors' 272 B — **but the lean was still wrong: "ancestors are free" is false. BOUNDED IS NOT FREE**, and at full `DP-Ch1` depth the ancestor section alone is ~1 KB, four times everything else. **The binding constraint is the ancestor payload and an N+1 query pattern, not either cap** ~~ |
 | ~~`SDF-Q16`~~ | ~~does `Adjacency::Geometric` exist above `Locale`~~ **✅ RESOLVED §15 — `SDF-A32`: YES, DERIVED ONCE AT S4 — and this FALSIFIES the lean recorded in §8.1.** `R-2`'s Paradox evidence said region adjacency is authored, because Paradox regions are **authored groupings** of provinces. **Ours are not.** `crates/world-gen/src/hierarchy.rs` builds L2 regions as a **great-circle Voronoi partition of the same mesh**, so region adjacency is exact, contiguous by construction, and one pass over `neighbors` away. Authoring it would be transcribing something the generator already knows. ~~ |
 | ~~`SDF-Q11`~~ | ~~reality scoping~~ **✅ RESOLVED §13.2 — `SDF-A30`**: **scope follows DERIVATION.** Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset. So a hundred realities forked from one book share ONE baseline (14.9 MB) and pay only for divergence — `WDS-A1` delivering its actual value. ~~
 | ~~`SDF-Q17`~~ | ~~the multi-reality tax has no measurement for space~~ **✅ MEASURED §16 — `SDF-A33`: `SDF-A30` HOLDS, and `SDF-A31` is what makes it hold.** Per reality `T1` = **1.10 MB** measured against a **14.9 MB** shared baseline, so 100 realities forked from one book cost **125 MB instead of 1 490 MB — 92 % saved**. The counterfactual is the finding: had generated cells been rows, `Gigaplanet` would cost **126 MB per reality**, 8.5× the baseline, falsifying `SDF-A30` outright. ~~ |
@@ -1794,3 +1794,57 @@ state a default for: share the template unless the fiction requires otherwise.**
 baseline, not a measurement taken here, and the packed figure is its own estimate of an irreducible core.
 The node figure **is** measured. So the ratio between the two budgets is sound; the baseline's absolute
 size still rests on doc 37's arithmetic rather than on a database read.
+
+---
+
+## 19 — `SDF-Q15` measured, and "ancestors are free" was wrong
+
+The row had stood open on *"needs a measured prompt-assembly cost that does not exist"*. That is a
+blocker only until the thing being measured is built. `world-service/src/space_view.rs` is
+`SDF-A23`'s three producers assembled behind `SDF-A26`'s budget; this is its measurement.
+
+**Harness:** real Postgres 18, throwaway database, best-of-7 (the discipline `M-1` used), against a
+five-level tree — `World → Region → Region → Locale → Domain` — with **20 doors** off the Domain and
+**200 occupants** standing in it: the market square §8.1 named as its own falsifier.
+
+| | |
+|---|---:|
+| wall-clock per assembly | **14.10 ms** |
+| assembled size | **511 B** over **41** included nodes |
+| **bytes per included node** | **12.5 B** |
+| ancestors — 4 nodes | **272 B** |
+| portal ring — 12 nodes | 33 B |
+| occupants — 24 nodes | 64 B |
+
+### 19.1 — The falsification did NOT fire, and the lean was still wrong
+
+§8.1 wrote: *"the lean is that ancestors are already free (`≤16` by `DP-Ch1`) and only the portal ring
+and occupancy need caps. Falsified if OCCUPANCY DOMINATES."* **Occupancy did not dominate** — 64 B
+against the ancestors' 272 B — so the stated falsifier is clean.
+
+> **But "ancestors are FREE" is false, and the measurement says why: BOUNDED IS NOT FREE.** Four
+> ancestors are **53 % of the whole payload**, because each carries a full record (kind, level name,
+> place name) while a ring entry or an occupant is a bare id. At `DP-Ch1`'s full depth of 16 the
+> ancestor section alone is **~1 KB — four times everything else combined.**
+>
+> The count was bounded and the COST was not, and §12.5's *"everything except the fan-out and occupant
+> caps is already bounded by an existing invariant"* quietly treated the two as the same thing.
+
+### 19.2 — And the real constraint is neither cap
+
+**14.10 ms for one view is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk
+issues two queries per level. A single recursive CTE collapses it, and the caps are not what stands
+between this and being cheap.
+
+> **`SDF-A36` — the caps are `portal_ring: 12` / `occupants: 24`**, affordable at 12.5 B per included
+> node. **The binding constraint on a space view is the ANCESTOR PAYLOAD and the QUERY COUNT, not either
+> cap** — which is the opposite of what §12.5 assumed, and is the kind of thing only a measurement says.
+
+### 19.3 — What is measured and what is NOT
+
+**Measured:** assembled bytes and wall-clock, against a real database, best-of-7.
+
+**Not measured: TOKENS.** A token count needs the tokenizer of the model that will read it, and this
+crate has none. For the CJK-heavy prose this project assembles, the bytes-per-token ratio is very
+different from English, so converting would be **inventing precision**. That half stays with the prompt
+tier, which owns a tokenizer — stated here rather than quietly folded into a byte figure.
