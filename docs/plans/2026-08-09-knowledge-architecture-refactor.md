@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 64 of 111 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 65 of 112 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (12/19) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (13/20) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6044,6 +6044,64 @@ vectors and validity intervals live in different stores.
 
   ---
   ---
+  ---
+  ### ✅ T25r 2026-08-23 — **the resolver is WIRED, and the condition on wiring it is the safeguard**
+
+  ```
+  NEW  app/adapters/age_anchor_scores.py     + 3 integration tests against a REAL AGE graph
+       vector_store_provider supplies it ONLY when configured_backend() == "age"
+  knowledge unit 4358 · DB integration 651 -> 654
+  ```
+
+  🎯 **`anchor_score` now comes from its authority, per query, for exactly the hits returned.**
+  Proven against a live AGE graph, and three of the four assertions are about what it must
+  NOT do:
+
+  ```
+  anchored entity      0.6363636363636364      the real bucket-relative value
+  un-anchored entity   0.0                     merge_entity's coalesce default
+  an id it never saw   ABSENT from the dict    not None, not 0.0 — never invented
+  another user's id    {}                      the tenancy predicate
+  ```
+
+  ⚖️ **The wiring CONDITION is the safeguard, not a configuration detail.** On a `neo4j`
+  backend the AGE graph does not hold the entities, so a resolver would answer nothing for
+  every hit — and `glossary.py`'s `anchor_score or 0.0` turns *nothing* into a column of
+  zeroes and a silent fall back to raw cosine order. So the provider supplies it only when
+  `configured_backend() == "age"`, and any failure to build one logs and leaves the
+  collaborator OUT. **Absent is loud; present-and-empty is not.**
+
+  🔬 **It uses the AGE pool, not the vector pool.** Both DSNs happen to resolve to the same
+  database today — that is what made §3.3c's join possible in the first place — and *relying*
+  on it would break silently the moment they diverge: the query would hit a database with no
+  graph, or worse an EMPTY one, and an empty answer is indistinguishable from "nothing is
+  anchored".
+
+  ⚠️ **The probe failed first, and the failure was the SAFE one.** Pointing the resolver at a
+  graph that does not exist raised `InvalidSchemaNameError: graph "g_shared" does not exist` —
+  loud, immediate, unmistakable. The bug was mine (the module binds `graph_name_for` at import,
+  so patching `age_bootstrap` does nothing), and the fixture now carries that note so the next
+  reader does not pay for it again.
+
+  ```
+  24  drop the `user_id` predicate                RED — the cross-tenant test
+  25  invent 0.0 for an id the graph never returned  RED — "assert ghost not in got"
+  ```
+
+  Bite 24 is the one that would never surface in production as an error: another user's bucket
+  silently ranking this user's hits.
+
+  ⛔ **Still owed on step 4:** flipping `knowledge_vector_read_primary` for the ENTITY scope and
+  deleting the entity/event DDL. `test_the_provider_keeps_neo4j_as_primary` — the T25b tripwire
+  — still guards that flip and is untouched here. The seam and its source are ready; the switch
+  is not thrown.
+
+  **QC (a) gates:** knowledge unit **4358**, DB integration **654** (+3), all repo gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; the provider supplies a collaborator and
+  no request path changes until the entity scope is flipped.
+  **QC (c) real data:** the four-row table above, against a live AGE 1.7.0 graph.
+
+
   ### ✅ T25q 2026-08-23 — **the anchor-score seam, built so the SAFEGUARD survives it**
 
   ```

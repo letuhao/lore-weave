@@ -32,6 +32,7 @@ import logging
 
 from app.config import settings
 from app.metrics import vector_dual_write_total
+from app.db.graph_backend import configured_backend
 from app.db.neo4j_helpers import CypherSession
 from app.ports.vector_store import VectorStore
 
@@ -185,7 +186,30 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
             )
         return primary
 
-    pg = PgVectorStore(pool, entity_exists=entity_exists)
+    # T25q/§3.3c — the `anchor_score` resolver, supplied ONLY when the graph can serve it.
+    #
+    # ⚠️ The condition is the safeguard. On a `neo4j` backend the AGE graph does not hold the
+    # entities, so a resolver would answer NOTHING for every hit — and `glossary.py`'s
+    # `anchor_score or 0.0` turns that into a column of zeroes and a silent fall back to raw
+    # cosine order. Leaving the collaborator OUT keeps the key absent, so a consumer that ranks
+    # by it raises instead. Absent is loud; present-and-empty is not.
+    anchor_scores = None
+    if configured_backend() == "age":
+        try:
+            from app.adapters.age_anchor_scores import age_anchor_scores
+            from app.db.age_pool import age_pool
+
+            anchor_scores = age_anchor_scores(age_pool())
+        except Exception as exc:                       # noqa: BLE001 — pool not initialised
+            # Fail toward the OLD behaviour (key absent, consumer raises), never toward a
+            # resolver that cannot answer.
+            logger.warning(
+                "T25q: no anchor_score resolver (%s) — entity hits keep the key ABSENT, so a "
+                "two-layer ranker raises rather than ranking by raw cosine.", exc,
+            )
+            anchor_scores = None
+
+    pg = PgVectorStore(pool, entity_exists=entity_exists, anchor_scores=anchor_scores)
     # T25 — the cutover. `DualWriteVectorStore` is symmetric in construction: it writes both
     # and reads the FIRST. So cutting over is swapping the pair, not a second class. Post-
     # cutover the shadow runs in reverse (Neo4j compared against pgvector), which keeps the
