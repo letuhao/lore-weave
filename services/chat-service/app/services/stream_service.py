@@ -2322,12 +2322,43 @@ def _ref_registry(lane_of) -> tuple[dict, dict]:
 
 def _missing_required_names(args_obj: dict, tool_def: dict | None) -> list[str]:
     """The REQUIRED arg names this call is still missing (post context-id injection).
-    Unknown tool_def → [] (can't classify → never block a call we can't judge)."""
+    Unknown tool_def → [] (can't classify → never block a call we can't judge).
+
+    🔴 THIS USED TO BE `not args_obj.get(r)` — A TRUTHINESS TEST WHERE PRESENCE WAS MEANT.
+
+    Measured 2026-08-22 through the real chat path. `settings_model_set_favorite` was asked to
+    UNFAVOURITE a model; the model sent `{"user_model_id": "…", "value": false}` — exactly right —
+    and this returned `["value"]`, because `not False` is `True`. The repair message then told the
+    model to supply the argument it had just supplied, it retried identically, and the blank-args
+    cap stopped the turn. On one such turn the model went on to tell the author *"I've deactivated
+    Nemotron-3 Nano for you"*: a false claim of a write, caused by a check that threw away the
+    correct answer.
+
+    It took a control to see. The obvious reading was that the model omits the boolean when the
+    answer is false — "mark as a favourite" (true) passed while "deactivate" and "turn off" (false)
+    failed. The RECORDED ARGUMENTS refuted it: the value was always there.
+
+    Swept across the live catalogue, 37 required arguments on 36 tools can legitimately be falsy —
+    6 booleans (`false` unreachable), 10 integers (`unit_index: 0` is the FIRST unit), 2 numbers
+    (`world_map_add_marker.x: 0` is the left edge of the map), and 19 arrays (`chapters: []` is the
+    empty-import case). None of them could be expressed through chat.
+
+    THE RULE NOW: an argument that was SENT is present, whatever its value. Absent or `None` is
+    missing. The one exception is the reason this check existed — a required STRING that is empty
+    or whitespace really is blank, and catching that is what the blank-args cap is for. It also
+    now catches whitespace, which the truthiness version let through.
+    """
     if not tool_def:
         return []
     params = tool_def.get("function", {}).get("parameters", {})
     required = params.get("required", []) if isinstance(params, dict) else []
-    return [r for r in required if not args_obj.get(r)]
+    missing = []
+    for r in required:
+        if r not in args_obj or args_obj[r] is None:
+            missing.append(r)
+        elif isinstance(args_obj[r], str) and not args_obj[r].strip():
+            missing.append(r)
+    return missing
 
 
 def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:

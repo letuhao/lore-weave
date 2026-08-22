@@ -1,0 +1,1802 @@
+{
+ "batch": "c1-boolfix-rerun",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "settings_model_set_active",
+   "scenario": "settings-model-set-active",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a model is deactivated with NO confirm card (Tier A), OR the model reaches for `settings_model_set_favorite` instead (the mirror of the previous scenario's failure), OR it sends value=true when the author said DEACTIVATE — the argument is a bare boolean with no default, so an inverted value silently does the opposite and the card's title still reads 'set active'. Also REFUTED IF it targets a model other than the one the author pointed at.",
+   "answer_expect": null,
+   "falsifier_sha": "7ec4dba490a09287",
+   "ship_audit": {
+    "gate": "EXERCISED by this run — called 5/5 and left SUSPENDED on its own Tier-A card 4/5. 🔴 IT COULD NOT BE EXERCISED AT ALL BEFORE: this tool's required boolean is FALSE for the request the author makes ('deactivate', 'turn off'), and the presence check tested truthiness, so every call was rejected as 'missing required argument(s)' and the turn hit the blank-args cap — 0/5 cards. After the fix, 4/5. The store rows that moved are the fixture's own background chapter indexing (loreweave_knowledge.extraction_pending), not this tool.",
+    "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP settings_model_set_active error: not accessible\"",
+    "idempotency": "EXERCISED by direct probe (scripts/toolloop/idempotency_probe.py, 2026-08-22), against a model THE RUN REGISTERED ITSELF — settings_model_register is proven, so the fixture creates its own target and the tool comes inside the owner's rule instead of touching the account's real models. Teardown was proven BEFORE the probe ran: settings_model_delete does not delete, it mints a confirm_token, so Throwaway._purge_models redeems it; a build/teardown cycle left the account verified clean. IDEMPOTENT IN EFFECT: user_models rows 1 -> 1 -> 1, updated_at moves, no row added. The undo_hint flips true -> false across the pair, so the first call plainly landed.",
+    "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP settings_model_set_active error: not accessible\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording.",
+    "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP settings_model_set_active error: user_model_id must be a UUID\""
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a029d7-e9d6-7985-9e1c-351e3dfdc3d2",
+     "session_id": "01a029d8-24e6-7769-94f0-6fb5cc42fd40",
+     "prompt": "Deactivate the last one — I am not using it.",
+     "scenario_prompt": "List my registered AI models.",
+     "prior_turns": [
+      {
+       "prompt": "List my registered AI models.",
+       "called": [
+        "settings_list_models"
+       ],
+       "text": "Here are your registered AI models:\n\n### Chat & Reasoning Models\n*   **Gemma-4 26B-A4B QAT (200K)** (Active)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active)\n*   **gpt-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active)\n*   **Qwen2.5 7B Instruct (fast, non-reasoning)** (Active)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen3.6 35B-A3B (120K)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Nemotron-3 Nano (260K, Q3_K_L)** (Active)\n\n### Specialized Models\n*   **Web Search:**\n    *   **searxng** (Active)\n    *   **searxng-default** (Active)\n    *   **LOOP-THROWAWAY-model-Paliregi** (Active)\n*   **Embeddings & Reranking:**\n    *   **bge-m3 (local)** (Active)\n    *   **bge-m3** (Active)\n  "
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_set_active"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.625364+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.607506+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.804738+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.351173+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.625364+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.607506+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.804738+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a029d8-f399-76fc-85c3-1a00c6b6a24d",
+     "session_id": "01a029d9-30c4-7501-8f8d-fba2109d3f8a",
+     "prompt": "Deactivate the last one — I am not using it.",
+     "scenario_prompt": "List my registered AI models.",
+     "prior_turns": [
+      {
+       "prompt": "List my registered AI models.",
+       "called": [
+        "settings_list_models"
+       ],
+       "text": "Here are your registered AI models:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active)\n*   **gpt-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active)\n*   **Qwen2.5 7B Instruct (fast, non-reasoning)** (Active)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen3.6 35B-A3B (120K)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Nemotron-3 Nano (260K, Q3_K_L)** (Active)\n\n### **Specialized Models**\n*   **Web Search:** `searxng` and `searxng-default` (Active)\n*   **Embeddings:** `bge-m3` and `bge-m3 (local)` (Active)\n*   **Reranker:** `Local bge-reranker-v2-m3` (Active)\n*   **Text-to-Speech:** `Kokoro (local)` (Active)"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_set_active"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:20.226179+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:20.218446+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:21.206428+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:19.939199+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:20.226179+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:20.218446+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:42.499681+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:21.206428+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:42.499681+00"
+       }
+      }
+     },
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a029d9-a5cd-70d4-8be6-fc8a42889444",
+     "session_id": "01a029d9-dea1-7e24-932a-da1c1008e7f9",
+     "prompt": "Deactivate the last one — I am not using it.",
+     "scenario_prompt": "List my registered AI models.",
+     "prior_turns": [
+      {
+       "prompt": "List my registered AI models.",
+       "called": [
+        "settings_list_models"
+       ],
+       "text": "Here are your registered AI models:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active)\n*   **GPT-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active)\n*   **Qwen2.5 7B Instruct (fast, non-reasoning)** (Active)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3.6 35B-A3B (120K)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Nemotron-3 Nano (260K, Q3_K_L)** (Active)\n\n### **Search & Research**\n*   **searxng** (Active)\n*   **searxng (web_search)** (Active)\n*   **LOOP-THROWAWAY-model-Kegagegi** (Active)\n\n### **Specialized Models (Embedding, Rerank, TTS)**\n*   **bge-m3 (local)** (Active)\n*   **bge-m3** (Active)\n*   **Loc"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_set_active"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.170076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.15485+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.339697+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:04.934182+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.170076+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.15485+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:05.339697+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a029da-7de0-7143-90c8-f8c2d1f13394",
+     "session_id": "01a029da-ce90-7f89-abae-77062086e049",
+     "prompt": "Deactivate the last one — I am not using it.",
+     "scenario_prompt": "List my registered AI models.",
+     "prior_turns": [
+      {
+       "prompt": "List my registered AI models.",
+       "called": [
+        "settings_list_models"
+       ],
+       "text": "Here are your registered AI models:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active)\n*   **gpt-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active)\n*   **Qwen2.5 7B Instruct (fast, non-reasoning)** (Active)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3.6 35B-A3B (120K)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Nemotron-3 Nano (260K, Q3_K_L)** (Active)\n\n### **Specialized Models**\n*   **Web Search:**\n    *   **searxng** (Active)\n    *   **searxng-default** (Active)\n    *   **LOOP-THROWAWAY-model-Netimumu** (Active)\n*   **Embeddings & Reranking:**\n    *   **bge-m3 (local)** (Active)\n    *   **bge-m3** (Ac"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_set_active"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.514162+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.495715+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.673073+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.256181+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.514162+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.495715+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:00.673073+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a029db-7a53-7b47-8ce2-aba555ec6b36",
+     "session_id": "01a029dc-009f-7b00-8468-7004e38cbd23",
+     "prompt": "Deactivate the last one — I am not using it.",
+     "scenario_prompt": "List my registered AI models.",
+     "prior_turns": [
+      {
+       "prompt": "List my registered AI models.",
+       "called": [
+        "settings_list_models"
+       ],
+       "text": "Here are your registered AI models:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active)\n*   **gpt-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active)\n*   **Qwen2.5 7B Instruct (fast, non-reasoning)** (Active)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3.6 35B-A3B (120K)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Nemotron-3 Nano (260K, Q3_K_L)** (Active)\n\n### **Search & Specialized Models**\n*   **searxng** (Active)\n*   **searxng (web_search)** (Active)\n*   **Kokoro (local)** (TTS - Active)\n*   **bge-m3 (local)** (Embedding - Active)\n*   **bge-m3** (Embedding - Active)\n*   **Local bge-reranker-v2-m3** (Rer"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "settings_model_set_active"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.316086+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.294437+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.491186+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:04.976064+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.316086+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.294437+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:51.193551+00"
+       },
+       "loreweave_provider_registry.user_models": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:05.491186+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:51.193551+00"
+       }
+      }
+     },
+     "answer": "I'm sorry, I encountered an error while trying to deactivate that model. I'll need to try again to complete that for you."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 2,
+   "suspended_count": 4
+  },
+  {
+   "tool": "kg_triage_schema_write",
+   "scenario": "kg-triage-schema-write",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+   "answer_expect": null,
+   "falsifier_sha": "b8a9550a7d944c13",
+   "ship_audit": {
+    "gate": "OWED — Tier W and schema-mutating.",
+    "absent_case": "EXERCISED by direct probe (scripts/toolloop/ship_probe.py, 2026-08-22). A syntactically valid id that does not exist is REFUSED: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}\"",
+    "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"invalid arguments: signature: String should have at least 1 character\"}\"",
+    "tenancy": "EXERCISED by direct probe (2026-08-22). An id belonging to no one is REFUSED: \"MCP kg_triage_schema_write error: Error executing tool kg_triage_schema_write: {\"message\": \"project not found\"}\". INDISTINGUISHABLE from the absent-id refusal after masking the echoed argument, so it is no existence oracle — a stranger cannot learn which ids are real from the wording."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a029d7-e9e1-7998-b39c-7595e2e5feb7",
+     "session_id": "01a029d8-2552-75a0-a19f-6ed3170049ee",
+     "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+     "scenario_prompt": "Show me the graph triage queue.",
+     "prior_turns": [
+      {
+       "prompt": "Show me the graph triage queue.",
+       "called": [
+        "kg_triage_list"
+       ],
+       "text": "There is currently **1** item in the triage queue:\n\n*   **Proposed Relationship:** `allied_with` between `c27426ce02d21a87956caed408572577` and `7f5ba8bf14c5c14127cad0915caeca32` (1 item)\n\n**Suggested actions:**\n*   Dismiss\n*   Place edge"
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.628644+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.612406+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:12.195076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.335852+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.628644+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.612406+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:12.195076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the current structure, and since `allow_free_edges` is already enabled, the `allied_with` relationship is technically allowed even without being explicitly defined in the structure.\n\nHowever, to make it a formal part of your project's structure, I can add it as a defined edge type. Would you like me to add `allied_with` to the structure?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a029d8-c604-7887-8ec5-74c61a559c57",
+     "session_id": "01a029d8-ffb9-7dc8-b70f-55cd82dbcd94",
+     "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+     "scenario_prompt": "Show me the graph triage queue.",
+     "prior_turns": [
+      {
+       "prompt": "Show me the graph triage queue.",
+       "called": [
+        "kg_triage_list"
+       ],
+       "text": "There is currently **1** item in the triage queue:\n\n*   **Proposed Relationship:** `allied_with`\n    *   **From:** `5db9fdd33b712a631847a20220f91394`\n    *   **To:** `a57a07d6735bcb30806f9242aa2185cd`\n    *   **Suggested Actions:** Dismiss or Place Edge."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.864011+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.847343+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:08.414168+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.635187+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.864011+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:07.847343+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:08.414168+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've reviewed the triage queue. The `allied_with` relationship is currently sitting in the queue as a **proposed edge**, which means the system has already recognized it as a potential relationship, but it hasn't been formally added to the structure as a permanent edge type yet.\n\nTo make this relationship part of your project's official structure, I need to resolve the triage item. Would you like me to **place the edge** (which will add it to the graph) or **dismiss** it?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a029d9-66fc-7e78-a975-cffdcb1821b4",
+     "session_id": "01a029d9-a09a-724a-bf47-5abf92d084de",
+     "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+     "scenario_prompt": "Show me the graph triage queue.",
+     "prior_turns": [
+      {
+       "prompt": "Show me the graph triage queue.",
+       "called": [
+        "kg_triage_list"
+       ],
+       "text": "There is currently **1** item in the triage queue:\n\n*   **Proposed Relationship:** `allied_with`\n    *   **From:** `309fa9c64e53feebf75db9ba138066ff`\n    *   **To:** `6b39ac8935804acdcb7a90926d682e54`\n    *   **Suggested Actions:** Dismiss or Place Edge."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "kg_schema_read",
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.072194+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.065746+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.630531+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:48.859318+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.072194+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.065746+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:13.893656+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:49.630531+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:13.893656+00"
+       }
+      }
+     },
+     "answer": "I've checked the current structure, and since `allow_free_edges` is already set to `true`, the `allied_with` relationship is actually already valid for the graph. You don't need to add a new edge type to the structure to use it.\n\nThe item in the triage queue is a proposed `allied_with` edge between two elements. Would you like me to **place the edge** (add it to the graph) or **dismiss** it?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a029da-15f7-7b1c-9968-afaf1d3a59a0",
+     "session_id": "01a029da-595a-7368-96a8-d29f8a62dfeb",
+     "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+     "scenario_prompt": "Show me the graph triage queue.",
+     "prior_turns": [
+      {
+       "prompt": "Show me the graph triage queue.",
+       "called": [
+        "kg_triage_list"
+       ],
+       "text": "There is currently **1** item in the triage queue:\n\n*   **Proposed Relationship:** `allied_with`\n    *   **From:** `cc3636b950495d0807e5105b1036a4ec`\n    *   **To:** `af5556102dfed0d178a263b0f8aee470`\n    *   **Action:** You can choose to **place** this edge in the graph or **dismiss** it."
+      }
+     ],
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "kg_triage_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.899525+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.892538+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:34.423301+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.660534+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.899525+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:33.892538+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:34.423301+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot directly add a new edge type to the structure. To resolve this, I first need to identify the correct **signature** for the `add_to_structure` action.\n\nI'll start by listing the current triage queue in detail to find the exact signature required to resolve this specific proposal."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a029da-f0b1-7cf3-8d1c-2ff5978845b1",
+     "session_id": "01a029db-4630-7432-9c28-020db699349f",
+     "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+     "scenario_prompt": "Show me the graph triage queue.",
+     "prior_turns": [
+      {
+       "prompt": "Show me the graph triage queue.",
+       "called": [
+        "kg_triage_list"
+       ],
+       "text": "There is currently **1** item in the triage queue:\n\n*   **Proposed Relationship:** `allied_with` between `e0504765bcca79978e192d8f4ec40e5d` and `bc217e72dea314f328e09ff376738fad` (1 item)\n\n**Suggested actions:**\n*   Dismiss\n*   Place edge"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_triage_list",
+      "kg_triage_schema_write"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.933245+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.905427+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:30.610822+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.673185+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.933245+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:29.905427+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:19.735425+00"
+       },
+       "loreweave_knowledge.kg_triage_items": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:30.610822+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:19.735425+00"
+       }
+      }
+     },
+     "answer": "I cannot directly add an edge type to the structure. To resolve this, I first need to identify the specific **triage signature** that requires this change.\n\nThe current triage item is:\n`propose_edge:allied_with:e0504765bcca79978e192d8f4ec40e5d->bc217e72dea314f328e09ff376738fad`\n\nI will now attempt to resolve this signature by adding `allied_with` to the structure.\n\nI've identified the triage signature that needs to be resolved:\n`propose_edge:allied_with:e0504765bcca79978e192d8f4ec40e5d->bc217e72dea314f328e09ff376738fad`\n\nTo add the `allied_with` edge type to the structure, I need to use the `kg_triage_schema_write` tool with the `add_to_structure` action.\n\nI will proceed with adding `allied_with` to the structure.\n\nI cannot add the `allied_with` edge type to the structure because this project has not yet adopted an categories. The system templates are read-only and cannot be modified directly.\n\nTo fix this, we first need to pick a template and adopt it for the project. Once the project has its own structure, I can then add the new edge type."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 1,
+   "wrote_count": 2,
+   "suspended_count": 0
+  },
+  {
+   "tool": "registry_set_skill_enabled",
+   "scenario": "registry-set-skill-enabled",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
+   "answer_expect": null,
+   "falsifier_sha": "22ee0c1832bdcaf0",
+   "ship_audit": {
+    "gate": "EXERCISED by this run — called 5/5 and left SUSPENDED on its own Tier-A card 5/5. 🔴 IT COULD NOT BE EXERCISED AT ALL BEFORE: this tool's required boolean is FALSE for the request the author makes ('deactivate', 'turn off'), and the presence check tested truthiness, so every call was rejected as 'missing required argument(s)' and the turn hit the blank-args cap — 0/5 cards. After the fix, 5/5. The store rows that moved are the fixture's own background chapter indexing (loreweave_knowledge.extraction_pending), not this tool.",
+    "absent_case": "EXERCISED by direct probe (batch 38) — an unknown slug is refused BY NAME: 'skill not found: no-such-skill-xyz'.",
+    "idempotency": "OWED for a NAMED reason. The target is the SYSTEM `glossary` skill — a pre-existing object, which the owner's 2026-08-22 rule excludes by name. Toggling it writes a per-user override the run does create, but the thing being toggled is not the run's. The remedy is the same one that brought the settings_model_* tools inside the rule: a fixture that creates its OWN user-tier skill first, via registry_propose_skill. That is a fixture to build, not a measurement to take, so it is stated rather than attempted.",
+    "tenancy": "EXERCISED AS NOT APPLICABLE — scope=USER, no id a cross-tenant probe can drive. Worth noting from the store: the five user-tier `glossary` overrides belong to five OTHER accounts and were untouched throughout, which is the per-user shadowing this tool's description describes ('the shared skill is never changed').  [CARRIED FORWARD from b41-skill.json. That probe exercised the tool's HANDLER; cycle 1 changed only its declared synonyms, so the handler behaviour it measured is unchanged. Not re-run here.]",
+    "empty_case": "EXERCISED by direct probe (2026-08-22). The required field present but empty is refused: \"MCP registry_set_skill_enabled error: skill not found: \""
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a029d7-e9d9-734d-937f-56fde6794202",
+     "session_id": "01a029d8-23be-741b-8510-6001b7bce779",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured chapter/scene plan.\n*   **Composition (`composition`):** I can build your story outline, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motifs.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document and turn it into a structured, chapter-by-chapter plan (propose $\\rightarrow$ validate $\\rightarrow$ compile).\n*   **Drafting:** Once a plan is compiled, I can hand the writing off to a focused drafting specialist to create detailed chapters.\n\n### **World"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "registry_set_skill_enabled"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.630717+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.61872+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.338849+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.630717+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:20:11.61872+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:11.021215+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:11.021215+00"
+       }
+      }
+     },
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a029d9-1d94-7185-9224-5369afd06d28",
+     "session_id": "01a029d9-50c0-76c3-936d-00fb1743003c",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "I have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured chapter and scene plan.\n*   **Composition (`composition`):** I can build your story's outline, write or publish chapter prose, declare \"canon\" rules, and manage your motifs.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document and turn it into a structured, chapter-by-chapter plan (propose $\\rightarrow$ validate $\\rightarrow$ compile).\n*   **Drafting:** Once a plan is compiled, I can hand off the writing to a focused drafting specialist for long, careful prose generation.\n\n### **Worldbuilding & L"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "registry_set_skill_enabled"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.276244+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.268687+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.055319+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.276244+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:21:30.268687+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a029d9-d2b7-718b-a91f-e6ad974c7a76",
+     "session_id": "01a029da-1292-7752-b6e4-bf9fbcdf7e45",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured chapter and scene plan.\n*   **Composition (`composition`):** I can build your story's outline, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motifs.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter story plan.\n*   **Drafting:** Once a plan is set, I can hand off the writing to a focused drafting specialist to create detailed chapters.\n\n### **Worldbuilding & Lore**\n*   **Story "
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "registry_set_skill_enabled"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.700299+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.683356+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.454195+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.700299+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:22:16.683356+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a029da-b746-7bbe-bbf0-8b1b9039d101",
+     "session_id": "01a029db-1046-7ec3-a8fd-64d08cca8461",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan, compiling them into a formal chapter and scene structure.\n*   **Composition (`composition`):** Use this to build your story outline, write or publish chapter prose, declare \"canon\" rules for your world, and manage your motif library.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like your notes) and turn it into a structured, chapter-by-chapter story plan.\n*   **Drafting:** Once a plan is set, I can move into focused drafting to write out your chapters.\n\n### **Worldbuilding & Lore"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "registry_set_skill_enabled"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:15.285167+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:15.276465+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:14.975187+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:15.285167+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:23:15.276465+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a029db-e942-7138-abaa-94f364471665",
+     "session_id": "01a029dc-6322-7026-973b-a8da831fa4db",
+     "prompt": "Turn off the glossary skill for me.",
+     "scenario_prompt": "What skills do I have available?",
+     "prior_turns": [
+      {
+       "prompt": "What skills do I have available?",
+       "called": [
+        "registry_list_skills"
+       ],
+       "text": "You have several specialized skills available to help you write and manage your novel. Here is a breakdown of what I can do for you:\n\n### **Core Writing & Planning**\n*   **Co-writing (`co_write`):** I can help you write prose and turn your story ideas into a structured plan, materializing your thoughts into a formal chapter and scene structure.\n*   **Composition (`composition`):** This is for the structural work—building outlines, writing/publishing chapter prose, declaring \"canon\" rules for your world, and managing motifs.\n*   **The planner (`plan_forge`):** A dedicated novel planner. I can take a source document (like a series of notes) and turn it into a structured, chapter-by-chapter story plan.\n*   **Drafting:** Once a plan is set, I can move into focused drafting to write out your ch"
+      }
+     ],
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "registry_set_skill_enabled"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.633367+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.620219+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_blocks": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_drafts": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_book.chapter_raw_objects": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_book.chapter_revisions": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.329915+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.633367+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-22 14:24:33.620219+00"
+       },
+       "loreweave_knowledge.extraction_pending": {
+        "rows": 1,
+        "latest": "2026-08-22 14:25:22.528251+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 370,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {
+      "loreweave_knowledge.extraction_pending": {
+       "before": null,
+       "after": {
+        "rows": 1,
+        "latest": "2026-08-22 14:25:22.528251+00"
+       }
+      }
+     },
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 2,
+   "suspended_count": 5
+  }
+ ]
+}
