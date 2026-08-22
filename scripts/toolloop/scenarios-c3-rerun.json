@@ -1,5 +1,5 @@
 {
-  "_note": "CYCLE 3 — P5-SIBLING-WINS, and like cycle 2 it OPENS WITH A CONTROL rather than a fix.\n\nThe problem says two tools answer the same request and 'must not BOTH BE ADVERTISED without a stated precedence'. That clause is load-bearing and two rows already contradict it in their own words: glossary_deep_research SURFACED 0/3 ('never on the wire'), and measured offline against the platform's own budgeter it is STARVED out of the hot seed on every surface (336 tok), as is composition_arc_edit on studio (1749 tok, the largest declaration in the set). A tool that was never advertised did not lose to a sibling; it was absent.\n\n🔴 AND THE EVIDENCE IS BELOW THE BAR. The owner's cleared definition is K>=5 live. Three of these five were concluded at K=3 (composition_arc_edit 3/3, glossary_deep_research 0/3, settings_provider_inventory 3/3) and world_map_add_marker was called 1 of 3 — its own row says '1/3 does not meet the LIVE bar as a distribution'. So C3 cannot be cleared on this evidence whatever the fix turns out to be, and a re-run at K=5 is the first required action, not an optional confirmation.\n\nScenarios are carried over UNEDITED from their original batches so this measures the same request the conclusion was drawn from; only K and the retained agentSurface event change. settings_provider_inventory rides along with a known secondary finding: its required provider_credential_id names no supplier, though its own row says only settings_list_providers supplies it — the same declaration gap cycle 2 measured at 105 of 467 required arguments.",
+  "_note": "CYCLE 3 — P5-SIBLING-WINS, and like cycle 2 it OPENS WITH A CONTROL rather than a fix.\n\nThe problem says two tools answer the same request and 'must not BOTH BE ADVERTISED without a stated precedence'. That clause is load-bearing and two rows already contradict it in their own words: glossary_deep_research SURFACED 0/3 ('never on the wire'), and measured offline against the platform's own budgeter it is STARVED out of the hot seed on every surface (336 tok), as is composition_arc_edit on studio (1749 tok, the largest declaration in the set). A tool that was never advertised did not lose to a sibling; it was absent.\n\n🔴 AND THE EVIDENCE IS BELOW THE BAR. The owner's cleared definition is K>=5 live. Three of these five were concluded at K=3 (composition_arc_edit 3/3, glossary_deep_research 0/3, settings_provider_inventory 3/3) and world_map_add_marker was called 1 of 3 — its own row says '1/3 does not meet the LIVE bar as a distribution'. So C3 cannot be cleared on this evidence whatever the fix turns out to be, and a re-run at K=5 is the first required action, not an optional confirmation.\n\nScenarios are carried over UNEDITED from their original batches so this measures the same request the conclusion was drawn from; only K and the retained agentSurface event change. settings_provider_inventory rides along with a known secondary finding: its required provider_credential_id names no supplier, though its own row says only settings_list_providers supplies it — the same declaration gap cycle 2 measured at 105 of 467 required arguments.\n\nUPDATED 2026-08-23: composition_generate MOVED IN from P3-NAME-TO-ID after its cycle-2 re-run — surfaced 5/5 with zero errors and called 0/5, blocked on a three-way synonym TIE at length 13 with book_chapter_create and book_chapter_save_draft. It is this problem's clearest instance and its scenario is carried over unedited.",
   "scenarios": [
     {
       "id": "composition-arc-edit",
@@ -187,6 +187,37 @@
       },
       "defects": [],
       "_carried_from": "scenarios-batch7.json"
+    },
+    {
+      "id": "composition-generate",
+      "tool_under_test": "composition_generate",
+      "expect_tool": "composition_generate",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Write chapter — draft the prose for this chapter with the cowrite engine.",
+      "prompt_source": "meta.synonyms['write chapter'] + ['generate prose'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM generation_job WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO generation jobs before. This tool SPENDS: it runs the grounded cowrite engine and persists prose to the book draft. The card is never approved, so this count must still be 0 afterwards — that is the whole cost control."
+        }
+      ],
+      "falsifier": "REFUTED IF: prose is generated with NO confirm card (Tier W and it spends), OR the model INVENTS a model_source/model_ref — both are REQUIRED and neither is ambient, so the honest move is to ask or to read the account's models via settings_list_models, and silently picking a model commits the author's money to a choice they never made — OR the reply claims a chapter was written while the card is still pending.",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is the most expensive per-call tool in the batch.",
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c2-ship-probe.txt): an absent project_id is refused 'not found or not accessible'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c2-ship-probe.txt): a foreign project_id refuses IDENTICALLY to an absent one."
+      },
+      "defects": [],
+      "_rerun_of": "batch18-v3",
+      "_carried_from": "scenarios-c2-rerun.json (moved P3 -> P5, 2026-08-23)"
     }
   ]
 }
