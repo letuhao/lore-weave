@@ -93,9 +93,9 @@
       "seed_assert": [
         {
           "db": "loreweave_agent_registry",
-          "query": "SELECT count(*)::text FROM skills WHERE slug='glossary'",
+          "query": "SELECT count(*)::text FROM skills WHERE slug='glossary' AND tier='system'",
           "expect": "1",
-          "why": "The `glossary` skill exists and is System-tier. Disabling a System skill 'applies only to this user; the shared skill is never changed', so the SHARED row must be untouched, and the card is never approved so the per-user toggle must not land either."
+          "why": "The `glossary` skill exists and is System-tier. Disabling a System skill 'applies only to this user; the shared skill is never changed', so the SHARED row must be untouched, and the card is never approved so the per-user toggle must not land either. 🔴 SCOPED TO tier='system' 2026-08-23. The original counted EVERY row with this slug and expected 1; the store holds 6 — one system-tier skill and five USER-TIER copies, all created 2026-07-02 and none of them this loop's debris. A user-tier copy sharing the slug is how a per-user override works, so the count was wrong about the schema, not about the store. The assertion's own `why` says the SHARED row must be untouched, and tier='system' is exactly that row — this makes it measure what it already claimed to."
         }
       ],
       "falsifier": "REFUTED IF: the toggle lands with NO confirm card (Tier A), OR the model sends enabled=true when the author said turn it OFF — a bare boolean, so an inverted value silently does the opposite while the card still reads 'set skill enabled' — OR it targets a different slug. CONTROL: disabling a System skill is PER-USER only, so a reply saying it is off 'for everyone', or warning the author they are changing a shared skill, is wrong about the blast radius in the direction that would scare them off a safe action.",
