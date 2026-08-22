@@ -170,6 +170,21 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
                     a reader could not tell a crowded room from an empty one"
             .into());
     }
+    // `C2` -- NEAREST FIRST, asserted rather than assumed.
+    //
+    // The ancestor walk became a recursive CTE, and a CTE returns rows in
+    // whatever order the planner finds them unless told otherwise. The loop it
+    // replaced produced nearest-first as a side effect of BEING a loop; the
+    // query has to say so. `SDF-A4` forbids incidental ordering and this is the
+    // case it means: the seed is 1 -> 2 -> 3 -> 4 -> 5, so a view of node 5 must
+    // list 4, 3, 2, 1 and nothing else.
+    let chain: Vec<i64> = view.ancestors.iter().map(|a| a.node_id).collect();
+    if chain != vec![4, 3, 2, 1] {
+        return Err(format!(
+            "ancestors are {chain:?}, wanted [4, 3, 2, 1] -- nearest first is a CONTRACT, and a recursive CTE has no inherent order"
+        ));
+    }
+
     if view.ancestors.len() != 4 {
         return Err(format!("wanted 4 ancestors, got {}", view.ancestors.len()));
     }

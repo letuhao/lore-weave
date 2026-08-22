@@ -473,11 +473,51 @@ letter-guards, with `folklore_bible` added as a near-miss on the other side. 7 c
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[x]` | **DONE 2026-08-22 — §3.11. All three fixed and bitten.** Boards parsing empty **30 → 15**; rows visible **~200 → 445**; five boards' state independently confirmed. A **fourth** dialect family measured and left open (`OR-5`) |
-| `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[ ]` | |
+| `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[x]` | **DONE 2026-08-22 — §3.12. 13.14 ms → 4.81 ms (2.7×), assembled bytes IDENTICAL.** 2 bites. `Q6` answered: it was never a tick cost |
 | `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
 | `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[ ]` | |
 
 ---
+
+#### 3.12 · `C2` — the N+1, and a question that answered itself
+
+**Re-measured before touching anything** (rule 4): **13.14 ms**, not §19's 14.10 — same shape,
+machine variance, and the reason to re-measure rather than quote.
+
+The ancestor walk was a loop issuing `SELECT parent` and then a `node_at` **per level**, against a
+`DP-Ch1` bound of 16. One recursive CTE replaces it:
+
+```
+  wall-clock per assembly : 13.14 ms  ->  4.81 ms      (2.7x)
+  assembled size          : 511 B over 41 nodes  ->  511 B over 41 nodes
+  ancestors               : 4 node(s) 272 B      ->  4 node(s) 272 B
+```
+
+**The payload is byte-identical.** That is the evidence that matters: the view did not change, only
+the number of round trips. And the walk guard moved INTO the query as `up.d < $3`, which is strictly
+better — a malformed tree is now bounded by the database rather than by a loop counter only the
+caller enforces.
+
+**Two bites, both restored byte-identical:**
+
+| bite | red with |
+|---|---|
+| `ORDER BY u.d ASC` → `DESC` | `ancestors are [1, 2, 3, 4], wanted [4, 3, 2, 1]` |
+| `WHERE u.d > 0` → `>= 0` | `ancestors are [5, 4, 3, 2, 1]` — the node listed as its own ancestor |
+
+**The ordering assertion did not exist before this row**, and that was the real gap: the loop produced
+nearest-first *as a side effect of being a loop*, so nothing ever asserted it. A CTE has no inherent
+order, and `SDF-A4` forbids incidental ordering — this is precisely the case it means.
+
+**`Q6` is answered, and the answer is that the question had already moved.** `Q6` asked whether 14 ms
+is a problem, noting it is *"alarming per-assembly and irrelevant at one assembly per player-action"*.
+`A4` settled which one it is: `assemble` is reached through `POST /internal/v1/space/view`, **once per
+request**, never per tick. So it was never 14 % of a tick — that framing came from §19 written before
+the caller existed. It is now 4.81 ms per request regardless.
+
+**The ancestor payload half is NOT reopened here, and that is a citation rather than a dodge.**
+~1 KB at full depth is a PROMPT-tier cost, and `SDF-Q15`'s own test already says the token half
+*"stays open at the prompt tier, which owns a tokenizer"*. Measuring bytes again would not move it.
 
 #### 3.11 · `C1` — three gaps, and a fourth I refused to guess at
 
@@ -569,7 +609,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `C2` — the `space_view` N+1 and the ancestor payload, §19's two findings. Then `C3` (the two refused gates) and `C4` (`live-suite-registry-gate` walks registry→disk only). `C1` is done (§3.11): `goal-prompt` now reads 445 rows across the boards instead of ~200, and five boards' state was independently confirmed.**
+**RESUME: `C3` — the two gates refused on their measurements (a `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced 47 mostly-false candidates). Re-decide or record what a replacement needs. Then `C4`. **11 of 13 done; `C3` and `C4` are the last two.**
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
 lanes: |

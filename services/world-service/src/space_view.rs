@@ -132,28 +132,38 @@ pub async fn assemble(
         .map_err(ViewError::Db)?
         .ok_or(ViewError::NotFound(node))?;
 
-    // Ancestors, nearest first. Bounded by DP-Ch1's CHECK; the walk guard exists
-    // so a tree that somehow violated it cannot spin this loop forever.
-    let mut ancestors = Vec::new();
-    let mut cursor = node;
-    for _ in 0..MAX_DEPTH_WALK {
-        let parent: Option<Option<i64>> =
-            sqlx::query_scalar("SELECT parent FROM channels WHERE reality_id = $1 AND id = $2")
-                .bind(reality)
-                .bind(cursor)
-                .fetch_optional(pool)
-                .await
-                .map_err(ViewError::Db)?;
-        match parent.flatten() {
-            None => break,
-            Some(p) => {
-                if let Some(n) = node_at(pool, reality, p).await.map_err(ViewError::Db)? {
-                    ancestors.push(n);
-                }
-                cursor = p;
-            }
-        }
-    }
+    // Ancestors, nearest first. ONE query, not two per level.
+    //
+    // `C2`. This was a loop issuing `SELECT parent` and then a `node_at` for
+    // every level -- an N+1 whose cost grew with depth, against a `DP-Ch1`
+    // bound of 16. A recursive CTE collapses it to a single round trip and the
+    // walk guard becomes a `depth <` predicate inside the query, which is
+    // strictly better: a malformed tree is bounded by the DATABASE rather than
+    // by a loop counter that only the caller enforces.
+    //
+    // `WHERE u.depth > 0` drops the node itself -- it is already `here`, and
+    // returning it twice would make `ancestors.len()` disagree with the tree.
+    // `ORDER BY u.depth ASC` is the nearest-first contract, stated to the
+    // database rather than produced by the order of a loop (`SDF-A4`: explicit
+    // ordering, never incidental).
+    let ancestors: Vec<ViewNode> = sqlx::query_as(
+        "WITH RECURSIVE up AS (              SELECT c.id, c.parent, 0 AS d                FROM channels c               WHERE c.reality_id = $1 AND c.id = $2              UNION ALL              SELECT c.id, c.parent, up.d + 1                FROM channels c                JOIN up ON c.id = up.parent               WHERE c.reality_id = $1 AND up.d < $3          )          SELECT u.id, m.kind, c.level_name, p.name_vi            FROM up u            JOIN channels c ON c.reality_id = $1 AND c.id = u.id            JOIN map_layout m ON m.reality_id = $1 AND m.channel_id = u.id            LEFT JOIN place p ON p.reality_id = $1 AND p.place_id = u.id           WHERE u.d > 0           ORDER BY u.d ASC",
+    )
+    .bind(reality)
+    .bind(node)
+    .bind(MAX_DEPTH_WALK as i32)
+    .fetch_all(pool)
+    .await
+    .map_err(ViewError::Db)?
+    .into_iter()
+    .map(|(node_id, kind, level_name, place_name): (i64, String, String, Option<String>)| ViewNode {
+        node_id,
+        kind,
+        level_name,
+        place_name,
+    })
+    .collect();
+
 
     // The portal ring. `SDF-A25`: this is CONNECTIVE adjacency and says so — a
     // caller wanting geometric neighbours is asking a different question.
