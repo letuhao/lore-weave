@@ -155,7 +155,7 @@
       "id": "P5-SIBLING-WINS",
       "cycle": 3,
       "title": "A sibling tool wins the request the tool was built for",
-      "invariant_candidate": "Two tools that answer the same request must not both be advertised without a stated precedence — and an always-on generic must not displace the domain tool the request names.",
+      "invariant_candidate": "A request must reach the tool built for it. Where two tools genuinely tie on the platform's own vocabulary, precedence must be declared; where the platform already favours the right tool and the model chooses another, the cause is elsewhere and must be named per tool rather than assumed.",
       "false_statement_tools": [
         "settings_provider_inventory"
       ],
@@ -183,6 +183,24 @@
       },
       "moved_in": {
         "composition_generate": "MOVED IN from P3-NAME-TO-ID 2026-08-23. It is the clearest instance this problem has: a three-way synonym TIE with no declared precedence, measured offline before the live evidence landed. Its worst outcome is also this problem's worst — the sibling that wins carries prose the model wrote itself (D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, open). See also DQ-T35, which asks whether model_ref should be optional with a server-resolved default as 16 of its 19 siblings already declare."
+      },
+      "superseded_statement": {
+        "invariant_candidate": "Two tools that answer the same request must not both be advertised without a stated precedence — and an always-on generic must not displace the domain tool the request names.",
+        "refuted_for": "4 of the 6 tools",
+        "measured_2026_08_23": "Every P5 tool run through the platform's own answerable_tools against its OWN recorded prompt, with the synonym-length ranking read out:\n  composition_arc_edit          set=2  TIED at len 10 with composition_arc_create\n  composition_generate          set=5  TIED at len 13 with book_chapter_create + _save_draft\n  glossary_deep_research        set=2  ranks FIRST (len 6), not tied, not outranked\n  settings_provider_inventory   set=2  ranks FIRST (len 11 vs settings_list_models 6)\n  registry_list_workflows       set=1  ALONE in the answerable set\n  world_map_add_marker          set=1  ALONE in the answerable set\n\nSo for FOUR of six the platform already favours the right tool — it ranks first or is the only answerable tool — and the model picks something else anyway. 'Both advertised without a stated precedence' does not describe them: a precedence rule cannot help a tool that already wins, and shipping one would have been a fix aimed at a mechanism that is not in play."
+      },
+      "split_2026_08_23": {
+        "a_genuine_tie_precedence_would_help": [
+          "composition_arc_edit",
+          "composition_generate"
+        ],
+        "b_the_tool_already_wins_and_still_loses": [
+          "glossary_deep_research",
+          "registry_list_workflows",
+          "settings_provider_inventory",
+          "world_map_add_marker"
+        ],
+        "note": "Group (b) is not one cause either, on the evidence already on file: glossary_deep_research lost to web_search, which is in ALWAYS_ON_CORE and therefore present whatever answerability says; registry_list_workflows lost to workflow_list, a CONSUMER-LOCAL tool that answerability never sees; settings_provider_inventory lost to settings_list_models and the answer was WRONG (registry rows presented as live inventory); world_map_add_marker lost to its own sibling world_map_add_REGION on a 'put a pin' request. Being advertised is not the variable in any of them."
       }
     },
     {
