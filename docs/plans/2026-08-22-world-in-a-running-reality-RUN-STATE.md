@@ -260,8 +260,35 @@ snapshot here would reintroduce the drill's defect"*.
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `C1` | **`OR-5` — 15 boards still parse empty**, a fourth dialect family: a plain-text id, an id containing a space or `·`, a marker sitting *before* the id. Needs its OWN measurement: the previous widening produced **three false opens on a 35/35 closed board** before it was tightened | `[ ]` | |
+| `C1` | **`OR-5` — 15 boards still parse empty**, a fourth dialect family: a plain-text id, an id containing a space or `·`, and a marker sitting *before* the id. Needs its OWN measurement: the previous widening produced **three false opens on a 35/35 closed board** before it was tightened | `[x]` | **DONE 2026-08-22 — §3.7. It is THREE families, measured, and only ONE got a widening.** 15 → 13 empty, 445 → 498 rows, and **four genuinely-open rows surfaced** — one of them a PO checkpoint |
 
+#### 3.7 · `C1` — three families measured, one widened, two refused
+
+`OR-5` called it *a fourth dialect family*. Measured, it is **three**, and they are not equally safe:
+
+| family | rows | verdict |
+|---|---|---|
+| **marker BEFORE the id** — `` \| `[x]` **S0** \| `` | 17 | **WIDENED.** Unambiguous: the tick box is already in the vocabulary, only its POSITION was new |
+| plain-text id in cell 0 — `\| S1-A1 · audit … \| DONE \|` | 132 | **REFUSED** |
+| bolded id containing a space or `·` | 30 | **REFUSED** |
+
+**Why the marker-first family was invisible to BOTH halves at once:** `ROW_TABLE` reads an id out of
+cell 0, and the status scan starts at cell 1. A board that puts the tick box in cell 0 and the id
+after it defeats each of them separately.
+
+**Result: boards parsing empty 15 → 13, rows visible 445 → 498, and four genuinely-open rows
+surfaced** — `event-causality` `S6`/`S8`/`S9` and `story-seed` `S5`. Each verified against the source
+as a real tick box, and `S5` is a **PO checkpoint** whose own text says *"STOP HERE"*. It was
+invisible to the tool that decides what a session works on.
+
+**Why the other two are refused, and it took one command to see it.** The plain-text family has no
+delimiter separating an id from prose, so the obvious pattern matches the **header row**
+(`| phase | status | evidence |`) on its first try — and headers are merely the first false positive
+one notices. 132 candidate rows behind a pattern like that is **exactly** the shape that produced
+three false opens on a 35/35 closed board last time. `OR-5` stays open, now with its families named
+and counted rather than lumped.
+
+**Bite:** disabling the branch reds the new arm with `{}` — no rows at all. Restored byte-identical.
 ---
 
 ## 4 · Decisions taken in advance
@@ -297,7 +324,7 @@ snapshot here would reintroduce the drill's defect"*.
 
 ## 7 · RESUME
 
-**RESUME: `C1` is the last row that needs no live reality (`OR-5`: 15 boards still parse empty, a fourth dialect family — and it needs its OWN measurement, because the last careless widening produced three false opens on a closed board). `A2` remains STOPPED FOR AUTHORISATION (§3.3) and `A4` depends on it.**
+**RESUME: `A2` — STOPPED FOR AUTHORISATION (§3.3), and `A4` depends on it. Everything that does not need a live reality is DONE: `A1`, `A3`, `B1`, `B2`, `C1` — 5 of 7. The remaining two both require writing to a real reality, which is the STOP list.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is

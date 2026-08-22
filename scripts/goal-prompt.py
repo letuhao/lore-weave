@@ -147,6 +147,19 @@ ROW_CHECKBOX = re.compile(r"^\s*[-*]\s*\[([ x~])\]\s*\*\*([A-Za-z0-9.\-]+)\*\*",
 #: and read as zero.
 ROW_TABLE = re.compile(r"^\|\s*(~~)?\s*(?:`([A-Za-z0-9.\-/]+)`|\*\*([A-Za-z0-9.\-/]+)\*\*)", re.MULTILINE)
 
+#: Format C -- the MARKER FIRST board: `| `[x]` **S0** | what | evidence |`.
+#:
+#: `C1` of the world-in-a-running-reality board. `ROW_TABLE` reads an id out of
+#: cell 0 and `row_states` looks for state in cells 1+, so a board that puts the
+#: TICK BOX in cell 0 and the id after it is invisible to both halves at once.
+#: 17 rows across two game-track boards.
+#:
+#: This is the ONLY one of three measured dialect families that got a widening.
+#: The other two are refused on their measurement -- see `OR-5`.
+ROW_MARKER_FIRST = re.compile(
+    r"^\|\s*`?(\[[ x~]\])`?\s*\*\*([A-Za-z0-9.\-/]+)\*\*\s*\|", re.MULTILINE
+)
+
 #: A cell is a STATUS cell only if it BEGINS with one of these, after stripping
 #: emphasis and whitespace.
 #:
@@ -242,6 +255,11 @@ def row_states(plan: str) -> dict[str, str]:
 
     tbl: dict[str, str] = {}
     for line in plan.split("\n"):
+        # Format C first: its cell 0 holds BOTH the marker and the id, so
+        # ROW_TABLE would read the marker as the id if it matched at all.
+        if mf := ROW_MARKER_FIRST.match(line):
+            tbl[mf.group(2)] = {"[x]": "x", "[~]": "~", "[ ]": " "}[mf.group(1)]
+            continue
         m = ROW_TABLE.match(line)
         if not m:
             continue
@@ -648,6 +666,18 @@ def selftest() -> int:
     verbose = "| `R1` a thing | ✅ **DONE 2026-08-22 — see §3.4, 3 bites** | evidence |\n"
     got = row_states(verbose)
     check("a verbose status cell still reads as done", got == {"R1": "x"}, str(got))
+
+    # `C1` of the world-in-a-running-reality board -- format C, the MARKER-FIRST
+    # board. Cell 0 holds the tick box AND the id, so `ROW_TABLE` (which reads an
+    # id from cell 0) and the status scan (which starts at cell 1) were BOTH
+    # blind to it at once. 17 rows across two game-track boards, four of them
+    # open -- including a PO checkpoint.
+    mfirst = ("| `[x]` **S0** | this RUN-STATE | written |\n"
+              "| `[~]` **S6** | red team | in flight |\n"
+              "| `[ ]` **S9** | SESSION + COMMIT | |\n")
+    got = row_states(mfirst)
+    check("a MARKER-FIRST row is read, id and state both",
+          got == {"S0": "x", "S6": "~", "S9": " "}, str(got))
 
 
     # A parked row must not read as open — it would head the queue.
