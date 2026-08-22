@@ -1,5 +1,84 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🗺️ WORKING ON THE MAP, THE WORLD, MOVEMENT, PLACES, OR WHERE AN ENTITY IS?
+
+> ### **Read [`docs/standards/world-and-map.md`](../standards/world-and-map.md) BEFORE designing anything.**
+>
+> It is the **BUILT / HOLLOW / ABSENT** inventory — which capability is shipped, which is a table
+> with no writer, which is genuinely unstarted, the **symbol** that owns each one, and where to
+> attach. §6 gives five commands that reproduce every claim, so **re-measure rather than trusting
+> its date**.
+>
+> **Why this pointer is the first thing in this file.** The map is the most thoroughly *designed*
+> area in the repo (`MAP_001`, `GEO_001`, `TMP_001`, `36_map_architecture`, `41_space_dataflow`)
+> and, until 2026-08-23, had **no statement anywhere of what actually runs**. An agent handed
+> *"build the map"* finds eight rich design docs, no evidence of running code, and reasonably
+> concludes there is none. **There is.** A from-scratch rebuild does not merely waste that work —
+> it produces a *second* world model beside the first, and this repo already has two unjoined
+> ones (`world-service`'s space graph and `tilemap-service`; see §5 of that doc).
+>
+> The three traps it names, because each is one an agent walks into by reading the code honestly:
+> `combat_v1`'s **`move` is a STANCE** (`Kite/Flank/Cover/Hold`) with no destination; **`portal`
+> has never had a writer**, so the world is a containment tree with zero lateral edges and
+> movement is meaningless until it does; and **`site_in_cell` treats re-siting as an error by
+> design**, so movement is a new verb (`move_to_cell`), never a relaxed insert.
+
+---
+
+## ▶ WORLD IN A RUNNING REALITY IS CLOSED — 7 of 7 (2026-08-23, branch `feat/game-logic`)
+
+> **[`2026-08-22-world-in-a-running-reality-RUN-STATE.md`](../plans/2026-08-22-world-in-a-running-reality-RUN-STATE.md)
+> is 7/7.** Commits `dea3ca944` → `93dced098`. The board existed because the space producers were
+> reachable and **no reality anyone uses had ever been touched by them**: all ten were provisioned
+> before `0022`–`0030` existed.
+>
+> **`A2` — all ten realities are at `0030_encounter`.** 26 migrations each, seven tables each, 0
+> failed; meta ledger 104 rows (7×11 + 3×9). The PO authorised the live write, and the wait paid for
+> itself four times over. The one that mattered: the pending list was hardcoded `id >= '0022'`,
+> right for the three realities at `0021_turn_slot` and **wrong for the seven at `0019_channels`**,
+> which would have reached head with `0020`/`0021` missing and nothing saying so. The one that
+> outlives the run: **`migrate` never wrote the reality's own `schema_migrations`** — two ledgers,
+> one writer, so the tables were there and the database denied it, and `apply_pending` reads exactly
+> that table to decide what a resume still owes. Now written in `SQLApplier.Apply`, guarded
+> permanently by `realityLedgerCount` in `migrate-drill`. Two more shared a cause worth keeping:
+> **plan mode executes neither the apply nor the verify** — nine green plans proved the plan and
+> nothing downstream of it.
+>
+> **`A4` — a reality that already existed has a world, and the browser says where.**
+> `lw_reality_00c7e2c5cabc` has 5 channels, 5 map nodes, 2 places and a sited actor; the browser
+> renders `turn N · you are entity 4 · at Yen Vu Lau`; `running-reality.spec.ts` is 2 passed on
+> chromium. Swapping the reality was **not** a one-line change, and that is the finding:
+> `seed_world`'s only production caller was the provision step, which runs at provision time and
+> only then, so for every reality that actually exists **the producer was unreachable** — which
+> reads exactly like reachable until somebody tries. `POST /internal/v1/world/seed` is that missing
+> caller. The demo that drives it contains **not one `INSERT`**; every write goes through an
+> endpoint, because a demo that reaches past the API proves the database, not the system.
+>
+> **▶ NEXT — in the order I would take them**
+>
+> 1. **Give `/internal/v1/space/view` a caller** (`OR-4`-shaped, cheapest real progress). The
+>    endpoint is finished and careful — recursive ancestor walk, explicit budget, a `truncated` flag
+>    — and nothing calls it. A consumer turns *"you are at Yen Vu Lau"* into *"you are in a room"*,
+>    and immediately surfaces the empty `portal_ring`, which is the honest next problem.
+> 2. **`OR-6` — no playwright suite runs in CI**, not the new one and not `kernel-state`. Both skip
+>    without `LOREWEAVE_E2E_FULL=1`, so a naive leg goes green having asserted nothing. Needs the
+>    subject-floor treatment `live-suite-registry-gate` gave the Rust side.
+> 3. **`OR-7` — nothing decides which world a reality gets.** `/world/seed` would happily give all
+>    ten the same five demo nodes. `D-3` refused a hardcoded starter world; this is that question one
+>    layer out.
+> 4. **A writer for `portal`** — the one hollow table whose absence blocks everything downstream.
+>
+> **Carried open:** `OR-1` (`portal`/`encounter`/`layer_registry` deferred with triggers) ·
+> `OR-2` (`reality_seeder` still has 0 production constructors) · `OR-5` (13 boards still parse
+> empty, two dialect families refused deliberately).
+>
+> **`WD-3` — three orphan actors in `lw_reality_00c7e2c5cabc`**, entities 1–3, left by partial runs
+> before the script was made idempotent. **Deliberately not deleted**: hand-run `DELETE`s against a
+> live reality to tidy up a mistake is worse than the litter, and `R-52` says evacuate, never delete.
+> Recorded so the next reader knows what they are.
+
+---
+
 ## ▶ SPACE-PRODUCERS IS CLOSED — 13 of 13, three lanes (2026-08-22, branch `feat/game-logic`)
 
 > **[`2026-08-22-space-producers-RUN-STATE.md`](../plans/2026-08-22-space-producers-RUN-STATE.md) is
