@@ -1006,7 +1006,7 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 	addTool(srv, "world_map_add_marker",
 		"Place a pin on a map you own at a relative position (x,y each 0.0-1.0), "+
 			"optionally linked to a glossary location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"add pin", "place marker", "map marker"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"add pin", "place marker", "map marker", "put a pin", "add marker", "place pin", "drop a pin"}),
 		s.toolWorldMapAddMarker)
 
 	addTool(srv, "world_map_add_region",
@@ -1045,7 +1045,7 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 			"undo_hint carries the removed region's full state (name, polygon, and its entity_id "+
 			"when set), so replay that to restore it. The polygon alone is not enough: "+
 			"world_map_add_region requires a name.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area", "remove area", "delete region", "drop region", "drop area"}),
 		s.toolWorldMapRemoveRegion)
 
 	// S7·2 — the NET-NEW UPDATE tools (MCP-first parity for the update capability that
@@ -1061,13 +1061,13 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		"Move, relabel, rebind, or retype a marker on a map you own. Pass the ABSOLUTE new x/y "+
 			"to move a pin (a stable marker_id — never remove+add). Provide only the fields you "+
 			"want to change; set clear_entity=true to unbind its location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move pin", "drag marker", "relabel marker", "rebind marker"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"move pin", "drag marker", "relabel marker", "rebind marker", "relabel pin", "rename pin", "rename marker", "move marker", "drag pin", "rebind pin"}),
 		s.toolWorldMapUpdateMarker)
 
 	addTool(srv, "world_map_update_region",
 		"Reshape, rename, or rebind a region on a map you own. Pass a new polygon (>=3 [x,y] "+
 			"points) to reshape it; provide only the fields you want to change; set "+
 			"clear_entity=true to unbind its location entity.",
-		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"reshape region", "rename region", "rebind region"}),
+		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"reshape region", "rename region", "rebind region", "rename area", "reshape area", "rebind area"}),
 		s.toolWorldMapUpdateRegion)
 }

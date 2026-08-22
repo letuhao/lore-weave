@@ -396,7 +396,9 @@ async def translation_job_status(
         undo_hint={"tool": "translation_set_active_version",
                    "args": {"note": "set the previously-active version id back"}},
         synonyms=["set active", "publish version", "activate translation",
-                  "make this the active version"],
+                  "make this the active version", "make version",
+                  "the active one", "which version readers see",
+                  "readers see"],
         tool_name="translation_set_active_version",
     ),
 )
@@ -574,7 +576,9 @@ async def translation_save_edited_version(
         undo_hint={"tool": "translation_patch_block",
                    "args": {"note": "re-patch the block with the prior text"}},
         synonyms=["fix block", "correct block", "patch translation",
-                  "correct one translated paragraph"],
+                  "correct one translated paragraph", "fix the paragraph",
+                  "fix the second paragraph", "correct the paragraph",
+                  "it should read"],
         tool_name="translation_patch_block",
     ),
 )
@@ -689,7 +693,8 @@ async def translation_patch_block(
         undo_hint={"tool": "translation_update_settings",
                    "args": {"note": "set the prior settings values back"}},
         synonyms=["update settings", "change model", "set target language",
-                  "translation settings", "configure translation"],
+                  "translation settings", "configure translation",
+                  "translation model", "my default one", "change the target language"],
         tool_name="translation_update_settings",
     ),
 )

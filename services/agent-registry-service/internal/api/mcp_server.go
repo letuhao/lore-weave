@@ -31,7 +31,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_get_skill",
 		Description: "Get one skill the user can see, by slug — its metadata plus body_md. Read-only. NOTE: a SYSTEM-tier skill (glossary, knowledge, plan_forge, universal, admin) stores no body here; body_md is a marker saying chat-service's skill_registry serves it, so do not treat that sentence as the skill.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read skill", "skill body", "get skill", "show skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read skill", "skill body", "get skill", "show skill", "body of the", "show me the body", "what does this skill do", "skill instructions"}),
 	}, s.toolGetSkill)
 
 	registerARTool(srv, &mcp.Tool{
@@ -46,7 +46,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_update_skill",
 		Description: "PROPOSE an update to one of the user's OWN skills (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new description and/or body.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update skill", "edit skill", "change skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update skill", "edit skill", "change skill", "change the description of the", "rename skill", "change the skill", "edit the skill"}),
 		InputSchema: closedSetSchemaFor[updateSkillIn](map[string][]any{
 			"surfaces[]": enumSurfaces,
 		}),
@@ -55,7 +55,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_set_skill_enabled",
 		Description: "Enable or disable a skill for the signed-in user (by slug). Disabling a System skill applies only to this user; the shared skill is never changed.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"enable skill", "disable skill", "turn off skill", "turn on skill"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"enable skill", "disable skill", "turn off skill", "turn on skill", "turn off the skill", "turn on the skill", "switch off skill", "stop using the skill", "turn off", "turn on"}),
 	}, s.toolSetSkillEnabled)
 
 	// WS-2a — curated multi-step WORKFLOWS (C3). A workflow is an ordered list of
@@ -73,7 +73,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_get_workflow",
 		Description: "Get the full definition of one workflow the user can see, by slug — its inputs and ordered steps. Read-only.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read workflow", "workflow steps", "get workflow", "show workflow"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read workflow", "workflow steps", "get workflow", "show workflow", "steps of the", "show me the steps", "what does this workflow do", "workflow recipe"}),
 	}, s.toolGetWorkflow)
 
 	registerARTool(srv, &mcp.Tool{
@@ -89,7 +89,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_update_workflow",
 		Description: "PROPOSE an update to one of the user's OWN workflows (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new title/description/inputs/steps.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow", "change the title of the", "rename workflow", "change the workflow", "edit the workflow"}),
 		InputSchema: closedSetSchemaFor[updateWorkflowIn](map[string][]any{
 			"surfaces[]":   enumWorkflowSurfaces,
 			"steps[].gate": enumWorkflowGates,

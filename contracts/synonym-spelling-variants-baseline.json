@@ -13,9 +13,6 @@
   ],
   "composition_structure_template_clone": [
    "declares 'customise', not 'customize'"
-  ],
-  "settings_model_set_favorite": [
-   "declares 'favorite', not 'favourite'"
   ]
  }
 }

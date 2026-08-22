@@ -77,8 +77,23 @@ def test_the_pair_list_stays_narrow():
         )
 
 
-def test_the_gap_that_started_this_is_still_detected():
-    """The original instance, kept red-able: if the detector stops seeing it, the lint is inert."""
-    gaps = lint.find_gaps()
-    assert "settings_model_set_favorite" in gaps
-    assert any("favourite" in g for g in gaps["settings_model_set_favorite"])
+def test_the_detector_still_sees_the_gap_that_started_this():
+    """🔴 REWRITTEN 2026-08-22, the same day, BECAUSE THE BUG WAS FIXED.
+
+    The first version asserted `settings_model_set_favorite` is still in `find_gaps()`. Cycle 1
+    then widened its declaration to include "favourite" — the correct outcome — and the test went
+    RED for a fix. **A red-able assertion anchored on live data inverts the moment the defect is
+    repaired**, which teaches the next person to keep the bug or delete the test.
+
+    So the shape is the same and the input is SYNTHETIC: the detector is driven over a fabricated
+    catalogue carrying the original declaration verbatim. It stays red-able forever and it cannot
+    be satisfied by anything but a working detector.
+    """
+    original = {"a_tool": {"meta": {"synonyms": [
+        "favorite", "mark model as favorite", "pin model", "unfavorite"]}}}
+    gaps = lint.find_gaps(original)
+    assert "a_tool" in gaps, "the detector no longer sees the declaration this lint was built for"
+    assert any("favourite" in g for g in gaps["a_tool"])
+
+    clean = {"a_tool": {"meta": {"synonyms": ["favorite", "favourite"]}}}
+    assert not lint.find_gaps(clean), "a tool declaring BOTH spellings must not be flagged"

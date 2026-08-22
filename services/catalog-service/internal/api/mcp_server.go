@@ -84,7 +84,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"Fetch one PUBLIC book's detail (title, description, language, summary, genre "+
 			"tags, chapter count, available translation languages) by id. Returns not-found "+
 			"for a non-public or unknown book.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"public book detail", "open public book"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"public book detail", "open public book", "open the first", "show me its detail"}),
 		s.toolCatalogGetBook)
 
 	return srv

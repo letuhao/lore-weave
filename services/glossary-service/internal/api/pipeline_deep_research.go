@@ -57,7 +57,7 @@ func (s *Server) RegisterDeepResearchTools(srv *mcp.Server) {
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
 		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
 		// are phrasings a PERSON types, not the feature's name.
-		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"research this on the web", "look this up online", "find sources for this character", "research and cite"})),
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"research this on the web", "look this up online", "on the web", "find sources for", "find sources for this character", "research and cite"})),
 	}, s.toolDeepResearch)
 }
 

@@ -1,0 +1,168 @@
+"""A tool must declare the words the author actually typed at it.
+
+🔴 THE INVARIANT: for every turn this loop has MEASURED against a tool, that tool's own declared
+vocabulary must make it answerable. If the request cannot reach the tool, nothing downstream can
+save it — and the measured consequence is not a missing answer, it is a FALSE one.
+
+MEASURED 2026-08-22, cycle 1 of the resolution loop, offline against the real `answerable_tools`
+and the cached 315-tool catalogue: of the 25 tools blocked on `P1-SURFACE`, **23 were never matched
+on their own measured turn**. `stream_service`'s R1 block states the platform's guarantee outright —
+"if the user's words match a tool's own vocabulary, it is on the wire, whatever the budget, the
+domain selection or the rail decided" — and `discovery_catalog` is the near-full turn catalogue, so
+that check sees almost everything. The guarantee held. The words never matched.
+
+The correlation runs both ways, which is what makes this the right bar rather than a plausible one:
+tools that SURFACED N/N matched answerability 89 of 96; tools that surfaced 0/N matched 7 of 33.
+
+WHY A GATE AND NOT 27 EDITS. Widening a declaration is correct the day it is made and silent the
+next time a tool is added or split — which is exactly how these 27 accumulated. This asserts the
+property at ONE place, over every scenario on disk, so a new scenario whose wording cannot reach
+its own tool fails here instead of costing five live runs to discover.
+
+WHAT IT DOES NOT COVER, stated so its green is never over-read:
+  * Answerability is the DOMINANT reach path, not the only one. `ALWAYS_ON_CORE` tools and
+    frontend/consumer-local tools are advertised regardless, and are exempt below BY NAME.
+  * A match does not promise the tool was advertised — `filter_intent_gated_setup_tools` removes
+    five world-setup tools from the catalogue BEFORE answerability runs (DQ-T31), and
+    `glossary_book_sync_apply` is one of them.
+  * It says nothing about whether the model then CHOOSES the tool. That is P5's problem.
+  * It reads the CACHED catalogue. After a synonym change: rebuild, restart ai-gateway (it caches
+    the federated tool list), and `python scripts/toolloop/catalog.py --refresh`.
+
+BASELINE, NOT A HARD FAILURE. The gaps are real and are cycle 1's work-list, but failing the suite
+on all of them would block every unrelated change. This asserts the set does not GROW, and that a
+FIXED entry leaves the file — so the count stays a work-list rather than a monument.
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "services" / "chat-service"))
+
+BASELINE = ROOT / "contracts" / "unreachable-measured-turns-baseline.json"
+CACHE = ROOT / "contracts" / "tool-catalog-cache.json"
+LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
+
+try:
+    from app.services.tool_discovery import ALWAYS_ON_CORE_NAMES
+    from app.services.tool_surface import answerable_tools
+except Exception as e:  # chat-service not importable here
+    pytest.skip(f"chat-service not importable: {e}", allow_module_level=True)
+
+# Advertised by a path that is not answerability. Each is exempt BY NAME with the reason, because
+# an exemption without one becomes a place to hide a real failure.
+EXEMPT = {
+    **{n: "ALWAYS_ON_CORE — advertised on every turn" for n in ALWAYS_ON_CORE_NAMES},
+    "propose_edit": "frontend tool on the editor surface; declares NO synonyms by design, so "
+                    "answerability cannot reach it and is not meant to (see P6)",
+    "workflow_list": "consumer-local meta-tool, advertised when the turn has curated workflows",
+    "workflow_load": "consumer-local meta-tool, same",
+    "load_skill": "consumer-local control, advertised when lazy skill bodies are on",
+    "find_tools": "consumer-local, not federated",
+}
+
+
+def _catalog() -> list[dict]:
+    raw = json.loads(CACHE.read_text(encoding="utf-8"))
+    return [{"type": "function", "function": {
+        "name": n, "description": t.get("description") or "",
+        "parameters": t.get("inputSchema") or {}, "_meta": t.get("meta") or {}}}
+        for n, t in raw.items()]
+
+
+def measured_turns() -> dict[str, str]:
+    """{tool: the turn it was actually CONCLUDED on}.
+
+    Two rules matter here and both were learned by getting them wrong.
+
+    THE TURN IS THE LAST ONE. Reading the first gave "List my worlds." for three four-turn
+    world-map scenarios — a turn that says nothing about the tool under test.
+
+    🔴 THE SCENARIO IS THE ONE ITS LEDGER ROW CITES, not whichever file sorts last. This used to
+    take the last file alphabetically, and `scripts/toolloop/answerability_probe.py` takes the one
+    matching `evidence_file`. For `translation_update_settings` those are different files, so the
+    two instruments read different sentences and disagreed about whether it was reachable — the
+    gate said 0 unreachable while the probe said 1. An instrument that disagrees with its own
+    sibling is measuring something neither of us named. One rule now, and it is the ledger's.
+    """
+    ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.exists() else {"tools": {}}
+    by_tool: dict[str, list[tuple[str, str]]] = {}
+    for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for s in d.get("scenarios", []):
+            t = [x for x in [s.get("prompt")] + list(s.get("follow_ups") or []) if x]
+            if t and s.get("tool_under_test"):
+                by_tool.setdefault(s["tool_under_test"], []).append(
+                    (f.stem.replace("scenarios-", ""), t[-1]))
+    out: dict[str, str] = {}
+    for tool, cands in by_tool.items():
+        ev = (ledger["tools"].get(tool) or {}).get("evidence_file") or ""
+        want = pathlib.Path(ev).stem
+        out[tool] = next((turn for name, turn in cands if name == want), cands[-1][1])
+    return out
+
+
+def unreachable() -> dict[str, str]:
+    """{tool: the turn that could not reach it} for every non-exempt tool in the catalogue."""
+    defs = _catalog()
+    names = {td["function"]["name"] for td in defs}
+    bad = {}
+    for tool, text in sorted(measured_turns().items()):
+        if tool in EXEMPT or tool not in names:
+            continue
+        if tool not in answerable_tools(text, defs):
+            bad[tool] = text
+    return bad
+
+
+def _baseline() -> dict:
+    if not BASELINE.exists():
+        return {}
+    return json.loads(BASELINE.read_text(encoding="utf-8"))["unreachable"]
+
+
+def test_no_new_measured_turn_fails_to_reach_its_own_tool():
+    now = unreachable()
+    new = {k: v for k, v in now.items() if k not in _baseline()}
+    assert not new, (
+        "a scenario's measured turn cannot reach the tool it tests — the tool will surface 0/N "
+        "before a single run is spent:\n"
+        + "\n".join(f"  {k}\n    said: {v}" for k, v in sorted(new.items()))
+        + "\n\nWiden the tool's declared synonyms, or fix the scenario's wording. If the tool is "
+          "reached by another path, add it to EXEMPT with the reason."
+    )
+
+
+def test_a_tool_that_became_reachable_leaves_the_baseline():
+    """A baseline that only ever grows stops meaning anything."""
+    now = unreachable()
+    stale = sorted(k for k in _baseline() if k not in now)
+    assert not stale, (
+        f"{stale} are now reachable but still in the baseline — regenerate it:\n"
+        "  python scripts/toolloop/answerability_probe.py --write-unreachable-baseline"
+    )
+
+
+def test_the_exemptions_are_named_and_real():
+    """An exemption is a place to hide a failure unless it carries a reason and the tool exists."""
+    for name, why in EXEMPT.items():
+        assert why and len(why) > 20, f"{name} is exempt without a reason"
+
+
+def test_the_gate_is_red_able_on_the_original_instance():
+    """world_map_update_region declares `rename region`; the author said "Rename the AREA called
+    The North". Kept as a live assertion: if the detector stops seeing this, the gate is inert."""
+    defs = _catalog()
+    said = "Rename the area called The North to The Frozen North."
+    assert "world_map_update_region" not in answerable_tools(said, defs) or \
+        "world_map_update_region" not in _baseline(), (
+        "either the declaration was widened (remove it from the baseline) or the gate went inert"
+    )

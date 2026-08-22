@@ -115,19 +115,19 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_update",
 		Description: "Update an existing registered model's editable fields (alias, context_length, capability_flags, notes). Only provided fields change.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update model", "rename model", "edit model", "set context length"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update model", "rename model", "edit model", "set context length", "rename the first", "rename it to", "change its name", "rename this model"}),
 	}, s.toolModelUpdate)
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_favorite",
 		Description: "Mark a registered model as a favorite (or un-favorite it). Free and reversible.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "mark model as favorite", "pin model", "unfavorite"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"favorite", "favourite", "mark model as favorite", "mark as a favourite", "mark as favourite", "pin model", "unfavorite", "unfavourite"}),
 	}, s.toolModelSetFavorite)
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_set_active",
 		Description: "Activate or deactivate a registered model (an inactive model is hidden from pickers but not deleted). Free and reversible.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"activate model", "deactivate model", "enable model", "disable model"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"activate model", "deactivate model", "enable model", "disable model", "deactivate the last", "deactivate it", "stop using this model", "not using it"}),
 	}, s.toolModelSetActive)
 
 	registerTool(srv, &mcp.Tool{
@@ -140,7 +140,7 @@ func (s *Server) mcpHandler() http.Handler {
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_delete",
 		Description: "Delete a registered model permanently. High-impact: this does NOT delete immediately — it returns a confirm_token + a preview that the user must explicitly confirm. Pass the confirm_token to confirm_action with domain='settings'.",
-		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeUser, nil, []string{"delete model", "remove model", "drop model"}),
+		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeUser, nil, []string{"delete model", "remove model", "drop model", "remove the registered model", "unregister model", "remove this model"}),
 	}, s.toolModelDelete)
 
 	return lwmcp.NewStatelessHandler(srv, s.cfg.InternalServiceToken)

@@ -4992,7 +4992,9 @@ class _MotifBindEditArgs(ForbidExtra):
     meta=require_meta(
         "A", "book",
         synonyms=["bind motif", "apply motif", "attach pattern to chapter", "set chapter motif",
-                  "unbind motif", "remove motif", "clear chapter motif", "swap motif"],
+                  "unbind motif", "remove motif", "clear chapter motif", "swap motif",
+                  "bind", "bind it to", "attach the motif", "use this motif here",
+                  "tie the motif to"],
         tool_name="composition_motif_bind_edit",
     ),
 )
@@ -5387,6 +5389,7 @@ class _ConformanceRunArgs(ForbidExtra):
     meta=require_meta(
         "W", "book",
         synonyms=["check conformance", "did the AI follow the arc", "verify against plan",
+                  "whether the prose", "what the plan promised", "does the prose deliver",
                   "arc conformance", "beat realized", "drift check"],
         async_job=True,
         tool_name="composition_conformance_run",
@@ -5502,7 +5505,9 @@ async def composition_get_mine_job(
         "R", "book",
         synonyms=["conformance status", "is conformance stale", "arc dirty",
                   "conformance freshness", "did the book move since conformance",
-                  "stale conformance", "conformance staleness"],
+                  "stale conformance", "conformance staleness",
+                  "conformance check", "has the book moved", "since it last ran",
+                  "is the check stale"],
         tool_name="composition_conformance_status",
     ),
 )
@@ -5749,7 +5754,9 @@ async def plan_get_missing_material(
     ),
     meta=require_meta(
         "A", "book",
-        synonyms=["keep this line", "yes add that to the plan", "accept material"],
+        synonyms=["keep this line", "yes add that to the plan", "accept material",
+                  "keep the material", "add that to the plan", "keep what we found",
+                  "hold on to that"],
         tool_name="plan_keep_material",
     ),
 )
@@ -6027,7 +6034,9 @@ async def plan_compile(
     ),
     meta=require_meta(
         "A", "book",
-        synonyms=["run pass", "run compiler pass", "plan cast", "plan the scenes", "next pass"],
+        synonyms=["run pass", "run compiler pass", "plan cast", "plan the scenes", "next pass",
+                  "run the next pass", "do the cast pass", "next compiler pass",
+                  "run the pass on my plan"],
         # A pass is a full LLM call. `paid` governs MONEY (orthogonal to `tier`, which governs
         # mutation) — a spender that does not declare it looks free to every consumer that reads the
         # catalog to decide whether a call needs the user's say-so.
@@ -6531,6 +6540,7 @@ async def composition_package_tree(
     meta=require_meta(
         "R", "book",
         synonyms=["find references", "where is this character used", "who uses this entity",
+                  "parts of the book use", "which parts use", "where does this character appear",
                   "backlinks", "usages", "where does X appear"],
         tool_name="composition_find_references",
     ),
@@ -8168,6 +8178,7 @@ class _ErrorBlockEditArgs(ForbidExtra):
     ),
     meta=require_meta("A", "book",
                       synonyms=["list error blocks", "author marked problems", "marked passages",
+                  "flagged as problems", "passages i flagged", "what have i flagged",
                                 "what did the author flag", "resolve error block",
                                 "dismiss error block", "reopen error block",
                                 "reported prose errors"],

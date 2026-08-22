@@ -406,7 +406,7 @@ func (s *Server) registerWorldTools(srv *mcp.Server) {
 	addTool(srv, "world_get",
 		"Fetch one world you own by id: name, description, book_count, and its bible "+
 			"handle (bible_book_id / bible_chapter_id) for authoring lore into it.",
-		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"world detail", "open world", "show world"}),
+		lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"world detail", "open world", "show world", "the world called", "world called"}),
 		s.toolWorldGet)
 
 	addTool(srv, "world_create",

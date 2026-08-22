@@ -1,0 +1,6 @@
+{
+ "_note": "A tool whose own MEASURED turn cannot reach it through answerability. It will surface 0/N before a single live run is spent. This is cycle 1's work-list: each entry is closed by widening the tool's declared synonyms (DQ-T32 option (a), the shipped mechanism — batch 12 took a tool 1/5 -> 5/5 exactly this way), and the entry then LEAVES this file. A baseline that only grows stops meaning anything.",
+ "_generated_by": "scripts/test_a_measured_turn_reaches_its_tool_gate.py",
+ "unreachable": {},
+ "_closed_2026_08_22": "37 -> 0 by widening 37 declarations across 8 services in cycle 1. Each addition was SIMULATED against the cached catalogue first — the whole change at once, not phrase by phrase, because a phrase that is clean alone can still push another tool off the ANSWERABLE_MAX ceiling when eight are added together. Measured: +0.06 tools matched per turn across 195 turns, and ZERO tools lost to the ceiling."
+}

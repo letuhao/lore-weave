@@ -1427,7 +1427,9 @@
    "scope": "none",
    "synonyms": [
     "public book detail",
-    "open public book"
+    "open public book",
+    "open the first",
+    "show me its detail"
    ],
    "tier": "R"
   }
@@ -6876,6 +6878,9 @@
     "check conformance",
     "did the AI follow the arc",
     "verify against plan",
+    "whether the prose",
+    "what the plan promised",
+    "does the prose deliver",
     "arc conformance",
     "beat realized",
     "drift check"
@@ -6921,7 +6926,11 @@
     "conformance freshness",
     "did the book move since conformance",
     "stale conformance",
-    "conformance staleness"
+    "conformance staleness",
+    "conformance check",
+    "has the book moved",
+    "since it last ran",
+    "is the check stale"
    ],
    "tier": "R"
   }
@@ -8153,6 +8162,9 @@
     "list error blocks",
     "author marked problems",
     "marked passages",
+    "flagged as problems",
+    "passages i flagged",
+    "what have i flagged",
     "what did the author flag",
     "resolve error block",
     "dismiss error block",
@@ -8222,6 +8234,9 @@
     "find references",
     "where is this character used",
     "who uses this entity",
+    "parts of the book use",
+    "which parts use",
+    "where does this character appear",
     "backlinks",
     "usages",
     "where does X appear"
@@ -9656,7 +9671,12 @@
     "unbind motif",
     "remove motif",
     "clear chapter motif",
-    "swap motif"
+    "swap motif",
+    "bind",
+    "bind it to",
+    "attach the motif",
+    "use this motif here",
+    "tie the motif to"
    ],
    "tier": "A"
   }
@@ -16422,6 +16442,8 @@
    "synonyms": [
     "research this on the web",
     "look this up online",
+    "on the web",
+    "find sources for",
     "find sources for this character",
     "research and cite"
    ],
@@ -18556,7 +18578,11 @@
     "abort job",
     "kill job",
     "stop a running job",
-    "cancel my task"
+    "cancel my task",
+    "stop the translation",
+    "stop it",
+    "cancel it",
+    "stop that one"
    ],
    "tier": "A"
   }
@@ -18589,7 +18615,11 @@
     "job detail",
     "job status",
     "get job",
-    "show job"
+    "show job",
+    "detail of my job",
+    "my most recent job",
+    "how is the job going",
+    "job cost"
    ],
    "tier": "R"
   }
@@ -18769,7 +18799,11 @@
     "hold job",
     "suspend job",
     "pause a running job",
-    "pause my task"
+    "pause my task",
+    "pause the translation",
+    "pause it",
+    "hold it",
+    "pause that one"
    ],
    "tier": "A"
   }
@@ -18880,6 +18914,8 @@
    "synonyms": [
     "add to the graph",
     "add a node",
+    "to the knowledge graph",
+    "as a character",
     "put this entity in the graph",
     "add characters to the knowledge graph"
    ],
@@ -19332,7 +19368,11 @@
     "relationship over time",
     "how did their relationship change",
     "timeline of a relationship",
-    "history between two characters"
+    "history between two characters",
+    "relationships change",
+    "change over time",
+    "how did the relationship evolve",
+    "relationship history"
    ],
    "tier": "R"
   }
@@ -19766,7 +19806,11 @@
     "change the graph schema",
     "adopt a graph template",
     "deprecate an edge type",
-    "new relationship type"
+    "new relationship type",
+    "adopt an ontology template",
+    "ontology template",
+    "adopt the ontology",
+    "graph ontology"
    ],
    "tier": "W"
   }
@@ -20058,7 +20102,8 @@
     "link two characters",
     "connect these entities",
     "they are related",
-    "record that they know each other"
+    "record that they know each other",
+    "know each other"
    ],
    "tier": "A"
   }
@@ -20237,6 +20282,8 @@
     "graph schema",
     "what edge types exist",
     "what relationships can i use",
+    "kinds of relationships",
+    "relationships can i record",
     "show the schema"
    ],
    "tier": "R"
@@ -20367,6 +20414,8 @@
    "synonyms": [
     "graph template updates",
     "is my schema out of date",
+    "schema out of date",
+    "upstream template updates",
     "upstream schema changes"
    ],
    "tier": "R"
@@ -20469,7 +20518,11 @@
    "synonyms": [
     "place this edge",
     "accept the proposed edge",
-    "put the edge in the graph"
+    "put the edge in the graph",
+    "place the proposed edge",
+    "place the edge",
+    "approve the edge",
+    "into the graph"
    ],
    "tier": "W"
   }
@@ -20536,7 +20589,12 @@
     "resolve triage",
     "map this triage item",
     "drop this edge",
-    "fix the triage"
+    "fix the triage",
+    "drop the proposed edge",
+    "drop the proposed",
+    "reject the proposal",
+    "dismiss the proposal",
+    "the proposal is wrong"
    ],
    "tier": "A"
   }
@@ -20621,7 +20679,11 @@
    "synonyms": [
     "add to the vocabulary",
     "add this value to the schema",
-    "resolve triage by changing the schema"
+    "resolve triage by changing the schema",
+    "add the edge type",
+    "add an edge type to the schema",
+    "so that proposal fits",
+    "widen the schema"
    ],
    "tier": "W"
   }
@@ -21967,7 +22029,11 @@
    "synonyms": [
     "keep this line",
     "yes add that to the plan",
-    "accept material"
+    "accept material",
+    "keep the material",
+    "add that to the plan",
+    "keep what we found",
+    "hold on to that"
    ],
    "tier": "A"
   }
@@ -22262,7 +22328,11 @@
     "run compiler pass",
     "plan cast",
     "plan the scenes",
-    "next pass"
+    "next pass",
+    "run the next pass",
+    "do the cast pass",
+    "next compiler pass",
+    "run the pass on my plan"
    ],
    "tier": "A"
   }
@@ -22385,7 +22455,11 @@
     "read skill",
     "skill body",
     "get skill",
-    "show skill"
+    "show skill",
+    "body of the",
+    "show me the body",
+    "what does this skill do",
+    "skill instructions"
    ],
    "tier": "R"
   }
@@ -22415,7 +22489,11 @@
     "read workflow",
     "workflow steps",
     "get workflow",
-    "show workflow"
+    "show workflow",
+    "steps of the",
+    "show me the steps",
+    "what does this workflow do",
+    "workflow recipe"
    ],
    "tier": "R"
   }
@@ -22693,7 +22771,13 @@
     "enable skill",
     "disable skill",
     "turn off skill",
-    "turn on skill"
+    "turn on skill",
+    "turn off the skill",
+    "turn on the skill",
+    "switch off skill",
+    "stop using the skill",
+    "turn off",
+    "turn on"
    ],
    "tier": "A"
   }
@@ -22745,7 +22829,11 @@
    "synonyms": [
     "update skill",
     "edit skill",
-    "change skill"
+    "change skill",
+    "change the description of the",
+    "rename skill",
+    "change the skill",
+    "edit the skill"
    ],
    "tier": "A"
   }
@@ -22871,7 +22959,11 @@
    "synonyms": [
     "update workflow",
     "edit workflow",
-    "change workflow"
+    "change workflow",
+    "change the title of the",
+    "rename workflow",
+    "change the workflow",
+    "edit the workflow"
    ],
    "tier": "A"
   }
@@ -22982,7 +23074,10 @@
    "synonyms": [
     "delete model",
     "remove model",
-    "drop model"
+    "drop model",
+    "remove the registered model",
+    "unregister model",
+    "remove this model"
    ],
    "tier": "W"
   }
@@ -23063,7 +23158,11 @@
     "activate model",
     "deactivate model",
     "enable model",
-    "disable model"
+    "disable model",
+    "deactivate the last",
+    "deactivate it",
+    "stop using this model",
+    "not using it"
    ],
    "tier": "A"
   }
@@ -23125,9 +23224,13 @@
    "scope": "user",
    "synonyms": [
     "favorite",
+    "favourite",
     "mark model as favorite",
+    "mark as a favourite",
+    "mark as favourite",
     "pin model",
-    "unfavorite"
+    "unfavorite",
+    "unfavourite"
    ],
    "tier": "A"
   }
@@ -23175,7 +23278,11 @@
     "update model",
     "rename model",
     "edit model",
-    "set context length"
+    "set context length",
+    "rename the first",
+    "rename it to",
+    "change its name",
+    "rename this model"
    ],
    "tier": "A"
   }
@@ -23677,7 +23784,11 @@
     "fix block",
     "correct block",
     "patch translation",
-    "correct one translated paragraph"
+    "correct one translated paragraph",
+    "fix the paragraph",
+    "fix the second paragraph",
+    "correct the paragraph",
+    "it should read"
    ],
    "tier": "A",
    "undo_hint": {
@@ -23886,7 +23997,11 @@
     "set active",
     "publish version",
     "activate translation",
-    "make this the active version"
+    "make this the active version",
+    "make version",
+    "the active one",
+    "which version readers see",
+    "readers see"
    ],
    "tier": "A",
    "undo_hint": {
@@ -24156,7 +24271,10 @@
     "change model",
     "set target language",
     "translation settings",
-    "configure translation"
+    "configure translation",
+    "translation model",
+    "my default one",
+    "change the target language"
    ],
    "tier": "A",
    "undo_hint": {
@@ -24275,7 +24393,9 @@
    "synonyms": [
     "world detail",
     "open world",
-    "show world"
+    "show world",
+    "the world called",
+    "world called"
    ],
    "tier": "R"
   }
@@ -24349,7 +24469,11 @@
    "synonyms": [
     "add pin",
     "place marker",
-    "map marker"
+    "map marker",
+    "put a pin",
+    "add marker",
+    "place pin",
+    "drop a pin"
    ],
    "tier": "A"
   }
@@ -24556,7 +24680,11 @@
    "scope": "none",
    "synonyms": [
     "remove region",
-    "delete area"
+    "delete area",
+    "remove area",
+    "delete region",
+    "drop region",
+    "drop area"
    ],
    "tier": "A"
   }
@@ -24664,7 +24792,13 @@
     "move pin",
     "drag marker",
     "relabel marker",
-    "rebind marker"
+    "rebind marker",
+    "relabel pin",
+    "rename pin",
+    "rename marker",
+    "move marker",
+    "drag pin",
+    "rebind pin"
    ],
    "tier": "A"
   }
@@ -24720,7 +24854,10 @@
    "synonyms": [
     "reshape region",
     "rename region",
-    "rebind region"
+    "rebind region",
+    "rename area",
+    "reshape area",
+    "rebind area"
    ],
    "tier": "A"
   }

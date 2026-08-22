@@ -76,9 +76,12 @@ PAIRS: list[tuple[str, str]] = [
 # the same word in the same sense. Anything softer makes it the 178-flag lint that got rejected.
 
 
-def find_gaps() -> dict[str, list[str]]:
-    """{tool: ["declares 'favorite', not 'favourite'", ...]} — deterministic, sorted."""
-    cache = json.loads(CACHE.read_text(encoding="utf-8"))
+def find_gaps(cache: dict | None = None) -> dict[str, list[str]]:
+    """{tool: ["declares 'favorite', not 'favourite'", ...]} — deterministic, sorted.
+
+    `cache` is injectable so the gate can drive the detector over a SYNTHETIC catalogue. Its
+    red-able test used to anchor on a live tool and inverted the day that tool was fixed."""
+    cache = cache if cache is not None else json.loads(CACHE.read_text(encoding="utf-8"))
     out: dict[str, list[str]] = {}
     for name in sorted(cache):
         syns = [s for s in ((cache[name].get("meta") or {}).get("synonyms") or [])
