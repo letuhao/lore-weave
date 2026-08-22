@@ -48,21 +48,52 @@ DATABASES = (
 CONTAINER = "infra-postgres-1"
 
 
+class SnapshotUnavailable(RuntimeError):
+    """A store probe could not run, so there is no snapshot — only the absence of one."""
+
+
 def _psql(db: str, sql: str) -> list[str]:
+    """🔴 THIS USED TO RETURN THE STRING "__error__:<stderr>" AND LET IT FLOW ON AS DATA.
+
+    Measured 2026-08-22. The stack was idling at 96 of 100 Postgres connections, a probe was
+    refused, and `_counts` filed the sentinel under `out["__error__"]`. That key reached the run's
+    `store` as though it were a table, so `diff` reported
+
+        {"loreweave_composition.__error__": {"before": null,
+                                             "after": "__error__:... too many clients"}}
+
+    which is A DIFF — and the gate reads a diff as the owning store having MOVED. The affected
+    entry's wrote_count was 1 entirely because of it.
+
+    `_scoped_tables` was the same bug wearing quieter clothes: it filtered the sentinel out and
+    returned `[]`, so a failed information_schema probe produced an EMPTY snapshot that reads
+    exactly like "no tables matched".
+
+    Both directions are wrong in a way that matters: a phantom diff is a false "this READ wrote to
+    the store"; an empty snapshot is a false "the write landed nothing". Either way the DATA bar —
+    the one assertion a stochastic model cannot talk its way past — is decided on a measurement
+    that never happened.
+
+    So it raises. The caller records the run as errored, and the gate's EXISTING "LIVE clean" bar
+    refuses the batch: a transport failure is not a model result, it is a re-run condition. No new
+    bar, no new sentinel, and nothing for a later reader to mistake for data.
+    """
     out = subprocess.run(
         ["docker", "exec", "-i", CONTAINER, "psql", "-U", "loreweave", "-d", db, "-At"],
         input=sql, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if out.returncode != 0:
-        return [f"__error__:{out.stderr.strip()[:120]}"]
+        raise SnapshotUnavailable(f"{db}: {out.stderr.strip()[:160]}")
     return [ln for ln in out.stdout.splitlines() if ln]
 
 
 def _scoped_tables(db: str, column: str) -> list[str]:
-    return [t for t in _psql(db, (
+    # No sentinel filter any more — _psql raises, so an empty list here means the query really
+    # returned no rows. That distinction is the whole point.
+    return list(_psql(db, (
         "select table_name from information_schema.columns "
         f"where table_schema='public' and column_name='{column}' order by table_name;"
-    )) if not t.startswith("__error__")]
+    )))
 
 
 def _counts(db: str, tables: list[str], column: str, value: str) -> dict:
@@ -81,9 +112,6 @@ def _counts(db: str, tables: list[str], column: str, value: str) -> dict:
     rows = _psql(db, " union all ".join(parts) + ";")
     out = {}
     for r in rows:
-        if r.startswith("__error__"):
-            out["__error__"] = r
-            continue
         bits = r.split("|")
         if len(bits) >= 2 and bits[1] != "0":
             out[bits[0]] = {"rows": int(bits[1]), "latest": bits[2] if len(bits) > 2 else "-"}
@@ -145,7 +173,7 @@ def snapshot(book_id: str, project_id: str | None = None) -> dict:
     # composition also scopes by project_id; resolve it from the book rather than being told.
     proj = _psql("loreweave_composition",
                  f"select project_id from composition_work where book_id='{book_id}' limit 1;")
-    if proj and not proj[0].startswith("__error__"):
+    if proj:
         ptables = _scoped_tables("loreweave_composition", "project_id")
         for k, v in _counts("loreweave_composition", ptables, "project_id", proj[0]).items():
             snap[f"loreweave_composition.{k}"] = v

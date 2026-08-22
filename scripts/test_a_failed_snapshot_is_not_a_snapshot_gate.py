@@ -71,16 +71,34 @@ def test_the_sentinel_string_is_gone_from_the_postgres_path():
     """🔴 A SOURCE CHECK, KEPT DELIBERATELY NARROW AND EXPLAINED.
 
     This repo already had a test assert over source TEXT and go red for a RENAME while the
-    behaviour was intact. So this asserts one thing only — that the literal sentinel PREFIX no
-    longer appears above the neo4j helper — because a returned `"__error__:..."` is the shape that
-    flows on as data, and no behavioural test can prove a string is absent from every branch.
-    The neo4j marker below is a different shape and is out of scope.
+    behaviour was intact. So it asserts one narrow thing: that the sentinel is never CONSTRUCTED.
+
+    🔴 AND THE FIRST VERSION OF THIS TEST WAS ITSELF TOO NAIVE. It looked for the literal
+    `"__error__:` anywhere above `_neo4j`, and went red on the DOCSTRING that explains the old
+    behaviour — prose describing the bug read as the bug. A source check has to name the shape it
+    forbids (a value being built), not a substring that documentation legitimately contains.
+
+    The neo4j marker below is a different shape — it carries `rows: -1`, not a string, so `diff`
+    cannot mistake it for a table count — and is deliberately out of scope.
     """
-    src = MOD.read_text(encoding="utf-8")
-    pg_path = src.split("def _neo4j")[0]
-    assert '"__error__:' not in pg_path and "'__error__:" not in pg_path, (
-        "the postgres path can still return an __error__ sentinel, which `diff` will read as a "
-        "table whose value changed"
+    import ast
+
+    tree = ast.parse(MOD.read_text(encoding="utf-8"))
+    built = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "_neo4j":
+            continue
+        if isinstance(node, ast.JoinedStr):           # an f-string
+            for v in node.values:
+                if isinstance(v, ast.Constant) and isinstance(v.value, str) \
+                        and v.value.startswith("__error__"):
+                    built.append(ast.unparse(node))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and node.value.startswith("__error__:"):
+            built.append(node.value)
+    assert not built, (
+        f"the sentinel is still CONSTRUCTED at {built} — a returned '__error__:...' flows into "
+        "the snapshot and `diff` reads it as a table whose value changed"
     )
 
 
