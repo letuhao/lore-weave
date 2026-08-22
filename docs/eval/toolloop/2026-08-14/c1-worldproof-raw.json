@@ -1,0 +1,2003 @@
+[
+  {
+    "text": "The area has been renamed to **The Frozen North**.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_656927114120016",
+        "toolCallName": "world_map_update_region",
+        "parentMessageId": "c6a157bb-c45c-49a8-bfed-7e54aba643e0"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_656927114120016",
+        "delta": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296a-df73-73be-815b-44d587612e0e\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_656927114120016"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "c6a157bb-c45c-49a8-bfed-7e54aba643e0",
+        "toolCallId": "call_656927114120016",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296a-df73-73be-815b-44d587612e0e\", \"updated_at\": \"2026-08-22T12:21:40.060885Z\"}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 35,
+      "activated_count": 2,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_rename",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load",
+          "world_get",
+          "world_list",
+          "world_map_get",
+          "world_map_list",
+          "world_map_update_region"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 12
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 8
+        },
+        "knowledge": {
+          "tools": 9
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11628
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "world_map_update_region",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      }
+    ],
+    "run_id": "66fa421b-d54c-4da1-8cf6-850fd656acbf",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 10,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 11,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_656927114120016": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296a-df73-73be-815b-44d587612e0e\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_656927114120016",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296a-df73-73be-815b-44d587612e0e\", \"updated_at\": \"2026-08-22T12:21:40.060885Z\"}}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [
+      {
+        "prompt": "List my worlds.",
+        "called": [
+          "world_list"
+        ],
+        "text": "Here are your worlds:\n\n*   **Emberfall Reach Lizugere** (0 books)\n*   **封神演義** (2 books) — *明代神魔小說《封神演義》。原著與設定資料兩冊，供 game-element 抽取用。*\n*   **S10 World 2026-07-14-S10-r3-1017** (0 books)\n*   **S10 World 2026-07-14-S10-r2-7676** (0 books)\n*   **S10 World 2026-07-14-S10-r1-1c77** (0 books)\n*   **S10 World 2026-07-14-S10-r3-7c60** (0 books)\n*   **S10 World 2026-07-14-S10-r2-86ad** (0 books)\n*   **S10 World 2026-07-14-S10-r1-4233** (0 books)\n*   **S10 World 2026-07-14-S10-r3-1753** (0 books)\n*   **S10 World 2026-07-14-S10-r2-4b9b** (0 books)\n*   **S10 World 2026-07-14-S10-r1-a469** (0 books)\n*   **S10 World 2026-07-14-S10-r3-2b5c** (0 books)\n*   **S10 World 2026-07-14-S10-r2-47c6** (0 books)\n*   **S10 World 2026-07-14-S10-r1-faa2** (0 books)\n*   **S10 World 2026-07-14-S10-r3-ad85** (0 books)\n*"
+      },
+      {
+        "prompt": "List the maps in my world called Emberfall Reach Lizugere.",
+        "called": [
+          "world_list",
+          "world_map_list"
+        ],
+        "text": "There is one map in the **Emberfall Reach Lizugere** world:\n\n*   **The Ashen Coast Lizugere** (Version 1)"
+      },
+      {
+        "prompt": "Open the map called The Ashen Coast Lizugere.",
+        "called": [
+          "world_map_get"
+        ],
+        "text": "I have opened **The Ashen Coast Lizugere**.\n\n**Regions:**\n*   **The North**\n*   **The Drowned Shelf**\n\nThere are currently no markers on this map."
+      }
+    ],
+    "prompt": "Rename the area called The North to The Frozen North.",
+    "session_id": "01a0296a-fdb3-739a-b41d-df5c796a9c9c",
+    "scenario": "world-map-update-region",
+    "rep": 0,
+    "book_id": "01a0296a-dc11-7977-befd-90eab835fac0",
+    "project_id": "01a0296a-dd7b-7a8b-bb62-167ae43989f0",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.322421+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.516566+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.505719+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.834642+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:05.190076+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.322421+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.516566+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.505719+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:04.834642+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:40.060885+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {
+      "loreweave_book.map_regions": {
+        "before": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:05.190076+00"
+        },
+        "after": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:40.060885+00"
+        }
+      }
+    }
+  },
+  {
+    "text": "I have renamed **The North** to **The Frozen North**.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_656927114120021",
+        "toolCallName": "world_map_update_region",
+        "parentMessageId": "5a7ff4ae-4f9d-473f-95fe-906a803f6bf4"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_656927114120021",
+        "delta": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296b-9719-75c3-a732-4de523356223\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_656927114120021"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "5a7ff4ae-4f9d-473f-95fe-906a803f6bf4",
+        "toolCallId": "call_656927114120021",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296b-9719-75c3-a732-4de523356223\", \"updated_at\": \"2026-08-22T12:22:27.902591Z\"}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 35,
+      "activated_count": 2,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_rename",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load",
+          "world_get",
+          "world_list",
+          "world_map_get",
+          "world_map_list",
+          "world_map_update_region"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 12
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 8
+        },
+        "knowledge": {
+          "tools": 9
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11628
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "world_map_update_region",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      }
+    ],
+    "run_id": "df8a19f7-10c7-457e-9d34-7c8b3bf49d8d",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 10,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 13,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_656927114120021": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296b-9719-75c3-a732-4de523356223\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_656927114120021",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296b-9719-75c3-a732-4de523356223\", \"updated_at\": \"2026-08-22T12:22:27.902591Z\"}}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [
+      {
+        "prompt": "List my worlds.",
+        "called": [
+          "world_list"
+        ],
+        "text": "You have 29 worlds. Here are the first 20:\n\n1.  **Emberfall Reach Napeniso**\n2.  **封神演義** (2 books)\n3.  **S10 World 2026-07-14-S10-r3-1017**\n4.  **S10 World 2026-07-14-S10-r2-7676**\n5.  **S10 World 2026-07-14-S10-r1-1c77**\n6.  **S10 World 2026-07-14-S10-r3-7c60**\n7.  **S10 World 2026-07-14-S10-r2-86ad**\n8.  **S10 World 2026-07-14-S10-r1-4233**\n9.  **S10 World 2026-07-14-S10-r3-1753**\n10. **S10 World 2026-07-14-S10-r2-4b9b**\n11. **S10 World 2026-07-14-S10-r1-a469**\n12. **S10 World 2026-07-14-S10-r3-2b5c**\n13. **S10 World 2026-07-14-S10-r2-47c6**\n14. **S10 World 2026-07-14-S10-r1-faa2**\n15. **S10 World 2026-07-14-S10-r3-ad85**\n16. **S10 World 2026-07-14-S10-r2-c009**\n17. **S10 World 2026-07-14-S10-r1-928b**\n18. **S10 World 2026-07-14-S10-r3-a408**\n19. **S10 World 2026-07-14-S10-r2-7ea8**\n20."
+      },
+      {
+        "prompt": "List the maps in my world called Emberfall Reach Napeniso.",
+        "called": [
+          "world_list",
+          "world_map_list"
+        ],
+        "text": "There is one map in the **Emberfall Reach Napeniso** world:\n\n*   **The Ashen Coast Napeniso** (Version 1)"
+      },
+      {
+        "prompt": "Open the map called The Ashen Coast Napeniso.",
+        "called": [
+          "world_map_get"
+        ],
+        "text": "I have opened **The Ashen Coast Napeniso**.\n\n**Regions:**\n*   **The North**\n*   **The Drowned Shelf**\n\nThere are currently no markers on this map."
+      }
+    ],
+    "prompt": "Rename the area called The North to The Frozen North.",
+    "session_id": "01a0296b-ba86-7c2f-9fe9-98c765d61ae6",
+    "scenario": "world-map-update-region",
+    "rep": 1,
+    "book_id": "01a0296b-93d7-723d-83cb-86ba4448cd70",
+    "project_id": "01a0296b-9554-717e-bf33-8f923b00610d",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.369154+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.579922+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.571037+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.871197+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:52.202567+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.369154+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.579922+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.571037+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:21:51.871197+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:22:27.902591+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {
+      "loreweave_book.map_regions": {
+        "before": {
+          "rows": 2,
+          "latest": "2026-08-22 12:21:52.202567+00"
+        },
+        "after": {
+          "rows": 2,
+          "latest": "2026-08-22 12:22:27.902591+00"
+        }
+      }
+    }
+  },
+  {
+    "text": "The area has been renamed to **The Frozen North**.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_656927114120026",
+        "toolCallName": "world_map_update_region",
+        "parentMessageId": "058e825e-7371-46f8-952a-928b654ac04b"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_656927114120026",
+        "delta": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296c-5da6-7416-bccb-6d9b198161fb\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_656927114120026"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "058e825e-7371-46f8-952a-928b654ac04b",
+        "toolCallId": "call_656927114120026",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296c-5da6-7416-bccb-6d9b198161fb\", \"updated_at\": \"2026-08-22T12:23:18.227627Z\"}}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 35,
+      "activated_count": 2,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_rename",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load",
+          "world_get",
+          "world_list",
+          "world_map_get",
+          "world_map_list",
+          "world_map_update_region"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 12
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 6
+        },
+        "glossary": {
+          "tools": 8
+        },
+        "knowledge": {
+          "tools": 9
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 11628
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "world_map_update_region",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 35,
+        "activated_count": 2,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_rename",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load",
+            "world_get",
+            "world_list",
+            "world_map_get",
+            "world_map_list",
+            "world_map_update_region"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 12
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 6
+          },
+          "glossary": {
+            "tools": 8
+          },
+          "knowledge": {
+            "tools": 9
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 11628
+        }
+      }
+    ],
+    "run_id": "d87f3d3a-aa46-46cd-956d-f2e3a623a57e",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 10,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 11,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_656927114120026": "{\"name\": \"The Frozen North\", \"region_id\": \"01a0296c-5da6-7416-bccb-6d9b198161fb\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_656927114120026",
+        "content": "{\"ok\": true, \"result\": {\"region\": {\"entity_id\": null, \"name\": \"The Frozen North\", \"polygon\": [[0, 0], [1, 0], [0.6, 0.5], [0.5, 1]], \"region_id\": \"01a0296c-5da6-7416-bccb-6d9b198161fb\", \"updated_at\": \"2026-08-22T12:23:18.227627Z\"}}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [
+      {
+        "prompt": "List my worlds.",
+        "called": [
+          "world_list"
+        ],
+        "text": "Here are your worlds:\n\n*   **Emberfall Reach Tupuvapa** (0 books)\n*   **封神演義** (2 books) — *明代神魔小說《封神演義》。原著與設定資料兩冊，供 game-element 抽取用。*\n*   **S10 World 2026-07-14-S10-r3-1017** (0 books)\n*   **S10 World 2026-07-14-S10-r2-7676** (0 books)\n*   **S10 World 2026-07-14-S10-r1-1c77** (0 books)\n*   **S10 World 2026-07-14-S10-r3-7c60** (0 books)\n*   **S10 World 2026-07-14-S10-r2-86ad** (0 books)\n*   **S10 World 2026-07-14-S10-r1-4233** (0 books)\n*   **S10 World 2026-07-14-S10-r3-1753** (0 books)\n*   **S10 World 2026-07-14-S10-r2-4b9b** (0 books)\n*   **S10 World 2026-07-14-S10-r1-a469** (0 books)\n*   **S10 World 2026-07-14-S10-r3-2b5c** (0 books)\n*   **S10 World 2026-07-14-S10-r2-47c6** (0 books)\n*   **S10 World 2026-07-14-S10-r1-faa2** (0 books)\n*   **S10 World 2026-07-14-S10-r3-ad85** (0 books)\n*"
+      },
+      {
+        "prompt": "List the maps in my world called Emberfall Reach Tupuvapa.",
+        "called": [
+          "world_list",
+          "world_map_list"
+        ],
+        "text": "There is one map in the **Emberfall Reach Tupuvapa** world:\n\n*   **The Ashen Coast Tupuvapa** (Version 1)"
+      },
+      {
+        "prompt": "Open the map called The Ashen Coast Tupuvapa.",
+        "called": [
+          "world_map_get"
+        ],
+        "text": "I have opened **The Ashen Coast Tupuvapa**.\n\n**Regions:**\n*   **The North**\n*   **The Drowned Shelf**\n\nThere are currently no markers on this map."
+      }
+    ],
+    "prompt": "Rename the area called The North to The Frozen North.",
+    "session_id": "01a0296c-8082-75bb-ad1e-ee5729a33c74",
+    "scenario": "world-map-update-region",
+    "rep": 2,
+    "book_id": "01a0296c-5a4c-7f00-9248-c468d071d18e",
+    "project_id": "01a0296c-5bca-7b59-ac81-2cdc39256b05",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.162355+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.388538+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.377578+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.695107+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:22:43.021794+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.162355+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.388538+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.377578+00"
+        },
+        "loreweave_book.world_maps": {
+          "rows": 1,
+          "latest": "2026-08-22 12:22:42.695107+00"
+        },
+        "loreweave_book.map_regions": {
+          "rows": 2,
+          "latest": "2026-08-22 12:23:18.227627+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 370,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {
+      "loreweave_book.map_regions": {
+        "before": {
+          "rows": 2,
+          "latest": "2026-08-22 12:22:43.021794+00"
+        },
+        "after": {
+          "rows": 2,
+          "latest": "2026-08-22 12:23:18.227627+00"
+        }
+      }
+    }
+  }
+]

@@ -160,10 +160,50 @@ def _neo4j(project_id: str | None) -> dict:
     return snap
 
 
-def snapshot(book_id: str, project_id: str | None = None) -> dict:
+def _world_counts(world_id: str) -> dict:
+    """🔴 THE WORLD/MAP STORE HAS NO `book_id`, SO THE SWEEP BELOW HAS NEVER SEEN IT.
+
+    Measured 2026-08-22, and it is the worst thing this loop has found in its own instrument.
+    `map_regions` is keyed (id, map_id, name, polygon, entity_id, created_at, updated_at) and
+    `world_maps` by (id, world_id, owner_user_id, …). Neither carries `book_id`, and `snapshot`
+    sweeps exactly the tables that do. So for the entire world/map family the DATA bar's
+    "store unchanged" was VACUOUS — it was not looking at the store those tools write.
+
+    It surfaced because the approved arm called `world_map_update_region` 5/5 with the card
+    removed, the tool returned `{"ok": true, "result": {"region": {"name": "The Frozen North",
+    "updated_at": "2026-08-22T12:05:41Z"}}}` — the rename landed — and `store_diff` was `{}`.
+    A write the tool itself reports, invisible to the bar that exists to catch exactly that.
+
+    SCOPED TO THE RUN'S OWN WORLD, not to the owner. An owner-wide sweep would fold in the
+    account's 28 unrelated worlds and destroy the attribution that per-scenario fixtures exist to
+    provide. The world id comes from the fixture's own `world_create`, so every count here belongs
+    to this run.
+    """
+    q = world_id.replace("'", "''")
+    rows = _psql("loreweave_book", (
+        f"select 'world_maps', count(*)::text, coalesce(max(updated_at)::text,'-') "
+        f"from world_maps where world_id='{q}' "
+        f"union all select 'map_regions', count(*)::text, coalesce(max(r.updated_at)::text,'-') "
+        f"from map_regions r join world_maps m on m.id=r.map_id where m.world_id='{q}' "
+        f"union all select 'map_markers', count(*)::text, coalesce(max(k.updated_at)::text,'-') "
+        f"from map_markers k join world_maps m on m.id=k.map_id where m.world_id='{q}';"))
+    out = {}
+    for r in rows:
+        bits = r.split("|")
+        if len(bits) >= 2 and bits[1] != "0":
+            out[f"loreweave_book.{bits[0]}"] = {
+                "rows": int(bits[1]), "latest": bits[2] if len(bits) > 2 else "-"}
+    return out
+
+
+def snapshot(book_id: str, project_id: str | None = None,
+             world_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
-    itself the signal that something was created."""
+    itself the signal that something was created.
+
+    `world_id` extends the sweep to a store that has no `book_id` at all — see `_world_counts`.
+    """
     snap: dict = {}
     for db in DATABASES:
         tables = _scoped_tables(db, "book_id")
@@ -178,6 +218,8 @@ def snapshot(book_id: str, project_id: str | None = None) -> dict:
         for k, v in _counts("loreweave_composition", ptables, "project_id", proj[0]).items():
             snap[f"loreweave_composition.{k}"] = v
         project_id = project_id or proj[0]
+    if world_id:
+        snap.update(_world_counts(world_id))
     try:
         snap.update(_neo4j(project_id))
     except Exception as e:  # noqa: BLE001 — a graph that is down must not silently read as "clean"

@@ -124,6 +124,10 @@ class Throwaway:
         self.book_id: str | None = None
         self.chapter_id: str | None = None
         self.project_id: str | None = None
+        # The world this fixture's seed created, if any. Exposed for the SNAPSHOT rather than for
+        # teardown: the world/map store carries no `book_id`, so the DATA bar cannot see it
+        # without being told which world belongs to this run. See store_snapshot._world_counts.
+        self.world_id: str | None = None
         self.seeded: list[dict] = []
 
     # ── build ────────────────────────────────────────────────────────────────────────────
@@ -299,6 +303,11 @@ class Throwaway:
         args = self._substitute(step.get("args") or {})
         r = self.mcp.call(tool, args)
         self.seeded.append({"tool": tool, "args": args, "result": r})
+        # Remember the world this run created — the DATA bar cannot find it any other way, because
+        # nothing in the world/map store carries a book_id.
+        if tool == "world_create" and isinstance(r, dict):
+            w = r.get("world") if isinstance(r.get("world"), dict) else r
+            self.world_id = str(w.get("world_id") or w.get("id") or "") or None
 
     _STEP_REF = re.compile(r"\{step:(\d+):([A-Za-z0-9_.]+)\}")
 
@@ -408,10 +417,24 @@ class Throwaway:
         return out
 
     def _purge_worlds(self) -> list[str]:
-        """Delete the TITLE_PREFIX-named worlds this fixture's seed created.
+        """Delete the worlds this fixture's seed created.
 
-        Guarded the same way `purge_book` is: the name is re-read from the tool's own listing
-        rather than trusted from memory, so this can only ever remove a throwaway.
+        🔴 THIS GUARD NEVER MATCHED, AND 35 WORLDS LEAKED BEHIND IT. It required the world's name
+        to start with TITLE_PREFIX. The seeds name their world "Emberfall Reach {run_word}" — on
+        purpose, and the reason is 90 lines above this one: an account-scoped fixture called
+        "LOOP-THROWAWAY-…" got its NAME passed as a world_id by the model ("I'm having trouble
+        accessing the map (ID: LOOP-THROWAWAY-…)"). So the naming decision is right and the
+        teardown predicate was right, and between them nothing was ever deleted.
+
+        Measured 2026-08-22: 63 worlds on the harness account, 35 of them "Emberfall Reach %"
+        fixtures. `provision.py --sweep` could not see them either — it is scoped to book TITLES,
+        and a world is not book-scoped. The same blind spot that hid this from teardown hid it
+        from the DATA bar: `store_snapshot` sweeps tables carrying `book_id`, and `worlds`,
+        `world_maps`, `map_regions` and `map_markers` carry none.
+
+        THE FIX IS TO STOP GUARDING ON THE NAME. The id came back from THIS RUN'S OWN
+        `world_create` call; that provenance is stronger evidence than any string prefix, and it
+        cannot drift when someone renames a fixture. The name is still recorded for the log.
         """
         made = [r["result"] for r in self.seeded
                 if r.get("tool") == "world_create" and isinstance(r.get("result"), dict)]
@@ -420,8 +443,8 @@ class Throwaway:
         ids = []
         for r in made:
             w = r.get("world") if isinstance(r.get("world"), dict) else r
-            wid, name = w.get("world_id") or w.get("id"), str(w.get("name") or "")
-            if wid and name.startswith(TITLE_PREFIX):
+            wid = w.get("world_id") or w.get("id")
+            if wid:
                 self.mcp.call("world_delete", {"world_id": str(wid)})
                 ids.append(str(wid))
         return ids
@@ -494,6 +517,12 @@ def _delete_scoped(db: str, column: str, value: str) -> None:
     )
 
 
+# The name every world seed builds — "Emberfall Reach {run_word}". Deliberately NOT TITLE_PREFIX
+# (see Fixture.__init__: a prefix in a NAME gets passed back as an id), which is exactly why the
+# book-title-scoped sweep below could never see one.
+WORLD_PREFIX = "Emberfall Reach "
+
+
 def sweep_orphans(older_than_minutes: int = 0) -> list[str]:
     """Delete throwaway books left behind by a crashed run. Prefix-scoped, so it can never
     reach anything but this module's own fixtures."""
@@ -510,6 +539,37 @@ def sweep_orphans(older_than_minutes: int = 0) -> list[str]:
     return out
 
 
+def sweep_orphan_worlds(older_than_minutes: int = 0) -> list[str]:
+    """🔴 A WORLD IS NOT BOOK-SCOPED, SO THE BOOK SWEEP ABOVE NEVER SAW ONE.
+
+    Measured 2026-08-22: 63 worlds on the harness account, 35 of them fixtures. Two separate
+    guards both failed to reach them — `_purge_worlds` required a name prefix the seeds
+    deliberately do not use, and this sweep is scoped to book TITLES. Every world/map arm this
+    loop has ever run left its world behind.
+
+    Scoped to the OPERATION rather than by a global predicate: this account's own worlds, named
+    with the prefix these seeds build, and nothing else. The 28 remaining worlds on the account
+    belong to earlier smoke suites (`C21 Gateway Smoke`, `S10 World …`, `E2E …`) — not this
+    module's to delete, and left alone.
+    """
+    rows = oracle.db_query(
+        BOOK_DB, f"SELECT id, name FROM worlds WHERE name LIKE '{WORLD_PREFIX}%' "
+                 f"AND owner_user_id='{OWNER_ID}' "
+                 f"AND created_at < now() - interval '{int(older_than_minutes)} minutes'")
+    mcp = MCPDirect()
+    out = []
+    for r in rows:
+        wid = (r[0] if r else "") or ""
+        if not wid:
+            continue
+        try:
+            mcp.call("world_delete", {"world_id": str(wid)})
+            out.append(wid)
+        except Exception as e:  # noqa: BLE001 — report, never mask the rest of the sweep
+            print(f"  ! world {wid} ({r[1] if len(r) > 1 else '?'}): {type(e).__name__}: {e}")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", default="manual")
@@ -519,6 +579,9 @@ def main() -> int:
     if a.sweep:
         gone = sweep_orphans()
         print(f"swept {len(gone)} throwaway book(s)")
+        # Worlds are NOT book-scoped, so they need their own pass — see sweep_orphan_worlds.
+        w = sweep_orphan_worlds()
+        print(f"swept {len(w)} throwaway world(s)")
         return 0
     fx = Throwaway(a.label).build()
     print(json.dumps({"book_id": fx.book_id, "chapter_id": fx.chapter_id,
