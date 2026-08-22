@@ -201,6 +201,10 @@ impl Ctx {
                 reason: "w1.5-provision-drill".into(),
                 // The drill provisions on behalf of nobody.
                 owner_user_id: None,
+                // The drill measures the FLOW, not world content: an empty
+                // declaration exercises the step's Skipped path, which is the
+                // path every existing caller takes.
+                world: Vec::new(),
             };
             Provisioner::new(CapacityThresholds::default()).provision_reality(req, &snapshot, &mut effects)
         })

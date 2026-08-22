@@ -88,6 +88,9 @@ struct Args {
     dry_run: bool,
     /// W6 — owning user; absent means the platform owns the reality.
     owner_user_id: Option<Uuid>,
+    /// `A2` — the authored world, read from a JSON file. Empty when `--world`
+    /// is absent, which SKIPS the seed step rather than inventing a map.
+    world: Vec<world_service::world_seed::NodeDecl>,
 }
 
 impl Args {
@@ -101,6 +104,7 @@ impl Args {
         let mut reason: Option<String> = None;
         let mut dry_run = false;
         let mut owner_user_id: Option<Uuid> = None;
+        let mut world: Vec<world_service::world_seed::NodeDecl> = Vec::new();
 
         let argv: Vec<String> = argv.collect();
         let mut i = 0;
@@ -140,6 +144,22 @@ impl Args {
                     }
                     owner_user_id = Some(oid);
                 }
+                // `A2` — the world declaration is a FILE, not an inline blob.
+                // A world large enough to matter does not belong in a shell
+                // history, and a path is what an operator can review before
+                // running the command that writes it.
+                "--world" => {
+                    let raw = std::fs::read_to_string(val)
+                        .map_err(|e| format!("--world {val}: {e}"))?;
+                    world = serde_json::from_str(&raw)
+                        .map_err(|e| format!("--world {val}: not a NodeDecl array: {e}"))?;
+                    if world.is_empty() {
+                        // Passing an empty file and passing no flag are the same
+                        // outcome, so the flag would be a lie. Refuse rather than
+                        // silently skip: an operator who typed --world meant one.
+                        return Err(format!("--world {val} declares no nodes"));
+                    }
+                }
                 other => return Err(format!("unknown flag {other}")),
             }
             i += 2;
@@ -150,7 +170,7 @@ impl Args {
         // would leave the audit trail pointing at nothing on failure.
         let reality_id = reality_id.ok_or("--reality-id is required")?;
         let reason = reason.ok_or("--reason is required")?;
-        Ok(Args { reality_id, locale, deploy_cohort, reason, dry_run, owner_user_id })
+        Ok(Args { reality_id, locale, deploy_cohort, reason, dry_run, owner_user_id, world })
     }
 }
 
@@ -372,6 +392,7 @@ async fn provision(
             deploy_cohort: args.deploy_cohort,
             reason: args.reason.clone(),
             owner_user_id: args.owner_user_id,
+            world: args.world.clone(),
         };
         async move {
             // Re-read live capacity and keep ONLY the shard the lock is held
@@ -493,6 +514,7 @@ async fn resume_on_shard(
         deploy_cohort: args.deploy_cohort,
         reason: args.reason.clone(),
         owner_user_id: args.owner_user_id,
+        world: args.world.clone(),
     };
     let handle = tokio::runtime::Handle::current();
     let report = tokio::task::spawn_blocking(move || {

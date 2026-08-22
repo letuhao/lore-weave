@@ -103,7 +103,7 @@ yes. Nobody asked *"can anything reach what the rows built?"* **A board measures
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `A1` | **MEASURE the bootstrap seam before touching it.** What does `provision_flow` → `reality_seeder` actually execute end to end, in order, on a real provision? Which phase could own space, and what does `book_reader`'s *"initial geography"* return today? | `[x]` | **DONE 2026-08-22 — §3.1 below. The answer is worse than §1 assumed: there is no space phase because THERE IS NO SEEDING PHASE.** `RealitySeeder` prod callers **0** (controls 3 and 7) |
-| `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[ ]` | |
+| `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[x]` | **DONE 2026-08-22 — §3.3.** A 12th provision step `seed_world_structure`, called BETWEEN the two transitions so it runs while the reality is in `seeding`. 181 lib tests (178 → 181), **3 bites**, 3 baselines moved in the same commit |
 | `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[ ]` | |
 | `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[ ]` | |
 | `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[ ]` | |
@@ -165,6 +165,49 @@ by however long generation takes. Either the background orchestrator is resurrec
 world is built on first entry, or `world_seed` is driven by an operator path. **`A2` decides and
 writes the decision down; it does not get to leave it open.**
 
+#### 3.3 · `A2` — the caller, and where it had to go
+
+**A 12th provision step, `seed_world_structure`, between `transition_to_seeding` and
+`transition_to_active`.** `A1` found the `seeding` stage entered and left in two consecutive
+statements; this gives it a body. Ordering is the whole property: before the transition in, the
+stage has not opened; after the transition out, the reality is already published as active.
+
+**`ProvisionRequest` gains `#[serde(default)] world: Vec<NodeDecl>`, and empty means SKIPPED.**
+It does **not** mean *"use a default world"*. A starter map every reality inherits, that no author
+declared and no author can change without a code change, is exactly the rot this repo already names
+— so the declaration is ingested data or it is nothing. The wire stays backward compatible: a caller
+that has never heard of the field provisions as before and gets `Skipped`.
+
+**Reachable three ways, and the operator path refuses a lie.** `POST /internal/v1/realities` carries
+`world`; the `provision` CLI takes `--world <file.json>` — a **file**, because a world large enough to
+matter does not belong in a shell history — and it **refuses an empty file** rather than silently
+skipping, since an operator who typed `--world` meant one. `LiveEffects` connects to the reality's own
+DSN, calls `seed_world`, and maps a `SeedReject` to `InvalidState` carrying the `place.*` / `map.*`
+rule id, **not** to a shard failure: a refused declaration is the author's error and must not read as
+the platform's.
+
+**Three bites, each red for its own reason, each restored byte-identical (`cmp` rc=0):**
+
+| bite | red with |
+|---|---|
+| seed moved AFTER `transition_to_active` | `left: [..seeding, ..active, seed]` vs `right: [..seeding, seed, ..active]` — *"the world must be written while the reality IS in `seeding`"* |
+| a default world substituted when the declaration is empty | *"an empty declaration must report Skipped, got `Done(\"seed_world_structure\")`"* |
+| `rename_all` dropped from `WorldScale` | `left: ["Pocket", .. "SuperContinent"]` vs `right: ["pocket", .. "super_continent"]` |
+
+**Three baselines moved in the same commit (`I-8`):** `step_labels_are_frozen_strings` (the 12-label
+literal), `contracts/observability/inventory.yaml` (which pins *"PROVISION_STEPS const (11 values)"*
+**by name** — measured, not assumed: it is the only external consumer), and
+`contracts/api/world/provisioning.v1.yaml` (`world` plus the `NodeDecl` / `PlaceDecl` schemas).
+
+**`Eq` dropped from `ProvisionRequest`, deliberately.** `world` reaches `PlaceDecl.canon_ref`, a
+`serde_json::Value` (`PF-D12` defers that schema), which is `PartialEq` and not `Eq` because it can
+hold a float. **The derive is gone because the type can no longer make `Eq`'s promise**, not because
+the compiler complained.
+
+**And the OpenAPI enum is a promise to callers outside this repository**, so
+`the_wire_spelling_of_every_kind_and_scale_is_pinned` asserts all thirteen strings in Rust — renaming
+a variant is a source-compatible edit that would otherwise break every external caller in silence.
+
 ### Lane B — the rows other boards still hold open
 
 | # | Row | Status | Evidence |
@@ -192,6 +235,7 @@ writes the decision down; it does not get to leave it open.**
 | `D-2` | **No new table this run.** Every row is a caller, a decision, or a register correction | Six tables with two producers is already the defect. Adding a seventh treats the symptom as the goal |
 | `D-3` | **`A5` may legitimately produce NOTHING but register rows.** A trigger is an outcome | `SDF-A19` scale-bound `Domain → World` by a rule, not a quota, and was right to. A producer built to satisfy a board is the speculative-generality this repo already refuses |
 | `D-4` | **Scope is the GAME track.** The 26 Writing Studio / Work Assistant / Book-Package boards are a different product in the same monorepo and are **explicitly OUT**, not forgotten — see `§6 OUT-1` | Bundling a 192-slice board for another product into a spine run makes both worse. Named so it cannot be mistaken for closed |
+| `D-6` | **`A2`'s seam is a 12th provision step inside the `seeding` stage — not a resurrection of `reality_seeder`, and not a hook on first entry.** | It fills a stage that already exists rather than inventing one; it is reachable today (the HTTP handler drives `provision_reality`, controls measured at prod=3); and it does not make `world_seed`'s caller a module that itself has no caller. `Q3` is answered the same way: the provision path is synchronous, and step 5 already applies 67 migrations in that same request, so a declared tree of authored rows is not the thing that makes it long |
 | `D-5` | **`C1` is not a chore.** It ships in this run because it is the mechanism that would have caught `§1` | A finding whose fix is deferred is a finding that recurs. This one already recurred: `SPG-Q6`, `SDF-Q16`, eight retired-row citations, and now six tables |
 
 ---
@@ -217,7 +261,8 @@ row. A question that reaches its row unanswered stops the row, not the run.
 | id | what | mechanism / what would settle it |
 |---|---|---|
 | **OUT-1** | **The 26 Writing Studio / Work Assistant / Book-Package boards are out of scope and NOT closed.** Live open rows: `studio-tool-gui` **192 slices, every one `TODO`, never started** · `book-package` 11 open + 3 half-built (`B1` blocked on `M6.1`, *registered but not implemented*) · `work-assistant` `E1`/`E2`/`E7` 🅿 and two rows marked `✅ partial` · `all-tracks-clear` `M2`/`M7`/`M8`/`M10` · S2/S4/S5/S8 residue | A PO decision to resume that product. Recorded here **only** so the 2026-08-22 overview cannot be misread as "44 of 51 closed, nothing left" |
-| **OR-2** | **Two components both own the `Seeding → Active` transition** — `provisioner.rs:296-298` (runs) and `reality_seeder/mod.rs:495-500` (does not). The background orchestrator L5.G designed for the `seeding` stage was never started, and the provisioner closes the stage it was meant to occupy | `A2`'s decision. Resurrecting it is one of the three candidate seams and is NOT presumed — it may equally be that the synchronous path is now the design and L5.G's orchestrator is rot |
+| **OR-3** | **`A2` makes `seed_world` reachable but nothing yet DECLARES a world.** Every in-repo caller passes an empty `Vec` today, so the step is `Skipped` on every existing path; the reality that gets a world is one an operator or a test provisions with `--world`. That is a genuine caller and not a fake one — but a producer with no author is `A5`'s warning pointed at lane A itself | `A3` sites an actor, which needs a node to site it in. If `A3` ends up hand-writing a declaration to test against, that declaration is the missing author and belongs in the repo |
+| **OR-2** | **Two components both own the `Seeding → Active` transition** — `provisioner.rs:296-298` (runs) and `reality_seeder/mod.rs:495-500` (does not). The background orchestrator L5.G designed for the `seeding` stage was never started, and the provisioner closes the stage it was meant to occupy | **DECIDED 2026-08-22 by `A2` (`D-6`): the orchestrator is NOT resurrected this run.** The `seeding` stage now does its work synchronously, which is consistent with step 5 already applying 67 migrations synchronously in the same request. `reality_seeder` keeps its 1008 lines and its zero callers, and that is now a NAMED debt rather than an unnoticed one — it wakes when seeding work outgrows an HTTP request, and `A5` is not the row that decides it |
 | **OUT-2** | **`3E` is 🅿 PARKED behind reality-layer slice 5** and stays parked — `B1` does not unpark it. Its own board measured **880 across 99 files** against a plan that still says 457 | A production `ControlPlane` implementor exists |
 
 ---
@@ -228,6 +273,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 | id | what happened |
 |---|---|
+| **PD-3** | **The `Effects::apply_migrations` trait doc said *\"apply `0001_initial.sql` (the SKELETON)\"* while its implementation had applied all 67 manifest migrations since 2026-08-08 (`1b12-05`).** The implementation comment records the rewrite in detail; the trait doc above it was never touched. **A doc on the CONTRACT and a doc on the IMPLEMENTATION are two homes for one fact**, and the rewrite moved only the one it was standing in. Fixed in `A2` |
 | **PD-2** | **`world_seed.rs:5-6` asserts that `reality_seeder` *"already runs in the `seeding` lifecycle stage that `provisioner` step 9 transitions into"*. It does not, and I wrote that line eight commits ago.** The paragraph it opens is headed *"What was missing, measured rather than assumed"* — and the half of it that WAS measured (*"every `INSERT INTO channels` in the repository is in a test"*) is still true, which is exactly why the unmeasured half read as credible. **One sentence in a measured paragraph inherits the paragraph's authority without earning it** |
 | **PD-1** | **The overview that produced this plan was wrong on its first pass, and wrong in the safe-looking direction.** Reading the boards with `goal-prompt.py`'s row parser reported **0 rows for 30 boards**, and *a board whose rows are invisible is indistinguishable from a board with none open*. It very nearly shipped as **"49 of 51 closed"**. Caught only because `space-substrate` reported 5 rows and the session had just ticked 24 of them. **The disagreement between a tool and a thing I had just done is the whole detection**, and on any board I had not personally worked it would not have existed. This is `C1`'s real severity |
 
@@ -235,7 +281,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `A2` — `seed_world` gets a caller that itself RUNS. `A1` is done (§3.1) and it moved the target: `reality_seeder` has zero production constructors, so wiring `world_seed` into it would violate `I-1` one level up (§3.2). Decide the seam — resurrect the background orchestrator (`OR-2`), build on first entry, or drive it from an operator path — and write the decision down; `Q3` is now answerable because the provision path is synchronous inside an HTTP request.**
+**RESUME: `A3` — SPAWN. `entity_binding` gets a producer, which is the row the predecessor run existed to make writable. `A2` is done (§3.3): a reality can now be provisioned WITH a world, so there is somewhere to site an actor. Read `OR-3` first — every in-repo caller still declares an empty world, so `A3` will need a real declaration, and where that declaration LIVES is the question `A3` decides rather than works around.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism

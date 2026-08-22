@@ -487,6 +487,90 @@ components:
             is a real category, not "unknown" — the bridge derives `owner_kind` from
             it, so the registry's (kind, owner) pair is consistent by construction.
             The nil UUID is refused; use `null`.
+        world:
+          type: array
+          default: []
+          description: |
+            The authored world structure, written into the reality's own database
+            during the `seeding` stage (step 10, `seed_world_structure`).
+
+            **Absent or empty means the step is SKIPPED — it does NOT mean "use a
+            default world".** A starter map every reality inherits, that no author
+            declared and no author can change without a code change, is the rot this
+            field exists to avoid. Backward compatible: a caller that has never heard
+            of this field provisions exactly as before.
+
+            A declaration that violates `PF_001` §5 (a `Domain` with no place, a
+            containment violation, a cycle, more than one root) is refused with 400
+            carrying the `place.*` / `map.*` rule id that refused it — the reality
+            stays in `seeding` and nothing is written.
+          items:
+            $ref: "#/components/schemas/NodeDecl"
+
+    NodeDecl:
+      type: object
+      additionalProperties: false
+      required: [id, level_name, kind, pos_x, pos_y]
+      description: Mirrors `world_service::world_seed::NodeDecl` field-for-field.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: The `channels.id` this node occupies, and therefore its `PlaceId`.
+        parent:
+          type: [integer, "null"]
+          format: int64
+          description: '`null` for the single root; `0019` permits exactly one per reality.'
+        level_name:
+          type: string
+          description: |
+            The reality's own word for this level. Free text: `DP-A13` keeps the data
+            plane agnostic to it, which is why `kind` is a closed set and this is not.
+        kind:
+          type: string
+          enum: [universe, world, region, locale, domain, passage, arena]
+          description: |
+            The structural kind, authoritative on the row and never derived (`SPG-Q1`).
+            `vessel` is reserved and not accepted.
+        pos_x:
+          type: integer
+          description: Parent-relative X in `MAP_001`'s 0..1000 frame (`SPG-A5`).
+        pos_y:
+          type: integer
+          description: Parent-relative Y in the same frame.
+        place:
+          type: [object, "null"]
+          description: |
+            Required when `kind` is `domain`, forbidden otherwise. Both directions are
+            rejections rather than warnings.
+          $ref: "#/components/schemas/PlaceDecl"
+        scale:
+          type: [string, "null"]
+          enum: [pocket, region, continent, super_continent, megaplanet, gigaplanet, null]
+          description: |
+            Required when this node is a `world` under a `domain` (`SDF-A19`), optional
+            otherwise. `null` on any other edge means the generator's default, which
+            this tier does not choose.
+
+    PlaceDecl:
+      type: object
+      additionalProperties: false
+      required: [place_type, canon_ref, name_vi]
+      description: '`PF_001` §3.1s scalar core — the declaration an author writes.'
+      properties:
+        place_type:
+          type: string
+          description: One of `PF_001` §4s ten, lowercased.
+        canon_ref:
+          description: |
+            `BookCanonRef`. Travels as free-form JSON because ownership of that schema
+            is deferred (`PF-D12`) — giving it a shape here would decide by accident.
+        name_vi:
+          type: string
+          description: Required at V1 — the project's primary locale.
+        name_en:
+          type: [string, "null"]
+          description: Optional at V1.
 
     ProvisionResponse:
       type: object

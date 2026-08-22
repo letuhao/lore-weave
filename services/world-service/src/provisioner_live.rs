@@ -608,6 +608,43 @@ impl Effects for LiveEffects {
         })
     }
 
+    fn seed_world_structure(
+        &mut self,
+        db_name: &str,
+        reality_id: uuid::Uuid,
+        world: &[crate::world_seed::NodeDecl],
+    ) -> Result<bool, ProvisionerError> {
+        // An empty declaration is not an error and not a default world -- it is
+        // a reality whose author declared no structure. Return before opening a
+        // connection: the cheapest correct thing, and it keeps the step's
+        // `Skipped` honest rather than "connected, found nothing, did nothing".
+        if world.is_empty() {
+            return Ok(false);
+        }
+        safe_ident(db_name)?;
+
+        let dsn = self.reality_dsn(db_name);
+        let decls = world.to_vec();
+        self.handle.clone().block_on(async move {
+            let pool = sqlx::PgPool::connect(&dsn)
+                .await
+                .map_err(|e| ProvisionerError::ShardEffect(format!("connect reality db: {e}")))?;
+            let outcome = crate::world_seed::seed_world(&pool, reality_id, &decls).await;
+            pool.close().await;
+            match outcome {
+                Ok(report) => Ok(report.channels_written > 0),
+                // A REJECTED bootstrap is the author's error, not the platform's,
+                // and it must not read as a shard failure. `SeedReject` already
+                // carries the `place.*` / `map.*` rule id -- the vocabulary
+                // registered in `_boundaries/02_extension_contracts.md` -- so the
+                // operator gets the rule that refused rather than a stack trace.
+                Err(e) => Err(ProvisionerError::InvalidState(format!(
+                    "world declaration refused: {e}"
+                ))),
+            }
+        })
+    }
+
     fn apply_migrations(
         &mut self,
         _shard: &ShardId,

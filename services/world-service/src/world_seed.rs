@@ -193,7 +193,10 @@ impl WorldScale {
 }
 
 /// `PF_001` §3.1's scalar core. The declaration an author writes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// `PartialEq` (not `Eq`): these ride inside `ProvisionRequest` as of `A2`,
+// and `PlaceDecl.canon_ref` is a `serde_json::Value`, which is `PartialEq`
+// and not `Eq` because it can hold a float.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlaceDecl {
     /// One of `PF_001` section 4s ten, lowercased.
     pub place_type: String,
@@ -207,7 +210,10 @@ pub struct PlaceDecl {
 }
 
 /// One node of the authored world.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// `PartialEq` (not `Eq`): these ride inside `ProvisionRequest` as of `A2`,
+// and `PlaceDecl.canon_ref` is a `serde_json::Value`, which is `PartialEq`
+// and not `Eq` because it can hold a float.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeDecl {
     /// The `channels.id` this node will occupy, and therefore its `PlaceId`.
     pub id: i64,
@@ -518,6 +524,43 @@ impl std::error::Error for SeedError {}
 
 #[cfg(test)]
 mod tests {
+    /// `A2` put these strings on the WIRE.
+    ///
+    /// `contracts/api/world/provisioning.v1.yaml` enumerates them in
+    /// `NodeDecl.kind` and `NodeDecl.scale`, and an OpenAPI enum is a promise to
+    /// callers who are not in this repository. Renaming a variant is a
+    /// source-compatible edit that silently breaks every one of them, so the
+    /// wire form is pinned HERE, where the rename happens, rather than trusted
+    /// to a reader noticing the yaml.
+    #[test]
+    fn the_wire_spelling_of_every_kind_and_scale_is_pinned() {
+        let kinds: Vec<String> = [
+            MapKind::Universe, MapKind::World, MapKind::Region, MapKind::Locale,
+            MapKind::Domain, MapKind::Passage, MapKind::Arena,
+        ]
+        .iter()
+        .map(|k| serde_json::to_string(k).expect("serialize").trim_matches('"').to_string())
+        .collect();
+        assert_eq!(
+            kinds,
+            ["universe", "world", "region", "locale", "domain", "passage", "arena"],
+            "NodeDecl.kind in contracts/api/world/provisioning.v1.yaml enumerates these"
+        );
+
+        let scales: Vec<String> = [
+            WorldScale::Pocket, WorldScale::Region, WorldScale::Continent,
+            WorldScale::SuperContinent, WorldScale::Megaplanet, WorldScale::Gigaplanet,
+        ]
+        .iter()
+        .map(|s| serde_json::to_string(s).expect("serialize").trim_matches('"').to_string())
+        .collect();
+        assert_eq!(
+            scales,
+            ["pocket", "region", "continent", "super_continent", "megaplanet", "gigaplanet"],
+            "NodeDecl.scale in contracts/api/world/provisioning.v1.yaml enumerates these"
+        );
+    }
+
     use super::*;
 
     fn node(id: i64, parent: Option<i64>, kind: MapKind) -> NodeDecl {
