@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the last 48 — `passages` (17) and `vector_indexes` (8) are mostly §3.1 deletions; measure what is really left.**
+**RESUME: T46 — the merged store's SUBSTRATE. The repo layer is 97% proven on AGE; the choice is X1's and owed to the PO.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,80 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T88 2026-08-22 — **wave 5 closes it: 116 of 119 (97%), and the denominator was wrong too**
+
+  ```
+  AGE coverage   104/152 (68%)  ->  116/119 (97%)     floor moved in this commit
+  denominator    152 all public  ->  119 ENGINE-TOUCHING in LIVE modules
+  3 unproven, all named          knowledge unit 4336 -> 4338 · DB integration 634 passed
+  ```
+
+  📐 **The percentage was over the wrong set.** 152 counted things that cannot fail on an
+  engine and things that are being deleted:
+
+  ```
+  25   passages (17) + vector_indexes (8)   §3.1 moves the vector layer to Postgres
+   7   pure helpers with NO session          fact_id · days_since_epoch · event_id · …
+  ---
+  119  engine-touching functions in live modules  <- the denominator that means something
+  ```
+
+  A coverage figure over deleted modules and pure functions is a percentage of the wrong thing.
+  It read 13% at T85 when the honest figure was already higher — and it would have read *"still
+  a third"* forever, because a quarter of its denominator can never be proven and should not be.
+
+  🔬 **Wave 5 ran 12 functions, and BOTH findings were in MY code rather than the Cypher.**
+
+  ```
+  RETURN count(n) AS count          AGE rejects `AS count` — it collides with the function
+                                    name. Neo4j allows it. One word, unparseable on one engine.
+  write_summary_to_node             a NINTH direct-`session.run` bypass, and the AST guard
+                                    from T83 did not see it.
+  ```
+
+  The second is the sharper one. `test_every_bypass_site_renders` matched `x.run(NAME)` where
+  `NAME` is a module constant — and this call is `x.run(TEMPLATE.format(label=…))`, an
+  `ast.Call` rather than a bare `Name`. **The scanner knew only the shape it was written from,
+  which is exactly the defect it exists to catch.** It handles both now, with the `.format()`
+  case as a parametrised test of its own, and the query renders for the session's engine.
+
+  ⚖️ **The three that remain are named, not rounded away.**
+
+  ```
+  entities.find_entities_by_vector   the vector layer §3.1 moves to Postgres — an AGE graph has
+  entities.set_entity_embedding      no vector index to exercise, so a run would prove nothing
+  project_graph.purge_project        reaches `SHOW VECTOR INDEXES`, a Neo4j ADMIN command, in
+                                     `vector_indexes` — a module §3.1 deletes (T86)
+  ```
+
+  All three are the same story: the vector layer left the graph, and its residue is what is
+  left. None is a dialect problem, and none is closable by this row.
+
+  🎯 **The engine-agnosticism claim, in full, after five waves.**
+
+  ```
+  dialect constructs      0     (7 families, two of them added only after a live run found them)
+  engine literals         0     (the session decides; 9 pinned sites are benchmarks/one-shots)
+  session type            follows KNOWLEDGE_GRAPH_BACKEND, both halves read one store
+  live coverage       116/119   97% of engine-touching functions in live modules
+  ```
+
+  Across the five waves the runs found **eight** defects no suite could see, in four distinct
+  classes — a rendering pinned by 51 literals, nine bypass sites, seven Cypher construct
+  families, and a session that had to declare its own engine. Two of those were in queries that
+  had already been rewritten, reviewed and shipped by an earlier row of this same plan.
+
+  ```
+  bite  the ANY() predicate returns          RED — the wave AND the dialect ratchet (T87)
+  bite  the seed-id comprehension returns    RED — the third wave, by name (T86)
+  ```
+
+  **QC (a) gates:** unit 4338, DB integration 634, `port-adoption-gate` PASS at 116/119 with the
+  floor moved in this commit and dialect still 0/0, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed.
+  **QC (c) real data:** 12 more functions executed against a live AGE 1.7.0 graph; the same
+  suite green against a throwaway Neo4j.
 
   ### ✅ T87 2026-08-22 — **wave 4: AGE coverage 50 → 104 of 152, and two construct families the ratchet never scanned**
 

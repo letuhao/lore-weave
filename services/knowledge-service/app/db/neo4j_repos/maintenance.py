@@ -266,7 +266,11 @@ _CLEAR_EMBEDDING_MODEL_CYPHER = """
 MATCH (n)
 WHERE n.user_id = $user_id AND n.embedding_model = $model_id
 SET n.embedding_model = null
-RETURN count(n) AS count
+// §10.1 — the alias is `cleared`, not `count`. AGE's Cypher parser rejects `AS count`
+// outright (`syntax error at or near "count"`) because it collides with the function
+// name; Neo4j allows it. Found by running this janitor on AGE (T88) — a one-word
+// difference that makes the query unparseable on one engine and fine on the other.
+RETURN count(n) AS cleared
 """
 
 
@@ -283,7 +287,7 @@ async def clear_embedding_model_tag(
         session, _CLEAR_EMBEDDING_MODEL_CYPHER, user_id=user_id, model_id=model_id,
     )
     record = await result.single()
-    return int(record["count"]) if record else 0
+    return int(record["cleared"]) if record else 0
 
 
 # ── project graph delete + stats (moved in plan T17) ─────────────────

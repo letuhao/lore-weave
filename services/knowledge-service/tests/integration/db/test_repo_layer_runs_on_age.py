@@ -44,7 +44,8 @@ _WAVE_1 = 12   # entities / relations / provenance          (T83)
 _WAVE_2 = 13   # facts / events / entity_status / hierarchy / maintenance / the chain  (T84)
 _WAVE_3 = 29   # the READ/DERIVE surface across nine more modules              (T86)
 _WAVE_4 = 54   # the BULK: entities (36), facts (12), events (12)              (T87)
-_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4
+_WAVE_5 = 12   # enrichment, hierarchy summaries, the last janitors            (T88)
+_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5
 
 _GRAPH = "repo_conformance"
 
@@ -543,4 +544,67 @@ async def test_the_FOURTH_WAVE_covers_the_bulk(age_session):
     assert ran >= _WAVE_4, (
         f"only {ran} fourth-wave repo functions were exercised against AGE; the floor is "
         f"{_WAVE_4} of {_PROVEN_ON_AGE} total."
+    )
+
+
+async def test_the_FIFTH_WAVE_closes_the_live_surface(age_session):
+    """enrichment's multi-statement upserts, hierarchy's summary writes, the last janitors.
+
+    ⚠️ **Two findings, and both were in MY code rather than the Cypher.**
+
+    1. `RETURN count(n) AS count` — AGE's parser rejects `AS count` outright because it
+       collides with the function name (`syntax error at or near "count"`); Neo4j allows it.
+       A one-word difference that makes a query unparseable on one engine and fine on the
+       other. The alias is `cleared` now.
+    2. `hierarchy.write_summary_to_node` is a NINTH direct-`session.run` bypass — and
+       `test_every_bypass_site_renders` did not see it, because its argument is
+       `TEMPLATE.format(label=…)`, an `ast.Call` rather than a bare `Name`. The scanner knew
+       only the shape it was written from, which is the defect it exists to catch. It handles
+       both now, and the `.format()` case is a parametrised case of its own.
+    """
+    from app.db.neo4j_repos import entities as en, entity_status as es
+    from app.db.neo4j_repos import enrichment, fact_for_check, hierarchy as hi
+    from app.db.neo4j_repos import maintenance as mt, schema_usage
+
+    ran = 0
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    proj = f"p-{uuid.uuid4().hex[:8]}"
+    gid = f"gl-{uuid.uuid4().hex[:8]}"
+    s = age_session
+
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai", kind="person",
+                                source_type="chapter")
+    await hi.upsert_hierarchy_chain(
+        s, book_path="b1", book_id="b1", book_title="Book", part_path="b1/p1",
+        part_id="p1", part_index=1, part_title="Part", chapter_path="b1/p1/c1",
+        chapter_id="ch-1", chapter_index=1, chapter_title="Chapter", scenes=[])
+
+    await enrichment.upsert_enriched_anchor(s, user_id=uid, project_id=proj, glossary_entity_id=gid, name='Kai', canon_name='kai', kind='person', anchor_confidence=0.8, anchor_source_type='enriched', origin='wiki', proposal_id='prop-1', technique='llm')
+    ran += 1
+    await enrichment.upsert_enriched_fact(s, user_id=uid, canon_id=kai.id, node_id=None, edge_id=None, project_id=proj, dimension='attribute', content='Kai is brave', confidence=0.7, source_type='enriched', origin='wiki', proposal_id='prop-1', technique='llm')
+    ran += 1
+    await enrichment.promote_enriched_facts(s, user_id=uid, origin='wiki', proposal_id='prop-1', promoted_by='tester', promoted_at='2026-08-22T00:00:00Z')
+    ran += 1
+    await enrichment.retract_enriched_facts(s, user_id=uid, origin='wiki', proposal_id='prop-1')
+    ran += 1
+    await hi.top_entity_names_for_part(s, part_id='p1')
+    ran += 1
+    await hi.top_entity_names_for_book(s, book_id='b1')
+    ran += 1
+    await hi.write_summary_to_node(s, level='chapter', node_path='b1/p1/c1', summary_text='a summary', embedding=None, embedding_model_uuid=None)
+    ran += 1
+    await mt.clear_embedding_model_tag(s, user_id=uid, model_id='m1')
+    ran += 1
+    await mt.delete_project_nodes_by_label(s, user_id=uid, project_id=proj, label='Entity')
+    ran += 1
+    await es.delete_entity_status_with_zero_evidence(s, user_id=uid, project_id=proj)
+    ran += 1
+    await schema_usage.count_component_usage(s, user_id=uid, project_id=proj, node_type='Entity', code='person')
+    ran += 1
+    await fact_for_check.get_fact_for_check(s, user_id=uid, project_id=proj, entity_ids=[kai.id], glossary_entity_ids=[], at_order=100)
+    ran += 1
+
+    assert ran >= _WAVE_5, (
+        f"only {ran} fifth-wave repo functions were exercised against AGE; the floor is "
+        f"{_WAVE_5} of {_PROVEN_ON_AGE} total."
     )

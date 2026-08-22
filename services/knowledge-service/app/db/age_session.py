@@ -318,7 +318,12 @@ class AgeCypherSession:
 
     async def run(self, cypher: str, /, **params: Any) -> AgeResult:
         columns = return_columns(cypher)
-        col_sql = ", ".join(f"{c} agtype" for c in columns) or "_void agtype"
+        # ⚠️ QUOTED. A Cypher alias may be a SQL reserved word, and `AS t(count agtype)` is a
+        # syntax error at `count` — which is exactly how `maintenance.clear_embedding_model_tag`
+        # failed on AGE (`RETURN count(n) AS count`). The Cypher is fine; the column list this
+        # module builds around it was not. asyncpg still returns the key unquoted, so the row
+        # lookup below is unchanged.
+        col_sql = ", ".join(f'"{c}" agtype' for c in columns) or '"_void" agtype'
         # `$q$…$q$` dollar-quoting so the Cypher body needs no escaping, and `$1` for the
         # parameter map — the whole point of this module. Values are BOUND, never interpolated.
         sql = (

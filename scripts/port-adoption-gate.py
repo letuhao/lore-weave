@@ -883,10 +883,10 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: number carrying a claim it no longer supports is worse than no number.
 #:
 #: What DOES track engine readiness is coverage: how much of the repo layer has been RUN
-#: against AGE. 21 -> 50 -> 104 of 152 across waves 3 and 4, and the ratchet is what
+#: against AGE. 21 -> 50 -> 104 -> 116 across waves 3-5, and the ratchet is what
 #: made the rise visible — it FAILED on the increase and demanded the floor move in the
 #: same commit, which is rule 5 working rather than being remembered.
-MIN_AGE_PROVEN_FUNCTIONS = 104
+MIN_AGE_PROVEN_FUNCTIONS = 116
 
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",
@@ -917,21 +917,32 @@ def scan_age_proven() -> tuple[set[str], int]:
                 and node.func.value.id in aliases):
             proven.add(f"{aliases[node.func.value.id]}.{node.func.attr}")
 
+    # ⚠️ The denominator is ENGINE-TOUCHING functions in LIVE modules, not every public
+    # function. 152 counted things that cannot fail on an engine and things that are being
+    # deleted: 25 in `passages`/`vector_indexes` (§3.1 moves the vector layer to Postgres) and
+    # 7 pure helpers with no session at all — `fact_id`, `days_since_epoch`, `event_id`. A
+    # coverage percentage over those is a percentage of the wrong thing, and it read 13% when
+    # the honest figure was higher. 119, measured 2026-08-22 (T88).
     total = 0
     if os.path.isdir(_REPO_DIR):
         for fname in sorted(os.listdir(_REPO_DIR)):
             if not fname.endswith(".py") or fname == "__init__.py":
+                continue
+            if fname[:-3] in _DELETED_MODULES:
                 continue
             try:
                 mod = ast.parse(open(os.path.join(_REPO_DIR, fname),
                                      encoding="utf-8", errors="replace").read())
             except (OSError, SyntaxError):
                 continue
-            total += sum(
-                1 for n in mod.body
-                if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
-                and not n.name.startswith("_")
-            )
+            for n in mod.body:
+                if not isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                    continue
+                if n.name.startswith("_"):
+                    continue
+                args = [a.arg for a in n.args.args] + [a.arg for a in n.args.kwonlyargs]
+                if "session" in args or "tx" in args:
+                    total += 1
     return proven, total
 
 

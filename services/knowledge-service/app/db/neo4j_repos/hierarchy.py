@@ -246,8 +246,12 @@ async def write_summary_to_node(
     """
     if level not in _SUMMARY_LEVELS:
         raise ValueError(f"level must be one of {_SUMMARY_LEVELS}, got {level!r}")
+    # T88 — renders for the SESSION's engine. This is a direct `session.run`, so the
+    # `run_read`/`run_write` chokepoint does not reach it and the `{NOW}` token would go to the
+    # driver intact: Neo4j reads it as a map literal, AGE says `syntax error at or near "}"`.
+    # `.format()` FIRST (the template writes `{{NOW}}`), then render — only one order works.
     await session.run(
-        _WRITE_SUMMARY_CYPHER.format(label=level.capitalize()),
+        render(_WRITE_SUMMARY_CYPHER.format(label=level.capitalize()), engine_of(session)),
         path=node_path, text=summary_text, embedding=embedding,
         model_uuid=embedding_model_uuid,
     )

@@ -55,9 +55,21 @@ def _unrendered_direct_runs(path: pathlib.Path) -> list[str]:
         if node.func.attr != "run" or not node.args:
             continue
         # `run_read(session, X, …)` is the CHOKEPOINT, not a bypass — it is a plain Name call.
+        #
+        # ⚠️ BOTH shapes, and the second one is why this comment exists. The first cut matched
+        # only a bare `Name`, so `session.run(_WRITE_SUMMARY_CYPHER.format(label=…))` — an
+        # `ast.Call`, not a Name — slipped through, and `hierarchy.write_summary_to_node`
+        # handed AGE a literal `{NOW}`: `syntax error at or near "}"`. A guard that only knows
+        # the shape it was written from is the defect it exists to catch.
         arg = node.args[0]
-        if isinstance(arg, ast.Name) and _TOKEN in templates.get(arg.id, ""):
-            offenders.append(f"{path.name}:{node.lineno}: .run({arg.id}) — not rendered")
+        name = None
+        if isinstance(arg, ast.Name):
+            name = arg.id
+        elif (isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute)
+                and arg.func.attr == "format" and isinstance(arg.func.value, ast.Name)):
+            name = arg.func.value.id          # `TEMPLATE.format(...)`
+        if name and _TOKEN in templates.get(name, "").replace("{{NOW}}", _TOKEN):
+            offenders.append(f"{path.name}:{node.lineno}: .run({name}…) — not rendered")
     return offenders
 
 
@@ -90,6 +102,10 @@ def test_the_scanner_SEES_an_unrendered_call(tmp_path):
 
 
 @pytest.mark.parametrize("src,expected", [
+    # A `.format()`ed template is the shape that slipped through the first cut (T88).
+    ('Q = "SET e.at = {{NOW}}"\nasync def g(s):\n    await s.run(Q.format(x=1))\n', 1),
+    ('Q = "SET e.at = {{NOW}}"\nasync def g(s):\n'
+     "    await s.run(render(Q.format(x=1), engine_of(s)))\n", 0),
     # Rendered — the fix, and it must not be flagged.
     ('Q = "SET e.at = {NOW}"\nasync def g(s):\n    await s.run(render(Q, engine_of(s)))\n', 0),
     # A template with no token needs no render.
