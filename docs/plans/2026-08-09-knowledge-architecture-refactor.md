@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 63 of 110 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 64 of 111 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (11/18) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (12/19) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6043,6 +6043,66 @@ vectors and validity intervals live in different stores.
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
 
   ---
+  ---
+  ### ✅ T25q 2026-08-23 — **the anchor-score seam, built so the SAFEGUARD survives it**
+
+  ```
+  PgVectorStore  + anchor_scores collaborator (injected, like entity_exists)
+  knowledge unit 4351 -> 4358        7 new tests, 3 bites
+  ```
+
+  🔴 **The obvious build was wrong, and measuring it is what showed that.** §3.3c proved the
+  join works in one statement — so the natural move is to put it in `PgVectorStore`'s entity
+  SQL. That would:
+
+  ```
+  · put `age` inside a store whose contract is that a caller cannot tell which backend it
+    holds — the engine coupling T54c spent a row removing; and
+  · on a `neo4j` backend, return NULL for EVERY hit. `glossary.py` ranks by
+    `h.attributes["anchor_score"] or 0.0`, so a column of NULLs becomes a column of ZEROES
+    and the block comes back in RAW COSINE ORDER — correct-looking, silently wrong.
+  ```
+
+  **That second one is the exact failure the omitted-key `KeyError` was written to prevent**,
+  so building the feature the obvious way would have disarmed the guard that protects it.
+
+  ⚖️ **So it is a COLLABORATOR, supplied by the provider only when it can be served** — the
+  shape `entity_exists` already established in this file. `PgVectorStore` never learns AGE
+  exists, and the three properties are each a failure it already knows about:
+
+  ```
+  no resolver          the key stays ABSENT — unchanged from before, consumer RAISES
+  resolver RAISES      propagates. Swallowing it into `{}` gives every hit None -> 0.0
+  authority silent     None, NOT absent and NOT 0.0 — a genuinely un-anchored entity, and
+                       the value the Neo4j arm already returns for one
+  ```
+
+  ```
+  21  swallow the resolver's failure into "no anchors"   RED — the propagation test
+  22  default a missing score to 0.0 instead of None     RED — "assert 0.0 is None"
+  23  always set the key, even with no resolver          RED — the ABSENT-key safeguard
+  ```
+
+  Bite 23 is the one worth keeping: it is the regression that would look like tidying up.
+
+  🔬 **And the existing tripwire corroborated the measurement independently.**
+  `test_vector_primary_owns_anchor_score.py` — written long before this row — records that
+  `recompute_anchor_score` is `mention_count / max(mention_count)` **across a bucket**, which
+  is exactly the fractional distribution T25p measured on the dev graph (394 of 5062). Two
+  routes to the same fact, neither derived from the other. It still passes, untouched.
+
+  ⛔ **A SEAM, not a feature — said plainly.** No provider supplies a resolver yet, so nothing
+  behaves differently today. Wiring one requires the entity read to actually move to Postgres,
+  which is the rest of T25 step 4 (`knowledge_vector_read_primary` for the entity scope, then
+  the entity/event DDL). Building the seam first is correct sequencing; claiming step 4 is done
+  would not be.
+
+  **QC (a) gates:** knowledge unit **4358** (+7), the pre-existing anchor-score tripwire green
+  and untouched, all repo gates green. **QC (b) live smoke:** N/A — no service seam crossed and
+  no behaviour changes until a provider supplies a resolver. **QC (c) real data:** N/A here;
+  the measurement that justifies the design is T25p's.
+
+
   ### ✅ T25p 2026-08-23 — **`D-T25B-PG-ANCHOR-SCORE` is ANSWERED: join it, do not copy it**
 
   ```

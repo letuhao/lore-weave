@@ -340,6 +340,24 @@ _ENTITY_ATTRS = ("project_id", "archived")
 
 EntityExists = Callable[[str, str], Awaitable[bool]]
 
+#: `(user_id, entity_ids) -> {entity_id: anchor_score}` — resolves the two-layer ranking
+#: factor from its AUTHORITY (the graph) for a bounded set of hits.
+#:
+#: T25p / spec §3.3c. `anchor_score` is bucket-relative and recomputed on its own schedule
+#: (measured: 394 of 5062 dev entities carry a fractional value), so a COPY on the vector row
+#: would be confidently stale — §3.3's reasoning, re-verified rather than assumed. Since T54
+#: the graph and the vectors share one database, so reading it from the authority per query
+#: became possible; this is that read, injected the way `entity_exists` already is.
+#:
+#: ⚠️ INJECTED, not imported. The obvious implementation is a SQL join against the AGE vertex
+#: in the same statement — and it would put `age` inside a store whose whole contract is that
+#: a caller cannot tell which backend it holds. Worse, on a `neo4j` backend that join returns
+#: NULL for every hit, and `glossary.py`'s `anchor_score or 0.0` turns a column of NULLs into
+#: a column of ZEROES: every weighted score collapses and the ranking silently becomes raw
+#: cosine order. That is the exact failure the omitted-key `KeyError` exists to prevent, so
+#: the resolver is a collaborator the PROVIDER supplies only when it can actually serve it.
+AnchorScores = Callable[[str, list[str]], Awaitable[dict[str, float | None]]]
+
 
 class PgVectorStore:
     """Holds a pool, the way `Neo4jVectorStore` holds a session and the fake holds a dict —
@@ -374,12 +392,16 @@ class PgVectorStore:
         pool: asyncpg.Pool,
         *,
         entity_exists: EntityExists | None = None,
+        anchor_scores: AnchorScores | None = None,
         query_rescore: int | None = None,
         query_search_list_size: int | None = None,
         search_effort: bool = True,
     ) -> None:
         self._pool = pool
         self._entity_exists = entity_exists
+        # None keeps the PRE-T25p behaviour exactly: `anchor_score` is omitted, and a consumer
+        # that ranks by it raises rather than multiplying every score by nothing.
+        self._anchor_scores = anchor_scores
         for label, value in (("query_rescore", query_rescore),
                              ("query_search_list_size", query_search_list_size)):
             if value is not None and value <= 0:
@@ -577,6 +599,23 @@ class PgVectorStore:
             )
             for r in rows
         ]
+
+        # T25p / §3.3c — the two-layer ranking factor, read from its AUTHORITY for exactly the
+        # hits returned. Bounded by `k`, and on the same database since T54, so this is a
+        # second statement rather than a second SERVICE.
+        #
+        # ⚠️ Three properties, and each one is a failure this store already knows about:
+        #   · no resolver -> the key stays ABSENT, unchanged from before T25p, so a consumer
+        #     that ranks by it raises instead of ranking by raw cosine.
+        #   · a resolver that RAISES propagates. It must not be swallowed into "no anchors",
+        #     which is indistinguishable from "every entity scores zero".
+        #   · an entity the authority does not know is `None`, NOT absent and NOT 0.0 — that
+        #     is a genuinely un-anchored entity, and it is the value the Neo4j arm already
+        #     returns for one (`getattr(h.entity, "anchor_score", None)`).
+        if scope == "entity" and self._anchor_scores is not None and out:
+            scores = await self._anchor_scores(user_id, [h.record_id for h in out])
+            for h in out:
+                h.attributes["anchor_score"] = scores.get(h.record_id)
 
         logger.debug(
             "vector search: backend=postgres partition=%s scope=%s dim=%d k=%d "
