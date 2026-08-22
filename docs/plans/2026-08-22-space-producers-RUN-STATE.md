@@ -106,7 +106,7 @@ yes. Nobody asked *"can anything reach what the rows built?"* **A board measures
 | `A2` | **`seed_world` gets a caller** — a provisioned reality comes up with a world. Bounded by `A1`'s answer; if the seam is a phase, it is a phase | `[x]` | **DONE 2026-08-22 — §3.3.** A 12th provision step `seed_world_structure`, called BETWEEN the two transitions so it runs while the reality is in `seeding`. 181 lib tests (178 → 181), **3 bites**, 3 baselines moved in the same commit |
 | `A3` | **SPAWN — `entity_binding` gets a producer.** The row the whole predecessor run existed to make writable. An actor arrives at a node by the production path | `[x]` | **DONE 2026-08-22 — §3.4.** `spawn::site_in_cell`, atomic with actor creation, proven against real Postgres. **The orphan bite fires**: `actors 2 -> 3` when the transaction is removed. 183 lib tests + 4 live suites green |
 | `A4` | **`space_view::assemble` gets a caller** — something asks *"what is here"* and gets an answer over the wire | `[x]` | **DONE 2026-08-22 — §3.5.** `POST /internal/v1/space/view`, internal-gated, budget REFUSED not clamped. 187 lib tests; route conformance green in both directions; **3 bites** |
-| `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[ ]` | |
+| `A5` | **`portal` / `encounter` / `layer_registry` — DECIDE, do not build on spec.** Each either gets a producer this run or a register row **with a trigger**. `I-1` cuts both ways: a table with no producer is the defect, and a producer with no consumer is the same defect one layer up | `[x]` | **DONE 2026-08-22 — §3.6. All three DEFERRED with mechanisms, and `deferral-gate` moved 9/33 → 12/36 mechanised.** 3 triggers, 3 bites, 2 non-vacuity arms. `Q4`/`Q5` resolved |
 
 #### 3.1 · `A1` — what the seam actually executes at `HEAD`
 
@@ -287,6 +287,55 @@ ceiling enforced after the expensive work is not a ceiling**, and the 500 is wha
 `to_problem` became `pub(crate)` rather than being copied: a second mapping would be a second opinion
 on which faults are the caller's, which is the drift its own doc argues against.
 
+#### 3.6 · `A5` — three triggers, and a measurement I took from a document
+
+**All three are DEFERRED, and `D-3` said in advance that a trigger is an outcome.** Each has a named
+owner and none of those owners is doing its job:
+
+| table | owner | measured state 2026-08-22 |
+|---|---|---|
+| `portal` | `TVL_001` → `travel-service` | **the crate EXISTS** — 18 lines, *"Cycle 0 scaffold … compiles empty and has no behavior"* |
+| `encounter` | `COMB_002` `tactical_grid` / `combat_session` | no such service, scaffold or otherwise |
+| `layer_registry` | **nobody, and that is the finding** | `LayerDef`'s whole vocabulary absent from the authorable surface |
+
+**A deferral that only a document remembers is a wish**, so each is an asserted trigger that reds on
+arrival — the shape `deferral-gate`'s own docstring names. `deferral-gate` went from **9 of 33** to
+**12 of 36** carrying a mechanism that changes colour by itself, which is the gate confirming these
+are code and not prose.
+
+**`Q4` resolved, and it is sharper than the question.** `layer_registry` is empty because **"layer"
+means two different things**: `RLS-A3`'s ruleset layer is a priority stack of authored documents; doc
+41 §4's feature layer is a data layer bound to a `MapKind`. The authorable surface enumerates only the
+first — `home_kinds`, `update_policy`, `lifecycle_policy`, `projection` and `edge_policy` appear
+**zero** times in it. **The registry is correctly empty, not forgotten**, and the trigger is the PO's
+founding thesis pointed back at itself: *"every new feature will probably attach one more data layer
+onto the map."*
+
+**`Q5` resolved as a citation, not a design** — exactly as `Q5` predicted it might be. `TVL_001` already
+names the owner; nothing needed deciding.
+
+**THE TRIGGER CAUGHT ME ON ITS FIRST RUN, and that is the point of it.** The first version asked
+`path.exists()` and went red immediately: `TVL_001` calls `travel-service` a *"NEW V1+30d service"*,
+I read that as *"does not exist"*, and **the filesystem disagreed**. It has been on disk the whole
+time. A directory is not an owner, so arrival is now BEHAVIOUR — the crate no longer calling itself a
+scaffold, which is the service's own words and therefore honest in both directions. **`PD-4`.**
+
+**Three bites, each restored:**
+
+| bite | red with |
+|---|---|
+| `travel-service` stops saying "Cycle 0 scaffold" | *"`D-SPACE-PORTAL-NO-TRAVERSER` HAS WOKEN UP … give `0028_portal` a producer"* |
+| a `services/combat-service` appears | *"`D-SPACE-ENCOUNTER-NO-OPENER` HAS WOKEN UP: services/combat-service has behaviour"* |
+| `home_kinds` added to the authorable surface | *"HAS WOKEN UP: the authorable surface now carries `["home_kinds"]`"* |
+
+Plus two **non-vacuity arms** the deferrals do not need but the mechanism does: `has_arrived` must
+answer `true` for a real service, `false` for the scaffold and `false` for nothing — a predicate that
+answered `false` to everything would make all three triggers permanently green.
+
+**One home, not three.** The obligations live in the governed `deferral-registry` block; this section
+is the reasoning. Rows were briefly added to `docs/deferred/DEFERRED.md` as well and **removed** —
+that file is ungoverned history, and a third copy is the drift this run keeps finding.
+
 ### Lane B — the rows other boards still hold open
 
 | # | Row | Status | Evidence |
@@ -354,6 +403,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 | id | what happened |
 |---|---|
+| **PD-4** | **I read "NEW V1+30d service `travel-service`" in `TVL_001` and recorded it as *"the service does not exist"*. It has been on disk the whole time.** The document was not wrong — the service is new to the PLAN — but "will be built" and "is not there" are different claims, and I substituted one for the other without looking. Caught by the trigger's own first run, which is the argument for building the trigger before writing the deferral rather than after. **Same shape as `PD-2`**: a claim taken from a document standing next to claims that were measured |
 | **PD-3** | **The `Effects::apply_migrations` trait doc said *\"apply `0001_initial.sql` (the SKELETON)\"* while its implementation had applied all 67 manifest migrations since 2026-08-08 (`1b12-05`).** The implementation comment records the rewrite in detail; the trait doc above it was never touched. **A doc on the CONTRACT and a doc on the IMPLEMENTATION are two homes for one fact**, and the rewrite moved only the one it was standing in. Fixed in `A2` |
 | **PD-2** | **`world_seed.rs:5-6` asserts that `reality_seeder` *"already runs in the `seeding` lifecycle stage that `provisioner` step 9 transitions into"*. It does not, and I wrote that line eight commits ago.** The paragraph it opens is headed *"What was missing, measured rather than assumed"* — and the half of it that WAS measured (*"every `INSERT INTO channels` in the repository is in a test"*) is still true, which is exactly why the unmeasured half read as credible. **One sentence in a measured paragraph inherits the paragraph's authority without earning it** |
 | **PD-1** | **The overview that produced this plan was wrong on its first pass, and wrong in the safe-looking direction.** Reading the boards with `goal-prompt.py`'s row parser reported **0 rows for 30 boards**, and *a board whose rows are invisible is indistinguishable from a board with none open*. It very nearly shipped as **"49 of 51 closed"**. Caught only because `space-substrate` reported 5 rows and the session had just ticked 24 of them. **The disagreement between a tool and a thing I had just done is the whole detection**, and on any board I had not personally worked it would not have existed. This is `C1`'s real severity |
@@ -362,7 +412,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `A5` — DECIDE `portal` / `encounter` / `layer_registry`: a producer this run, or a register row WITH A TRIGGER. `D-3` says a trigger is a legitimate outcome and `D-2` forbids a new table, so this row may correctly produce no code. Read `Q4` and `Q5` first — both name what would settle them, and `Q5` may turn out to be a citation rather than a design. Then `B1`, where `OR-4` says `3C`/`3D` look ALREADY DONE.**
+**RESUME: `B1` — reality-layer `3C`+`3D`. `OR-4` says they look ALREADY DONE: `crates/dp/src/ids.rs` exists with a crate-private `new_verified`, and `ControlPlane`, `SessionContext`, `VerifiedBind` and `BindRequest` are all live and used by `services/world-service/tests/support/mod.rs`. VERIFY rather than build — and if it is done, this is `B3`'s shape a second time and the reality-layer board needs telling, not the code. **Lane A is CLOSED: all five rows.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
