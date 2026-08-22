@@ -19301,6 +19301,82 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Bite:** add a consumer call to a federated read and watch the gate red **without editing the
   gate** — that is the whole difference between a manifest and a hand-list.
 
+  ---
+  ### 🟡 T55/b 2026-08-22 — **the exemption half: 42 direct calls across 13 services, not 13 in one**
+
+  ```
+  federated-read guard   DONE (11 derived from the KAL controller) — the row's bite passes
+  direct-call ledger     NEW: 42 path(s), 13 consumer service(s), all declared
+  read-owed              10 — bi-temporal reads the KAL does NOT federate. THE DEBT, now named.
+  ```
+
+  ⚠️ **This row stays `[~]`. The exemption half is built; the migration half is not.** Ten
+  reads are recorded as owed, not routed.
+
+  📐 **The row's own numbers were scoped to one service.** It said *"composition-service
+  reads knowledge through 13 direct internal paths"* — correct, and it was that client's
+  count. Derived across the repo the surface is **42 paths reached by 13 services**, of which
+  composition-service owns 13. Every other consumer went uncounted:
+
+  ```
+  /internal/context/build          ai-gateway · chat-service · composition-service ·
+                                   lore-enrichment-service        <- four, not one
+  /internal/knowledge/timeline     translation-service
+  /internal/knowledge/wiki-neighborhood   translation-service
+  /internal/books/{}/kg-state      chat-service
+  ```
+
+  ✅ **The first half was already done and is re-proven, not re-litigated.** The row's own
+  bite — *"add a consumer call to a federated read and watch the gate red WITHOUT editing the
+  gate"* — was run before building anything:
+
+  ```
+  + await self._get(f"/internal/books/{book}/entities/{eid}/facts")
+  -> FAIL [kal-covered-internal-read] knowledge_client.py:710   (gate untouched)
+  ```
+
+  🔬 **What was missing is the silence.** The guard only knows the reads the KAL federates, so
+  a knowledge read the KAL does NOT federate is invisible — which is why
+  `fact-for-check` was watched firing in live logs while this gate reported PASS. §8.3 says
+  *"migrate or explicitly EXEMPT"*; this is the exempt half, built so the exemption cannot rot:
+
+  ```
+  the OWNER's routes   68, derived from knowledge-service's own APIRouter prefix + decorators
+  the CONSUMERS        42, derived by scanning every non-test, non-owner file for those paths
+  the LEDGER           hand-written REASONS. Never a hand-written SCOPE.
+  ```
+
+  Both directions fail. An **undeclared** path fails CLOSED — the gate cannot know whether a
+  new direct call is a bi-temporal read, so silence must not be the default. A **stale** row
+  fails too, because a ledger keeping dead entries stops describing the code, which is the
+  hand-list defect this gate was derived to escape.
+
+  ```
+  8  a NEW unclassified consumer path      RED — "UNDECLARED /internal/admin/precision-
+                                           filter/reload, reached by: composition-service"
+     ...and a DECLARED path on the same    GREEN — the discrimination, not just the alarm
+     client stays
+  9  a ledger row nothing reaches          RED — "STALE …/route-that-no-one-calls"
+  ```
+
+  🔴 **And the selftest caught a bug in the scanner that would have made it a fiction.**
+  `strip_prose` was applied only in the branch that reads a real FILE, so a fixture (a plain
+  string) was scanned RAW. The case *"a path named only in a COMMENT is not a direct call"*
+  failed — against fixtures the check was exercising a code path production never takes. It
+  is outside the branch now. **Four of the twelve new selftest cases failed on first run**;
+  three were my expectations being wrong, one was this.
+
+  **QC (a) gates:** `--selftest` 12 new cases, all 110 repo gates green, knowledge unit 4342.
+  **QC (b) live smoke:** N/A — no service seam crossed; this row moves a gate, and no
+  production request path changed.
+  **QC (c) real data:** the 42/13/10 figures are the gate's own output over the repo, printed
+  on every run rather than recorded here to go stale.
+
+  ⛔ **Still owed, and this is the whole remaining row:** the 10 `read-owed` paths need a
+  federated route each, or a decision that they are not bi-temporal reads. The ledger makes
+  them visible on every gate run; it does not authorise them.
+
+
 - [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.4. Unfinished, not undecided.
   The PO asked what to audit so the migration does not rot. §8.4 tabulates eight rot patterns,

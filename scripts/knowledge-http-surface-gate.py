@@ -248,6 +248,210 @@ def iter_staged():
                 yield full, rel
 
 
+# ── T55: the SECOND half of INV-KAL — every DIRECT knowledge read is declared ────────────
+#
+# The check above catches a consumer reaching one of the reads the KAL federates. It is
+# silent about a knowledge read the KAL does NOT federate, and that silence is where the
+# invariant actually leaks: `/internal/projects/{}/fact-for-check` was watched firing in
+# live logs while this gate reported PASS, because it is not in the controller and so not in
+# the derived set.
+#
+# 📐 **The row estimated 13 paths, in one service. Measured 2026-08-22 it is 42, across 12.**
+# The 13 was composition-service's own client; every other consumer went uncounted. Migrating
+# 42 routes is not a gate's job, and §8.3's instruction is "migrate or explicitly EXEMPT" —
+# so this is the exemption half, built so the exemption cannot rot:
+#
+#   the OWNER's routes   derived from knowledge-service's own APIRouter prefixes + decorators
+#   the CONSUMERS        derived by scanning every non-test, non-owner file for those paths
+#   the LEDGER           hand-written REASONS, but never a hand-written scope
+#
+# Both directions fail. A new consumer path that is not in the ledger fails CLOSED (the
+# gate cannot know whether it is a read). A ledger entry nothing reaches any more also
+# fails, because a stale exemption is how a list stops describing the code — the same
+# defect this gate's own hand-list had before it was derived.
+#
+# ⚠️ The reasons are NOT decisions about architecture. `read-not-yet-federated` records a
+# debt in the place a reader will look, instead of leaving it invisible; it does not license
+# the call.
+
+_OWNER_ROUTERS = os.path.join("services", "knowledge-service", "app", "routers")
+
+_APIROUTER = re.compile(r"APIRouter\((.*?)\)", re.S)
+_PREFIX = re.compile(r"""prefix\s*=\s*["']([^"']*)["']""")
+_ROUTE_DEC = re.compile(r"""@router\.(?:get|post|put|patch|delete)\(\s*["']([^"']*)["']""")
+
+
+def _normalise(path: str) -> str:
+    """`/internal/books/{book_id}/x` and `/internal/books/${bookId}/x` → one shape."""
+    path = re.sub(r"\$\{[^}]*\}", "{}", path)
+    path = re.sub(r"\{[^}]*\}", "{}", path)
+    return path.rstrip("/")
+
+
+def derive_owner_routes(router_dir: str | None = None) -> set[str]:
+    """Every `/internal/*` route knowledge-service actually serves, from its own source.
+
+    Derived rather than listed because the question "is this path knowledge-service's?" is
+    the one a hand-list gets wrong first — a route renamed in the service leaves the list
+    naming an endpoint that no longer exists, and the gate then guards nothing while
+    reporting a number.
+    """
+    root = router_dir or os.path.join(REPO_ROOT, _OWNER_ROUTERS)
+    out: set[str] = set()
+    if not os.path.isdir(root):
+        return out
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        for fn in sorted(filenames):
+            if not fn.endswith(".py"):
+                continue
+            try:
+                src = open(os.path.join(dirpath, fn), encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            m = _APIROUTER.search(src)
+            prefix = ""
+            if m:
+                pm = _PREFIX.search(m.group(1))
+                if pm:
+                    prefix = pm.group(1)
+            for suffix in _ROUTE_DEC.findall(src):
+                full = prefix + suffix
+                if full.startswith("/internal"):
+                    out.add(_normalise(full))
+    return out
+
+
+#: Every direct knowledge `/internal/*` call a consumer makes, with WHY it is not a KAL read.
+#: Measured 2026-08-22. Keys are normalised paths; values are (class, reason).
+#:
+#: classes:
+#:   write        a mutation or a job dispatch — INV-KAL governs READS
+#:   compute      the consumer sends its own payload and gets a derived answer back; no
+#:                bi-temporal entity state is returned
+#:   admin        an operator/erasure path, deliberately not user-facing
+#:   read-owed    a genuine bi-temporal read that the KAL does NOT yet federate. THE DEBT.
+#:                §8.3 owes each of these a federated route; the entry records it where a
+#:                reader will look rather than leaving the call invisible.
+DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
+    # ── read-owed: the actual INV-KAL gap this check exists to make visible ──────────────
+    "/internal/context/build": (
+        "read-owed", "assembles a context block FROM entity/fact state; four consumers "
+        "(ai-gateway, chat-service, composition-service, lore-enrichment-service)"),
+    "/internal/context/glossary-semantic": (
+        "read-owed", "semantic glossary retrieval over the knowledge substrate"),
+    "/internal/context/project-book/{}": (
+        "read-owed", "resolves a project's book — reads owned state"),
+    "/internal/projects/{}/fact-for-check": (
+        "read-owed", "bi-temporal fact read; watched firing live while this gate said PASS"),
+    "/internal/books/{}/kg-state": ("read-owed", "per-book KG state read"),
+    "/internal/knowledge/timeline": ("read-owed", "event timeline read"),
+    "/internal/knowledge/wiki-neighborhood": (
+        "read-owed", "the GraphStore port's neighborhood, via HTTP"),
+    "/internal/knowledge/projects/{}/extraction-status": (
+        "read-owed", "extraction progress read"),
+    "/internal/knowledge/jobs": ("read-owed", "job listing read"),
+    "/internal/extraction/runs/{}/sample": ("read-owed", "sampled run output, for learning"),
+    # ── write ────────────────────────────────────────────────────────────────────────────
+    "/internal/extraction/persist-pass2": ("write", "persists extracted pass-2 output"),
+    "/internal/extraction/glossary-sync-entity": ("write", "syncs a glossary anchor"),
+    "/internal/knowledge/enriched-writeback": ("write", "admits enrichment, quarantined"),
+    "/internal/knowledge/enriched-promote": ("write", "canonises enrichment"),
+    "/internal/knowledge/enriched-retract": ("write", "retracts enrichment"),
+    "/internal/knowledge/projects/{}/dispatch-extraction": ("write", "dispatches a run"),
+    "/internal/knowledge/projects/{}/extraction/cancel": ("write", "cancels a run"),
+    "/internal/knowledge/projects/{}/set-campaign-models": ("write", "sets run models"),
+    "/internal/projects/{}/backfill-glossary-passages": ("write", "a backfill"),
+    "/internal/working-memory/init": ("write", "opens a working-memory session"),
+    "/internal/working-memory/tick": ("write", "advances a working-memory session"),
+    # ── compute: payload in, derived answer out; no stored entity state returned ─────────
+    "/internal/extraction/extract-item": ("compute", "LLM extraction over supplied text"),
+    "/internal/extraction/tag-beats": ("compute", "tags supplied beats"),
+    "/internal/extraction/tag-motifs": ("compute", "tags supplied motifs"),
+    "/internal/extraction/tag-threads": ("compute", "tags supplied threads"),
+    "/internal/extraction/motif-beats": ("compute", "derives motif/beat pairs"),
+    "/internal/extraction/causal-edges": ("compute", "derives causal edges"),
+    "/internal/extraction/causal-motif-pairs": ("compute", "derives causal motif pairs"),
+    "/internal/extraction/summarize-message": ("compute", "summarises supplied text"),
+    "/internal/extraction/resolve-schema": ("compute", "resolves a schema for a run"),
+    "/internal/parse": ("compute", "document parsing; no knowledge state"),
+    "/internal/parse/chapter": ("compute", "chapter parsing"),
+    "/internal/parse/pdf-chunk": ("compute", "PDF chunking"),
+    "/internal/parse/pdf-peek": ("compute", "PDF header peek"),
+    # ── admin ────────────────────────────────────────────────────────────────────────────
+    "/internal/admin/assistant/close-epoch": ("admin", "operator epoch close"),
+    "/internal/admin/assistant/erase": ("admin", "erasure — GDPR path"),
+    "/internal/admin/assistant/forget-entity": ("admin", "operator forget"),
+    "/internal/admin/assistant/invalidate-day": ("admin", "operator invalidation"),
+    "/internal/admin/assistant/queue-facts": ("admin", "operator fact queue"),
+    "/internal/admin/assistant/recall-facts": ("admin", "operator recall"),
+    "/internal/admin/model-deletion/impact": ("admin", "model-deletion impact report"),
+    "/internal/admin/model-deletion/cleanup": ("admin", "model-deletion cleanup"),
+}
+
+
+def scan_direct_consumers(files=None, owner_routes=None) -> dict[str, set[str]]:
+    """`{normalised path: {consumer service}}` for direct knowledge `/internal` calls.
+
+    `files`/`owner_routes` are injectable so the selftest drives this on fixtures rather
+    than on the repo, which passes for its own reasons.
+    """
+    owned = derive_owner_routes() if owner_routes is None else owner_routes
+    if not owned:
+        return {}
+    hits: dict[str, set[str]] = {}
+    source = files if files is not None else iter_full_scan()
+    for full, rel in source:
+        if (is_test_file(rel) or rel.startswith(ALLOWLIST_PREFIXES)
+                or rel.startswith(EXEMPT_SERVICE_PREFIXES)):
+            continue
+        try:
+            raw = open(full, encoding="utf-8", errors="ignore").read() \
+                if os.path.isfile(full) else full
+        except OSError:
+            continue
+        # WARNING: `strip_prose` sits OUTSIDE the branch above. The first cut applied it
+        # only when reading a real FILE, so a selftest fixture (a plain string) was scanned
+        # RAW — the selftest exercised a code path production never takes, and its "a
+        # comment is not a call" case passed the wrong function. Found by that case FAILING.
+        src = strip_prose(raw)
+        for literal in re.findall(r"/internal/[A-Za-z0-9_{}$/.-]+", src):
+            norm = _normalise(literal)
+            if norm in owned:
+                parts = rel.split("/")
+                hits.setdefault(norm, set()).add(parts[1] if len(parts) > 1 else rel)
+    return hits
+
+
+def check_ledger(reached: dict[str, set[str]], federated: list[str]) -> list[str]:
+    """Problems with the ledger, as printable lines. Empty means it describes the code.
+
+    A path the KAL federates is NOT expected here — the first check already forbids reaching
+    it directly, and listing it would read as permission.
+    """
+    problems: list[str] = []
+    fed = set(federated)
+    for path in sorted(reached):
+        if path in fed:
+            continue
+        if path not in DIRECT_INTERNAL_LEDGER:
+            problems.append(
+                f"  UNDECLARED  {path}\n"
+                f"      reached by: {', '.join(sorted(reached[path]))}\n"
+                f"      A consumer calls knowledge-service directly on a path no one has "
+                f"classified. Add it to DIRECT_INTERNAL_LEDGER with a class and a reason, "
+                f"or route it through the KAL. Fails CLOSED because the gate cannot tell "
+                f"whether it is a bi-temporal read.")
+    for path in sorted(DIRECT_INTERNAL_LEDGER):
+        if path not in reached:
+            problems.append(
+                f"  STALE       {path}\n"
+                f"      No consumer reaches this any more. Remove the entry — a ledger that "
+                f"keeps dead rows stops describing the code, which is the hand-list defect "
+                f"this gate was derived to escape.")
+    return problems
+
+
 def selftest() -> int:
     """Offline proof that the derivation is real, bounded, and can go red.
 
@@ -320,6 +524,69 @@ def selftest() -> int:
     check("an empty derived set REFUSES rather than matching everything",
           empty_pattern_built, False)
 
+    # ── T55: the ledger half, on FIXTURES ───────────────────────────────────────────────
+    # Driven on synthetic sources rather than the repo, because a check run only against a
+    # tree that currently passes reports PASS for the tree's reason and not its own.
+    router_src = (
+        'router = APIRouter(prefix="/internal/knowledge", tags=["k"])' + chr(10)
+        + '@router.post("/enriched-writeback")' + chr(10)
+        + 'async def wb(): ...' + chr(10)
+        + '@router.get("/projects/{project_id}/status")' + chr(10)
+        + 'async def st(): ...' + chr(10)
+        # A SECOND router with no prefix: proves the /internal filter is applied to the
+        # FULL path and not to the decorator's suffix.
+        + 'other = APIRouter()' + chr(10)
+        + '@other.get("/v1/public")' + chr(10)
+        + 'async def nope(): ...' + chr(10)
+    )
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        with open(os.path.join(td, "r.py"), "w", encoding="utf-8") as fh:
+            fh.write(router_src)
+        owned = derive_owner_routes(td)
+    check("the owner's routes are derived from prefix + decorator",
+          owned, {"/internal/knowledge/enriched-writeback",
+                  "/internal/knowledge/projects/{}/status"})   # /v1/public is not /internal
+
+    # A consumer literal is matched against that derived set, and normalised both ways.
+    consumer = ('x = "/internal/knowledge/enriched-writeback"' + chr(10)
+                + 'y = f"/internal/knowledge/projects/{pid}/status"' + chr(10))
+    reached = scan_direct_consumers(
+        files=[(consumer, "services/some-consumer/app/c.py")], owner_routes=owned)
+    check("both a literal and an f-string hole reach the owner's routes",
+          sorted(reached), ["/internal/knowledge/enriched-writeback",
+                            "/internal/knowledge/projects/{}/status"])
+
+    # ⚠️ FAIL CLOSED. An undeclared path is the whole point: the gate cannot tell whether a
+    # new direct call is a bi-temporal read, so silence must not be the default.
+    # `all_reached` isolates the case under test: without it every ledger row also reports
+    # STALE and the one finding being asserted is lost in 42 others.
+    all_reached = {p: {"svc"} for p in DIRECT_INTERNAL_LEDGER}
+    problems = check_ledger({**all_reached, "/internal/brand/new": {"svc"}}, [])
+    check("an UNDECLARED direct call fails closed", len(problems), 1)
+    check("...and the message says so", "UNDECLARED" in (problems[0] if problems else ""), True)
+
+    # A stale entry is the hand-list defect this gate was derived to escape, so it fails too.
+    stale = check_ledger({p: {"svc"} for p in DIRECT_INTERNAL_LEDGER}, [])
+    check("a ledger matching the code exactly has no problems", stale, [])
+    problems = check_ledger(
+        {p: {"svc"} for p in list(DIRECT_INTERNAL_LEDGER)[1:]}, [])
+    check("a ledger entry nothing reaches any more is STALE", len(problems), 1)
+    check("...and it says STALE", "STALE" in (problems[0] if problems else ""), True)
+
+    # A path the KAL federates must NOT be demanded in the ledger — the first check already
+    # forbids reaching it, and an entry for it would read as permission.
+    problems = check_ledger({**all_reached, "/internal/books/{}/entities/{}/facts": {"svc"}},
+                            ["/internal/books/{}/entities/{}/facts"])
+    check("a KAL-federated path is not demanded in the ledger", problems, [])
+
+    # Validated on a case the scanner was NOT derived from: prose.
+    commented = ('# calls "/internal/knowledge/enriched-writeback" one day' + chr(10)
+                 + 'z = 1' + chr(10))
+    check("a path named only in a COMMENT is not a direct call",
+          scan_direct_consumers(files=[(commented, "services/c/app/x.py")],
+                                owner_routes=owned), {})
+
     print(f"{chr(10)}  {'all checks passed' if ok else 'SELFTEST FAILED'}")
     return 0 if ok else 1
 
@@ -334,6 +601,25 @@ def main() -> int:
         violations.extend(scan_file(full, rel))
 
     if not violations:
+        # ── T55: the ledger half. Only meaningful on a FULL scan — a staged run sees the
+        # changed files alone, so "no consumer reaches this any more" would fire on every
+        # path outside the diff and report the whole ledger stale.
+        if not staged:
+            reached = scan_direct_consumers()
+            problems = check_ledger(reached, KAL_COVERED_PATHS)
+            if problems:
+                print("[knowledge-http-surface-gate] FAIL — the direct-call ledger "
+                      "no longer describes the code:" + chr(10))
+                for line in problems:
+                    print(line)
+                return 1
+            owed = sorted(p for p, (cls, _) in DIRECT_INTERNAL_LEDGER.items()
+                          if cls == "read-owed" and p in reached)
+            print(f"[knowledge-http-surface-gate] direct-call ledger {len(reached)} path(s) "
+                  f"across {len({s for v in reached.values() for s in v})} consumer service(s), "
+                  f"all declared; {len(owed)} are READS the KAL does not yet federate (§8.3):")
+            for path in owed:
+                print(f"    read-owed  {path}")
         print(f"[knowledge-http-surface-gate] PASS — no consumer hits the "
               f"{len(KAL_COVERED_PATHS)} bi-temporal knowledge /internal reads the KAL "
               f"federates (DERIVED from its read controller, not hand-listed)")
