@@ -15716,6 +15716,82 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   never a write to `infra/.env`.
 
 
+  ---
+  ### ✅ T90 2026-08-22 — **the same surface, both engines, and the hand-sweep's three lies mechanised**
+
+  ```
+  live smoke      NEW  scripts/knowledge-graph-backend-live-smoke.py  --selftest 13 cases
+  age             8 probe(s), 4 carrying data — PASS
+  neo4j           8 probe(s), 4 carrying data — PASS   same stack, same probes, same run
+  knowledge unit  4338 -> 4342 · /health now reports `graph_backend`
+  ```
+
+  🎯 **The GOAL's second half, stated as a number.** T89 proved one endpoint pair by hand.
+  This drives the write through the repo layer and reads it back through BOTH halves — the
+  `GraphStore` port and the reader routes — then does it again on the other engine. The two
+  runs are identical, which is the architecture's whole claim: the engine is a configuration
+  value, and nothing above the session knows which one it is.
+
+  🔬 **I walked into three false greens by hand, so the script refuses each by construction.**
+  Not one of them is hypothetical — each is a specific probe I counted as fine during the
+  sweep before checking it:
+
+  ```
+  200 + empty body   a project with no rows answers {"nodes": []} on ANY engine, including
+                     one nothing is reading. A probe with `expect_marker` must find the row
+                     this run wrote; 200 alone never satisfies it.
+  the grant-404      `grant_deps._not_found()` returns {"detail": "not found"} BEFORE the
+                     graph is touched — deliberately, so a project's existence never leaks.
+                     FIVE endpoints in my sweep read as fine while short-circuited at
+                     authorization. A HARD FAIL here, never a skip.
+  all-green, no data the CONTROL ARM (NV-7). If nothing carried data the surface answered
+                     nothing, whatever the status codes said. `--min-data` is its floor.
+  ```
+
+  🔴 **And the script's own docstring made a claim the code did not honour.** It said
+  `--expect-backend` *"is compared against the value the container reports"*. It was not —
+  nothing exposed the engine over HTTP, so the flag was decoration, and a run against a
+  stack on the other engine would have passed every probe and **named the wrong engine in
+  its headline**. That is worse than a red: it is a green attributing a real result to
+  something it never touched.
+
+  The fix is the one that was missing operationally too — `/health` now reports
+  `graph_backend`, read from `configured_backend()` (T54c's one home) rather than re-reading
+  the env, so it cannot disagree with what the adapters resolved. A cutover you cannot see
+  from outside the container is one you cannot verify in a deployed environment.
+
+  ```
+  {"status":"ok","db":"ok","glossary_db":"ok","graph_backend":"age"}
+  ```
+
+  ⚖️ **The new unit test is parametrised over BOTH engines, and that is load-bearing.** A
+  route returning a hardcoded `"age"` satisfies a presence check while making the smoke's
+  verification vacuous — it would confirm whatever it was told. Bite 5 shows the shape
+  exactly: hardcoding the field leaves `[age]` GREEN and reds only `[neo4j]`.
+
+  ```
+  5  hardcode `graph_backend` to "age"     RED — [neo4j] only; [age] stays green
+  L  stack on age, --expect-backend neo4j  RED — LIVE: "asked to prove 'neo4j' but the
+                                           service is running 'age'"
+  ```
+
+  Bite L is a live red on a running stack, not a fixture: the mechanism is wired, not merely
+  present.
+
+  **QC (a) gates:** unit **4342**, smoke `--selftest` 13/13, `port-adoption-gate` PASS at
+  21/21, `gate-wiring-gate` 110 unchanged (a `*-live-smoke` is deliberately outside
+  `is_gate()`, as the five existing ones are), four plan gates green.
+  **QC (b) live smoke:** the subject. Image rebuilt, `lw-iso` only; PASS on `age` AND on
+  `neo4j`, flipped by env override on the iso invocation. Dev untouched, still `neo4j`.
+  **QC (c) real data:** 4 of 8 probes carry the row this run wrote, on each engine —
+  `wiki-neighborhood` (the port), the entity list (T87's spoiler-window comprehension),
+  `entities/statuses` (T89's fail-OPEN), and the project subgraph.
+
+  ⛔ **What this does NOT prove.** Eight probes are a read surface, not a workload: no
+  extraction run, no relation edges, no cross-chapter window. The engine choice for the
+  merged store (T46, X1) remains a PO decision and nothing here decides it.
+
+
 - [x] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
   verify: bash scripts/postgres-knowledge-image-smoke.sh
   ✅ **TICKED 2026-08-14, two days late — re-verified by RUNNING it, not by reading the block:**
