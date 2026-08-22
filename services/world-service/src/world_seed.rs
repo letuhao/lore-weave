@@ -146,6 +146,52 @@ pub fn allowed(parent: MapKind, child: MapKind) -> bool {
     false
 }
 
+/// `WorldScale` — the closed size set, MIRRORED from
+/// `crates/world-gen/src/creative_seed.rs`.
+///
+/// ## Why a mirror and not a dependency
+///
+/// `world-gen` pulls `image`, `clap`, `delaunator` and boolean-polygon ops. A
+/// provisioning service importing a renderer and a CLI to reach one enum is a
+/// worse trade than a duplicated list -- but a duplicated list with nothing
+/// watching it is exactly the rot this repo keeps paying for.
+///
+/// **So the mirror has a MECHANISM, not a promise:**
+/// `scripts/world-scale-parity-gate.py` reads the variant list out of both files
+/// and reds when they diverge. That is the same shape `entity-existence` uses
+/// for its Go mirror, moved to a gate because a cross-crate test would need the
+/// dependency this mirror exists to avoid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldScale {
+    /// 1 024 cells. The bound `SDF-A19` puts on `Domain -> World`.
+    Pocket,
+    /// 2 025 cells.
+    Region,
+    /// 8 281 cells.
+    Continent,
+    /// 12 321 cells.
+    SuperContinent,
+    /// 16 384 cells.
+    Megaplanet,
+    /// 501 264 cells -- the test fixture, not a production scale.
+    Gigaplanet,
+}
+
+impl WorldScale {
+    /// The lowercase spelling shared with `world-gen` and the parity gate.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pocket => "pocket",
+            Self::Region => "region",
+            Self::Continent => "continent",
+            Self::SuperContinent => "super_continent",
+            Self::Megaplanet => "megaplanet",
+            Self::Gigaplanet => "gigaplanet",
+        }
+    }
+}
+
 /// `PF_001` §3.1's scalar core. The declaration an author writes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaceDecl {
@@ -179,6 +225,10 @@ pub struct NodeDecl {
     /// Required when `kind == Domain`, forbidden otherwise. Both directions are
     /// rejections, not warnings.
     pub place: Option<PlaceDecl>,
+    /// Required when this node is a `World` under a `Domain` (`SDF-A19`), and
+    /// otherwise optional. `None` on any other edge means "the generator's
+    /// default", which this tier does not choose.
+    pub scale: Option<WorldScale>,
 }
 
 /// Why a bootstrap was refused. Each carries the `place.*` / `map.*` reject-rule
@@ -202,6 +252,12 @@ pub enum SeedReject {
     CyclicParent { node: i64 },
     /// `DP-Ch1`'s `depth <= 16`, checked before the database has to.
     TooDeep { node: i64, depth: i32 },
+    /// `SDF-A19` — the edge is legal and the SCALE is not. `Domain -> World` is
+    /// bounded to `Pocket`: 500 holders x 1 024 cells is 512 k nodes against the
+    /// 8.19 M an unbounded `Megaplanet` would cost, and a grotto-heaven is what
+    /// the genre means by an inner world anyway. It fails HERE, at authoring
+    /// time, with a reason -- not at runtime, mid-breakthrough.
+    ScaleViolation { node: i64, scale: Option<&'static str> },
     /// `map.containment_violation` proper — the matrix refuses this edge.
     ///
     /// ⚠ THE SCALE HALF IS NOT CHECKED HERE, and that is stated rather than
@@ -226,7 +282,8 @@ impl SeedReject {
         match self {
             Self::MissingPlaceDecl { .. } => "place.missing_decl",
             Self::PlaceOnNonDomain { .. } => "place.invalid_place_type_for_channel_tier",
-            Self::ContainmentViolation { .. }
+            Self::ScaleViolation { .. }
+            | Self::ContainmentViolation { .. }
             | Self::DuplicateNode { .. }
             | Self::UnknownParent { .. }
             | Self::CyclicParent { .. }
@@ -314,6 +371,23 @@ pub fn validate(decls: &[NodeDecl]) -> Result<Vec<(i64, i32)>, SeedReject> {
                     child_kind: d.kind.as_str(),
                 });
             }
+        }
+    }
+
+    // `SDF-A19`. The matrix said the edge is legal; this says at what size.
+    for d in decls {
+        if d.kind != MapKind::World {
+            continue;
+        }
+        let Some(parent) = d.parent else { continue };
+        let p = by_id
+            .get(&parent)
+            .ok_or(SeedReject::UnknownParent { node: d.id, parent })?;
+        if p.kind == MapKind::Domain && d.scale != Some(WorldScale::Pocket) {
+            return Err(SeedReject::ScaleViolation {
+                node: d.id,
+                scale: d.scale.map(WorldScale::as_str),
+            });
         }
     }
 
@@ -454,6 +528,7 @@ mod tests {
             kind,
             pos_x: 1,
             pos_y: 1,
+            scale: None,
             place: if kind == MapKind::Domain {
                 Some(PlaceDecl {
                     place_type: "tavern".into(),
@@ -465,6 +540,54 @@ mod tests {
                 None
             },
         }
+    }
+
+    /// `SDF-A19`. The matrix says the edge is legal; the scale says how big.
+    fn inner_world(scale: Option<WorldScale>) -> Vec<NodeDecl> {
+        let mut d = vec![
+            node(1, None, MapKind::World),
+            node(2, Some(1), MapKind::Domain),
+            node(3, Some(2), MapKind::World),
+        ];
+        d[2].scale = scale;
+        d
+    }
+
+    #[test]
+    fn an_inner_world_at_pocket_scale_is_allowed() {
+        // The edge itself is legal -- `SPG-A2`'s 内天地 -- and this is the size
+        // the genre means: a grotto-heaven, not a planet.
+        assert!(validate(&inner_world(Some(WorldScale::Pocket))).is_ok());
+    }
+
+    #[test]
+    fn an_inner_world_at_megaplanet_scale_is_refused() {
+        assert_eq!(
+            validate(&inner_world(Some(WorldScale::Megaplanet))).unwrap_err(),
+            SeedReject::ScaleViolation { node: 3, scale: Some("megaplanet") }
+        );
+    }
+
+    #[test]
+    fn an_inner_world_with_no_declared_scale_is_refused() {
+        // Silence is not consent. An undeclared scale on this edge would inherit
+        // the generator's default, and the default is not `Pocket`.
+        assert_eq!(
+            validate(&inner_world(None)).unwrap_err(),
+            SeedReject::ScaleViolation { node: 3, scale: None }
+        );
+    }
+
+    #[test]
+    fn the_scale_bound_applies_only_to_the_domain_edge() {
+        // A World under a Universe is an ordinary world and is not bounded by
+        // `SDF-A19`. Checking every World would be the quota this axiom refuses.
+        let mut d = vec![
+            node(1, None, MapKind::Universe),
+            node(2, Some(1), MapKind::World),
+        ];
+        d[1].scale = Some(WorldScale::Gigaplanet);
+        assert!(validate(&d).is_ok());
     }
 
     #[test]

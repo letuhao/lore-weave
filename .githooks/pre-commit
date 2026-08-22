@@ -367,6 +367,21 @@ fi
 # fire when nobody is looking, which is when they matter.
 "$PY" "$ROOT/scripts/deferral-gate.py"
 
+# world-scale-parity-gate -- `WorldScale` is declared TWICE and this is what stops
+# the copies drifting. `world-service` needs the closed size set to enforce
+# `SDF-A19` (a World under a Domain is bounded to `Pocket`), and importing
+# `world-gen` for it would drag `image`, `clap` and a triangulator into a
+# provisioning service. So it is mirrored -- and a duplicated closed set with
+# nothing watching it is precisely the rot `SPG-F4` and `REC-97` record, both
+# found late.
+#
+# A cross-crate TEST would need the dependency the mirror exists to avoid, so the
+# mechanism is a gate that reads source text and needs neither crate to know the
+# other. The compare is set EQUALITY in both directions: a one-way check would
+# miss a variant added UPSTREAM, which is the likelier drift, since the source
+# grows and the mirror does not.
+"$PY" "$ROOT/scripts/world-scale-parity-gate.py"
+
 # amendment-rot-gate — deferral-gate's sibling, for the DESIGN corpus rather than
 # the code tier. Same conclusion reached a third time, from a third direction:
 # 15 of 25 WSA amendment ids were UNGREPPABLE (written `**R19**`, no prefix), six

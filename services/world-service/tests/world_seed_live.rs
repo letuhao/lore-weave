@@ -59,6 +59,9 @@ fn node(id: i64, parent: Option<i64>, kind: MapKind, p: Option<PlaceDecl>) -> No
         kind,
         pos_x: 100,
         pos_y: 200,
+        // `SDF-A19` only bounds a `World` under a `Domain`; nothing here is one,
+        // so the generator's default applies and this tier does not choose it.
+        scale: None,
         place: p,
     }
 }
