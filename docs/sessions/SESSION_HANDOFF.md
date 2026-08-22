@@ -1,13 +1,13 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `a0fac93ba` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-23
+**HEAD:** `b7bbbfaa9` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-23
 
-## 📕 2026-08-22 → 08-23 — the RESOLUTION loop: cycle 2 in verification, 12 of 13 problems open
+## 📕 2026-08-22 → 08-23 — the RESOLUTION loop: cycle 2 at 6/7, 12 of 13 problems open
 
 **Where it stands, derived not typed** — `python scripts/toolloop/problem_remaining.py`:
 
 ```
-problems=13 cleared=1 remaining=12  |  tools_in_denominator=65 proven=17 still_blocked=48
+problems=13 cleared=1 remaining=12  |  tools_in_denominator=65 proven=23 still_blocked=42
 ```
 
 The predecessor loop closed its denominator (198/198 concluded, 133 proven, 65 blocked). **This
@@ -27,7 +27,7 @@ platform defect: **a required argument set to `false` was reported missing** —
 tools, so an author could not turn anything off, accept the first unit (`unit_index: 0`), or place
 a pin on a map's left edge (`x: 0`).
 
-### Cycle 2 — P3-NAME-TO-ID — fix shipped, verification in flight
+### Cycle 2 — P3-NAME-TO-ID — 6 of 7 PROVEN through the gate
 The problem statement said the model *"will not walk a supplier chain that is ON THE SAME WIRE"*.
 Nobody had measured the wire. Re-run with the `agentSurface` event kept: **35/35 agreement**, and
 *supplier advertised and NOT called* occurred **zero** times. **Refuted.**
@@ -45,6 +45,31 @@ Two defects behind it, both shipped:
 My own first build was wrong and its log line said so — it armed *the tool that had just failed*,
 because every refusal opens with that tool's name and candidates rank longest-first into a cap of 3.
 Fixed with `exclude`; both guards proved red against the bug.
+
+**Gate result on `c2-final`: 70 passed, 2 failed.** Six tools pass all four bars at K=5 and are
+recorded `proven` **by the gate**, not by me: `composition_arc_template_edit`,
+`composition_authoring_run_review`, `glossary_entity_restore`, `world_delete`, `world_map_create`,
+`world_map_delete`.
+
+* **`composition_generate` MOVED to P5** on a cause registered *before* the evidence existed —
+  surfaced 5/5, called 0/5, and three tools tie at synonym length 13 on its own prompt. Cycle 2's
+  fix structurally cannot reach it: the arming is **reactive**, so a tool the model never calls
+  never produces a refusal to arm from.
+* **`composition_motif_link_edit` cannot be concluded either way.** All 5 runs died in transport and
+  `LIVE clean` is not excusable — correctly, since a failed turn is no evidence about the tool.
+  This cycle's invariant *holds* for it (called 4/5 with its supplier armed).
+
+**`D-UPSTREAM-ERROR-WITH-NO-MESSAGE` registered, and I had it wrong first.** I modelled it as a
+uniform 1.7%/run and used that to argue a re-run would clear it. It is **concentrated**: 9 occurrences
+over 160 runs, of which one scenario takes 5 — 25% of its 20 — while four others take **zero** across
+20 each. Two hypotheses tested and both refuted (turn length: that scenario has the *fewest* calls;
+schema payload: the *largest* surface measured has zero errors). Not explained, and not guessed at.
+
+**Three more DATA/harness defects, each found by chasing a result that looked fine.** The bar could
+not see a world **deleted** (`_world_counts` counted a world's contents, never the `worlds` row) —
+the 7th of that family and the first found *inside its own remedy*. Nor an account-scoped
+**arc template** (`book_id` NULL on 51 of 57 rows). And arc templates had **no teardown at all**: a
+row left archived on 08-20 provision-failed five runs and was reported as the *tool* surfacing 0/5.
 
 ### 🔴 THE FINDING THAT GOVERNS EVERY REMAINING CYCLE
 Cycles 2, 3 and 5 each opened by testing their problem statement and all three found the same thing:
