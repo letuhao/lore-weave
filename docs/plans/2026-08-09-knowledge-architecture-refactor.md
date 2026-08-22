@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T55's migration half — the 10 `read-owed` paths the ledger now names on every gate run. T54 is CLOSED; T46's merged-store substrate stays a PO question.**
+**RESUME: `hasProjectAccess` (§8.7) — the grant primitive the last 3 federations need. T54 and T56 are CLOSED; T46's merged-store substrate stays a PO question.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**60 of 69 rows done · 9 open · 68 of 116 evidence blocks closed inside them.**
+**61 of 69 rows done · 8 open · 66 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (4/4) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (4/4) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19750,7 +19750,12 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `MAX_FEDERATE_OWED = 3`, so they cannot quietly drop off.
 
 
-- [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
+- [x] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
+  ✅ **CLOSED 2026-08-22.** (a) `adapter-selectability-gate` and (b)
+  `gate-number-visibility-gate` shipped and RED under their own founding defects (T56/d);
+  (c) measured as NOT gate-reducible and durable instead as **NV-7** in
+  [`docs/standards/non-vacuity.md`](../standards/non-vacuity.md). The scope guard held:
+  two gates and a standards section, no production code.
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.4. Unfinished, not undecided.
   The PO asked what to audit so the migration does not rot. §8.4 tabulates eight rot patterns,
   each with the place in THIS plan where it happened. The sharpest is **built-but-unreachable**:
@@ -19764,6 +19769,57 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   red on its own founding case is not a check.
   ⚠️ **Scope guard:** this row is a GATE set, not a refactor. If it starts changing production
   code beyond wiring, it has drifted and should be split.
+
+  ---
+  ### ✅ T56/d 2026-08-22 — **the row's OWN bite criterion, run against both gates**
+
+  T56's bite is *"each gate mutated to the shape of the defect it was written from; a check
+  that cannot red on its own founding case is not a check."* All three legs had evidence
+  blocks; **the bite itself had never been run.** It has now, and both gates red on the exact
+  defect they were built from — not on a generic mutation.
+
+  ```
+  16  drop KuzuGraphStore's EVALUATION_ONLY declaration
+      -> FAIL "built, tested, and UNSELECTABLE: KuzuGraphStore … is exercised by
+              test_graph_store_conformance.py, test_shadow_differential.py but no provider
+              can construct it"
+      T56a's founding case: T42/T43 closed green with 30 conformance tests while
+      `KNOWLEDGE_GRAPH_BACKEND=age` raised.
+
+  17  delete the AGE-coverage print from port-adoption-gate
+      -> FAIL "a ratchet nobody can see: MIN_AGE_PROVEN_FUNCTIONS = 117 never reaches the
+              output"
+      T56b's founding case: `port-adoption-gate` matched no branch at its floor — printed
+      nothing, returned 0.
+  ```
+
+  ⚠️ **Bite 16 had to be redone.** The first attempt deleted one line of a multi-line dict
+  entry and the gate died on a `SyntaxError`. That is not the gate reddening — it is the file
+  not parsing, and counting it would have proved the interpreter works. The second attempt
+  removes the whole entry and is asserted to `ast.parse` FIRST, so the red is a real state.
+
+  🎯 **And the visibility gate has grown by itself, which is the point of deriving it.** It
+  reports **9** thresholds now, not the 8 it was built against: `MAX_VECTOR_PROCEDURE_SITES`
+  (T91) and `MAX_FEDERATE_OWED` (T55/d) were picked up the day they were written, and both
+  already print on a green run. A hand-list would have needed two edits nobody would have
+  made.
+
+  ⚖️ **Leg (c) stays a STANDARD, not a gate, and today's work corroborates that from a new
+  angle.** T56c measured two gate-shaped readings and found both reduce to imposing an output
+  format on 37 gates. Independently, T55's cycles measured the same wall from the other side:
+  of 43 scripts advertising a selftest, only **7** print expectations in any machine-readable
+  form (`expected X, got Y`), so a repo-wide control-arm audit has nothing to read. NV-7 in
+  `docs/standards/non-vacuity.md` is the durable form; `qc5-acceptance-gate` covers the one
+  criterion whose runs *are* machine-readable.
+
+  **The scope guard held.** *"This row is a GATE set, not a refactor"* — it shipped two gates
+  and a standards section, and touched no production code.
+
+  **QC (a) gates:** `adapter-selectability-gate` OK (5 adapters, 3 declared),
+  `gate-number-visibility-gate` OK (9 thresholds, 0 silent), both red under bite. All repo
+  gates green. **QC (b):** N/A — no service seam crossed. **QC (c):** N/A — this row produces
+  no data; its output is two gates and a standard.
+
 
 - [~] **T48** — `/aif-verify` against this plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
