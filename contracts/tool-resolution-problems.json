@@ -1,0 +1,310 @@
+{
+ "schema": "tool-resolution-problems/1",
+ "derived_at": "2026-08-22",
+ "predecessor": "contracts/tool-deep-dive-ledger.json — 198/198 concluded, 133 proven, 65 blocked",
+ "denominator_rule": "Every tool the deep-dive concluded BLOCKED, partitioned into root-cause problems. The partition is MECE and was verified by script: 65 assigned, 65 distinct, 0 missing, 0 duplicated. A problem is never merged, split, reordered or dropped for cost. If a re-run moves a tool to a different problem, it moves — the total never shrinks except by a tool reaching proven.",
+ "ordering_rule": "sort by (a) tools in the cluster whose MEASURED outcome was a FALSE STATEMENT REACHING THE AUTHOR, desc; then (b) tools the problem blocks, desc; then (c) problem id, asc. Computed, never typed. A tool that cannot be measured costs the loop time; a tool that lies to the author costs the author their work. NOTE: tie-break (c) is a STRING sort, so P10 and P11 precede P9 among the one-tool problems. The cycle numbers in this file are OUTPUT of the rule, recomputed by scripts/toolloop/problem_remaining.py — they are never hand-typed, and the first version of this file had them wrong because I typed them.",
+ "cleared_definition": "A problem is CLEARED when all four hold. (1) Its invariant is NAMED. (2) The invariant is enforced at ONE chokepoint, with a falsifier proven RED on an ORIGINAL instance and the full suite green. (3) EVERY tool in the cluster has been re-run LIVE at K>=5 and now reads proven, or reads blocked on a DIFFERENT, NAMED cause — which moves it to another problem and is recorded as such. (4) The write-up states what the fix does NOT cover.",
+ "spend_policy": {
+  "decision": "OWNER, 2026-08-22: a confirm card for a DESTRUCTIVE or COST-BEARING tool MAY be approved when the target was created by the run's own throwaway fixture and is torn down after. Never against the dogfood book, never against a pre-existing object.",
+  "bound": "Paid arms run at K=5 like every other arm — the LIVE bar is a distribution, and a cheaper K would be a narrowed denominator wearing a cost excuse. What is bounded is WASTE: the cheapest configured model, the smallest legitimate unit of work, and a card approved at most ONCE per tool per cycle — the second approval proves idempotency and is the only repeat. Every approved paid card records the model, the unit and the observed cost in its ledger row.",
+  "why_recorded_here": "This REVERSES a standing safety rule from the predecessor loop — 'a card for a COST-BEARING or IRREVERSIBLE tool is NEVER approved'. It is written down so no later session re-derives the old rule from the old GOAL and silently re-blocks ten tools."
+ },
+ "problems": [
+  {
+   "id": "P1-SURFACE",
+   "cycle": 1,
+   "title": "The advertised surface drops the tool, and the turn then reports the write as done",
+   "invariant_candidate": "A tool the turn's own request names must be reachable in that turn — and when it is NOT reachable, the turn may not claim its effect.",
+   "status": "CAUSE UNKNOWN — three hypotheses already retired by measurement, so this cycle OPENS WITH DIAGNOSIS, not a fix.",
+   "retired_hypotheses": [
+    "RANKING — world_map_update_marker ranks #1 of 315 and world_map_update_region #2 for their own measured prompts, scored offline with the shipped scorer. Both surfaced 0/5.",
+    "TIER / SCOPE / FAMILY — settings_model_set_active, _set_favorite and _update surfaced 0/5 in the same batch where settings_update_profile surfaced 5/5 and carded 5/5. Same account scope, same tier, same family.",
+    "BATCH COMPOSITION — memory_timeline surfaced 5/5 inside a 5-scenario batch, then 0/5 alone, 0/5 alone again, then 0/5 inside a 5-scenario batch."
+   ],
+   "false_statement_tools": [
+    "plan_keep_material",
+    "kg_triage_resolve",
+    "world_map_update_marker",
+    "world_map_remove_region",
+    "composition_conformance_status",
+    "plan_run_pass"
+   ],
+   "worst_measured": "world_map_update_marker — the write tool was never advertised and the model reported the write as DONE on 5 of 5, after successfully walking world_list -> world_map_list -> world_map_get. kg_triage_resolve — 5 of 5 rendered the post-resolution state to make the claim convincing. Both stores unchanged.",
+   "tools": [
+    "composition_conformance_status",
+    "glossary_book_sync_apply",
+    "jobs_cancel",
+    "jobs_pause",
+    "kg_entity_edge_timeline",
+    "kg_ontology_propose",
+    "kg_triage_place_edge",
+    "kg_triage_resolve",
+    "kg_triage_schema_write",
+    "memory_timeline",
+    "plan_keep_material",
+    "plan_run_pass",
+    "registry_get_workflow",
+    "registry_set_skill_enabled",
+    "registry_update_skill",
+    "registry_update_workflow",
+    "settings_model_set_active",
+    "settings_model_set_favorite",
+    "settings_model_update",
+    "translation_patch_block",
+    "translation_set_active_version",
+    "translation_update_settings",
+    "world_map_remove_region",
+    "world_map_update_marker",
+    "world_map_update_region"
+   ],
+   "cross_refs": {
+    "kg_entity_edge_timeline": "P7 — its node is also structurally invisible to the graph read",
+    "translation_update_settings": "D-RAIL-PINNED-TURN-NEVER-COMPLETES — the rail-pinning phrasing makes the turn never emit an assistant message at all",
+    "kg_ontology_propose": "P5 — denied its own tool it raised glossary_adopt_standards' card, seeking consent for a different subsystem"
+   },
+   "dq": "DQ-T36"
+  },
+  {
+   "id": "P3-NAME-TO-ID",
+   "cycle": 2,
+   "title": "The model will not walk a supplier chain that is on the same wire",
+   "invariant_candidate": "A tool that requires an opaque id must be reachable from the name a person actually types — either the model calls the supplier, or the tool accepts the name.",
+   "false_statement_tools": [
+    "composition_authoring_run_review"
+   ],
+   "worst_measured": "composition_authoring_run_review minted a Tier-A card carrying a run_id matching no authoring run — there were zero for the book — on 2 of 5, while composition_authoring_run_list sat unused on the same wire. The id is structurally valid and was created in the same second as the book: a real-but-wrong id, not a random one.",
+   "tools": [
+    "composition_arc_template_edit",
+    "composition_authoring_run_review",
+    "composition_generate",
+    "composition_motif_link_edit",
+    "glossary_entity_restore",
+    "world_delete",
+    "world_map_create",
+    "world_map_delete"
+   ],
+   "notes": {
+    "world_map_create": "The declaration fix shipped and was re-measured. The card for an impossible write is gone, exchanged for 15/14/7 retries per turn and an honest refusal. world_list was called ZERO times.",
+    "glossary_entity_restore": "SPECIAL — the supplier DOES NOT EXIST. A soft-deleted entity is invisible to glossary search, chapter text and project memory, so there is no way to see what is restorable. D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE: ten *_restore tools ship and only four of the things they restore can be listed at all.",
+    "composition_generate": "model_ref is REQUIRED with no supplier the model will use, while 16 of 19 sibling model_ref properties are OPTIONAL with a server-resolved default. This is DQ-T35."
+   },
+   "observation": "OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID — five recorded instances before this cycle."
+  },
+  {
+   "id": "P5-SIBLING-WINS",
+   "cycle": 3,
+   "title": "A sibling tool wins the request the tool was built for",
+   "invariant_candidate": "Two tools that answer the same request must not both be advertised without a stated precedence — and an always-on generic must not displace the domain tool the request names.",
+   "false_statement_tools": [
+    "settings_provider_inventory"
+   ],
+   "worst_measured": "settings_provider_inventory — the model answered from settings_list_models and presented REGISTERED rows as 'what your providers currently offer'. Registry and live inventory are different sets: a model retired upstream still sits in the registry. The answer is confidently wrong in exactly the case the question was asked to detect. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.",
+   "tools": [
+    "composition_arc_edit",
+    "glossary_deep_research",
+    "registry_list_workflows",
+    "settings_provider_inventory",
+    "world_map_add_marker"
+   ],
+   "notes": {
+    "registry_list_workflows": "Advertised 5/5 and lost 5/5 to workflow_list, a CONSUMER-LOCAL tool — and answered well. Not a false absence and not the lazy tail.",
+    "glossary_deep_research": "Lost to web_search, which is in ALWAYS_ON_CORE and therefore always present. A generic always-available tool displaced the domain-specific one the request described, and web_search is itself PAID.",
+    "composition_arc_edit": "Its own op enum includes create, so it overlaps composition_arc_create and lost to its specialised sibling. A declaration-overlap finding, not a defect.",
+    "world_map_add_marker": "Called world_map_list and then world_map_add_REGION — the wrong tool of the pair for a request that says 'put a pin'."
+   }
+  },
+  {
+   "id": "P2-FABRICATED-WRITE",
+   "cycle": 4,
+   "title": "A turn asserts a write it did not make, or invents the material it acts on",
+   "invariant_candidate": "A turn may not assert a state change it did not make, and may not act on content it invented. This must hold WHEN THE TOOL IS ABSENT — which is the condition that produces it.",
+   "false_statement_tools": [
+    "glossary_ontology_delete"
+   ],
+   "worst_measured": "glossary_ontology_delete — the one run of five that carded also called glossary_extract_entities_from_doc with a source document it INVENTED WHOLESALE ('a young cultivator named Wei Wuxian ... a spirit fox named Xiao Bai', none of it in the author's book) while proposing a CASCADING destructive delete.",
+   "tools": [
+    "glossary_ontology_delete"
+   ],
+   "why_its_own_cycle": "It blocks one tool and holds one false statement, so the ordering rule lands it here — but it is the GUARD, not a cluster. Fixing P1 removes the TRIGGER for four of P1's six fabrications; it does not remove the CAPABILITY. The lazy tail is by design, so a tool will be absent again. This cycle makes the claim impossible rather than unlikely.",
+   "existing_defects": [
+    "D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS",
+    "D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE"
+   ]
+  },
+  {
+   "id": "P4-PRECONDITION",
+   "cycle": 5,
+   "title": "The fixture cannot reach the state the tool needs",
+   "invariant_candidate": "Not a product invariant — a HARNESS one. Every tool in the denominator must have a fixture that can reach its happy path, or a written statement of why one cannot exist.",
+   "false_statement_tools": [],
+   "tools": [
+    "composition_arc_apply",
+    "composition_arc_import_analyze",
+    "composition_arc_template_drift",
+    "composition_authoring_run_manage",
+    "composition_conformance_run",
+    "composition_decompile_arcs",
+    "composition_derivative_edit",
+    "composition_entity_override_edit",
+    "composition_glossary_build",
+    "composition_motif_adopt",
+    "composition_reference_update",
+    "composition_scene_link_edit",
+    "glossary_create_chapter_link",
+    "glossary_create_evidence",
+    "kg_add_nodes",
+    "kg_propose_edge",
+    "plan_bootstrap_apply"
+   ],
+   "fixture_gaps": {
+    "outline_node rows of kind chapter/scene": "minted by scene_decompile AT IMPORT; a book whose chapters come from book_chapter_create has none. Blocks composition_decompile_arcs, composition_scene_link_edit.",
+    "an arc PINNED to a template": "needs composition_arc_apply with an explicit template choice. Blocks composition_arc_template_drift.",
+    "a bound arc on a chapter": "needs composition_arc_create + composition_arc_assign_chapters in the seed. Blocks composition_conformance_run.",
+    "a derivative": "only composition_create_derivative makes one, and its card was never approved. NOW UNBLOCKED by the 2026-08-22 spend decision. Blocks composition_derivative_edit, composition_entity_override_edit.",
+    "a compiled plan run + proposal_id": "the seeded run is status=proposed, not compiled. Blocks plan_bootstrap_apply, composition_authoring_run_manage.",
+    "a KG project with both entities projected as graph nodes": "blocks kg_propose_edge, kg_add_nodes.",
+    "an attr_value_id": "evidence attaches to one and the fixture has none. Blocks glossary_create_evidence.",
+    "reference_source rows": "EMPTY on this deployment — zero rows, read from the store — so no reference_id has any legitimate value. Blocks composition_reference_update, and may be a DEPLOYMENT gap rather than a fixture one.",
+    "an import source / source_text": "blocks composition_arc_import_analyze, composition_glossary_build."
+   },
+   "scenario_defects": {
+    "composition_arc_apply": "the prompt said 'use one of my library arc templates' and named none — the model correctly asked which. A vague ask cannot exercise a tool that needs an explicit choice.",
+    "composition_motif_adopt": "same shape — 'copy one of the built-in tropes' named none.",
+    "composition_entity_override_edit": "the premise was WRONG and the tool said so: an entity override exists only on a derivative, never on the canonical Work."
+   }
+  },
+  {
+   "id": "P6-DESCRIBE-NOT-RECORD",
+   "cycle": 6,
+   "title": "The model describes the answer instead of recording it",
+   "invariant_candidate": "When the request names an artefact the platform can STORE, prose about it is not an answer.",
+   "false_statement_tools": [],
+   "tools": [
+    "glossary_propose_translation",
+    "propose_edit"
+   ],
+   "notes": {
+    "glossary_propose_translation": "Batch 12's CONTROL — the only tool whose declared synonyms appeared VERBATIM in the prompt, surfaced 3/3 in both arms, and it went 1/3 -> 0/3 called, answering with Vietnamese name suggestions in prose. With surfacing fixed everywhere, this is the residual class.",
+    "propose_edit": "Declares NO synonyms at all, so answerability cannot reach it; only the frontend advertisement puts it in play. Asked to make a line darker AND to show the change first, the model offered three rewrites as chat prose — the author gets text to copy instead of an Apply button, which is the entire value of the tool."
+   }
+  },
+  {
+   "id": "P7-FALSE-ABSENCE",
+   "cycle": 7,
+   "title": "The write side confirms and the read that surfaces it returns nothing",
+   "invariant_candidate": "A store that accepts a write must have a read that can find it, or the write must refuse.",
+   "false_statement_tools": [],
+   "why_no_false_statement": "In every instance the MODEL'S answer was TRUE. The false absence belongs to the platform — which is what makes it dangerous: the assistant is a faithful reporter of a store that is lying.",
+   "tools": [
+    "catalog_get_book",
+    "memory_forget"
+   ],
+   "instances": [
+    "CATALOG — loreweave_sharing.sharing_policies holds 44 rows with visibility='public'; catalog_list_public_books returns items: [], total: 0. DQ-T38.",
+    "MEMORY — memory_remember stores a fact; memory_search cannot find it until the project is indexed (degraded: semantic: not_indexed), so memory_forget is told the fact does not exist.",
+    "KG — kg_add_nodes answers 'node ready'; kg_graph_query projects nodes FROM EDGES, so an edgeless node is structurally invisible. D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ, cross-ref from P1."
+   ],
+   "note": "Three subsystems, one shape — which makes it a platform question rather than three bugs."
+  },
+  {
+   "id": "P8-ANSWERABILITY",
+   "cycle": 8,
+   "title": "The answerability matcher needs a contiguous phrase",
+   "invariant_candidate": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
+   "false_statement_tools": [],
+   "tools": [
+    "composition_motif_bind_edit",
+    "jobs_get"
+   ],
+   "notes": {
+    "jobs_get": "synonyms are contiguous ('job detail', 'job status'); the request said 'the full detail of my most recent job — status, cost' — the same words, separated and reordered. answerable_tools matched none, and the model reached for tool_list on all three runs, the signature of a missing surface. D-ANSWERABILITY-MISSES-WORD-ORDER.",
+    "composition_motif_bind_edit": "the declared synonym is contiguous too — and its sixteen-arm history is a separate lead for D-SILENT-TURN, since the only variable that ever produced a clean arm was PROMPT LENGTH."
+   },
+   "dq": "DQ-T32"
+  },
+  {
+   "id": "P10-TOOL-LOAD",
+   "cycle": 9,
+   "title": "tool_load is not used to read a schema",
+   "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
+   "false_statement_tools": [],
+   "tools": [
+    "tool_load"
+   ],
+   "measured": "Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read. Plausible, and NOT sourced from the contract this tool exists to expose. NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. D-TOOL-LOAD-NOT-USED-FOR-SCHEMA."
+  },
+  {
+   "id": "P11-DISTRIBUTION",
+   "cycle": 10,
+   "title": "Surfaced, occasionally chosen — and the costly half of the enum never came up",
+   "invariant_candidate": "K>=3 as a DISTRIBUTION is the bar; a tool chosen 3 times in 15 is not proven by the 3.",
+   "false_statement_tools": [],
+   "tools": [
+    "translation_job_control"
+   ],
+   "measured": "Three arms: called 1/5, 0/5, 2/5 — 3 of 15 runs, with 0 transport errors in two of them, so this is a clean measurement of the model NOT picking it. The runs that DID call it raised the card for the CANCEL the author asked for, never the resume or retry the same enum offers — and those two RE-SPEND money by the tool's own description. The costly half of the enum is unexercised."
+  },
+  {
+   "id": "P9-INTENT-GATE",
+   "cycle": 11,
+   "title": "The world-setup intent gate shuts on the concrete request",
+   "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
+   "false_statement_tools": [],
+   "tools": [
+    "glossary_propose_batch"
+   ],
+   "measured": "The VAGUE prompt left the gate open (0 withheld) and the model correctly asked which kinds, because ops must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT it: 4 tools withheld at stage=intent_gate including the one asked for. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind.",
+   "dq": "DQ-T31"
+  }
+ ],
+ "deferred_questions_backlog": {
+  "rule": "OWNER, 2026-08-22: written up with evidence and a recommendation, presented TOGETHER in one sitting, then implemented as cycles. Not decided by the agent, not asked one at a time.",
+  "registered_open": [
+   "DQ-T1",
+   "DQ-T2",
+   "DQ-T4",
+   "DQ-T5",
+   "DQ-T6",
+   "DQ-T31",
+   "DQ-T32",
+   "DQ-T33",
+   "DQ-T34",
+   "DQ-T35"
+  ],
+  "answered_and_shipped": [
+   "DQ-T3 — option (a), shipped",
+   "DQ-T30 — option (c), proven"
+  ],
+  "unregistered": [
+   "DQ-T36 — which tools get advertised, unexplained by tier, scope, family, id depth, ranking or batch composition. Fourteen mentions in the ledger and NOT a DQ row.",
+   "DQ-T37 — workflow steps naming tools that do not exist. One evidence file, nowhere else.",
+   "DQ-T38 — the public catalogue lists 0 while 44 books are marked public."
+  ]
+ },
+ "ledger_hygiene": {
+  "stale_progress_fields": {
+   "concluded_in_release_surface": "40 -> 198",
+   "remaining_in_release_surface": "158 -> 0",
+   "last_batch": "batch-17 (2026-08-14) -> batch-41",
+   "evidence_split.gate_backed": "62 -> 173",
+   "evidence_split.prose_note_pre_gate": "30 -> 25",
+   "defects_proven": "23 -> 25",
+   "deferred_questions": "7 -> 12"
+  },
+  "note": "The block's own text claims it 'is now RECOMPUTED from the rows on every update'. That claim is false for these seven fields — the exact drift its _stale_block_note was written to prevent. A reader of the ledger sees 40 of 198.",
+  "unregistered_names": [
+   "D-LAZY-TAIL-UNUSED",
+   "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ",
+   "D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED",
+   "D-EMPTY-TRANSLATION-SAVED-AS-A-VERSION",
+   "D-EMPTY-SKILL-BODY-PROPOSED",
+   "D-RAIL-PINNED-TURN-NEVER-COMPLETES",
+   "D-ANSWERABILITY-MISSES-WORD-ORDER"
+  ]
+ },
+ "owed_from_the_predecessor": [
+  "book_chapter_bulk_create's empty chapters list — the one member of the empty-artefact class never exercised. OWED since batch 26.",
+  "163 turns showed 11 outcome='failed' and ZERO with is_error set. A lead, never chased."
+ ]
+}
