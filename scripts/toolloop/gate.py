@@ -202,7 +202,31 @@ class Gate:
                 f"{bad[:3]} — a read that wrote nothing can still be confidently wrong, and "
                 "that is the failure this loop has now seen in both directions")
         if with_both and t.get("intent") == "read":
-            wrote = [i for i, p in enumerate(with_both) if p["before"] != p["after"]]
+            # 🔴 A DOWNSTREAM QUEUE ROW IS NOT THE TOOL'S OWNING STORE, AND IT WAS FAILING THIS BAR
+            # FOR TOOLS THAT CANNOT WRITE IT. `extraction_pending` is the knowledge-extraction
+            # OUTBOX: a relay fills it asynchronously from domain events, so a row the FIXTURE's own
+            # book/chapter creation caused can land between a turn's before and after snapshots and
+            # be attributed to whatever tool was running.
+            #
+            # MEASURED 2026-08-23 across every evidence file on disk: of 176 runs with ANY store
+            # change, 81 — 46% — changed NOTHING BUT extraction_pending, spread over 14+ tools
+            # including ones with no path to it at all: settings_model_set_favorite (12),
+            # jobs_pause (5), registry_list_workflows (2). This bar exists to catch a READ that
+            # wrote (3 outline rows became 6); it was instead reporting the harness's own async
+            # bookkeeping.
+            #
+            # Scoped rather than removed: the queue is EXCLUDED from the read-is-read comparison
+            # only. It stays in the snapshot, because for a tool that really does write content the
+            # queue row is a genuine downstream effect and worth seeing.
+            _QUEUES = ("loreweave_knowledge.extraction_pending",)
+
+            def _owning(pair):
+                b = {k: v for k, v in (pair["before"] or {}).items() if k not in _QUEUES}
+                a = {k: v for k, v in (pair["after"] or {}).items() if k not in _QUEUES}
+                return b, a
+
+            wrote = [i for i, p in enumerate(with_both)
+                     if (lambda ba: ba[0] != ba[1])(_owning(p))]
             self._check(
                 not wrote, f"[{t['tool']}] DATA read-is-read",
                 f"the owning store CHANGED on {len(wrote)} of {len(with_both)} read-intent "

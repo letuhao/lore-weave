@@ -73,7 +73,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_list_models",
-		Description: "List the user's registered AI models (their BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets.",
+		Description: "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"models", "my models", "list models", "registered models", "llm"}),
 	}, s.toolListModels)
 

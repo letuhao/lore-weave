@@ -24,9 +24,9 @@
       ],
       "falsifier": "REFUTED IF: an arc lands with NO confirm card (Tier A), OR the op chosen is not `create` when the user said create — its op enum spans create|edit|delete|archive|restore|move|reorder, and a destructive op on a create request would be the worst outcome. Store check: structure_node arc count stays 0.",
       "ship_audit": {
-        "gate": "OWED — Tier A, and its op enum includes DELETE, so the gate matters more than usual.",
-        "absent_case": "OWED — an op naming a node that does not exist must be refused.",
-        "tenancy": "OWED — book-scoped."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): Tier A, called 5/5, left SUSPENDED on an approval card 5/5, and the owning store moved on 0/5 — the card was never approved and nothing was written without it.",
+        "absent_case": "EXERCISED by TARGETED probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt). The generic sweep could not reach it: only `op` is required, so all three cases landed on 'op=create requires book_id' and never touched an id. Re-probed with op=delete + an absent node_id — refused, 'not found or not accessible'. (op=archive was tried first and is NOT in this tool's enum [create|update|delete|restore|move|assign_chapters]; that refusal looks like a boundary result and is not one.)",
+        "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): a foreign node_id refuses IDENTICALLY to an absent one, so the refusal is no existence oracle."
       },
       "defects": [],
       "_carried_from": "scenarios-rebaseline.json",
@@ -116,8 +116,8 @@
       "falsifier": "REFUTED IF: it spends web-search money with NO confirm card — this is a PAID tool and the gate is the whole audit. EXPECTED LIVE OUTCOME is a card, left unapproved, store unchanged. 🔴 THE CARD IS NEVER APPROVED IN THIS SCENARIO: approving it buys real web searches, and the LIVE bar is satisfied by reaching the tool, not by paying. Also REFUTED IF the model invents an entity_id rather than resolving 'Aldric Vane' — that is the D-DECLARED-UUID class again and must be recorded as a new instance.",
       "ship_audit": {
         "gate": "The card IS the audit — a paid web call with no gate would be the defect.",
-        "absent_case": "OWED — an entity_id that does not exist must be refused before anything is bought.",
-        "tenancy": "OWED — book-scoped."
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): an absent entity_id is refused, 'book not accessible'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): a foreign entity_id refuses IDENTICALLY."
       },
       "defects": [],
       "_carried_from": "scenarios-rebaseline.json",
@@ -156,7 +156,7 @@
       "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports no workflows, OR it describes a workflow's STEPS — the L1 listing returns slug + title + description and explicitly NOT the step list, so an account of what a workflow does step by step in this turn came from the model, not the tool. That is the same L1/L2 boundary registry_get_workflow exists to cross.",
       "ship_audit": {
         "empty_case": "OWED — System defaults are always visible, so an empty registry is not reachable and must not be claimed.",
-        "tenancy": "OWED — scope=USER."
+        "tenancy": "OWED — NOT EXERCISED (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt). Its real boundary is tenancy of the RESULT — whether it returns another account's workflows — which needs a SECOND ACCOUNT and is not what an absent/foreign id probe measures. Genuinely owed."
       },
       "defects": [],
       "_carried_from": "scenarios-rebaseline.json",
@@ -182,7 +182,12 @@
       },
       "editor_context": false,
       "seed_assert": [],
-      "answer_expect": null,
+      "answer_expect": {
+        "none_of": [
+          "currently offer"
+        ],
+        "why": "🔴 THE TOOL'S OWN DEFECT WAS UNCHECKABLE UNTIL NOW. answer_expect was null, so the gate's 'DATA answer is true' bar never ran, and the falsifier covers a store change and unconfigured providers — not the thing that actually blocks this tool. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY is the model answering from settings_list_models and presenting REGISTERED rows as what the provider currently OFFERS. Registry and live inventory are different sets: a model retired upstream still sits in the registry, so the answer is confidently wrong in exactly the case the question was asked to detect.\n\nMEASURED 2026-08-23 over K=5, and the phrase discriminates perfectly: 'currently offer' appears in all FOUR replies that did NOT call settings_provider_inventory and in NEITHER of the one that did — that run said 'currently registered' instead, which is true of what it read. So the expectation fails exactly the runs where the author is misled and passes the run where they are not."
+      },
       "_carried_from": "scenarios-rebaseline.json",
       "_problem": "P5-SIBLING-WINS"
     },
@@ -218,8 +223,8 @@
       "falsifier": "REFUTED IF: the tool reports a marker placed while the map gains none, OR the marker's x/y fall outside the map's coordinate space, OR a Tier-A write lands with no confirm card. CONTROL: the model must find map_id itself (world_map_list) — a turn that never lists is a DISCOVERY failure, not a failure of this tool.",
       "ship_audit": {
         "gate": "OWED — Tier A.",
-        "absent_case": "OWED — a map_id that does not exist must be refused.",
-        "tenancy": "OWED — another account's map must be refused."
+        "absent_case": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): an absent map_id is refused with 'map not found — check the map_id (call world_map_list for valid ids)'.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c3-ship-probe.txt): a foreign map_id refuses IDENTICALLY."
       },
       "defects": [],
       "_carried_from": "scenarios-rebaseline.json",
