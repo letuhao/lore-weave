@@ -190,18 +190,20 @@
         "measured_2026_08_23": "Every P5 tool run through the platform's own answerable_tools against its OWN recorded prompt, with the synonym-length ranking read out:\n  composition_arc_edit          set=2  TIED at len 10 with composition_arc_create\n  composition_generate          set=5  TIED at len 13 with book_chapter_create + _save_draft\n  glossary_deep_research        set=2  ranks FIRST (len 6), not tied, not outranked\n  settings_provider_inventory   set=2  ranks FIRST (len 11 vs settings_list_models 6)\n  registry_list_workflows       set=1  ALONE in the answerable set\n  world_map_add_marker          set=1  ALONE in the answerable set\n\nSo for FOUR of six the platform already favours the right tool — it ranks first or is the only answerable tool — and the model picks something else anyway. 'Both advertised without a stated precedence' does not describe them: a precedence rule cannot help a tool that already wins, and shipping one would have been a fix aimed at a mechanism that is not in play."
       },
       "split_2026_08_23": {
-        "a_genuine_tie_precedence_would_help": [
+        "supersedes": "the earlier a/b split, which rested on the ranking error above",
+        "a_both_advertised_precedence_is_the_question": [
           "composition_arc_edit",
-          "composition_generate"
-        ],
-        "b_the_tool_already_wins_and_still_loses": [
+          "composition_generate",
           "glossary_deep_research",
           "registry_list_workflows",
-          "settings_provider_inventory",
+          "settings_provider_inventory"
+        ],
+        "b_neither_advertised_reached_by_another_path": [
           "world_map_add_marker"
         ],
-        "note": "Group (b) is not one cause either, on the evidence already on file: glossary_deep_research lost to web_search, which is in ALWAYS_ON_CORE and therefore present whatever answerability says; registry_list_workflows lost to workflow_list, a CONSUMER-LOCAL tool that answerability never sees; settings_provider_inventory lost to settings_list_models and the answer was WRONG (registry rows presented as live inventory); world_map_add_marker lost to its own sibling world_map_add_REGION on a 'put a pin' request. Being advertised is not the variable in any of them."
-      }
+        "note": "Group (a) still has three DIFFERENT rival-presence mechanisms — a genuine answerability tie, ALWAYS_ON_CORE, and a consumer-local tool answerability cannot see — so a single precedence rule would have to reach all three or it fixes only the ties. That is the real design question this cycle has to answer, and it is not the one the problem statement asked."
+      },
+      "correction_2026_08_23": "🔴 MY 'REFUTED FOR FOUR OF SIX' IS ITSELF WRONG, AND IT IS THE THIRD TIME TODAY I HAVE MEASURED ONE MECHANISM AND CONCLUDED ABOUT ANOTHER. P5's clause is 'both ADVERTISED without a stated precedence'. I measured the answerability RANKING and declared the clause refuted wherever the tool under test ranked first — but answerability is only ONE of several paths onto the wire, which cycle 2 established and I then ignored.\n\nChecked properly, the rivals ARE advertised, by paths answerability never touches:\n  glossary_deep_research      rival web_search      — in ALWAYS_ON_CORE_NAMES, on EVERY turn\n  registry_list_workflows     rival workflow_list   — CONSUMER-LOCAL, not federated at all\n  settings_provider_inventory rival settings_list_models — answerable on that same prompt\n  composition_arc_edit / composition_generate — genuine ties, as measured\nSo P5's statement HOLDS for five of six, and the 'always-on generic displaces the domain tool' half is exactly right for glossary_deep_research.\n\nTHE ONE REAL EXCEPTION IS world_map_add_marker, and it is a sharper finding than my wrong one: across 103 recorded world surfaces NEITHER world_map_add_marker NOR world_map_add_region is advertised — not once. The model reached the sibling anyway, through the lazy tail (rep 0 called tool_load first) or by naming it and having dispatch execute an unadvertised call, which this platform does by design. 'Both advertised' is false there because NEITHER is."
     },
     {
       "id": "P2-FABRICATED-WRITE",
