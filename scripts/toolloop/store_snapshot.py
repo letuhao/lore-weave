@@ -254,7 +254,17 @@ def _world_counts(world_id: str) -> dict:
     """
     q = world_id.replace("'", "''")
     rows = _psql("loreweave_book", (
-        f"select 'world_maps', count(*)::text, coalesce(max(updated_at)::text,'-') "
+        # 🔴 THE `worlds` TABLE ITSELF WAS MISSING FROM THE FUNCTION WRITTEN TO FIX EXACTLY THIS.
+        # Measured 2026-08-23: the idempotency probe deleted a real world, world_delete returned
+        # {"deleted": true}, and the store diff was `{}` — so the probe reported "STRICTLY
+        # IDEMPOTENT" and then flagged its own verdict as vacuous because the FIRST call appeared
+        # to change nothing either. The three counts below cover the world's CONTENTS (maps,
+        # regions, markers) and never the world ROW, so deleting a world was invisible while
+        # deleting a map showed up — the asymmetry is what gave it away. Seventh instance of the
+        # non-book-scoped blind spot, and the first one found INSIDE its own remedy.
+        f"select 'worlds', count(*)::text, coalesce(max(updated_at)::text,'-') "
+        f"from worlds where id='{q}' "
+        f"union all select 'world_maps', count(*)::text, coalesce(max(updated_at)::text,'-') "
         f"from world_maps where world_id='{q}' "
         f"union all select 'map_regions', count(*)::text, coalesce(max(r.updated_at)::text,'-') "
         f"from map_regions r join world_maps m on m.id=r.map_id where m.world_id='{q}' "
