@@ -357,7 +357,9 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #: `fact-for-check` from `federate` to `ops` would drop the owed count with nothing going red,
 #: and §8.6 would still read as enforced while enforcing less. Rule 5 — this number moves in
 #: the SAME COMMIT as the federation that moves it, and only DOWN.
-MAX_FEDERATE_OWED = 4
+#: 4 -> 3 at T55/e: `timeline` is federated (`POST /v1/kal/books/:bookId/timeline`)
+#: and its consumer repointed, in the same commit as this line (rule 5).
+MAX_FEDERATE_OWED = 3
 
 DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     # ── federate: DECIDED (§8.6) to belong behind the KAL ────────────────────────────────
@@ -368,10 +370,6 @@ DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     "/internal/knowledge/wiki-neighborhood": (
         "federate", "§8.6: entity + capped relations — the same shape as the already-"
         "federated `kg/neighborhood`. Two routes, one domain question."),
-    "/internal/knowledge/timeline": (
-        "federate", "§8.6: TimelineResponse{events, count, total}. `entities/{}/timeline` is "
-        "already federated — exempting this would federate an entity's timeline and not the "
-        "project's."),
     "/internal/context/glossary-semantic": (
         "federate", "§8.6: GlossaryEntityForContext[] — an entity read reached by semantic "
         "search. `entities/search` is already federated; same question, other retrieval."),

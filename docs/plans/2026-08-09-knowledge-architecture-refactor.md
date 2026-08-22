@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**60 of 69 rows done · 9 open · 66 of 114 evidence blocks closed inside them.**
+**60 of 69 rows done · 9 open · 67 of 115 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (2/2) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (3/3) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19595,6 +19595,88 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   ⛔ **Still owed, and now precisely four:** a KAL route for each of the four, and their
   consumers repointed. §8.6 fixes the target so it cannot drift; it does not build it.
+
+
+  ---
+  ### ✅ T55/e 2026-08-22 — **the first federation lands: timeline goes through the KAL, proven on three services**
+
+  ```
+  KAL federated reads   10 -> 11      MAX_FEDERATE_OWED  4 -> 3   (rule 5, same commit)
+  direct-call ledger    42 -> 41      translation-service repointed
+  ```
+
+  📐 **Rule 8 split the batch and that is the whole reason this shipped.** §8.6 named four
+  federations; measuring what each CONSUMER holds at its call site showed only one is portable
+  today:
+
+  ```
+  timeline            fetch_timeline(book_id, chapter_order, limit)   <- book-scoped ALREADY
+  fact-for-check      project_id only
+  glossary-semantic   user_id + project_id
+  wiki-neighborhood   user_id + glossary_entity_id — no project, no book at all
+  ```
+
+  The KAL is `@Controller('v1/kal/books/:bookId')` with **zero** project-scoped routes, so the
+  other three need a new scope axis, not a port. Attempting all four as one batch would have
+  meant inventing that axis to move one route that did not need it.
+
+  🎯 **The mechanism worked without being touched.** Adding the route moved the DERIVED guarded
+  set 10 → 11, and the gate immediately named the consumer:
+
+  ```
+  [kal-covered-internal-read] services/translation-service/.../knowledge_client.py:206
+      f"/internal/knowledge/timeline",
+  ```
+
+  Then, once repointed, the ledger's other arm fired — `STALE /internal/knowledge/timeline`,
+  "no consumer reaches this any more" — which is why the row and `MAX_FEDERATE_OWED` both move
+  in this commit. §8.3's *"guarded the day it is federated"* is a claim this row exercised in
+  both directions rather than asserted.
+
+  🔬 **`book_id` moved from the BODY to the PATH**, and that is a tenancy change, not a style
+  one: the path is what the KAL's guard scoped, so a body-supplied id would let a caller read
+  one book while authorised for another. The test asserts its **absence** from the body.
+
+  **QC (b) — live, on REBUILT images, three services deep, backend `age`:**
+
+  ```
+  POST /v1/kal/books/{book}/timeline   -> knowledge-gateway -> knowledge-service -> AGE
+
+  chapter 5 (event at 3)  found=True  count=1  ['The pact at Aldermoor']
+  chapter 2 (BEFORE it)   found=True  count=0  []      <- the window, not an empty store
+  chapter 0 (first)       found=True  count=0  []
+  ```
+
+  The event was written through the **port** (`merge_event`) into the iso AGE graph and read
+  back through the new route, so the chain is proven with data, not with a 200. The
+  chapter-2 arm is the control: without it `found=True` would be reachable by a store that
+  answers everything.
+
+  🔴 **A tenancy property surfaced, and it is PRE-EXISTING, not introduced here.** A different
+  `X-User-Id` gets the same event. Diagnosed from the workload rather than by analogy:
+  `internal_timeline.py:113` takes `user_id` from the row loaded at line 91
+  (`SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1`) and never consults
+  the caller. The direct call had the identical property, so federation neither added nor
+  removed it — **but it did not add the scoping either**, and saying "it is behind the KAL now"
+  would imply otherwise. Recorded so the next reader is not misled; owed as its own question.
+
+  ⚠️ **The compiler caught a collision worth keeping.** `entities/:entityId/timeline` already
+  owns the METHOD name `timeline` in that class — TS2393. The two ROUTES never collided, which
+  is exactly why it was easy to write. Renamed `bookTimeline`, with the reason beside it.
+
+  ```
+  14  book_id back in the BODY                RED — assert {'book_id': …} == {'chapter_order': …}
+  15  silent fallback to the direct route     RED — the null-gate test: a request WAS made
+  ```
+
+  Bite 15 is the one that matters: a fallback to `/internal/knowledge/timeline` when the
+  gateway URL is unset would re-open the INV-KAL hole invisibly and read as robustness.
+
+  **QC (a) gates:** `knowledge-http-surface-gate` PASS at 11/41/3 with `--selftest` green;
+  knowledge-gateway `34 passed`; translation-service `1152 passed`, and the timeline suite
+  `14 passed`. ⚠️ **18 pre-existing failures in `test_extraction_*`** — verified identical with
+  this change stashed, in four files this row never touches. Not claimed as green.
+  **QC (c) real data:** the three-arm table above, from the running iso stack.
 
 
 - [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit

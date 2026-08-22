@@ -170,44 +170,55 @@ _TL_PAYLOAD = {
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_null_gate_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "")
+    """T55/e — the knob is the GATEWAY's now, not the owning service's.
+
+    Load-bearing: `knowledge_service_internal_url` stays set here. If the function still read
+    that one it would sail past this gate and issue the direct call, which is exactly the
+    INV-KAL hole §8.6 closed — and a test that cleared BOTH knobs could not tell the two
+    apart."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "")
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
     _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))  # would succeed if called
     brief = await fetch_timeline("b1", 5)
     assert brief == TimelineBrief.empty()
-    assert _FakeClient.last_call == {}  # no request made
+    assert _FakeClient.last_call == {}  # no request made — not even the old direct one
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_success_parses(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
     _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))
     brief = await fetch_timeline("b1", 5, limit=10)
     assert brief.found and len(brief.events) == 2
     assert brief.events[0].title == "The pact" and brief.events[0].participants == ["Tirami", "Aldric"]
     assert brief.events[1].summary is None
-    assert _FakeClient.last_call["json"] == {"book_id": "b1", "chapter_order": 5, "limit": 10}
+    # `book_id` is in the PATH, not the body: the KAL scopes on the path, and a body-supplied
+    # id would let a caller read one book while authorised for another. Asserting its ABSENCE
+    # from the body is the half that would otherwise rot back in unnoticed.
+    assert _FakeClient.last_call["json"] == {"chapter_order": 5, "limit": 10}
+    assert "book_id" not in _FakeClient.last_call["json"]
     assert _FakeClient.factory_kwargs["internal_token"] == "tok"
-    assert _FakeClient.last_call["url"].endswith("/internal/knowledge/timeline")
+    assert _FakeClient.last_call["url"] == "http://kg:3000/v1/kal/books/b1/timeline"
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_non_200_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_FakeResp(503, {}))
     assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_transport_error_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, exc=RuntimeError("connection refused"))
     assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_ignores_non_dict_events(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_FakeResp(200, {"found": True, "events": ["bad", 3, None]}))
     brief = await fetch_timeline("b1", 5)
     assert brief.found and brief.events == []

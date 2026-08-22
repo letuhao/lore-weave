@@ -185,9 +185,9 @@ async def fetch_timeline(
     chapter_order: int,
     limit: int = _DEFAULT_TIMELINE_LIMIT,
 ) -> TimelineBrief:
-    """Fetch recent narrative events before ``chapter_order`` from knowledge-service.
+    """Fetch recent narrative events before ``chapter_order`` THROUGH THE KAL.
 
-    Calls: POST {knowledge}/internal/knowledge/timeline
+    Calls: POST {knowledge_gateway}/v1/kal/books/{book_id}/timeline
 
     ``chapter_order`` is the book-service global chapter ``sort_order`` (the
     reading position knowledge's ``event_order`` is keyed on) — NOT the job-local
@@ -195,17 +195,34 @@ async def fetch_timeline(
     ``book_id`` server-side, so translation passes only ``book_id`` + the reading
     position. Returns a populated ``TimelineBrief`` on success, or an empty one
     when the feature is off (no URL) or on any failure. Never raises.
+
+    T55/e — was ``POST {knowledge}/internal/knowledge/timeline``, the owning service's
+    internal route. Spec §8.6 decided this is an INV-KAL read: it returns a projection of
+    event state, and ``entities/:entityId/timeline`` was already federated, so reading it
+    direct meant the KAL federated ONE entity's timeline and not the book's.
+
+    ⚠️ ``book_id`` now travels in the PATH, and the KAL takes it from there rather than from
+    the body — the path is what its guard scoped, so a body-supplied id would let a caller
+    read one book while authorised for another.
     """
-    if not settings.knowledge_service_internal_url:
+    base = settings.knowledge_gateway_url
+    if not base:
+        # Fails toward NO CONTEXT, the same direction as every other failure here, and says
+        # which knob is missing. Silently falling back to the direct internal route would
+        # re-open the INV-KAL hole this move closes, and would do it invisibly.
+        log.warning(
+            "KNOWLEDGE_GATEWAY_URL unset — no timeline context for book=%s. The timeline "
+            "read is federated through the KAL (§8.6); set the gateway URL to enable it.",
+            book_id,
+        )
         return TimelineBrief.empty()
 
     try:
-        async with build_internal_client(settings.knowledge_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+        async with build_internal_client(base, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
             resp = await client.post(
-                f"{settings.knowledge_service_internal_url}"
-                f"/internal/knowledge/timeline",
+                f"{base.rstrip('/')}"
+                f"/v1/kal/books/{book_id}/timeline",
                 json={
-                    "book_id": book_id,
                     "chapter_order": chapter_order,
                     "limit": limit,
                 },

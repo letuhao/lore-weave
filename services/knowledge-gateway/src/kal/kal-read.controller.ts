@@ -343,4 +343,40 @@ export class KalReadController {
     )) as Record<string, unknown>;
     return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
+
+  // timeline — the PROJECT's narrative events before a reading position.
+  //
+  // T55/e, decided in spec §8.6. `entities/:entityId/timeline` above already federates ONE
+  // entity's timeline; leaving this one direct meant the KAL federated an entity's events and
+  // not the book's, which is the same domain question at a different grain.
+  //
+  // It fits this book-scoped controller with no new axis because the owning endpoint already
+  // takes `book_id` and resolves project + owner tenant from it server-side — which is also
+  // why the other three §8.6 federations do NOT land here: their callers hold a project id or
+  // a glossary id and no book at all.
+  @Post('timeline')
+  @HttpCode(200)
+  // `bookTimeline`, not `timeline`: `entities/:entityId/timeline` above already owns that
+  // METHOD name in this class. The compiler caught the collision (TS2393); the two ROUTES
+  // never collided, which is why it was easy to write.
+  async bookTimeline(
+    @Param('bookId') bookId: string,
+    @Body() body: { chapter_order: number; limit?: number },
+    @Req() req: InboundReq,
+  ) {
+    // `book_id` comes from the PATH, never the body: the path is what the guard scoped, and
+    // accepting it from the body would let a caller read one book while authorised for another.
+    const data = (await knowledge.post(
+      `/internal/knowledge/timeline`,
+      { book_id: bookId, chapter_order: body?.chapter_order, limit: body?.limit },
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    return {
+      found: Boolean(data?.found),
+      events: Array.isArray(data?.events) ? data.events : [],
+      count: typeof data?.count === 'number' ? data.count : 0,
+      total: typeof data?.total === 'number' ? data.total : 0,
+      temporal_capability: await temporalCapability(ctxFromReq(req)),
+    };
+  }
 }
