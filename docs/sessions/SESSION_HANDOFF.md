@@ -1,48 +1,54 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ THE SPACE SUBSTRATE CLOSED, AND CLOSING IT REVEALED THE NEXT BOARD (2026-08-22, branch `feat/game-logic`)
+## ▶ SPACE-PRODUCERS IS CLOSED — 13 of 13, three lanes (2026-08-22, branch `feat/game-logic`)
 
-> **[`2026-08-02-space-substrate-RUN-STATE.md`](../plans/2026-08-02-space-substrate-RUN-STATE.md) is
-> 35/35 with an empty register** — all eighteen `SDF-Q*` resolved, all nine `SDF-R*` applied, every
-> `SPG-R*`/`WSA-R*` applied, verified, retired or decided, and `T3`/`T4`/`T9` built. Six migrations
-> (`0024`–`0030`, plus `0027`'s `FLOW-19` key), `world_seed`, `space_view`, two new gates.
+> **[`2026-08-22-space-producers-RUN-STATE.md`](../plans/2026-08-22-space-producers-RUN-STATE.md) is
+> 13/13.** 14 commits. The board existed because closing the space substrate revealed that **six
+> tables had two producers between them and `world_seed`/`space_view` had zero callers outside
+> `tests/`** — reality-layer `3C`'s lesson (*"an unforgeable mint is dead code until something can
+> mint"*) at seven times the scale.
 >
-> **Then the producers were counted, and that is the next board.**
+> **Lane A — producers.** `A1` measured the seam and found something worse than the thesis: there is
+> no space phase because **there is no seeding phase at all** — provision steps 9 and 10 are
+> consecutive statements, and `reality_seeder` (1008 lines, described as the background orchestrator
+> for exactly that stage) has zero production constructors. `A2` gave the stage a body: a 12th
+> provision step, `seed_world_structure`, called BETWEEN the two transitions, taking a DECLARATION —
+> **empty means skipped, never "use a default world"**. `A3` is SPAWN: `entity_binding` gets a
+> producer, atomic with actor creation, and the bite proves it (`actors 2 -> 3` when the transaction
+> is removed — an actor with nowhere to be has no collector). `A4` put *"what is here"* on the wire
+> with a ceiling that **refuses rather than clamps**. `A5` decided `portal`/`encounter`/
+> `layer_registry` get TRIGGERS, not producers.
 >
-> ```
-> 0024_map_layout      producer: world_seed.rs:462     0028_portal          producer: TESTS ONLY
-> 0026_place           producer: world_seed.rs:477     0029_layer_registry  producer: NOTHING
-> 0025_entity_binding  producer: TESTS ONLY            0030_encounter       producer: NOTHING
-> ```
+> **Lane B — four rows other boards held open, and THREE OF THEM WERE ALREADY DONE.** reality-layer
+> `3C`/`3D` shipped and the board still said *"blocked on a PRODUCER"*. kernel-state `G5`'s automated
+> suite was fully written and **had never been run** — 2 passed on chromium once someone ran it.
+> game-tier's eight `1b5-*` rows were discharged eighty lines below themselves. Only lore-bible was
+> genuinely open, and it stays parked — with a mechanism now.
 >
-> **`world_seed::seed_world` and `space_view::assemble` have zero callers outside `tests/`.** Both are
-> `pub mod` in `lib.rs`; neither is on a route, in a bin, or in a bootstrap path. `reality_seeder` —
-> what actually runs when a reality is born — records its phases as *validate · fetch_book_meta ·
-> load_checkpoint · transition_active*, and **there is no space phase**.
+> **Lane C — the tooling that hid all of it.** `goal-prompt.py` had three measured gaps: a bolded id
+> was not a row (**30 of 51 boards parsed as EMPTY**), `⬜` was not in its vocabulary (**27 open rows
+> invisible**), and it could not tell a marker from a **mention** of one — which silently TICKED open
+> rows, twice in one day. Fixed and bitten; boards parsing empty **30 → 15**, rows visible **~200 →
+> 445**, validated against five boards whose state was independently known.
 >
-> This is reality-layer `3C` at seven times the scale: *"an unforgeable mint is dead code until
-> something can mint."* One TYPE was reverted inside an hour for that property; six tables and two
-> modules shipped with it. The difference is visibility — `clippy -D warnings` sees an uncalled
-> crate-private constructor, and **nothing in this repo sees an uncalled `pub` module or an unwritten
-> table.**
+> **⚠ Four things to carry, none of them a task.**
 >
-> **▶ The board is [`2026-08-22-space-producers-RUN-STATE.md`](../plans/2026-08-22-space-producers-RUN-STATE.md).**
-> Twelve rows in three lanes — producers · the four rows other boards still hold open · the tooling
-> that hid the work. **RESUME is `A1`: measure the `provision_flow` → `reality_seeder` seam before
-> touching it.**
+> 1. **The recurring shape, five times in one run:** the work ships and the register is never told.
+>    `SPG-Q6`, reality-layer `3C`/`3D`, the eight `1b5-*` rows, `G5`'s unrun suite, and
+>    `reality-id-adoption-gate` (a row said it was *refused*; it exists, and **this run had broken it**
+>    — `A3`/`A4` took it 0 → 6 ADOPTABLE, now back to 0).
+> 2. **A gate's SELF-TEST passing is not the gate running.** `reality-id-adoption-gate`'s self-test
+>    runs in `gate-self-tests`, so it was green in every commit while the ratchet itself was red.
+> 3. **`OR-3`: nothing yet DECLARES a world.** Every in-repo caller passes an empty declaration, so
+>    `seed_world_structure` is `Skipped` on every existing path. The producer is reachable; the author
+>    does not exist.
+> 4. **`OR-5`: 15 boards still parse empty** — a fourth dialect family (plain-text ids, ids containing
+>    a space or `·`, a marker before the id). Deliberately not folded in: the first careless widening
+>    produced **three false opens on a 35/35 closed board**.
 >
-> **⚠ Two things it found that are not tasks.**
->
-> 1. **`goal-prompt.py` reads ZERO rows from 30 of 51 boards** — it needs a backticked id, and most
->    boards write `| **1** | … | **DONE** |`. `2026-08-02-actor-substrate` carries **218 bolded
->    pipe-rows and parses as empty.** The 2026-08-22 overview nearly shipped as *"49 of 51 closed"* on
->    that reading; **a board whose rows are invisible is indistinguishable from a board with none
->    open.** It was caught only because one board disagreed with work done the same day.
-> 2. **The Writing Studio / Work Assistant / Book-Package boards are OUT of scope and NOT closed** —
->    `studio-tool-gui` is **192 slices, every one `TODO`, never started**. Recorded as `OUT-1` on the
->    new board so the closed count cannot be misread.
-
-
+> **One pre-existing failure, verified as pre-existing:** `provisioner_reentry_live` fails locally on
+> `could not access file "vector"` — pgvector is not installed on this Postgres. Confirmed identical at
+> `ff58f69b1`, the commit before this run, by running it in a worktree there. Not caused by this work.
 ## ▶ ALL FOUR BOARDS CLOSED, AND THE OPEN REGISTERS ARE EMPTY (2026-08-21, branch `feat/game-logic`)
 
 > **`HEAD` after this commit.** Four boards — [player-edge](../plans/2026-08-21-player-edge-RUN-STATE.md)
