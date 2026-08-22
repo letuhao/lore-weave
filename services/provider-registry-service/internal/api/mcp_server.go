@@ -85,7 +85,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_provider_inventory",
-		Description: "List the upstream models a configured provider credential currently offers (its live inventory), so the user can pick one to register. Takes a provider_credential_id. No secrets returned.",
+		Description: "List the upstream models a configured provider credential currently OFFERS RIGHT NOW — its LIVE inventory, fetched from the provider. This is NOT the same set as settings_list_models, which lists models already REGISTERED in this account: a model retired upstream still sits in the registry, and a model the provider newly offers is not in it yet. If the user asks what their provider actually offers, or what they COULD register, this is the only tool that can answer — settings_list_models cannot, and answering from it is wrong in exactly the case the question was asked to detect. Needs a provider_credential_id from settings_list_providers. No secrets returned.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"inventory", "models this provider offers", "provider models", "what models"}),
 	}, s.toolProviderInventory)
 
@@ -387,7 +387,7 @@ WHERE d.owner_user_id = $1`, uid)
 // ── Tier R: provider inventory ─────────────────────────────────────────────────
 
 type providerInventoryIn struct {
-	ProviderCredentialID string `json:"provider_credential_id" jsonschema:"the provider credential whose live model inventory to list (UUID)"`
+	ProviderCredentialID string `json:"provider_credential_id" jsonschema:"the provider credential whose live model inventory to list (UUID). NOT a name and NOT a model id — call settings_list_providers first and pass the provider_credential_id it returns"`
 }
 type providerInventoryOut struct {
 	Models []map[string]any `json:"models"`
