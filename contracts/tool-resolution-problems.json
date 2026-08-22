@@ -395,5 +395,12 @@
   "owed_from_the_predecessor": [
     "book_chapter_bulk_create's empty chapters list — the one member of the empty-artefact class never exercised. OWED since batch 26.",
     "163 turns showed 11 outcome='failed' and ZERO with is_error set. A lead, never chased."
-  ]
+  ],
+  "answerability_sweep_2026_08_22": {
+    "what": "Every still-blocked tool in the denominator run through the platform's own answerable_tools against its OWN recorded prompt (scripts/toolloop/answerability_probe.py). Answerability forces a match onto the wire whatever the hot-seed budget holds, so this is the cheapest available test of whether a 'surfaced 0/N' row is still true.",
+    "result": "46 of the 48 still-blocked tools are ANSWERABLE. Only two never match, and they are the same two that declare no synonyms at all — propose_edit and tool_load.",
+    "consequence": "Every 'surfaced 0/N' row recorded before cycle 1's 37 declaration widenings is SUSPECT and none has been re-measured. That includes six of P4-PRECONDITION's 21 (a tool that never reached the wire was never blocked by its FIXTURE) and glossary_deep_research in P5-SIBLING-WINS (a tool that was never advertised did not lose to a SIBLING). Re-run files are prepared for both: scenarios-c3-rerun.json and scenarios-c5-rerun.json.",
+    "the_two_misses_are_not_the_same_case": "propose_edit is a real declaration gap: an author DOES say 'show me the change before it goes in', and the tool declares nothing matchable, so only the frontend advertisement puts it in play. tool_load is NOT a defect: answerability is keyed on the AUTHOR's words and no author asks to load a tool schema. P10-TOOL-LOAD is about the MODEL reaching for the lazy tail, which answerability cannot address — adding synonyms there would be a fix aimed at the wrong reader.",
+    "precision_note": "48 of 315 catalogue tools declare no synonyms, but only these 2 are blocked, so this is a narrow gap and not a sweep. Measured before proposing anything."
+  }
 }
