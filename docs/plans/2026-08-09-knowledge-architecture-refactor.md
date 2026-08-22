@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**60 of 69 rows done · 9 open · 65 of 113 evidence blocks closed inside them.**
+**60 of 69 rows done · 9 open · 66 of 114 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (2/2) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19523,6 +19523,78 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a) gates:** `--selftest` unchanged and green, gate PASS at 42/13/9, all repo gates
   green. **QC (b):** N/A — no service seam crossed. **QC (c):** both probe outputs above are
   real runs over `app/routers/**`, which is why they could be compared at all.
+
+
+  ---
+  ### ✅ T55/d 2026-08-22 — **the nine per-route calls are DECIDED, and the criterion was in the KAL all along**
+
+  ```
+  read-owed 9, "not derivable"  ->  federate 4 · compute 1 · ops 3 · meta 1   §8.6, DECIDED
+  ratchet   MAX_FEDERATE_OWED = 4, shrink-only    ledger classes 7, none empty
+  ```
+
+  ⚠️ **T55/c said this was not mechanically derivable and left it owed. That was wrong, and
+  the reason is instructive:** both probes asked what the HANDLER TOUCHES — its body (3 of 10,
+  misses delegation) and its import closure (9 of 10, attributes any graph use anywhere to
+  every route in the module). INV-KAL governs what crosses the **boundary**, so the question
+  was never about internals. **The response contract answers it, and it is written down** —
+  in the OpenAPI schema the service publishes.
+
+  🎯 **And the discriminator is not invented: it is read off the ten reads the KAL ALREADY
+  federates.** `entities/search`, `entities/by-ids`, `entities/{}/facts`,
+  `entities/{}/timeline`, `kg/neighborhood`, `retrieve`, `state` — every one returns a
+  **projection of knowledge state**. That class already includes pure identity reads, so
+  *"carries valid-time"* would have been too narrow a test and would have exempted
+  `glossary-semantic` wrongly.
+
+  ```
+  FEDERATE  fact-for-check       FactForCheck{at_order, entities[status],
+                                 relations[valid_from_ordinal, valid_to_ordinal],
+                                 events[event_order]}        <- ORDINALS ON THE WIRE
+            wiki-neighborhood    entity + capped relations — the shape `kg/neighborhood`
+                                 already federates. Two routes, one domain question.
+            timeline             events; `entities/{}/timeline` is federated, so exempting
+                                 this federates an ENTITY's timeline and not the PROJECT's.
+            glossary-semantic    GlossaryEntityForContext[] — `entities/search` by another
+                                 retrieval.
+  ```
+
+  🔬 **The exemption worth arguing is `context/build`**, and it is why the import probe was so
+  badly wrong. It reads knowledge harder than anything else on the list — four consumers — and
+  returns `{mode, context, token_count, stable_context, volatile_context}`: a **rendered prompt
+  with token accounting**. Federating it would put prompt assembly behind a *read* gateway, and
+  the spoiler window it must honour is applied inside the owner while the ordinals still exist.
+  **A consumer cannot re-window a string.** The ledger says to revisit it if `sections` ever
+  starts carrying structured entity data.
+
+  ```
+  10  re-label fact-for-check `federate` -> `ops`   RED — "fell to 3 (ratchet 4)"
+  11  an UNDECLARED consumer path                   RED — UNDECLARED, reached by:
+                                                    composition-service
+  12  a 5th federate row, ratchet not moved         RED — "expected 4, got 5"
+  13  the same path written TWICE                   RED — "declared twice"
+  ```
+
+  🔴 **Bite 12 failed to bite on its first attempt, and that found a real defect.** The row I
+  added used a key already present later in the dict, so the literal kept the LAST value and
+  the count did not move — **a ledger row can be silently overwritten and nothing notices**.
+  `ledger_duplicate_keys()` reads the AST rather than the imported dict, because by the time it
+  is a dict the duplicate is already gone, which is precisely why nothing noticed. Bite 13 is
+  that case.
+
+  ⚖️ **`MAX_FEDERATE_OWED = 4` is a ratchet, not a tally.** Without it the decision is editable
+  in silence — re-labelling one route drops the owed count with nothing going red, and §8.6
+  would still read as enforced while enforcing less. It moves DOWN, in the same commit as the
+  federation that moves it (rule 5).
+
+  **QC (a) gates:** `--selftest` PASS including three new static arms (ratchet matches ledger ·
+  every `federate` row cites §8.6 · no class empty · no duplicate key), gate PASS at 42/13/4,
+  four plan gates green. **QC (b):** N/A — a gate and a spec; no service seam crossed. **QC (c)
+  real data:** every verdict above is the response schema the RUNNING service publishes at
+  `/openapi.json`, read from the live iso stack — the boundary as deployed, not as documented.
+
+  ⛔ **Still owed, and now precisely four:** a KAL route for each of the four, and their
+  consumers repointed. §8.6 fixes the target so it cannot drift; it does not build it.
 
 
 - [~] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit

@@ -330,8 +330,11 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #:   compute      the consumer sends its own payload and gets a derived answer back; no
 #:                bi-temporal entity state is returned
 #:   admin        an operator/erasure path, deliberately not user-facing
-#:   read-owed    reaches knowledge-service on a path that touches the GRAPH, and the KAL
-#:                does not federate it. A CANDIDATE for federation, not a verdict.
+#:   federate     DECIDED (§8.6) to belong behind the KAL: its RESPONSE carries a projection
+#:                of knowledge state — the class the 10 already-federated reads all share.
+#:                OWED WORK, named on every run.
+#:   ops / meta   operational status, a listing, a run artefact, or project metadata.
+#:   read-pg      reads knowledge-service but is served from Postgres, not the graph.
 #:
 #: ⚠️ `read-owed` deliberately claims less than it first did. The first cut called these
 #: "a genuine bi-temporal read", and that is not mechanically derivable at this granularity —
@@ -348,40 +351,37 @@ def derive_owner_routes(router_dir: str | None = None) -> set[str]:
 #: from it — and leaves "is this a bi-temporal read that belongs behind the KAL" to the
 #: per-route judgement §8.3 actually asks for. A count that reads as settled when it is not is
 #: the defect this plan keeps finding in other people's numbers; it applies to mine.
+#: How many routes §8.6 DECIDED belong behind the KAL and are not yet federated.
+#:
+#: A ratchet, because without one the decision is editable in silence: re-labelling
+#: `fact-for-check` from `federate` to `ops` would drop the owed count with nothing going red,
+#: and §8.6 would still read as enforced while enforcing less. Rule 5 — this number moves in
+#: the SAME COMMIT as the federation that moves it, and only DOWN.
+MAX_FEDERATE_OWED = 4
+
 DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
-    # ── read-owed: the actual INV-KAL gap this check exists to make visible ──────────────
-    "/internal/context/build": (
-        "read-owed", "assembles a context block FROM entity/fact state; four consumers "
-        "(ai-gateway, chat-service, composition-service, lore-enrichment-service)"),
-    "/internal/context/glossary-semantic": (
-        "read-owed", "semantic glossary retrieval over the knowledge substrate"),
-    "/internal/context/project-book/{}": (
-        "read-owed", "resolves a project's book — reads owned state"),
+    # ── federate: DECIDED (§8.6) to belong behind the KAL ────────────────────────────────
     "/internal/projects/{}/fact-for-check": (
-        "read-owed", "bi-temporal fact read; watched firing live while this gate said PASS"),
-    # The ONE case both probes agree on: handler reads `get_knowledge_pool` and the import
-    # closure reaches no graph symbol at all. A Postgres-backed read despite the name.
-    "/internal/books/{}/kg-state": ("read-pg", "per-book KG state, served from Postgres"),
-    "/internal/knowledge/timeline": ("read-owed", "event timeline read"),
+        "federate", "§8.6: FactForCheck{at_order, entities[status], relations["
+        "valid_from_ordinal, valid_to_ordinal], events[event_order]} — ORDINALS ON THE WIRE. "
+        "The textbook case, and it was watched firing live while this gate said PASS."),
     "/internal/knowledge/wiki-neighborhood": (
-        "read-owed", "the GraphStore port's neighborhood, via HTTP"),
-    "/internal/knowledge/projects/{}/extraction-status": (
-        "read-owed", "extraction progress read"),
-    "/internal/knowledge/jobs": ("read-owed", "job listing read"),
-    "/internal/extraction/runs/{}/sample": ("read-owed", "sampled run output, for learning"),
-    # ── write ────────────────────────────────────────────────────────────────────────────
-    "/internal/extraction/persist-pass2": ("write", "persists extracted pass-2 output"),
-    "/internal/extraction/glossary-sync-entity": ("write", "syncs a glossary anchor"),
-    "/internal/knowledge/enriched-writeback": ("write", "admits enrichment, quarantined"),
-    "/internal/knowledge/enriched-promote": ("write", "canonises enrichment"),
-    "/internal/knowledge/enriched-retract": ("write", "retracts enrichment"),
-    "/internal/knowledge/projects/{}/dispatch-extraction": ("write", "dispatches a run"),
-    "/internal/knowledge/projects/{}/extraction/cancel": ("write", "cancels a run"),
-    "/internal/knowledge/projects/{}/set-campaign-models": ("write", "sets run models"),
-    "/internal/projects/{}/backfill-glossary-passages": ("write", "a backfill"),
-    "/internal/working-memory/init": ("write", "opens a working-memory session"),
-    "/internal/working-memory/tick": ("write", "advances a working-memory session"),
-    # ── compute: payload in, derived answer out; no stored entity state returned ─────────
+        "federate", "§8.6: entity + capped relations — the same shape as the already-"
+        "federated `kg/neighborhood`. Two routes, one domain question."),
+    "/internal/knowledge/timeline": (
+        "federate", "§8.6: TimelineResponse{events, count, total}. `entities/{}/timeline` is "
+        "already federated — exempting this would federate an entity's timeline and not the "
+        "project's."),
+    "/internal/context/glossary-semantic": (
+        "federate", "§8.6: GlossaryEntityForContext[] — an entity read reached by semantic "
+        "search. `entities/search` is already federated; same question, other retrieval."),
+    # ── compute: reads knowledge, returns a rendered artefact ────────────────────────────
+    "/internal/context/build": (
+        "compute", "§8.6: ContextBuildResponse{mode, context, token_count, stable_context, "
+        "volatile_context} — a RENDERED prompt with token accounting, not a projection of "
+        "state. It reads knowledge heavily, which is why an import probe flags it; a consumer "
+        "cannot re-window a string, so the spoiler window belongs inside the owner. Revisit "
+        "if `sections` ever carries structured entity data."),
     "/internal/extraction/extract-item": ("compute", "LLM extraction over supplied text"),
     "/internal/extraction/tag-beats": ("compute", "tags supplied beats"),
     "/internal/extraction/tag-motifs": ("compute", "tags supplied motifs"),
@@ -395,6 +395,31 @@ DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     "/internal/parse/chapter": ("compute", "chapter parsing"),
     "/internal/parse/pdf-chunk": ("compute", "PDF chunking"),
     "/internal/parse/pdf-peek": ("compute", "PDF header peek"),
+    # ── ops: operational status, listings and run artefacts ──────────────────────────────
+    "/internal/knowledge/projects/{}/extraction-status": (
+        "ops", "§8.6: {active, last_outcome} — operational status of a run."),
+    "/internal/knowledge/jobs": ("ops", "§8.6: an untyped job listing. Operational."),
+    "/internal/extraction/runs/{}/sample": (
+        "ops", "§8.6: RunSampleResponse keyed by `config_hash` — what a RUN produced, not "
+        "what the graph holds."),
+    # ── meta / read-pg: not the bi-temporal substrate ────────────────────────────────────
+    "/internal/context/project-book/{}": (
+        "meta", "§8.6: ProjectBookResponse{book_id} — one id, project metadata."),
+    # The ONE case both T55/c probes agree on: the handler reads `get_knowledge_pool` and the
+    # import closure reaches no graph symbol at all. Postgres-backed despite the name.
+    "/internal/books/{}/kg-state": ("read-pg", "per-book KG state, served from Postgres"),
+    # ── write ────────────────────────────────────────────────────────────────────────────
+    "/internal/extraction/persist-pass2": ("write", "persists extracted pass-2 output"),
+    "/internal/extraction/glossary-sync-entity": ("write", "syncs a glossary anchor"),
+    "/internal/knowledge/enriched-writeback": ("write", "admits enrichment, quarantined"),
+    "/internal/knowledge/enriched-promote": ("write", "canonises enrichment"),
+    "/internal/knowledge/enriched-retract": ("write", "retracts enrichment"),
+    "/internal/knowledge/projects/{}/dispatch-extraction": ("write", "dispatches a run"),
+    "/internal/knowledge/projects/{}/extraction/cancel": ("write", "cancels a run"),
+    "/internal/knowledge/projects/{}/set-campaign-models": ("write", "sets run models"),
+    "/internal/projects/{}/backfill-glossary-passages": ("write", "a backfill"),
+    "/internal/working-memory/init": ("write", "opens a working-memory session"),
+    "/internal/working-memory/tick": ("write", "advances a working-memory session"),
     # ── admin ────────────────────────────────────────────────────────────────────────────
     "/internal/admin/assistant/close-epoch": ("admin", "operator epoch close"),
     "/internal/admin/assistant/erase": ("admin", "erasure — GDPR path"),
@@ -405,6 +430,38 @@ DIRECT_INTERNAL_LEDGER: dict[str, tuple[str, str]] = {
     "/internal/admin/model-deletion/impact": ("admin", "model-deletion impact report"),
     "/internal/admin/model-deletion/cleanup": ("admin", "model-deletion cleanup"),
 }
+
+
+def ledger_duplicate_keys() -> list[str]:
+    """Paths written TWICE in `DIRECT_INTERNAL_LEDGER`'s source.
+
+    ⚠️ Found by a bite that failed to bite. Adding a second row for
+    `/internal/knowledge/enriched-promote` with a different class changed NOTHING: a Python
+    dict literal keeps the last value silently, so the new row was swallowed and the count
+    did not move. A ledger where a row can be overwritten without a sound is a ledger whose
+    classes describe whatever happened to come last in the file.
+
+    Read from the AST rather than the imported dict, because by the time it is a dict the
+    duplicate is already gone — which is exactly why nothing noticed.
+    """
+    import ast as _ast
+    tree = _ast.parse(open(__file__, encoding="utf-8", errors="replace").read())
+    for node in _ast.walk(tree):
+        if not isinstance(node, _ast.AnnAssign):
+            continue
+        if not (isinstance(node.target, _ast.Name)
+                and node.target.id == "DIRECT_INTERNAL_LEDGER"):
+            continue
+        if not isinstance(node.value, _ast.Dict):
+            continue
+        seen, dupes = set(), []
+        for k in node.value.keys:
+            if isinstance(k, _ast.Constant) and isinstance(k.value, str):
+                if k.value in seen:
+                    dupes.append(k.value)
+                seen.add(k.value)
+        return sorted(set(dupes))
+    return []
 
 
 def scan_direct_consumers(files=None, owner_routes=None) -> dict[str, set[str]]:
@@ -597,6 +654,20 @@ def selftest() -> int:
                             ["/internal/books/{}/entities/{}/facts"])
     check("a KAL-federated path is not demanded in the ledger", problems, [])
 
+    # The §8.6 ratchet, statically. The runtime check needs a scan; this one catches a
+    # `federate` row added or re-labelled without `MAX_FEDERATE_OWED` moving with it, which
+    # is rule 5 applied to a decision rather than to a count.
+    # A row written twice is a row silently discarded — see `ledger_duplicate_keys`.
+    check("no ledger path is declared twice", ledger_duplicate_keys(), [])
+    declared = [p for p, (cls, _) in DIRECT_INTERNAL_LEDGER.items() if cls == "federate"]
+    check("the federate ratchet matches the ledger", len(declared), MAX_FEDERATE_OWED)
+    check("every federate row cites the section that decided it",
+          all("8.6" in DIRECT_INTERNAL_LEDGER[p][1] for p in declared), True)
+    # A class nobody uses is a class that stopped describing anything.
+    used = {cls for cls, _ in DIRECT_INTERNAL_LEDGER.values()}
+    check("no ledger class is empty",
+          sorted(used), ["admin", "compute", "federate", "meta", "ops", "read-pg", "write"])
+
     # Validated on a case the scanner was NOT derived from: prose.
     commented = ('# calls "/internal/knowledge/enriched-writeback" one day' + chr(10)
                  + 'z = 1' + chr(10))
@@ -631,13 +702,24 @@ def main() -> int:
                     print(line)
                 return 1
             owed = sorted(p for p, (cls, _) in DIRECT_INTERNAL_LEDGER.items()
-                          if cls == "read-owed" and p in reached)
+                          if cls == "federate" and p in reached)
+            if len(owed) != MAX_FEDERATE_OWED:
+                verb = "ROSE to" if len(owed) > MAX_FEDERATE_OWED else "fell to"
+                print(f"[knowledge-http-surface-gate] FAIL — §8.6's federate-owed count "
+                      f"{verb} {len(owed)} (ratchet {MAX_FEDERATE_OWED}).")
+                print("  DOWN means a route was federated: lower the ratchet in this commit "
+                      "(rule 5).")
+                print("  UP, or a silent re-label, means the decision changed without §8.6 "
+                      "changing. Move both.")
+                for path in owed:
+                    print(f"    federate-owed  {path}")
+                return 1
             print(f"[knowledge-http-surface-gate] direct-call ledger {len(reached)} path(s) "
                   f"across {len({s for v in reached.values() for s in v})} consumer service(s), "
-                  f"all declared; {len(owed)} reach the GRAPH and are candidates for "
-                  f"federation (§8.3 — a per-route call, not derivable from imports):")
+                  f"all declared; {len(owed)} DECIDED to belong behind the KAL "
+                  f"(§8.6) and not yet federated:")
             for path in owed:
-                print(f"    read-owed  {path}")
+                print(f"    federate-owed  {path}")
         print(f"[knowledge-http-surface-gate] PASS — no consumer hits the "
               f"{len(KAL_COVERED_PATHS)} bi-temporal knowledge /internal reads the KAL "
               f"federates (DERIVED from its read controller, not hand-listed)")

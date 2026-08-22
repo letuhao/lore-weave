@@ -1072,6 +1072,58 @@ CURRENT isolation model exactly. Per-project graphs remain available and are wha
 uses. Adopting them at the same moment as the engine swap would mean a later divergence could
 not be attributed to either change.
 
+
+### 8.6 Which of the 9 direct knowledge reads get federated — **DECIDED (T55/d, 2026-08-22)**
+
+§8.3 said *"migrate or explicitly exempt"* and left the per-route call open. `T55/b` built the
+ledger and `T55/c` established that the call is **not derivable from imports** — two probes
+over the same paths disagreed, 3 of 10 by handler body (misses delegation) and 9 of 10 by
+import closure (attributes any graph use anywhere to every route in the module). This section
+takes the decision rather than leaving it owed, because a task may be unfinished; it may not be
+undecided.
+
+**The criterion is the RESPONSE CONTRACT, not what the handler touches.** INV-KAL governs what
+crosses the service boundary, so the question is what a consumer receives — and the answer is
+derivable from the OpenAPI schema, which is the boundary written down. Both earlier probes
+asked about the handler's internals, which is why both failed.
+
+**The discriminator is not invented here — it is read off the 10 reads the KAL ALREADY
+federates:** `entities/search`, `entities/by-ids`, `entities/{}/facts`, `entities/{}/timeline`,
+`entities/{}/canonical-snapshot`, `entities/{}/attr-values`, `kg/neighborhood`, `retrieve`,
+`state`, `canonical-translation`. Every one returns a **projection of knowledge state** —
+entities, relations, events, facts. That is the class, and it already includes pure identity
+reads, so "carries valid-time" would be too narrow a test.
+
+#### FEDERATE — 4 routes, each returning knowledge state
+
+| route | response contract | why |
+|---|---|---|
+| `/internal/projects/{}/fact-for-check` | `FactForCheck{at_order, entities[…status], relations[…valid_from_ordinal, valid_to_ordinal], events[…event_order]}` | The textbook case. **Ordinals are on the wire.** This is the bi-temporal read INV-KAL exists for, and it was observed firing in live logs while the gate reported PASS. |
+| `/internal/knowledge/wiki-neighborhood` | `WikiNeighborhoodResponse{name, kind, source_types, relations, total_relations, relations_truncated}` | An entity plus its capped relations — the same shape as the already-federated `kg/neighborhood`. Two routes, one domain question. |
+| `/internal/knowledge/timeline` | `TimelineResponse{found, events, count, total}` | Event state, and `entities/{}/timeline` is already federated. Exempting this one would federate an entity's timeline while leaving the project's outside. |
+| `/internal/context/glossary-semantic` | `GlossarySemanticResponse{items: GlossaryEntityForContext[entity_id, cached_name, cached_aliases, kind_code, tier, attributes]}` | An entity read reached by semantic search. `entities/search` — the same question by a different retrieval — is already federated, so this is consistency, not expansion. |
+
+#### EXEMPT — 5 routes, none returning knowledge state
+
+| route | response contract | why it is not an INV-KAL read |
+|---|---|---|
+| `/internal/context/build` | `ContextBuildResponse{mode, context, token_count, stable_context, volatile_context, sections}` | 🎯 **The one worth arguing.** It reads knowledge heavily — that is why the import probe flagged it — but it returns a **rendered prompt with token accounting**, not a projection of state. Federating it would put prompt assembly behind a *read* gateway, and the spoiler window it must honour is applied inside the owning service where the ordinals still exist. A consumer cannot re-window a string. |
+| `/internal/context/project-book/{}` | `ProjectBookResponse{book_id}` | One id. Project metadata. |
+| `/internal/knowledge/projects/{}/extraction-status` | `{active, last_outcome}` | Operational status of a run. |
+| `/internal/knowledge/jobs` | untyped `object` | A job listing. Operational. |
+| `/internal/extraction/runs/{}/sample` | `RunSampleResponse{run_id, config_hash, items, source_text}` | Run-attributable extraction provenance for the learning service, keyed by `config_hash` — a record of what a RUN produced, not what the graph holds. |
+
+**Consequence.** The gate's ledger carries the verdict per route, so the four owed federations
+are named on every run and the five exemptions carry their reason at the point a reader meets
+them. `context/build` is the one to revisit if it ever starts returning `sections` as
+structured entity data rather than rendered text — that would move it across the line, and the
+ledger entry says so.
+
+⚠️ **What this does NOT decide.** Building the four KAL routes and repointing their consumers
+is the work; this section fixes the target so it cannot drift, and nothing here authorises a
+change to a consumer service outside this plan's scope.
+
+
 ## 9 · OWED — the dev vector cutover (T25 ③ step 3)
 
 ### 9.1 Deleting the passage vector DDL needs dev on `postgres` first — **PO DECISION OWED**
