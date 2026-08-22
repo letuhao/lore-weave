@@ -16021,6 +16021,76 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
 
   ---
+  ---
+  ### ✅ T93 2026-08-23 — **the WORKLOAD half of the live proof: extraction lands on AGE, and the reading axis holds**
+
+  ```
+  live smoke   8 probes / 4 with data  ->  10 probes / 6 with data
+  the gap T90 NAMED itself: "no extraction run, no relation edges, no cross-chapter window"
+  ```
+
+  🎯 **T90 shipped with its own gap written into the evidence block, and this closes it.** That
+  row proved a READ surface; everything it wrote went through `enriched-writeback`, one anchored
+  entity at a time. This drives `persist-pass2` — the single call extraction itself uses, landing
+  entities, relations, events and evidence together — so the smoke now exercises what the
+  architecture is FOR, not only what it serves. No LLM: the candidates are supplied, which is
+  exactly the seam that endpoint exposes.
+
+  **Live on `lw-iso`, backend `age`:**
+
+  ```
+  POST /internal/extraction/persist-pass2
+    -> entities_merged 2 · relations_created 1 · events_merged 1 · evidence_edges 3
+
+  AGE g_shared      "Corvin Ash" | "character"      "Lyra Fenn" | "character"
+                    ally_of -> Lyra Fenn
+                    Event "The oath at Emberfall"  event_order 7000000
+                    EVIDENCED_BY  3
+  iso Neo4j         entities 0 · events 0            <- the other engine never saw it
+  ```
+
+  📐 **`event_order 7000000` is the load-bearing number.** `chapter_index` 7 × the 1e6 reading
+  axis stride — so the ordinal axis was applied by the write path, not defaulted. A raw chapter
+  number here would produce a snapshot that looks like missing data rather than an error.
+
+  🔬 **And the cross-chapter window DISCRIMINATES — the third gap, and the sharpest.** Through
+  the KAL's federated timeline, with two events at ordinals 3 and 7:
+
+  ```
+  chapter_order 9   found True  count 2  ['The pact at Aldermoor', 'The oath at Emberfall']
+  chapter_order 5   found True  count 1  ['The pact at Aldermoor']
+  ```
+
+  The event at 7 is **correctly absent** ahead of the reading position. That is the spoiler-safe
+  axis working end-to-end on AGE, through the federated surface, on rebuilt images — the
+  property T87 found broken as a Cypher construct, now proven as behaviour.
+
+  ⚖️ **Both engines, same script, same result:** `age` 10/6 and `neo4j` 10/6. The workload is
+  engine-agnostic in the same sense the read surface was.
+
+  ```
+  28  a persist-pass2 call that writes NOTHING
+      first attempt   WEAK — it removed the guard and showed the file still parses, which
+                      proves the guard is deletable, not that it FIRES
+      redone          RED — "extraction wrote entities_merged=0, expected 2. A 200 with
+                      zeroes is a write that did nothing."
+  ```
+
+  ⚠️ **The first bite was the failure it was testing for.** A 200 from `persist-pass2` that
+  merged nothing would let every probe below it pass against an empty graph — so the guard
+  asserts the COUNTS, and the bite had to produce real zeroes rather than delete the check.
+
+  ⛔ **Honest about what is still hand-proven:** the chapter-9/chapter-5 window is measured
+  above but is NOT in the script — it needs a book-linked project, which the smoke does not
+  create. Two of T90's three gaps are now mechanised; the third is evidence, not a test.
+
+  **QC (a) gates:** `--selftest` 13/13 green, all repo gates green.
+  **QC (b) live smoke:** the subject — rebuilt images, `lw-iso`, and the same script PASSES on
+  both `age` and `neo4j`.
+  **QC (c) real data:** every figure above is from the running stack; the AGE/Neo4j split was
+  read from the two stores directly rather than from the service's own summary.
+
+
   ### ✅ T90 2026-08-22 — **the same surface, both engines, and the hand-sweep's three lies mechanised**
 
   ```

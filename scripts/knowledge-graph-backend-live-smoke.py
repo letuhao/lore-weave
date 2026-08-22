@@ -187,7 +187,8 @@ def run(args) -> int:
 
     # ── the write, through the REPO LAYER ───────────────────────────────────────────────
     glossary_id = str(uuid.uuid4())
-    name = f"Smoke Entity {uuid.uuid4().hex[:6]}"
+    run_tag = uuid.uuid4().hex[:6]
+    name = f"Smoke Entity {run_tag}"
     st, wb = _req(f"{base}/internal/knowledge/enriched-writeback", headers=internal, body={
         "user_id": user_id, "project_id": project_id, "proposal_id": str(uuid.uuid4()),
         "glossary_entity_id": glossary_id, "canonical_name": name, "entity_kind": "person",
@@ -200,6 +201,53 @@ def run(args) -> int:
         return 1
 
     # ── the reads. `expect_marker` is what separates a real answer from an empty one. ────
+    # ── the WORKLOAD half (T93) ──────────────────────────────────────────────────────────
+    #
+    # T90 shipped this smoke with a stated gap: "eight probes are a read surface, not a
+    # workload: no extraction run, no relation edges, no cross-chapter window." Everything
+    # above writes ONE anchored entity through `enriched-writeback`. This drives the path
+    # extraction itself uses — `persist-pass2`, the one call that lands entities, relations,
+    # events and evidence together — so the smoke exercises what the architecture is FOR
+    # rather than only what it serves.
+    #
+    # No LLM: the candidates are supplied, which is exactly the seam `persist-pass2` exposes.
+    import hashlib
+
+    def _cid(n: str) -> str:
+        return hashlib.sha256(f"{user_id}:{n}".encode()).hexdigest()[:32]
+
+    a, b = f"Corvin {run_tag}", f"Lyra {run_tag}"
+    ev_title = f"The oath at {run_tag}"
+    st, p2 = _req(f"{base}/internal/extraction/persist-pass2", headers=internal, body={
+        "user_id": user_id, "project_id": project_id, "source_type": "chapter",
+        "source_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4()),
+        "extraction_model": "live-smoke",
+        "entities": [
+            {"name": n, "kind": "character", "aliases": [], "confidence": 0.9,
+             "canonical_name": n.lower(), "canonical_id": _cid(n)} for n in (a, b)
+        ],
+        "relations": [{"subject": a, "predicate": "ally_of", "object": b,
+                       "polarity": "positive", "modality": "asserted", "confidence": 0.88,
+                       "subject_id": _cid(a), "object_id": _cid(b), "relation_id": None}],
+        "events": [{"name": ev_title, "kind": "scene", "participants": [a, b],
+                    "participant_ids": [_cid(a), _cid(b)], "location": None,
+                    "time_cue": None, "summary": "Two allies swore an oath.",
+                    "confidence": 0.8, "event_id": None}],
+        "facts": [], "chapter_index": 7, "provenance": "human_authored",
+        "writer_autocreate": True,
+    })
+    if st != 200:
+        print(f"[graph-backend-smoke] FAIL — the extraction write path did not land ({st}): {p2}")
+        return 1
+    # ⚠️ Assert the COUNTS, not just the 200. `persist-pass2` returns a summary, and a write
+    # that merged nothing returns 200 with zeroes — which would make every probe below pass
+    # against an empty graph and prove exactly nothing.
+    for field, want in (("entities_merged", 2), ("relations_created", 1), ("events_merged", 1)):
+        if p2.get(field) != want:
+            print(f"[graph-backend-smoke] FAIL — extraction wrote {field}={p2.get(field)}, "
+                  f"expected {want}. A 200 with zeroes is a write that did nothing.")
+            return 1
+
     probes = [
         {"name": "port: wiki-neighborhood", "method": "POST",
          "path": "/internal/knowledge/wiki-neighborhood", "auth": "internal",
@@ -226,6 +274,15 @@ def run(args) -> int:
          "why": "an aggregate over labels — the construct family AGE differs on"},
         {"name": "repo: timeline", "path": f"/v1/knowledge/timeline?project_id={project_id}",
          "auth": "bearer", "why": "events_page through the port"},
+        # ── the workload's own read-back (T93) ───────────────────────────────────────────
+        {"name": "workload: entity list", "auth": "bearer",
+         "path": f"/v1/knowledge/entities?project_id={project_id}&limit=50",
+         "expect_marker": a,
+         "why": "an entity the EXTRACTION path wrote, not the enrichment one"},
+        {"name": "workload: subgraph edge", "auth": "bearer",
+         "path": f"/v1/knowledge/projects/{project_id}/subgraph",
+         "expect_marker": "ally_of",
+         "why": "the RELATION — T90 had no edge in it at all"},
     ]
 
     results = []
