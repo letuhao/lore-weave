@@ -748,6 +748,12 @@ _DIALECT_PATTERNS = (
     ("datetime()", re.compile(r"\bdatetime\s*\(\s*\)")),
     ("CALL { }", re.compile(r"CALL\s*\{")),
     ("FOREACH", re.compile(r"\bFOREACH\s*\(")),
+    # T79 — `duration(` was never in this list, so `datetime() - duration({hours: $h})`
+    # counted as ONE construct when it is two. It is the only temporal builder besides
+    # `datetime()` that appeared in the layer, and unlike `datetime()` it has no {NOW}-style
+    # cure: the value it builds is compared and discarded, never stored, so there is no type
+    # to preserve. The cutoff is computed in Python and bound instead.
+    ("duration(", re.compile(r"\bduration\s*\(")),
     ("apoc.", re.compile(r"\bapoc\.")),
 )
 
@@ -757,9 +763,12 @@ _DIALECT_PATTERNS = (
 #: anchoring, 106 renames, 14 CALL{}, plus 3 FOREACH and 1 apoc the probe did not look for.
 #:
 #: **The `ON CREATE SET` / `ON MATCH SET` class is CLOSED at 39** (T78). All 37 anchoring
-#: branches are gone; what is left is 25 `datetime()` renames, 11 `CALL {}` and 3 `FOREACH`.
-#: Three of the 44 that stood here were Cypher `//` comments — see `scan_dialect`.
-MAX_NEO4J_DIALECT_SITES = 39
+#: branches are gone.
+#:
+#: **`datetime()` is CLOSED at 14** (T79) — 25 renamed to `{NOW}`, plus the one `duration(`
+#: this list did not even scan for. What remains is 11 `CALL {}` and 3 `FOREACH`, both of
+#: which the 2026-08-11 probe measured an AGE form for.
+MAX_NEO4J_DIALECT_SITES = 14
 
 
 def _code_strings(src: str) -> str:

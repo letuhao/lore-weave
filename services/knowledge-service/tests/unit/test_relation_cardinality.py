@@ -54,7 +54,7 @@ def test_close_cypher_is_user_scoped_and_open_only():
     assert "rp.user_id = $user_id" in cy
     assert "rp.valid_until IS NULL" in cy
     assert "rp.id <> $relation_id" in cy
-    assert "SET rp.valid_until = datetime()" in cy
+    assert "SET rp.valid_until = {NOW}" in cy
     # F5, RESTATED for the merged form (T71): AGE has no ON MATCH SET, so "must not touch
     # valid_until on match" is now "must not assign valid_until AT ALL" — an absent property
     # IS null on create, and any assignment here would fire on match too and resurrect a
@@ -84,7 +84,7 @@ async def test_single_active_closes_prior_then_creates(mock_run):
     assert mock_run.await_count == 2
     # first query is the close
     first_cypher = mock_run.await_args_list[0].args[1]
-    assert first_cypher == m._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
+    assert first_cypher == render(m._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER, "neo4j")
     # second is the create
     second_cypher = mock_run.await_args_list[1].args[1]
     assert second_cypher == render(m._CREATE_RELATION_CYPHER, "neo4j")

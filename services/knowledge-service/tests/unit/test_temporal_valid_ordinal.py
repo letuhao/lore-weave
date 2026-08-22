@@ -223,7 +223,7 @@ async def test_single_active_and_maintain_chain_are_distinct(mock_run):
         cardinality="single_active", valid_from_ordinal=300, maintain_chain=True,
     )
     cyphers = [c.args[1] for c in mock_run.await_args_list]
-    assert cyphers[0] == rm._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
+    assert cyphers[0] == render(rm._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER, "neo4j")
     assert cyphers[1] == render(rm._CREATE_RELATION_CYPHER, "neo4j")
     assert cyphers[2] == render(tm.MAINTAIN_RELATION_CHAIN_CYPHER, "neo4j")
 

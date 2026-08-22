@@ -226,7 +226,7 @@ MATCH (n:{label} {{path: $path}})
 SET n.summary_text = $text,
     n.summary_embedding = $embedding,
     n.summary_model_uuid = $model_uuid,
-    n.summary_updated_at = datetime()
+    n.summary_updated_at = {{NOW}}
 """
 
 
@@ -247,7 +247,7 @@ async def write_summary_to_node(
     if level not in _SUMMARY_LEVELS:
         raise ValueError(f"level must be one of {_SUMMARY_LEVELS}, got {level!r}")
     await session.run(
-        _WRITE_SUMMARY_CYPHER.format(label=level.capitalize()),
+        render(_WRITE_SUMMARY_CYPHER.format(label=level.capitalize()), "neo4j"),
         path=node_path, text=summary_text, embedding=embedding,
         model_uuid=embedding_model_uuid,
     )

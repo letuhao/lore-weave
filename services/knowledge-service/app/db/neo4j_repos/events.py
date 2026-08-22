@@ -455,7 +455,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     e.event_date_iso = CASE
       WHEN $event_date_iso IS NULL THEN e.event_date_iso ELSE $event_date_iso END,
     e.version = current_version + 1,
-    e.updated_at = datetime()
+    e.updated_at = {NOW}
 )
 RETURN e, current_version = $expected_version AS applied, before
 """
@@ -483,7 +483,7 @@ async def update_event_fields(
     canonical_title = canonicalize_text(title) if title is not None else None
     result = await run_write(
         session,
-        _UPDATE_EVENT_FIELDS_CYPHER,
+        render(_UPDATE_EVENT_FIELDS_CYPHER, "neo4j"),
         user_id=user_id,
         id=event_id,
         title=title,
@@ -509,8 +509,8 @@ async def update_event_fields(
 _ARCHIVE_EVENT_CYPHER = """
 MATCH (e:Event {id: $id})
 WHERE e.user_id = $user_id
-SET e.archived_at = datetime(),
-    e.updated_at = datetime()
+SET e.archived_at = {NOW},
+    e.updated_at = {NOW}
 RETURN e
 """
 
@@ -529,7 +529,7 @@ async def archive_event(
         raise ValueError("event_id must be a non-empty string")
     result = await run_write(
         session,
-        _ARCHIVE_EVENT_CYPHER,
+        render(_ARCHIVE_EVENT_CYPHER, "neo4j"),
         user_id=user_id,
         id=event_id,
     )
@@ -657,7 +657,7 @@ _SET_NARRATIVE_THREADS_CYPHER = """
 UNWIND $rows AS row
 MATCH (e:Event {id: row.id})
 WHERE e.user_id = $user_id
-SET e.narrative_thread = row.thread, e.updated_at = datetime()
+SET e.narrative_thread = row.thread, e.updated_at = {NOW}
 RETURN count(CASE WHEN row.thread IS NOT NULL THEN e END) AS tagged
 """
 
@@ -693,7 +693,7 @@ async def set_narrative_threads(
     if not rows:
         return 0
     result = await run_write(
-        session, _SET_NARRATIVE_THREADS_CYPHER, user_id=user_id, rows=rows,
+        session, render(_SET_NARRATIVE_THREADS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0
@@ -705,7 +705,7 @@ _SET_REALIZED_MOTIFS_CYPHER = """
 UNWIND $rows AS row
 MATCH (e:Event {id: row.id})
 WHERE e.user_id = $user_id
-SET e.realized_motif_code = row.code, e.updated_at = datetime()
+SET e.realized_motif_code = row.code, e.updated_at = {NOW}
 RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
 """
 
@@ -727,7 +727,7 @@ async def set_realized_motifs(
     if not rows:
         return 0
     result = await run_write(
-        session, _SET_REALIZED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+        session, render(_SET_REALIZED_MOTIFS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0
@@ -739,7 +739,7 @@ _SET_MINED_MOTIFS_CYPHER = """
 UNWIND $rows AS row
 MATCH (e:Event {id: row.id})
 WHERE e.user_id = $user_id
-SET e.mined_motif_code = row.code, e.updated_at = datetime()
+SET e.mined_motif_code = row.code, e.updated_at = {NOW}
 RETURN count(CASE WHEN row.code IS NOT NULL THEN e END) AS tagged
 """
 
@@ -763,7 +763,7 @@ async def set_mined_motif_codes(
     if not rows:
         return 0
     result = await run_write(
-        session, _SET_MINED_MOTIFS_CYPHER, user_id=user_id, rows=rows,
+        session, render(_SET_MINED_MOTIFS_CYPHER, "neo4j"), user_id=user_id, rows=rows,
     )
     record = await result.single()
     return int(record["tagged"]) if record else 0

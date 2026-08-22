@@ -781,8 +781,8 @@ async def facts_for_subject(
 _INVALIDATE_FACT_CYPHER = """
 MATCH (f:Fact {id: $id})
 WHERE f.user_id = $user_id
-SET f.valid_until = coalesce($valid_until, datetime()),
-    f.updated_at = datetime()
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
 RETURN f
 """
 
@@ -804,7 +804,7 @@ async def invalidate_fact(
         raise ValueError("fact_id must be a non-empty string")
     result = await run_write(
         session,
-        _INVALIDATE_FACT_CYPHER,
+        render(_INVALIDATE_FACT_CYPHER, "neo4j"),
         user_id=user_id,
         id=fact_id,
         valid_until=valid_until,
@@ -822,7 +822,7 @@ _REVALIDATE_FACT_CYPHER = """
 MATCH (f:Fact {id: $id})
 WHERE f.user_id = $user_id
 SET f.valid_until = NULL,
-    f.updated_at = datetime()
+    f.updated_at = {NOW}
 RETURN f
 """
 
@@ -841,7 +841,7 @@ async def revalidate_fact(
     if not fact_id:
         raise ValueError("fact_id must be a non-empty string")
     result = await run_write(
-        session, _REVALIDATE_FACT_CYPHER, user_id=user_id, id=fact_id,
+        session, render(_REVALIDATE_FACT_CYPHER, "neo4j"), user_id=user_id, id=fact_id,
     )
     record = await result.single()
     if record is None:
@@ -859,8 +859,8 @@ WHERE f.user_id = $user_id
   AND f.event_date_iso = $event_date
   AND f.valid_until IS NULL
   AND coalesce(f.pending_validation, false) = false
-SET f.valid_until = coalesce($valid_until, datetime()),
-    f.updated_at = datetime()
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
 RETURN count(f) AS invalidated
 """
 
@@ -895,7 +895,7 @@ async def invalidate_facts_for_day(
         raise ValueError("invalidate_facts_for_day requires user_id, project_id and event_date")
     result = await run_write(
         session,
-        _INVALIDATE_FACTS_FOR_DAY_CYPHER,
+        render(_INVALIDATE_FACTS_FOR_DAY_CYPHER, "neo4j"),
         user_id=user_id,
         project_id=project_id,
         event_date=event_date,
@@ -915,8 +915,8 @@ MATCH (f:Fact)
 WHERE f.user_id = $user_id
   AND f.project_id = $project_id
   AND f.valid_until IS NULL
-SET f.valid_until = coalesce($valid_until, datetime()),
-    f.updated_at = datetime()
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
 RETURN count(f) AS invalidated
 """
 
@@ -938,7 +938,7 @@ async def invalidate_all_facts_for_project(
         raise ValueError("invalidate_all_facts_for_project requires user_id and project_id")
     result = await run_write(
         session,
-        _INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER,
+        render(_INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER, "neo4j"),
         user_id=user_id,
         project_id=project_id,
         valid_until=valid_until,

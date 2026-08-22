@@ -450,7 +450,7 @@ async def merge_entity_at_id(
     # let the caller fall through.
     result = await run_write(
         session,
-        """
+        render("""
         MATCH (e:Entity {id: $id})
         WHERE e.user_id = $user_id
         SET e.aliases = CASE
@@ -471,9 +471,9 @@ async def merge_entity_at_id(
               ELSE e.confidence
             END,
             e.version = coalesce(e.version, 1) + 1,
-            e.updated_at = datetime()
+            e.updated_at = {NOW}
         RETURN e
-        """,
+        """, "neo4j"),
         user_id=user_id,
         id=id,
         name=name,

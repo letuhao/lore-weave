@@ -175,8 +175,8 @@ WHERE rp.user_id = $user_id
   AND rp.predicate = $predicate
   AND rp.valid_until IS NULL
   AND rp.id <> $relation_id
-SET rp.valid_until = datetime(),
-    rp.updated_at = datetime()
+SET rp.valid_until = {NOW},
+    rp.updated_at = {NOW}
 RETURN count(rp) AS closed
 """
 
@@ -344,7 +344,7 @@ async def create_relation(
     if cardinality == "single_active":
         await run_write(
             session,
-            _CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER,
+            render(_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER, "neo4j"),
             user_id=user_id,
             relation_id=rid,
             subject_id=subject_id,
@@ -1350,8 +1350,8 @@ MATCH (subj:Entity)-[r:RELATES_TO {id: $relation_id}]->(obj:Entity)
 WHERE r.user_id = $user_id
   AND subj.user_id = $user_id
   AND obj.user_id = $user_id
-SET r.valid_until = coalesce($valid_until, datetime()),
-    r.updated_at = datetime()
+SET r.valid_until = coalesce($valid_until, {NOW}),
+    r.updated_at = {NOW}
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
        properties(obj) AS obj
@@ -1380,7 +1380,7 @@ async def invalidate_relation(
         raise ValueError("relation_id must be a non-empty string")
     result = await run_write(
         session,
-        _INVALIDATE_RELATION_CYPHER,
+        render(_INVALIDATE_RELATION_CYPHER, "neo4j"),
         user_id=user_id,
         relation_id=relation_id,
         valid_until=valid_until,

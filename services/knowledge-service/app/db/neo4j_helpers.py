@@ -32,6 +32,8 @@ from __future__ import annotations
 import re
 from typing import Any, Protocol
 
+from app.db.cypher_dialect import assert_rendered
+
 __all__ = [
     "CypherSafetyError",
     "CypherSession",
@@ -125,6 +127,7 @@ async def run_read(
     the belt to the driver's suspenders.
     """
     assert_user_id_param(cypher)
+    assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)
 
 
@@ -162,6 +165,7 @@ async def run_read_any_owner(
         raise CypherSafetyError(
             "cypher references $user_id — use run_read(), which enforces the filter"
         )
+    assert_rendered(cypher)
     return await session.run(cypher, **params)
 
 
@@ -178,4 +182,5 @@ async def run_write(
     to different Neo4j routing contexts without parsing the cypher.
     """
     assert_user_id_param(cypher)
+    assert_rendered(cypher)
     return await session.run(cypher, user_id=user_id, **params)

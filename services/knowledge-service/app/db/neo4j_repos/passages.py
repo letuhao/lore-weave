@@ -501,7 +501,7 @@ WHERE p.user_id = $user_id
   AND p.source_id = $source_id
 SET p.source_lang = $source_lang,
     p.mixed = $mixed,
-    p.updated_at = datetime()
+    p.updated_at = {NOW}
 RETURN count(p) AS tagged
 """
 
@@ -524,7 +524,7 @@ async def set_source_lang_for_source(
     """
     result = await run_write(
         session,
-        _SET_SOURCE_LANG_CYPHER,
+        render(_SET_SOURCE_LANG_CYPHER, "neo4j"),
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,
@@ -541,7 +541,7 @@ WHERE p.user_id = $user_id
   AND p.source_type = $source_type
   AND p.source_id = $source_id
 SET p.canon = $canon,
-    p.updated_at = datetime()
+    p.updated_at = {NOW}
 RETURN count(p) AS updated
 """
 
@@ -570,7 +570,7 @@ async def set_canon_for_source(
     """
     result = await run_write(
         session,
-        _SET_CANON_CYPHER,
+        render(_SET_CANON_CYPHER, "neo4j"),
         user_id=user_id,
         source_type=source_type,
         source_id=source_id,

@@ -19,7 +19,9 @@ module, never from a caller.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
+from app.db.cypher_dialect import assert_rendered, render
 from app.db.neo4j_helpers import CypherSession, assert_user_id_param, run_write
 
 # T17 A10 / spec §1.2 — the two label vocabularies are facts about the CORPUS, so they live
@@ -109,11 +111,20 @@ _QUARANTINE_CLEANUP_CYPHER = """
 MATCH (f:Fact)
 WHERE coalesce(f.pending_validation, false) = true
   AND f.valid_until IS NULL
-  AND f.updated_at < datetime() - duration({hours: $ttl_hours})
+  // §10.2 — the cutoff is COMPUTED IN PYTHON and bound, not built in Cypher.
+  // `datetime() - duration({hours: $ttl_hours})` is two Neo4j-only constructs, and unlike a
+  // stored timestamp there is nothing here to preserve the type of: the value is compared and
+  // discarded. `duration(` was not even in the ratchet's pattern list, so this was the one
+  // temporal construct the backlog never counted. It is added in the same commit.
+  //
+  // The price is that the cutoff now comes from the APP clock while `f.updated_at` came from
+  // the DB clock. Both are UTC-aware and, on every deployment this runs in, the same host —
+  // and against a 24h TTL a few seconds of skew moves no row that mattered.
+  AND f.updated_at < $cutoff
   AND ($user_id IS NULL OR f.user_id = $user_id)
 WITH f
 LIMIT COALESCE($limit, 2147483647)
-SET f.valid_until = datetime()
+SET f.valid_until = {NOW}
 RETURN count(f) AS invalidated
 """
 
@@ -137,10 +148,17 @@ async def invalidate_stale_quarantined_facts(
     # NOT run_write: it types user_id as str, and this is the one caller that legitimately
     # passes None. The $user_id reference check still applies — the Cypher handles the NULL
     # branch explicitly via `($user_id IS NULL OR f.user_id = $user_id)`.
-    assert_user_id_param(_QUARANTINE_CLEANUP_CYPHER)
+    cypher = render(_QUARANTINE_CLEANUP_CYPHER, "neo4j")
+    assert_user_id_param(cypher)
+    # This is the one repo call that bypasses `run_write` (see above), so it is also the one
+    # place `assert_rendered`'s chokepoint does not cover. Called explicitly rather than left
+    # to the fact that `render` happens to run one line up.
+    assert_rendered(cypher)
     result = await session.run(
-        _QUARANTINE_CLEANUP_CYPHER,
-        user_id=user_id, ttl_hours=ttl_hours, limit=limit,
+        cypher,
+        user_id=user_id,
+        cutoff=datetime.now(timezone.utc) - timedelta(hours=ttl_hours),
+        limit=limit,
     )
     record = await result.single()
     return int(record["invalidated"]) if record else 0
@@ -194,7 +212,7 @@ WHERE cached <> actual_count
 WITH n, actual_count
 LIMIT COALESCE($limit, 2147483647)
 SET n.evidence_count = actual_count,
-    n.updated_at = datetime()
+    n.updated_at = {{NOW}}
 RETURN count(*) AS fixed
 """
 
@@ -223,7 +241,7 @@ async def reconcile_evidence_count_for_label(
     if label not in RECONCILE_LABELS:
         raise ValueError(f"label must be one of {RECONCILE_LABELS}, got {label!r}")
     result = await run_write(
-        session, _RECONCILE_CYPHER[label],
+        session, render(_RECONCILE_CYPHER[label], "neo4j"),
         user_id=user_id, project_id=project_id, limit=limit,
     )
     record = await result.single()

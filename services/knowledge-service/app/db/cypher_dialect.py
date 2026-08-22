@@ -40,7 +40,7 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-__all__ = ["Engine", "NOW_BY_ENGINE", "render"]
+__all__ = ["Engine", "NOW_BY_ENGINE", "UnrenderedTemplateError", "assert_rendered", "render"]
 
 Engine = Literal["neo4j", "age"]
 
@@ -70,3 +70,28 @@ def render(template: str, engine: Engine) -> str:
             f"{sorted(NOW_BY_ENGINE)}. Add its timestamp spelling before rendering."
         ) from None
     return template.replace(_TOKEN, now)
+
+
+class UnrenderedTemplateError(RuntimeError):
+    """A template reached the driver with a dialect token still in it."""
+
+
+def assert_rendered(cypher: str) -> None:
+    """Raise if `cypher` still carries a dialect token.
+
+    ⚠️ The whole `{NOW}` scheme has one failure mode, and it is the quiet one: a template gets
+    the token but its call site never gains the `render()`. Neo4j then receives a literal
+    `{NOW}`, which is a MAP LITERAL in Cypher, not a syntax error at the point of the mistake —
+    the message comes back about something else entirely, three layers from the cause. Two of
+    those already happened during T64: `.format()` running after `render()` (`KeyError:
+    'datetime()'`), and `{NOW}` inside an f-string needing `{{NOW}}` (68 collection errors).
+
+    So the token is checked at the same chokepoint `assert_user_id_param` uses. Rule 9: an
+    adapter that cannot honour an operation raises, naming its spec section.
+    """
+    if _TOKEN in cypher:
+        raise UnrenderedTemplateError(
+            f"cypher still contains the dialect token {_TOKEN} — spec §10.2 requires "
+            f"`render(template, engine)` at the call site that knows the engine. Without it "
+            f"the database receives {_TOKEN} as a map literal and fails somewhere else."
+        )

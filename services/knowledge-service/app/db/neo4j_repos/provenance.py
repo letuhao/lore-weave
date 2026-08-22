@@ -561,7 +561,7 @@ MATCH (target)-[e:EVIDENCED_BY]->(src:ExtractionSource {id: $source_id})
 WHERE target.user_id = $user_id
   AND src.user_id = $user_id
 SET target.evidence_count = coalesce(target.evidence_count, 1) - 1,
-    target.updated_at = datetime()
+    target.updated_at = {NOW}
 DELETE e
 RETURN count(*) AS removed
 """
@@ -596,7 +596,7 @@ async def remove_evidence_for_source(
         raise ValueError("source_id must be a non-empty string")
     result = await run_write(
         session,
-        _REMOVE_EVIDENCE_FOR_SOURCE_CYPHER,
+        render(_REMOVE_EVIDENCE_FOR_SOURCE_CYPHER, "neo4j"),
         user_id=user_id,
         source_id=source_id,
     )

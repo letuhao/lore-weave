@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the `datetime()` tail — 25 sites across 7 modules, the last construct with a per-engine STORED TYPE.**
+**RESUME: the last dialect class — `CALL {}` x11 and `FOREACH` x3, both with a measured AGE form (2026-08-11 probe).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2551,6 +2551,71 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### ✅ T79 2026-08-22 — **`datetime()` reaches ZERO — and the guard that makes `{NOW}` safe had no test**
+
+  ```
+  25 datetime() sites across 8 modules  ->  {NOW}, rendered at 16 call sites
+  1 duration( site                      ->  a $cutoff computed in Python
+  Neo4j-only dialect                       39 -> 14   (the ratchet's pattern list grew by one)
+  datetime() in neo4j_repos                     0     <- the class is CLOSED
+  remaining backlog: CALL {} x11, FOREACH x3
+  knowledge unit 4313 -> 4321 · DB integration 611 passed, 0 failed
+  ```
+
+  📐 **The cure already existed** — `cypher_dialect.render()` shipped in T64 — so the 25 renames
+  were mechanical. Two things were not.
+
+  🔴 **`duration(` was never in the ratchet's pattern list.** `maintenance`'s quarantine sweep
+  says `f.updated_at < datetime() - duration({hours: $ttl_hours})`, which is **two** Neo4j-only
+  constructs counted as one; `duration(` appeared in no pattern, so the backlog had never seen
+  it. It also has no `{NOW}`-style cure, and the reason is the same one §10.2 gives for having
+  the token at all: `{NOW}` exists because a stored timestamp has a TYPE to preserve. This value
+  is compared and thrown away, so there is nothing to preserve — the cutoff is computed in
+  Python and bound as `$cutoff`, and both constructs leave the site. `duration(` is in the
+  pattern list as of this commit, at zero.
+
+  The price is named rather than hidden: the cutoff now comes from the **app** clock while
+  `f.updated_at` came from the **DB** clock. Both are UTC-aware, on every deployment this runs
+  in they are the same host, and against a 24-hour TTL a few seconds of skew moves no row that
+  mattered. `test_k15_10_fresh_quarantined_fact_untouched` already pins the boundary — bite E
+  (drop the `timedelta`, so the sweep invalidates every quarantined fact) reds it by name.
+
+  🎯 **BITE A PROVED THE GUARD WORKS. BITE B PROVED NOTHING KEPT IT.** The `{NOW}` scheme has one
+  failure mode and it is quiet: a template gets the token and its call site never gains the
+  `render()`. Cypher reads a literal `{NOW}` as a **map literal**, not a syntax error, so the
+  message comes back about something else — it happened twice during T64 already. So
+  `assert_rendered` now runs at the same chokepoint as `assert_user_id_param`:
+
+  ```
+  A  drop render() at ONE call site (events archive)     RED  15 tests
+  B  delete assert_rendered from all 3 run_* entries  ✅GREEN  <- the guard was undefended
+  E  drop the timedelta from the TTL cutoff              RED  quarantine_cleanup, by name
+  ```
+
+  Bite A going red 15 times says the guard is load-bearing. Bite B says one tidying edit would
+  have removed it and nothing would have complained until a template shipped unrendered.
+  `test_unrendered_template_guard.py` goes through the **real** entry points with a fake
+  session — calling `assert_rendered` directly would prove the function works, not that anything
+  calls it, which is the exact distinction `port-adoption-gate`'s own selftest got wrong one
+  cycle earlier (T78 bite 7). Re-run: B1 (remove from `run_read` only) reds that parameter
+  alone; B2 (all three) reds all three; B3 reds the quarantine sweep, which bypasses `run_write`
+  and is therefore the one path the chokepoint does not cover.
+
+  ⚙️ **Two call sites were already pinned and neither was mine.**
+  `test_relation_cardinality.py:87` and `test_temporal_valid_ordinal.py:226` compare the
+  executed cypher against `render(CONST, "neo4j")`, so they went red the moment
+  `_CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER` gained a token without its call site gaining a `render()`.
+  That is the shape worth copying — an equality against the rendered constant is a call-site
+  test, where an `in` against a substring is not.
+
+  **QC (a) gates:** unit 4321, `port-adoption-gate` PASS at 14/14 with the ceiling AND the
+  pattern list moved in this commit, `--selftest` PASS, four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam crossed; nothing in a contract, route or event
+  moved. 611 DB-integration tests ran instead against a throwaway Neo4j with AGE live.
+  **QC (c) real data:** every renamed query executed against a real Neo4j through its own
+  repo function — archive, invalidate, revalidate, close-prior, set-canon, write-summary,
+  remove-evidence and the TTL sweep, each reading its written timestamp back.
 
   ### ✅ T78 2026-08-22 — **the last two branches: `ON CREATE SET` reaches ZERO, and the ceiling was counting its own cure**
 
