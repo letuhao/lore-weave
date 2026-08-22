@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: D close §6.3/6.4 — T46 (port the Go bitemporal machinery to Python and merge the stores).**
+**RESUME: raise AGE coverage past 21/152 — the 131 unproven repo functions are the cutover's real risk.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2552,6 +2552,65 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
 
+  ### 🔴 T85 2026-08-22 — **class (d)'s claim went FALSE, and my own coverage number was four too high**
+
+  ```
+  class (d) 34/34   "AGE cannot be the only engine until 0"  ->  port-adoption debt, NOT a blocker
+  NEW ratchet       AGE coverage 21/152 repo functions (13%), floor 21 — DISTINCT, not calls
+  T84's evidence    "25 repo functions"  ->  25 INVOCATIONS = 21 distinct  (struck in place)
+  ```
+
+  🔴 **A number carrying a claim it no longer supports is worse than no number.** `class (d)` has
+  printed *"AGE cannot be the only engine until 0"* on every run. That was true while
+  `neo4j_repos` could only run on Neo4j — a module binding it was pinned to one engine, so 34
+  such modules blocked the swap, and T54's row was written around exactly that.
+
+  It is not true now. T83/T84 made the layer run on either engine and T54c made
+  `neo4j_session()` follow the configured backend, so **a class (d) module is no longer
+  engine-pinned**. The number still measures something real — port-adoption debt, operations the
+  port does not have — and it kept a sentence that would send the next reader back to the
+  34-module migration §10.1 explicitly replaced.
+
+  🎯 **What replaced it is derived, not asserted: how much of the layer has actually been RUN on
+  AGE.**
+
+  ```
+  152 public functions across 19 repo modules
+   21 of them proven on AGE   -> 13%
+  ```
+
+  Both halves come off disk — the total by walking `neo4j_repos`, the proven set by AST over
+  `test_repo_layer_runs_on_age.py` (calls on the aliased repo modules). Nothing is listed, so a
+  function added to the proof raises the number the day it is added.
+
+  ⚠️ **AND IT CAUGHT MY OWN OVERSTATEMENT, FOUR FUNCTIONS WIDE.** T84's evidence says *"25 repo
+  functions across eight modules"*. The proof file's `_PROVEN_ON_AGE = 25` counts **calls** —
+  `merge_entity` runs three times in it, `merge_fact` three — and the distinct-function count is
+  **21**. I wrote the invocation count and called it a function count, in the row whose whole
+  point was proving coverage. Struck in place in the T84 block rather than quietly edited, and
+  the gate now counts distinctly so the two cannot drift apart again.
+
+  That is the same defect this run keeps finding, turned on itself: **a number that reads as
+  success, taken from the nearest available counter rather than the one that means what the
+  sentence says.**
+
+  ```
+  bite  a proven function stops being exercised   RED — "fell to 20 (floor 21)", by name
+  ```
+
+  ⛔ **13% is the honest state of the engine swap**, and it is worth saying plainly: the repo
+  layer is engine-agnostic in dialect (0 constructs), in engine naming (0 literals) and in
+  session (the factory follows configuration) — but only 21 of its 152 functions have ever been
+  executed against AGE. The three defects T83/T84 found were all in the 21; nothing says the
+  other 131 are clean, and two of those three were constructs that are perfectly valid Cypher on
+  Neo4j. **Coverage, not the dialect count, is what a cutover decision should read.**
+
+  **QC (a) gates:** `port-adoption-gate` PASS with the new coverage ratchet at 21/21 and provably
+  red under the bite, `--selftest` PASS, all other ratchets unmoved, four plan gates green.
+  **QC (b) live smoke:** N/A — a gate and a plan correction; nothing runtime moved.
+  **QC (c) real data:** 152 is a walk of the real `neo4j_repos`; 21 is an AST read of the
+  committed proof; the 25-vs-21 gap is the difference between the two counters in the same file.
+
   ### 🔴 T56c 2026-08-22 — **the control arm is NV-7, and it does NOT reduce to a gate — measured, not assumed**
 
   ```
@@ -2906,7 +2965,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ### ✅ T84 2026-08-22 — **the second wave: facts, events, hierarchy and the BI-TEMPORAL CHAIN on AGE**
 
   ```
-  repo functions proven on AGE   12  ->  25   (a FLOOR, in two waves)
+  repo functions proven on AGE   12 -> 25 CALLS = 21 DISTINCT   (a FLOOR, in two waves)
   knowledge unit 4336 · DB integration 626 -> 627 passed, 0 failed
   ```
 
@@ -2971,7 +3030,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `return_columns` now yields `[]` for a RETURN-less query and the session emits one placeholder
   column — without which every fact write failed.
 
-  **What is proven now.** 25 repo functions across **eight modules** — entities, relations,
+  **What is proven now.** ~~25 repo functions~~ 🔴 **21 DISTINCT functions** (the 25 was INVOCATIONS — `merge_entity` runs three times; corrected T85) across **eight modules** — entities, relations,
   provenance, facts, events, entity_status, hierarchy, maintenance — execute on both engines
   from the same source with no engine branch in any of them, including the OCC path and the
   bi-temporal chain. `_WAVE_1` and `_WAVE_2` are floors, so the number can only rise.

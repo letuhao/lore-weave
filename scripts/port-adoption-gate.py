@@ -862,6 +862,69 @@ def scan_engine_literals() -> dict[str, list[str]]:
     return out
 
 
+#: Repo functions PROVEN to run on AGE, derived from the committed proof rather than declared.
+#: Floor — it may only rise.
+#:
+#: 🔴 **This exists because class (d)'s printed claim went false.** That number was labelled
+#: *"AGE cannot be the only engine until 0"*, which was true while `neo4j_repos` could only run
+#: on Neo4j: a module binding it was pinned to one engine. Since T83/T84 the layer runs on
+#: either, and since T54c `neo4j_session()` follows the configured backend — so a class (d)
+#: module is no longer engine-pinned. Class (d) still measures something real (port-adoption
+#: debt: operations the port does not have), but it stopped measuring engine readiness, and a
+#: number carrying a claim it no longer supports is worse than no number.
+#:
+#: What DOES track engine readiness is coverage: how much of the repo layer has been RUN
+#: against AGE.
+MIN_AGE_PROVEN_FUNCTIONS = 21
+
+_AGE_PROOF = os.path.join(
+    SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",
+)
+
+
+def scan_age_proven() -> tuple[set[str], int]:
+    """`({module.function}, total public repo functions)` — both derived, neither listed.
+
+    ⚠️ Counts DISTINCT functions, not invocations. The proof file's own
+    `_PROVEN_ON_AGE = 25` counts CALLS — `merge_entity` runs three times in it — and reading
+    that as "25 functions" overstates coverage by four. It was written that way in T84's
+    evidence and is corrected here.
+    """
+    proven: set[str] = set()
+    try:
+        tree = ast.parse(open(_AGE_PROOF, encoding="utf-8", errors="replace").read())
+    except (OSError, SyntaxError):
+        return proven, 0
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "app.db.neo4j_repos":
+            for a in node.names:
+                aliases[a.asname or a.name] = a.name
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in aliases):
+            proven.add(f"{aliases[node.func.value.id]}.{node.func.attr}")
+
+    total = 0
+    if os.path.isdir(_REPO_DIR):
+        for fname in sorted(os.listdir(_REPO_DIR)):
+            if not fname.endswith(".py") or fname == "__init__.py":
+                continue
+            try:
+                mod = ast.parse(open(os.path.join(_REPO_DIR, fname),
+                                     encoding="utf-8", errors="replace").read())
+            except (OSError, SyntaxError):
+                continue
+            total += sum(
+                1 for n in mod.body
+                if isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef))
+                and not n.name.startswith("_")
+            )
+    return proven, total
+
+
+
 def _code_strings(src: str) -> str:
     """Every string literal in the module that is NOT a docstring, joined.
 
@@ -1091,8 +1154,28 @@ def main() -> int:
         print("  Lower it in the same commit (rule 5). This number is the cutover")
         print("  criterion and the last one to be carried in prose went stale by 14.")
         return 1
+    # ⚠️ The claim on this line USED to be "AGE cannot be the only engine until 0". It was
+    # true while `neo4j_repos` ran only on Neo4j; since T83/T84 it runs on either and since
+    # T54c the session follows the configured backend, so a class (d) module is not
+    # engine-pinned. The number still measures port-adoption debt — it stopped measuring
+    # engine readiness, and the coverage line below is what replaced it.
     print(f"[port-adoption-gate] class (d) {len(class_d)}/{MAX_CLASS_D} — modules needing "
-          f"a port operation that does not exist; AGE cannot be the only engine until 0")
+          f"a port operation that does not exist (port-adoption debt; NOT an engine "
+          f"blocker since T54c)")
+    proven, total_fns = scan_age_proven()
+    if len(proven) != MIN_AGE_PROVEN_FUNCTIONS:
+        verb = "ROSE to" if len(proven) > MIN_AGE_PROVEN_FUNCTIONS else "fell to"
+        print(f"{chr(10)}[port-adoption-gate] FAIL — repo functions proven on AGE {verb} "
+              f"{len(proven)} (floor {MIN_AGE_PROVEN_FUNCTIONS}).{chr(10)}"
+              f"  Coverage is what tracks engine readiness now that the layer is "
+              f"engine-agnostic.{chr(10)}  Raise the floor when it rises; a function that "
+              f"stops being proven is a regression{chr(10)}  in the claim, not a smaller "
+              f"test.{chr(10)}")
+        return 1
+    pct = (100 * len(proven) // total_fns) if total_fns else 0
+    print(f"[port-adoption-gate] AGE coverage {len(proven)}/{total_fns} repo functions "
+          f"({pct}%) proven on AGE, floor {MIN_AGE_PROVEN_FUNCTIONS} — DISTINCT functions, "
+          f"not invocations")
     dialect = scan_dialect()
     dsites = sum(sum(v.values()) for v in dialect.values())
 
