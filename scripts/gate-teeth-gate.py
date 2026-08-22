@@ -50,7 +50,10 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: change rather than owed after it.
 #: blind spots (an allowlist that omitted `tests/`, and a config check that required `TEST`
 #: in the variable name) and both were found by hand; the proofs are now permanent.
-NO_PROOF_BASELINE = 43
+# Lowered 43 -> 42 on 2026-08-22 (T56c). The gate had been printing `Progress — lower
+# NO_PROOF_BASELINE to 42` for two commits without anyone moving it: a ratchet asking to be
+# tightened and not being is the same drift it exists to catch, one level up.
+NO_PROOF_BASELINE = 42
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

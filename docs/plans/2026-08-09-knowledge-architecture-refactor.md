@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T56 (c) — an acceptance criterion carries a CONTROL ARM; generalise QC-5 clause 1a.**
+**RESUME: D close §6.3/6.4 — T46 (port the Go bitemporal machinery to Python and merge the stores).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 67 of 116 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 67 of 117 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (2/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (2/4) · `T55` (1/1) · `T56` (2/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2551,6 +2551,73 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   ```
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
+
+  ### 🔴 T56c 2026-08-22 — **the control arm is NV-7, and it does NOT reduce to a gate — measured, not assumed**
+
+  ```
+  non-vacuity.md   NV-2..NV-5 (four shapes)  ->  NV-2..NV-7, and §6 now names the 3 mechanical slices
+  gate-teeth-gate  NO_PROOF_BASELINE  43 -> 42   (it had been ASKING for two commits)
+  ```
+
+  📐 §8.4's third item: *"an acceptance criterion carries a control arm (done for QC-5 clause 1a —
+  generalise it)."* Two gate-shaped readings were built far enough to measure, and **both
+  reduce to imposing an output format on 37 gates**, which the row's own scope guard forbids
+  (*"this row is a GATE set, not a refactor"*).
+
+  ```
+  reading 1  "a selftest asserts BOTH directions"
+             37 gates carry a --selftest; a scan for `expected PASS` / `expected FAIL` finds
+             26 of 37 matching NEITHER — while plainly asserting both arms in prose.
+             The detector was measuring OUTPUT FORMATTING, not the property.
+  reading 2  "a QC row reporting a detector score shows its control"
+             the QC rows are free prose; `plan-qc-evidence-gate` can check that evidence was
+             PASTED, not what the evidence measured.
+  ```
+
+  Reading 1 is worth naming precisely because it is the failure this plan keeps hitting: a
+  detector fitted to the shape of its examples. `port-adoption-gate --selftest` prints
+  *"distinguishes a real import from a docstring, a PYTHON comment and a CYPHER comment, **both
+  ways**"* — two arms, and invisible to a regex looking for `expected FAIL`.
+
+  🎯 **So it lands where cross-cutting rules live, as NV-7.** `docs/standards/non-vacuity.md`
+  already had four shapes and all four are *"the check cannot fire"*. The control arm is their
+  **mirror** — *the check fires on everything, so firing means nothing* — and it is harder to
+  see because it looks like success: the detector flags the planted case, the criterion is met,
+  the number is real.
+
+  Its occurrence is this plan's own:
+
+  ```
+  QC-5 clause 1a   planted arm   5/5 flagged
+                   CONTROL       5/5 flagged   <- the same draft, canon-correct name
+  ```
+
+  The criterion was measuring the draft, not the plant — a vacuous acceptance criterion sitting
+  inside the gate written to enforce rule 3, found only because someone ran the control.
+
+  §6 now names what IS mechanical, per the document's own rule about stating gaps: three narrow
+  slices, each covering one shape rather than the rule — `gate-teeth-gate` (a gate can return
+  non-zero), `adapter-selectability-gate` (T56a — a suite cannot see reachability because it
+  constructs the adapter itself), `gate-number-visibility-gate` (T56b — a threshold invisible on
+  a green run). `qc5-acceptance-gate` covers NV-7 for the one criterion whose runs are
+  machine-readable.
+
+  ⚠️ **And a ratchet had been asking to be tightened for two commits.** `gate-teeth-gate` prints
+  *"Progress — lower NO_PROOF_BASELINE to 42"* on every run, exits 0, and nobody moved it.
+  Checked against `HEAD~2` in a worktree: it read 42 **before** this session's two new gates, so
+  the drift is not mine — but a ratchet politely asking to be tightened and not being is the
+  same defect it exists to catch, one level up. 43 → 42.
+
+  ⛔ **T56 stays `[~]`.** (a) and (b) shipped gates; (c) is a rule with three mechanical slices
+  and a named gap. Marking the row done would claim (c) was automated, which is exactly the kind
+  of claim §8.4 was written to stop.
+
+  **QC (a) gates:** `gate-teeth-gate` PASS at the new baseline (75 CI-invoked gates, all able to
+  return non-zero; 33 carry a red-ability proof), all four plan gates green, the two new gates
+  from T56a/T56b green.
+  **QC (b) live smoke:** N/A — standards + a ratchet constant.
+  **QC (c) real data:** the 26-of-37 figure is a real scan of `scripts/`; the 43-vs-42 comparison
+  was run against a `HEAD~2` worktree rather than inferred.
 
   ### ✅ T56b 2026-08-22 — **a ratchet nobody sees on a green run — 2 of 8 were invisible**
 
