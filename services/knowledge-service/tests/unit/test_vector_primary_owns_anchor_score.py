@@ -230,3 +230,46 @@ async def test_the_degrade_is_counted_so_a_zero_still_means_nothing_failed():
         "an unreachable secondary was not counted — the soak gate would read zero and "
         "authorise a cutover onto a store that is missing rows"
     )
+
+
+# ── T25s — the entity scope moves ONLY when the ranking factor can be served ──────────────
+
+
+def _provider_scopes(*, cutover: bool, resolver) -> frozenset:
+    """Calls the PROVIDER's own rule — it does not restate it.
+
+    ⚠️ The first version of this helper recomputed the expression, and a bite that changed the
+    provider left it GREEN: the test was asserting its own copy of the rule. `read_scopes` is
+    the one home now, and this calls it.
+    """
+    from app.adapters.vector_store_provider import read_scopes
+
+    return read_scopes(cutover=cutover, has_anchor_resolver=resolver is not None)
+
+
+def test_entity_reads_move_to_postgres_ONLY_with_a_resolver():
+    """The §3.3 invariant, restated for the world §3.3c created.
+
+    It was *"entities stay on Neo4j"* because `PgVectorStore` could not supply `anchor_score`
+    at all. It is now *"entities stay on Neo4j unless the score can be joined from its
+    authority"* — the same guarantee, with the impossible case made possible rather than
+    assumed away.
+    """
+    async def resolver(user_id, ids):
+        return {}
+
+    assert "entity" not in _provider_scopes(cutover=True, resolver=None)
+    assert "entity" in _provider_scopes(cutover=True, resolver=resolver)
+
+
+def test_before_the_cutover_BOTH_scopes_read_neo4j_regardless_of_the_resolver():
+    """A resolver is not a cutover. Supplying one must not quietly move reads for a
+    deployment that never asked for Postgres to be primary — the flip is
+    `knowledge_vector_read_primary`, and it stays the only thing that decides it."""
+    async def resolver(user_id, ids):
+        return {}
+
+    # `primary_read_scopes` names which scopes the FIRST store answers, and before the
+    # cutover the first store IS Neo4j — so both scopes being present is Neo4j serving both.
+    assert _provider_scopes(cutover=False, resolver=resolver) == frozenset({"passage", "entity"})
+    assert _provider_scopes(cutover=False, resolver=None) == frozenset({"passage", "entity"})

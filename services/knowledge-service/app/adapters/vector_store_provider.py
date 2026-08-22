@@ -87,6 +87,26 @@ async def reset_vector_store_pool() -> None:
         _pool = None
 
 
+def read_scopes(*, cutover: bool, has_anchor_resolver: bool) -> frozenset[str]:
+    """Which scopes the FIRST store in the dual-write pair answers (T25s).
+
+    Extracted so the rule has ONE home. The first cut left it inline and its test recomputed
+    the same expression — which agreed with the provider by luck, not by construction: a bite
+    that changed the provider left the test green because the test was asserting its own copy.
+    That is the "detector fitted to its own example" shape, caught by the bite failing to bite.
+
+    · not cut over      -> Neo4j is first and answers BOTH scopes.
+    · cut over          -> Postgres answers passages.
+    · cut over + a resolver -> Postgres answers entities too, because `anchor_score` can be
+      joined from its authority (§3.3c). Without one it CANNOT be ranked, and serving an
+      unranked entity read is not an error — just a quietly worse ordering, which is the §9.1
+      failure in a new place.
+    """
+    if not cutover:
+        return frozenset({"passage", "entity"})
+    return frozenset({"passage", "entity"}) if has_anchor_resolver else frozenset({"passage"})
+
+
 async def get_vector_store(session: CypherSession) -> VectorStore:
     """The composition root. Neo4j alone by default; dual-write when configured.
 
@@ -225,11 +245,25 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
     #
     # Caught by `test_the_provider_keeps_neo4j_as_primary`, a tripwire written at T25b for
     # exactly this day. It fired on the argument swap before this shipped.
-    scopes = frozenset({"passage"}) if cutover else frozenset({"passage", "entity"})
+    # T25s — the ENTITY scope moves only when the two-layer ranking factor can be served.
+    #
+    # §3.3 held entities on Neo4j because `PgVectorStore` omits `anchor_score`. §3.3c answered
+    # that (join from the authority, not a copy) and T25r wired the resolver — so the condition
+    # is now exactly "is there a resolver", and it is SELF-GUARDING: on a `neo4j` backend the
+    # provider supplies none, so entity reads stay where they can be ranked. No second switch
+    # to keep in step with the first.
+    #
+    # ⚠️ The alternative — flipping entities on a bare `cutover` — is the §9.1 failure in a new
+    # place: reads served by a store that cannot rank them, which is not an error, just a
+    # quietly worse ordering.
+    scopes = read_scopes(cutover=cutover, has_anchor_resolver=anchor_scores is not None)
+    entity_ready = "entity" in scopes and cutover
     if cutover:
         logger.info(
             "T25: vector PASSAGE reads served by POSTGRES; Neo4j is the shadow. "
-            "ENTITY reads stay on Neo4j (anchor_score)."
+            "ENTITY reads %s.",
+            "ALSO on Postgres (anchor_score joined from the graph, §3.3c)" if entity_ready
+            else "stay on Neo4j (no anchor_score resolver — see T25r)",
         )
     return DualWriteVectorStore(
         first,

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T46's TOPOLOGY input (§6.3c) — does the AGE graph stay on `knowledge-pg` or move to shared `postgres`? The ENGINE is NOT owed (§8.1: AGE). F chain T54·T55·T56 CLOSED.**
+**RESUME: two narrow PO inputs — T25's entity/event DDL deletion (§9.1's precedent) and T46's topology (§6.3c). F chain T54·T55·T56 CLOSED; T25 ①②③ done and ④ built up to the DDL.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 65 of 112 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 66 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (13/20) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (14/21) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6045,6 +6045,69 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25s 2026-08-23 — **the entity scope moves, and the switch that moves it is SELF-GUARDING**
+
+  ```
+  read_scopes(cutover, has_anchor_resolver)   ONE home for the rule, called by its test
+  entity reads   Neo4j-only  ->  Postgres WHEN the ranking factor can be joined (§3.3c)
+  knowledge unit 4358 -> 4360
+  ```
+
+  📐 **§9.1's objection does not apply here, and the measurement is why.** Step 3 needed a PO
+  decision because dev's Postgres held **zero** passage rows against 1051 passages, so flipping
+  would have emptied the search. Measured for entities on the dev stack, read-only:
+
+  ```
+  dev Postgres  entity_vectors_1024          25
+  dev Neo4j     entities with an embedding   25      <- exact parity
+  ```
+
+  The dual-write has kept them in lockstep, so moving the entity read changes **which store
+  answers**, not **what it answers**. That is a different situation from step 3, not a claim
+  that step 3 was wrong.
+
+  ⚖️ **The condition is "is there a resolver", and that makes it self-guarding.** §3.3 held
+  entities on Neo4j because `PgVectorStore` could not supply `anchor_score` at all; §3.3c
+  answered that and T25r wired the resolver, which the provider supplies **only** when
+  `configured_backend() == "age"`. So on a Neo4j backend the entity scope stays where it can be
+  ranked, with no second switch to keep in step with the first. Serving an unranked entity read
+  is not an error — just a quietly worse ordering, which is §9.1's failure wearing a new hat.
+
+  🔴 **Bite 26 failed to bite, and that was the finding.** The first version of the test
+  RECOMPUTED the provider's expression instead of calling it, so changing the provider left the
+  test green — it was asserting its own copy of the rule. **A detector fitted to its own
+  example**, caught only because the bite did not go red. `read_scopes` is one home now and the
+  test calls it:
+
+  ```
+  26  entity scope regardless of the resolver
+      first attempt   GREEN — the test agreed with itself
+      after the fix   RED   — assert 'entity' not in frozenset({'entity', 'passage'})
+  ```
+
+  ⚠️ **And extracting that rule broke the file for a moment, in a way worth recording.** The
+  insertion anchored on `def get_vector_store(` — which matched INSIDE
+  `async def get_vector_store(`, splicing the new function between `async ` and `def` and
+  leaving the original's `await`s in a sync function. The error surfaced three files away as
+  *glossary.py:58 SyntaxError: await outside async function*, because that is where the import
+  chain broke. **A substring anchor that is a prefix of a longer declaration is not an anchor**
+  — and the file still PARSED, so only running it found this.
+
+  **QC (a) gates:** knowledge unit **4360** (+2), all repo gates green, and the T25b tripwire
+  `test_the_provider_keeps_neo4j_as_primary` still passes untouched — it asserts
+  `DualWriteVectorStore`'s routing given a scope set, which is a different question from which
+  scope set the provider composes.
+  **QC (b) live smoke:** N/A — the flip is gated on `knowledge_vector_read_primary`, which no
+  deployment changes here.
+  **QC (c) real data:** the 25/25 parity above, read from the dev stack.
+
+  ⛔ **What is left of T25, and it is one thing:** deleting the entity/event vector DDL from
+  `neo4j_schema.cypher`. §9.1 made the identical act for passages a PO decision — *"deleting
+  the DDL breaks any deployment still reading neo4j"* — and that reasoning is untouched by
+  anything here.
+
+
   ### ✅ T25r 2026-08-23 — **the resolver is WIRED, and the condition on wiring it is the safeguard**
 
   ```
