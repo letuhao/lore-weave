@@ -1,5 +1,12 @@
 # MAP_001 — Map Foundation
 
+> **📐 THIS IS DESIGN. For what is BUILT, read [`docs/standards/world-and-map.md`](../../../../standards/world-and-map.md) FIRST.**
+> The space graph, its validator, its seeder, the spawn path and the read model are shipped,
+> constrained and wired to a browser against a real reality. This document is richer than that
+> code, which is exactly why an agent reading it alone concludes nothing runs and rebuilds it.
+> The inventory there marks every capability **BUILT · HOLLOW · ABSENT**, names the symbol that
+> owns each one, and says where to attach.
+
 > **⚠ SCOPE SUPERSEDED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`):**
 > **§3.1 `ChannelTier` (`Continent | Country | District | Town | Cell`) is RETIRED** and replaced by the
 > closed **`MapKind`** set plus a **containment matrix** validated on write (`SPG-A3`, amendment row

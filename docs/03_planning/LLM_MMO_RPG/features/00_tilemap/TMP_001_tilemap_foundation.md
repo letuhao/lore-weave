@@ -1,5 +1,11 @@
 # TMP_001 — Tilemap Foundation
 
+> **📐 THIS IS DESIGN, and the tilemap is one of TWO unjoined world systems.** Read
+> [`docs/standards/world-and-map.md` §5](../../../../standards/world-and-map.md) FIRST: `/play`
+> renders a tilemap driven by a HUD seed spinner beside a panel showing the real place, and the
+> two do not know about each other. The client never passes a real `channel_id`. Settle what a
+> tilemap MEANS for a `Domain` (which `TMP-A1` excludes) before writing code to join them.
+
 > **⚠ TIER RESTATEMENT 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`), row `SPG-R9`:**
 > `TMP-A1` currently draws its boundary against `MAP_001`'s retired `ChannelTier` ladder (*"cell tier has
 > no `tilemap_view`; every non-cell tier may have one"*). Restated in `MapKind` terms, the split is
