@@ -139,7 +139,42 @@ ROW_CHECKBOX = re.compile(r"^\s*[-*]\s*\[([ x~])\]\s*\*\*([A-Za-z0-9.\-]+)\*\*",
 #: that reads only the author's own dialect is the bias this file exists to
 #: remove. Detection is by COUNT, not by guessing: whichever yields more rows
 #: wins, and a tie goes to the checkbox form because it is unambiguous.
-ROW_TABLE = re.compile(r"^\|\s*(~~)?\s*`([A-Za-z0-9.\-]+)`", re.MULTILINE)
+#: ⚠ WIDENED by `C1` (2026-08-22). It required a BACKTICKED id, and 30 of 51
+#: boards in this repo write a BOLDED one — `| **1** | … | **DONE** |`. Those
+#: boards parsed as EMPTY, and a board whose rows are invisible is
+#: indistinguishable from a board with none open. `2026-08-02-actor-substrate`
+#: — the sibling whose METHOD a whole run copied — carries 218 bolded pipe-rows
+#: and read as zero.
+ROW_TABLE = re.compile(r"^\|\s*(~~)?\s*(?:`([A-Za-z0-9.\-/]+)`|\*\*([A-Za-z0-9.\-/]+)\*\*)", re.MULTILINE)
+
+#: A cell is a STATUS cell only if it BEGINS with one of these, after stripping
+#: emphasis and whitespace.
+#:
+#: ⚠ The "begins with" part is `C1`'s third gap and it is the one that silently
+#: CLOSED rows. The old reader asked `"[x]" in line`, so a row whose PROSE
+#: mentioned a marker was read as carrying it: row `B2` of the space-producers
+#: board quoted `[x] manual, [ ] automated` while describing a half-proven
+#: thing and was ticked out of its own queue, and so was the row describing
+#: THIS defect. A parser that cannot tell a marker from a MENTION of a marker
+#: does not merely miss work — it reports work as finished.
+#: SYMBOL markers may match as a PREFIX -- a glyph is unambiguous.
+DONE_SYMBOLS = ("[x]", "✅", "🅿", "⏭️")
+OPEN_SYMBOLS = (("[~]", "~"), ("[ ]", " "), ("⬜", " "))
+
+#: WORD markers must be UPPERCASE in the source and end at a non-letter.
+#:
+#: ⚠ The first version of this widening allowed any case, and it reintroduced
+#: the very bug it was fixing one layer over: `| **8** | Open register | **DONE
+#: for this pass** |` read as OPEN because cell 1 begins with the word "Open",
+#: and `| `R-57` | OpenMW's preload() ... |` read as OPEN because of "OpenMW".
+#: Three false opens on one closed board. A board writing "Open register" as a
+#: TITLE is not marking status; a board marking status writes `**DONE**`.
+#:
+#: `🔴` was in this list too and is now gone: in this repo it is a SEVERITY
+#: glyph in finding tables, not a state, and `⬜` already covers the open case in
+#: the same tables.
+DONE_WORDS = ("DONE", "COMPLETE", "CLOSED", "PARKED", "WAIVED", "APPLIED", "SUPERSEDED", "N/A")
+OPEN_WORDS = (("TODO", " "), ("OPEN", " "), ("BLOCKED", " "), ("DOING", "~"), ("PARTIAL", "~"))
 
 #: Where "what comes next" is written. Several spellings, because plans differ
 #: and the alternative is each plan editing the tool.
@@ -164,6 +199,39 @@ def _strip_md(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _cells(line: str) -> list[str]:
+    """A table row's cells, emphasis and whitespace stripped from each edge."""
+    return [c.strip().strip("*").strip() for c in line.strip().strip("|").split("|")]
+
+
+def _cell_state(cell: str) -> str | None:
+    """The state a cell DECLARES, or `None` if it merely mentions one.
+
+    Symbols match as a prefix; WORDS must be uppercase and end at a non-letter.
+    The test is never `in`. See `DONE_SYMBOLS` and `DONE_WORDS` for what each
+    half of that cost before it was made.
+    """
+    c = cell.lstrip("`*_ ").strip()
+    if not c:
+        return None
+    for mark in DONE_SYMBOLS:
+        if c.startswith(mark):
+            return "x"
+    for mark, state in OPEN_SYMBOLS:
+        if c.startswith(mark):
+            return state
+    # A word marker is UPPERCASE in the source and is a whole word.
+    head = c.split()[0].rstrip(".,;:!)") if c.split() else ""
+    if head and head == head.upper():
+        for mark in DONE_WORDS:
+            if head == mark:
+                return "x"
+        for mark, state in OPEN_WORDS:
+            if head == mark:
+                return state
+    return None
+
+
 def row_states(plan: str) -> dict[str, str]:
     """`{row_id: ' '|'x'|'~'}`. The plan's own marks are the truth.
 
@@ -177,23 +245,25 @@ def row_states(plan: str) -> dict[str, str]:
         m = ROW_TABLE.match(line)
         if not m:
             continue
-        rid, struck = m.group(2), bool(m.group(1))
-        # PARKED FIRST, and the order is the bug this comment marks. A parked row
-        # carries no tick box — that is what parked MEANS — so when this test ran
-        # after the state branches it was unreachable behind their `continue`,
-        # and a row the PO had parked would have headed the queue. The selftest
-        # caught it on the first run.
-        if "🅿" in line or "PARKED" in line:
+        rid = m.group(2) or m.group(3)
+        # A STRUCK id is done however the rest of the row reads -- the strike is
+        # on the id itself, which is not a cell that can be mentioned.
+        if m.group(1):
             tbl[rid] = "x"
-        # A struck-through id, a tick box, or a ✅ all mean the same thing. Read
-        # all three: a board that says `~~DF1a~~ ✅ CLOSED` and a board that says
-        # `| P7 | [x] |` are the same statement in two dialects.
-        elif struck or "✅" in line or "[x]" in line:
-            tbl[rid] = "x"
-        elif "[~]" in line:
-            tbl[rid] = "~"
-        elif "[ ]" in line:
-            tbl[rid] = " "
+            continue
+        # PARKED FIRST, and the order is a bug this comment marks. A parked row
+        # carries no tick box -- that is what parked MEANS -- so when this test
+        # ran after the state branches it was unreachable behind their
+        # `continue`, and a row the PO had parked would have headed the queue.
+        # The selftest caught it on the first run.
+        cells = _cells(line)
+        state = None
+        for cell in cells[1:]:
+            state = _cell_state(cell)
+            if state is not None:
+                break
+        if state is not None:
+            tbl[rid] = state
     return cb if len(cb) >= len(tbl) else tbl
 
 
@@ -539,6 +609,46 @@ def selftest() -> int:
     got = row_states(tbl)
     check("board-table rows are read", got == {"P1": "x", "P2": " ", "P0": "x"}, str(got))
     check("a struck-through id counts as done", got.get("P0") == "x", str(got))
+
+    # ─── `C1` (2026-08-22). Three MEASURED gaps in this reader, each an arm.
+    #
+    # 1. A BOLDED id. 30 of 51 boards in this repo write one, and every one of
+    #    them parsed as an EMPTY board — including `2026-08-02-actor-substrate`,
+    #    the sibling whose method a whole run copied, at 218 bolded pipe-rows.
+    bold = (
+        "| **1** | measure the thing | **DONE** | evidence |\n"
+        "| **2** | build the thing | ⬜ OPEN | |\n"
+    )
+    got = row_states(bold)
+    check("a BOLDED id is a row", set(got) == {"1", "2"}, str(got))
+
+    # 2. The open-square marker. 27 open rows across three boards carried it as
+    #    their ONLY mark and were invisible to this tool — including every row
+    #    that two other board rows were written to close.
+    check("an open-square marker reads as OPEN, not absent", got.get("2") == " ", str(got))
+
+    # 3. A MENTION is not a MARKER, and this arm matters most: the old reader
+    #    asked `"[x]" in line`, so a row DESCRIBING a half-proven thing was
+    #    ticked and left its own queue. It happened twice in one day — the
+    #    second time to the row describing this very defect.
+    #
+    # ⚠ The first version of this arm put the mention in cell 0 -- the ID cell,
+    #   which the reader skips anyway -- so it passed for the wrong reason. The
+    #   BITE caught it: reverting `startswith` to `in` left the suite green.
+    #   The real defect had the mention in the DESCRIPTION cell, which IS
+    #   scanned, so that is where it goes.
+    q1 = "| `Q1` | its status cell ticks the MANUAL leg and quotes `[x] manual, [ ] automated` | `[ ]` | |\n"
+    q2 = "| `Q2` | the vocabulary is `[x]`, ✅, ⬜ and PARKED | `[ ]` | |\n"
+    got = row_states(q1 + q2)
+    check("a row that MENTIONS a marker is still open", got == {"Q1": " ", "Q2": " "}, str(got))
+
+    # The near-miss in the OTHER direction: a real status cell that carries prose
+    # after its marker must still be read. A rule demanding a bare cell would
+    # silently drop every board that explains itself — most of them.
+    verbose = "| `R1` a thing | ✅ **DONE 2026-08-22 — see §3.4, 3 bites** | evidence |\n"
+    got = row_states(verbose)
+    check("a verbose status cell still reads as done", got == {"R1": "x"}, str(got))
+
 
     # A parked row must not read as open — it would head the queue.
     parked = "| `X1` a thing | 🅿 PARKED by the PO | |\n| `X2` b | `[ ]` | |\n"

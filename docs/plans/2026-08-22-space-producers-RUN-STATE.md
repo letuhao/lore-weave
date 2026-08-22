@@ -472,10 +472,43 @@ letter-guards, with `folklore_bible` added as a near-miss on the other side. 7 c
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[ ]` | |
+| `C1` | **Two dialect gaps, both measured. (1) `goal-prompt.py` reads ZERO rows from 30 of 51 boards.** Including `2026-08-02-actor-substrate` — the predecessor's own sibling, the board whose METHOD the space run copied — which carries **218 bolded pipe-rows** and parses as empty. A tool that decides what a session works on, blind to 59 % of the boards. **(2) `⬜` is not in its vocabulary at all** — it reads only tick-box, check-mark, strike-through and park markers, so **27 open rows across 3 boards are invisible**, including every row `B3` and `B4` are about (`1b5-H1..L5`, `LB1..LB3`, `3E`, `W8`). Found by `B1` (§3.7). **(3) It cannot tell a MARKER from a MENTION of a marker** — this very row listed the vocabulary literally and the parser ticked it, dropping `C1` from its own queue. Third occurrence of that shape today, after row `B2` and the plan's RESUME line | `[x]` | **DONE 2026-08-22 — §3.11. All three fixed and bitten.** Boards parsing empty **30 → 15**; rows visible **~200 → 445**; five boards' state independently confirmed. A **fourth** dialect family measured and left open (`OR-5`) |
 | `C2` | **`space_view` — the two findings §19 produced and never made rows.** **14.10 ms/assembly is 14 % of a 100 ms tick**, and the shape is an **N+1**: the ancestor walk issues two queries per level. Ancestors are **272 B of 511 B — 53 %** at four levels, ~1 KB at `DP-Ch1`'s full 16. A single recursive CTE collapses the query side | `[ ]` | |
 | `C4` | **`live-suite-registry-gate` walks registry → disk and nothing walks disk → registry.** Found by `A3`: **four live suites existed on disk in NO registry row** — `world_seed_live`, `writer_state_validate_live`, `space_view_measure_live` (all three from the predecessor run) and `A3`'s own. The gate reported *"23 suites, ALL run"* and was **telling the truth about the 23 it could see**. Registering them then surfaced a second latent defect: none of the four announced its skip, so a run that did nothing read as a pass — **drift 11's exact lesson, and the gate has a rule for it that these files were outside of** | `[ ]` | |
 | `C3` | **The two gates refused on their measurements — re-decide or record.** A `reality_id`-scope gate needing live-schema introspection; a half-applied-annotation gate that produced **47 mostly-false candidates**. Each was correctly refused. Neither has a row saying what its replacement needs | `[ ]` | |
+
+---
+
+#### 3.11 · `C1` — three gaps, and a fourth I refused to guess at
+
+| gap | before | after |
+|---|---|---|
+| a **bolded** id is not a row | 30 of 51 boards parsed as EMPTY | boards parsing empty **30 → 15** |
+| `⬜` is not in the vocabulary | 27 open rows invisible, incl. every row `B3` and `B4` were about | `3E`, `W8`, `LB1`–`LB3` all visible |
+| a **mention** reads as a marker | silently TICKED open rows — twice in one day | a marker must BEGIN a cell |
+
+**Rows visible across all boards: ~200 → 445.** Validated against five boards whose true state I
+established by working them this session — space-substrate (closed), space-producers (`C1`–`C4`
+open), reality-layer (`3E`+`W8`), lore-bible (`LB1`–`LB3`), kernel-state (closed). **All five match.**
+
+**The first widening OVER-read, and a closed board caught it.** Allowing word markers in any case
+reintroduced the mention bug one layer over: `| **8** | Open register | **DONE for this pass** |` read
+as OPEN because a cell *begins with the word "Open"*, and so did ``| `R-57` | OpenMW's preload() … |``.
+**Three false opens on a board that is 35/35 closed.** Word markers now must be UPPERCASE and whole —
+a board writing *"Open register"* as a title is not marking status. `🔴` was dropped entirely: here it
+is a **severity** glyph in finding tables, not a state.
+
+**And the bite caught a vacuous arm of my own.** The mention test put its mention in cell 0 — the id
+cell, which the reader skips — so reverting `startswith` to `in` left the suite **green**. The arm
+passed for the wrong reason. Moved into the description cell, where the real `B2` defect was, it now
+reds with `{'Q1': 'x', 'Q2': 'x'}`: **both rows silently ticked.** That is `NV-1`'s exact shape, found
+the only way it can be — by mutating and watching.
+
+**`OR-5` is what I did NOT fix.** Fifteen boards still parse empty, and they are a further dialect
+family — a plain-text id (`| S1-A1 · audit … | DONE |`), an id containing a space or `·`, a marker
+sitting *before* the id (`` | `[x]` **S0** | ``). Each needs its own measurement: a careless widening
+over-reads, as this row just demonstrated, and an over-read board sends a session at rows that are not
+tasks. **Named, measured, and left — not silently claimed as covered.**
 
 ---
 
@@ -513,6 +546,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 | id | what | mechanism / what would settle it |
 |---|---|---|
 | **OUT-1** | **The 26 Writing Studio / Work Assistant / Book-Package boards are out of scope and NOT closed.** Live open rows: `studio-tool-gui` **192 slices, every one `TODO`, never started** · `book-package` 11 open + 3 half-built (`B1` blocked on `M6.1`, *registered but not implemented*) · `work-assistant` `E1`/`E2`/`E7` 🅿 and two rows marked `✅ partial` · `all-tracks-clear` `M2`/`M7`/`M8`/`M10` · S2/S4/S5/S8 residue | A PO decision to resume that product. Recorded here **only** so the 2026-08-22 overview cannot be misread as "44 of 51 closed, nothing left" |
+| **OR-5** | **`C1` fixed three measured dialect gaps; 15 boards still parse empty and they are a FOURTH family** — a plain-text id, an id containing a space or `·`, and a marker placed before the id. Measured 2026-08-22, not guessed | Its own measurement, the way `C1`'s three had one. The first careless widening produced **three false opens on a 35/35 closed board**, and an over-read board sends a session at rows that are not tasks — so this is deliberately not folded in |
 | **OR-4** | **`3C`/`3D` appear to be ALREADY DONE.** `A3` needed a `dp::RealityId` and found `crates/dp/src/ids.rs:89` present with a crate-private `new_verified`, plus `ControlPlane`, `SessionContext`, `VerifiedBind` and `BindRequest` all live and used by `tests/support/mod.rs`. The reality-layer board still marks `3C` *"⬜ blocked on a PRODUCER"* | `B1` verifies rather than assumes — if true it is `B3`'s shape a second time: the work shipped and the register was never told |
 | **OR-3** | **`A2` makes `seed_world` reachable but nothing yet DECLARES a world.** Every in-repo caller passes an empty `Vec` today, so the step is `Skipped` on every existing path; the reality that gets a world is one an operator or a test provisions with `--world`. That is a genuine caller and not a fake one — but a producer with no author is `A5`'s warning pointed at lane A itself | `A3` sites an actor, which needs a node to site it in. If `A3` ends up hand-writing a declaration to test against, that declaration is the missing author and belongs in the repo |
 | **OR-2** | **Two components both own the `Seeding → Active` transition** — `provisioner.rs:296-298` (runs) and `reality_seeder/mod.rs:495-500` (does not). The background orchestrator L5.G designed for the `seeding` stage was never started, and the provisioner closes the stage it was meant to occupy | **DECIDED 2026-08-22 by `A2` (`D-6`): the orchestrator is NOT resurrected this run.** The `seeding` stage now does its work synchronously, which is consistent with step 5 already applying 67 migrations synchronously in the same request. `reality_seeder` keeps its 1008 lines and its zero callers, and that is now a NAMED debt rather than an unnoticed one — it wakes when seeding work outgrows an HTTP request, and `A5` is not the row that decides it |
@@ -535,8 +569,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `C1` — the tooling that hid the work, and it now carries THREE measured gaps: 30 of 51 boards parse as empty (bolded ids); `⬜` is not in the vocabulary at all, hiding 27 open rows; and it cannot tell a marker from a MENTION of a marker, which silently ticked row `B2` and then row `C1` itself. **Lanes A and B are CLOSED — 9 of 13 rows.**
-
+**RESUME: `C2` — the `space_view` N+1 and the ancestor payload, §19's two findings. Then `C3` (the two refused gates) and `C4` (`live-suite-registry-gate` walks registry→disk only). `C1` is done (§3.11): `goal-prompt` now reads 445 rows across the boards instead of ~200, and five boards' state was independently confirmed.**
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
 lanes: |
