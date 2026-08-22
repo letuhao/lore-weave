@@ -69,7 +69,7 @@ func parseOptionalEntityID(raw string) (*uuid.UUID, error) {
 
 // ── world_map_create ─────────────────────────────────────────────────────────
 type worldMapCreateIn struct {
-	WorldID  string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it)"`
+	WorldID  string `json:"world_id" jsonschema:"the world this map belongs to (UUID; you must own it). NOT a name — if you have the world's NAME, call world_list first and match it to get the id"`
 	Name     string `json:"name" jsonschema:"the map's name, e.g. 'The Northern Realms'"`
 	ImageRef string `json:"image_ref,omitempty" jsonschema:"optional MinIO object key of an already-uploaded base image (the value returned by the map-image upload route); omit to attach the image later"`
 }

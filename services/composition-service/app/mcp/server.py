@@ -3235,7 +3235,20 @@ async def composition_authoring_run_create(
 
 class _AuthoringRunIdArgs(TolerantArgs):
     book_id: str
-    run_id: str
+    # 🔴 A REQUIRED ID WITH NO DESCRIPTION IS AN ID THE REFUSAL CANNOT EXPLAIN. `run_id` was bare,
+    # so chat-service's missing-argument refusal fell to its "this tool does not declare which side
+    # supplies them" arm, named no supplier, and therefore armed none — measured 2026-08-22:
+    # composition_authoring_run_list was advertised on 0 of 5 runs and called 0 of 5. Two of those
+    # five turns minted a Tier-A card carrying a run_id matching no run, for a book that had zero.
+    # Platform-wide at that date: 105 of 467 required arguments carry an empty description, 75 of
+    # them id-shaped.
+    run_id: Annotated[str, Field(description=(
+            "the authoring run to act on (UUID). NOT a name and NOT yours to invent — list the "
+            "book's runs with composition_authoring_run_list and pass the id it returns. A book "
+            "may have NONE, and 'there are no runs' is the correct answer when it does: a "
+            "structurally valid id that matches no run is the worst outcome, because the card it "
+            "mints looks exactly like a real one."
+    ))]
 
 
 @mcp_server.tool(
@@ -3768,7 +3781,13 @@ class _AuthoringRunReviewArgs(ForbidExtra):
 
     ]
     book_id: str
-    run_id: str
+    run_id: Annotated[str, Field(description=(
+            "the authoring run to act on (UUID). NOT a name and NOT yours to invent — list the "
+            "book's runs with composition_authoring_run_list and pass the id it returns. A book "
+            "may have NONE, and 'there are no runs' is the correct answer when it does: a "
+            "structurally valid id that matches no run is the worst outcome, because the card it "
+            "mints looks exactly like a real one."
+    ))]
     unit_index: int | None = None  # accept_unit, reject_unit (required for those)
 
 
@@ -4913,8 +4932,18 @@ class _MotifLinkEditArgs(ForbidExtra):
         )),
 
     ]
-    from_motif_id: str | None = None  # create
-    to_motif_id: str | None = None    # create
+    # 🔴 REQUIRED-IN-PRACTICE IDS WITH NO DESCRIPTION. op=create refuses without these, and a bare
+    # annotation gave chat-service nothing to quote: its refusal fell to the "this tool does not
+    # declare which side supplies them" arm, named no tool, and so armed none. Measured 2026-08-22:
+    # composition_motif_search advertised 0/5, called 0/5, and the turn died on the blank-args cap.
+    from_motif_id: Annotated[str | None, Field(default=None, description=(
+        "the motif the edge starts FROM (UUID). NOT a name — search motifs by name with "
+        "composition_motif_search and pass the id it returns."
+    ))] = None  # create
+    to_motif_id: Annotated[str | None, Field(default=None, description=(
+        "the motif the edge points TO (UUID). NOT a name — search motifs by name with "
+        "composition_motif_search and pass the id it returns."
+    ))] = None  # create
     kind: Literal["composed_of", "precedes", "variant_of"] | None = None  # create
     ord: int | None = None            # create
     link_id: str | None = None        # delete
@@ -7730,7 +7759,12 @@ class _ArcTemplateEditArgs(ForbidExtra):
         )),
 
     ]
-    arc_id: str | None = None           # update, archive, restore
+    # Described for the same reason the motif ids above are: chat-service quotes a required
+    # argument's OWN declaration in its refusal, and arms the catalogue tools that text names.
+    arc_id: Annotated[str | None, Field(default=None, description=(
+        "the arc template to act on (UUID). NOT a name — list the caller's templates with "
+        "composition_arc_template_list and pass the id it returns."
+    ))] = None  # update, archive, restore
     expected_version: int | None = None  # update (optional optimistic concurrency)
     code: str | None = None             # create (required)
     name: str | None = None             # create (required), update
@@ -7784,7 +7818,7 @@ async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditA
         ))
     if args.op == "update":
         if not args.arc_id:
-            raise ValueError("op=update requires arc_id")
+            raise ValueError("op=update requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
         return await composition_arc_template_update(ctx, _ArcTemplateUpdateArgs(
             arc_id=args.arc_id, expected_version=args.expected_version,
             **_present(
@@ -7796,11 +7830,11 @@ async def composition_arc_template_edit(ctx: MCPContext, args: _ArcTemplateEditA
         ))
     if args.op == "archive":
         if not args.arc_id:
-            raise ValueError("op=archive requires arc_id")
+            raise ValueError("op=archive requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
         return await composition_arc_template_archive(ctx, arc_id=args.arc_id)
     # op == "restore"
     if not args.arc_id:
-        raise ValueError("op=restore requires arc_id")
+        raise ValueError("op=restore requires arc_id — NOT a name. Call composition_arc_template_list to get the id, then call this again")
     return await composition_arc_template_restore(ctx, arc_id=args.arc_id)
 
 
