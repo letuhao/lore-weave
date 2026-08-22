@@ -2430,10 +2430,10 @@
       "answer_expect": null,
       "falsifier_sha": "1040bb9c8ad818af",
       "ship_audit": {
-        "gate": "The card IS the audit — this is a cascading destructive delete.",
-        "absent_case": "OWED — a kind or genre that the book has not adopted must be refused.",
-        "idempotency": "OWED — deleting an already-deleted row must refuse or be a clear no-op.",
-        "tenancy": "OWED — scope=book must not reach the user tier, and vice versa; that is the widest blast-radius question in this batch."
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): called 5/5, left SUSPENDED on a confirm card 5/5, store UNCHANGED on all five. The card IS the audit for a cascading destructive delete and it held every time.",
+        "absent_case": "EXERCISED through the confirm gate (docs/eval/toolloop/2026-08-14/c4-ship-probe.txt): a kind the book never adopted mints a card, and redeeming it returns deleted_count 0 with the code named in `skipped`. Honest, not a success over zero rows.",
+        "idempotency": "EXERCISED and PASSED (docs/eval/toolloop/2026-08-14/c4-ship-probe.txt): first delete returns deleted:[character], count 1; the second returns deleted:[], count 0, skipped:[character]. A clear no-op that names the skip. Run on the probe's OWN throwaway book, torn down.",
+        "tenancy": "EXERCISED by direct probe (docs/eval/toolloop/2026-08-14/c4-ship-probe.txt): a foreign book_id and an absent one refuse IDENTICALLY ('book not accessible'), so the refusal is no existence oracle."
       },
       "defects": [],
       "runs": [
