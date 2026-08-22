@@ -199,9 +199,63 @@ live write** — that half of `D-1` stands untouched.
 
 | # | Row | Status | Evidence |
 |---|---|---|---|
-| `B1` | **game-tier's `RealityId + SessionContext` row still reads `⬜ board TBD`** — a **fourth** place the finished `3C`/`3D` work is not reflected, after reality-layer, the `1b5-*` rows and `G5`. Found while verifying the previous goal | `[ ]` | |
-| `B2` | **reality-layer `3E` — decide.** Re-measured 2026-08-22: **195 `reality_id: Uuid` against 11 typed, across 48 files.** It is parked behind slice 5. Either work it or re-park it against **that** number rather than the stale 880/99 | `[ ]` | |
+| `B1` | **game-tier's `RealityId + SessionContext` row still reads `⬜ board TBD`** — a **fourth** place the finished `3C`/`3D` work is not reflected, after reality-layer, the `1b5-*` rows and `G5`. Found while verifying the previous goal | `[x]` | **DONE 2026-08-22 — §3.5.** Corrected with evidence, and precisely: the TYPES are built, the ADOPTION half is reality-layer `3E` and stays open. `clippy -p dp -D warnings` **rc=0** |
+#### 3.5 · `B1` — the fourth stale reflection, corrected precisely
 
+The game-tier board's slice table read `| **3** | RealityId + SessionContext | ⬜ *board TBD* |`.
+That was **accurate about the BOARD and misleading about the WORK**: no game-tier board was ever
+written for the slice, and the slice's subject shipped anyway — through the reality-layer board.
+
+Re-verified rather than recalled, by reality-layer `3C`'s **own** criterion:
+
+```
+  cargo clippy -p dp --all-targets -- -D warnings   rc=0
+  present  verified_uuid_newtype!      (crates/dp/src/ids.rs)
+  present  pub struct CapabilityToken  (crates/dp/src/session.rs)
+  present  pub trait ControlPlane
+  present  pub struct SessionContext
+```
+
+**The correction is deliberately NOT a plain tick.** The row's own words are *"re-priced by the 457
+bare `reality_id` sites — the largest single mechanical change in the plan"*, and that half is
+**adoption**, which is reality-layer `3E` and still open. Ticking the whole row would have swapped one
+wrong register for another.
+
+**Fourth instance in two runs** of the same shape: the work ships, and the register that would tell
+the next reader is not the one that was updated.
+| `B2` | **reality-layer `3E` — decide.** Re-measured 2026-08-22: **195 `reality_id: Uuid` against 11 typed, across 48 files.** It is parked behind slice 5. Either work it or re-park it against **that** number rather than the stale 880/99 | `[x]` | **DONE 2026-08-22 — §3.6. `3E` CLOSES, superseded by a gate.** `reality-id-adoption-gate` reports **0 adoptable**, and `W8` was found discharged in the same pass. **The reality-layer board is now fully closed.** |
+
+#### 3.6 · `B2` — `3E` closes, because a gate replaced its number
+
+**Decision: `3E` is CLOSED, superseded by `scripts/reality-id-adoption-gate.py`** — which is a
+stronger mechanism than the row's figure ever was.
+
+The gate reports **0 ADOPTABLE** for both game-layer services, and its scope is **not a list but a
+derivation**: `01_scope_and_boundary.md` §4 (`DPA-SCOPE`) names exactly `world-service` and
+`commit-service`, and the gate is **anchored on that clause** so a reword of §4 reds it rather than
+leaving it quietly enforcing a rule the doc stopped making.
+
+**The residue is structurally out of scope, not unfinished.** Of 195 bare `reality_id: Uuid`
+declarations repo-wide:
+
+```
+  98  services/world-service   -> the gate classifies these: 0 adoptable, 60 exempt, 21 boundary
+  71  crates/dp-kernel         -> CANNOT hold a RealityId. It carries dp-crate = true, it IS the
+                                  data plane, and new_verified is pub(crate) to dp.
+  12  crates/meta-rs   10 crates/rebuilder   4 others  -> not game-layer per DPA-SCOPE
+```
+
+**The row's headline number was corrected five times** — 457 → 884 → 178 → 84 → 76 → a three-way
+split — and the gate's own docstring records each correction narrowing it to *"something truer"*.
+**A count that keeps being wrong is a proxy**; the gate replaced it with the property.
+
+**And `W8` was found discharged in the same pass.** It read *"⬜ subsumed by `W3`"* — true, and left
+open. `capacity_glue::live_snapshot` reads `FROM shard_utilization` (`capacity_glue.rs:103`) and the
+real path calls it at **both** entry points, `provision_flow.rs:177` (placement, under the advisory
+lock) and `:224` (resume). Its own comment states the property `W8` asked for: *"a fabricated
+snapshot here would reintroduce the drill's defect"*.
+
+**The reality-layer board is now 37 of 37.**
 ### Lane C — the tooling, again
 
 | # | Row | Status | Evidence |
@@ -243,7 +297,7 @@ live write** — that half of `D-1` stands untouched.
 
 ## 7 · RESUME
 
-**RESUME: `A2` is STOPPED FOR AUTHORISATION (§3.3) and `A4` depends on it — an actor cannot be sited in a running reality until that reality has the tables. `A3` is done (§3.4): `contracts/world/demo_v1.json` exists, validates in CI and seeds against a real database. While `A2` waits, lane B (`B1`, `B2`) and lane C (`C1`) need no live reality and can proceed.**
+**RESUME: `C1` is the last row that needs no live reality (`OR-5`: 15 boards still parse empty, a fourth dialect family — and it needs its OWN measurement, because the last careless widening produced three false opens on a closed board). `A2` remains STOPPED FOR AUTHORISATION (§3.3) and `A4` depends on it.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is
