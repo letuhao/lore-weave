@@ -1345,6 +1345,59 @@ is downstream of the vector DDL.
 
 ## 10 · T17 class (d) — the shape of the remainder
 
+
+### 9.2 T25 ④'s DDL deletion is decided by a COUPLING, not by scheduling — **DECIDED (T25t, 2026-08-23)**
+
+§9.1 sent step 3 to the PO because deleting the passage DDL *"breaks any deployment still
+reading `neo4j`"*. The obvious reading is that step 4 is the same kind of question and needs the
+same kind of answer. **It is not, and the difference is something T25s created rather than
+something that was always true.**
+
+**T25s made the entity scope self-guarding:** entity reads move to Postgres only when an
+`anchor_score` resolver exists, and the provider supplies one only when
+`configured_backend() == "age"`. So a deployment on the Neo4j backend keeps its entity reads on
+`Neo4jVectorStore` — which resolves `index_name = f"entity_embeddings_{dim}"`
+(`entities.py:1712`) and calls `db.index.vector.queryNodes` on it.
+
+**Measured on `lw-iso`, not reasoned about.** The same query, before and after dropping the
+index the DDL creates:
+
+```
+with entity_embeddings_1024 present   ->  hits 5
+after DROP INDEX entity_embeddings_1024
+  -> 52U00: There is no such vector schema index: entity_embeddings_1024
+     52N37: Execution of the procedure db.index.vector.queryNodes() failed
+```
+
+That is the identical `ProcedureCallFailed` shape §9.1 measured for passages, arrived at
+independently.
+
+🎯 **So the DDL is LOAD-BEARING for exactly the deployments the T25s gate keeps on Neo4j.**
+Deleting it would break entity search precisely where the design deliberately sends entity
+search. The two are one mechanism, and that removes the discretion:
+
+```
+backend = age    entity reads -> Postgres (anchor_score joined, §3.3c)   DDL unused
+backend = neo4j  entity reads -> Neo4j    (the self-guarding fallback)   DDL REQUIRED
+```
+
+**Decided: the entity/event vector DDL stays until no deployment can take the Neo4j entity
+path** — that is, until the fallback is removed, which is only correct once every deployment is
+on AGE. It is not a scheduling call and it is not owed to anyone: the condition is mechanical
+and already written down in `read_scopes`.
+
+⚠️ **This is NOT §9.1 being overruled.** §9.1's step 3 genuinely was a PO call: dev's Postgres
+held **zero** passage rows against 1051 passages, so flipping emptied the search and someone
+had to accept that cost. For entities the equivalent measurement is **25 rows against 25
+embedded entities — exact parity** (T25s), so no such cost exists and no such acceptance is
+needed. Different facts, different kind of answer.
+
+📐 **What this leaves owed on T25, precisely:** nothing that a decision unblocks. The DDL's exit
+is now a consequence of the backend flip rather than a step of its own, and the flip is §8.5's,
+already decided. When the last deployment is on AGE the fallback becomes dead code and the DDL
+goes with it — a removal, not a cutover.
+
+
 ### 10.1 The port does NOT grow to 106 methods — **DECIDED (T61, 2026-08-22)**
 
 **Measured before deciding** (rule 8), from the same classifier `port-adoption-gate` ratchets:

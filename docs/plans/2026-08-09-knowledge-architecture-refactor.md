@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: two narrow PO inputs — T25's entity/event DDL deletion (§9.1's precedent) and T46's topology (§6.3c). F chain T54·T55·T56 CLOSED; T25 ①②③ done and ④ built up to the DDL.**
+**RESUME: TWO owed inputs, both operational — T46's topology (§6.3c) and QC-5's ship/fix/amend call (§2.1). T25 ④'s DDL is NOT one: §9.2 shows it is coupled to the backend flip, already decided.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 66 of 113 evidence blocks closed inside them.**
+**62 of 69 rows done · 7 open · 67 of 114 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (14/21) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6046,6 +6046,65 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25t 2026-08-23 — **④'s DDL deletion is decided by a COUPLING I created, not by a PO call**
+
+  ```
+  I called this "§9.1's precedent, a PO decision"   ->  WRONG, and T25s is why
+  the DDL is LOAD-BEARING for exactly the deployments T25s keeps on Neo4j
+  ```
+
+  🔴 **I labelled this a PO decision one cycle ago and it was a reflex, not a measurement.**
+  §9.1 sent step 3 to the PO because deleting the passage DDL *"breaks any deployment still
+  reading `neo4j`"*, so step 4 looks like the same question. Checked instead of assumed, it is
+  not — and the difference is something **T25s created**, in this session, three commits back.
+
+  📐 **T25s made the entity scope self-guarding**: entity reads move to Postgres only when an
+  `anchor_score` resolver exists, and the provider supplies one only when
+  `configured_backend() == "age"`. So a Neo4j-backend deployment keeps entity reads on
+  `Neo4jVectorStore`, which resolves `index_name = f"entity_embeddings_{dim}"`
+  (`entities.py:1712`) and calls `db.index.vector.queryNodes` on it.
+
+  **Bite 27, on iso's Neo4j — the same query, before and after dropping the index the DDL
+  creates:**
+
+  ```
+  with entity_embeddings_1024 present    hits 5
+  after DROP INDEX entity_embeddings_1024
+      52U00: There is no such vector schema index: entity_embeddings_1024
+      52N37: Execution of the procedure db.index.vector.queryNodes() failed
+  ```
+
+  The identical `ProcedureCallFailed` shape §9.1 measured for passages, reached independently.
+  Index restored from `neo4j_schema.cypher`'s own definition, and the query returns 5 again.
+
+  🎯 **So the DDL and the fallback are ONE mechanism.** Deleting the DDL would break entity
+  search precisely where the design deliberately sends it:
+
+  ```
+  backend = age    entity reads -> Postgres (anchor_score joined, §3.3c)   DDL unused
+  backend = neo4j  entity reads -> Neo4j    (the self-guarding fallback)   DDL REQUIRED
+  ```
+
+  ⚖️ **Decided (§9.2): the DDL stays until no deployment can take the Neo4j entity path.** That
+  is mechanical and already written down in `read_scopes` — not a scheduling call, and not owed
+  to anyone. **This does not overrule §9.1**: step 3 genuinely needed a PO call because dev's
+  Postgres held ZERO passage rows against 1051 passages and someone had to accept an emptied
+  search. The entity measurement is **25 against 25 — exact parity**, so there is no cost to
+  accept. Different facts, different kind of answer.
+
+  ⛔ **What T25 has left, precisely: nothing a decision unblocks.** The DDL's exit is now a
+  consequence of the backend flip (§8.5, already decided) rather than a step of its own. When
+  the last deployment is on AGE the fallback is dead code and the DDL goes with it — a removal,
+  not a cutover.
+
+  **QC (a) gates:** four plan gates green; no code changed, so no suite moved.
+  **QC (b) live smoke:** bite 27 above, on the iso stack's Neo4j — a throwaway, and the index
+  was restored and re-verified.
+  **QC (c) real data:** the hits/failure/hits sequence is the measurement; nothing was written
+  to a non-throwaway store.
+
+
   ### ✅ T25s 2026-08-23 — **the entity scope moves, and the switch that moves it is SELF-GUARDING**
 
   ```
