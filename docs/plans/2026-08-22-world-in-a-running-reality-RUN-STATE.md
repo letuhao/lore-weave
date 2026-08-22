@@ -114,7 +114,49 @@ orphans.** The gap is empty in practice, and `0027` adds the key `NOT VALID` in 
 
 **`A2` STOPS HERE.** Everything that can be done without writing to a non-throwaway reality is done.
 The remaining step is nine live invocations against real realities, which is `D-2` and the STOP list.
-| `A3` | **Something DECLARES a world** — `OR-3` from the previous board. Every caller passes an empty declaration today, so the seed step reports `Skipped` on every path. Where the declaration LIVES is this row's decision | `[ ]` | |
+| `A3` | **Something DECLARES a world** — `OR-3` from the previous board. Every caller passes an empty declaration today, so the seed step reports `Skipped` on every path. Where the declaration LIVES is this row's decision | `[x]` | **DONE 2026-08-22 — §3.4.** `contracts/world/demo_v1.json`, validated in CI and **seeded against a real database: 5 nodes, 2 places.** The live arm caught a defect the pure check could not see, and that gap is now closed too |
+#### 3.4 · `A3` — the declaration, and the defect only a database could see
+
+**`contracts/world/` is the home.** A declaration is **data an author edits**, so it is a contract
+artifact rather than a constant. `D-3` holds: nothing there is applied to a reality unless a caller
+names it — `ProvisionRequest.world` still defaults to empty and empty still means *skipped*.
+
+`demo_v1.json` is a real five-node world: `world → region → locale → {domain, domain}`, the two
+domains carrying places, which is the smallest shape that gives an actor somewhere to be.
+
+**Two checks, because they answer different questions.**
+
+- `world_declarations.rs` — every `*.json` parses, is non-empty, and passes `validate`. **Subject
+  floor included**: an empty directory would make it pass forever.
+- a live arm in `world_seed_live` — the file actually SEEDS. `validate` is **pure and has never seen
+  a `CHECK`**, so the two claims are genuinely different.
+
+**And the live arm earned its place on the first run.** It refused the file:
+
+```
+  seed the AUTHORED world: new row for relation "place"
+  violates check constraint "place_type_closed"
+```
+
+I had written `"market"`; the column wants `"marketplace"`. **`validate` passed it and the database
+did not** — which is precisely the gap the arm was written to cover, found immediately.
+
+**So the gap was then closed on the pure side too**, rather than left for the next author to hit
+against a half-created reality: `world_declarations.rs` now reads `place_type_closed` **out of
+`0026_place.up.sql`** and checks every declared type against it. Parsed, never copied — a second
+list of ten strings would drift, and the first time `0026` gained an eleventh the copy would go on
+refusing it.
+
+**Bites — four, each restored byte-identical:**
+
+| bite | red with |
+|---|---|
+| a place on a `locale` | `PlaceOnNonDomain { node: 3, kind: "locale" }` (`place.invalid_place_type_for_channel_tier`) |
+| the locale re-kinded to `arena` | `ContainmentViolation { node: 3, parent_kind: "region", child_kind: "arena" }` |
+| a second root | `MultipleRoots` |
+| `"market"` restored | *"node 5 declares place_type `market`, which `0026_place`'s `place_type_closed` would refuse"* — **without a database** |
+
+**Live evidence:** `A3 AUTHORED WORLD: 5 nodes, 2 places, from contracts/world/demo_v1.json`.
 | `A4` | **An actor is sited in a running reality and the browser shows where it is.** The end of the PO's sentence. Extends `kernel-state-demo.sh`, which already proves browser ← event ← spine | `[ ]` | |
 
 #### 3.1 · `A1` — what `migrate` actually does, read at `HEAD`
@@ -201,7 +243,7 @@ live write** — that half of `D-1` stands untouched.
 
 ## 7 · RESUME
 
-**RESUME: `A2` is STOPPED FOR AUTHORISATION (§3.3) — the tooling is built, tested, bitten and rehearsed 9-of-9 clean against an exact copy of a real reality; only the live write remains. Do NOT proceed without the PO's word. If authorisation is refused or deferred, `A3` (something DECLARES a world) can proceed independently — it is a code/decision row that needs no live reality.**
+**RESUME: `A2` is STOPPED FOR AUTHORISATION (§3.3) and `A4` depends on it — an actor cannot be sited in a running reality until that reality has the tables. `A3` is done (§3.4): `contracts/world/demo_v1.json` exists, validates in CI and seeds against a real database. While `A2` waits, lane B (`B1`, `B2`) and lane C (`C1`) need no live reality and can proceed.**
 
 ```goal-prompt
 goal: a reality that already exists on this shard has a world, an actor sited in it, and a browser showing where that actor is

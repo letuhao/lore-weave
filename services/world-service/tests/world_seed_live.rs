@@ -146,6 +146,48 @@ async fn run(pool: &sqlx::PgPool) -> Result<(), String> {
         return Err(format!("re-run was not a no-op: {again:?}"));
     }
 
+    // ── 3b. `A3` — THE AUTHORED DECLARATION, against a real database.
+    //
+    //     `contracts/world/demo_v1.json` is what `admin reality provision
+    //     --world` reads. `world_declarations.rs` proves it VALIDATES; only a
+    //     database can prove it SEEDS. The two are different claims: `validate`
+    //     is pure and knows nothing about a `CHECK`, a foreign key, or the
+    //     `channels_root_single` index.
+    let authored: Vec<NodeDecl> = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../contracts/world/demo_v1.json"),
+        )
+        .map_err(|e| format!("read demo_v1.json: {e}"))?,
+    )
+    .map_err(|e| format!("demo_v1.json is not a NodeDecl array: {e}"))?;
+
+    let authored_reality = uuid::Uuid::new_v4();
+    let rep2 = world_seed::seed_world(pool, authored_reality, &authored)
+        .await
+        .map_err(|e| format!("seed the AUTHORED world: {e}"))?;
+    if rep2.channels_written != authored.len() as u64 {
+        return Err(format!(
+            "authored world wrote {} channels for {} declared nodes",
+            rep2.channels_written,
+            authored.len()
+        ));
+    }
+    // Its two places are the point: a Domain without one is refused, so a
+    // declaration that seeds proves the 1:1 rule held all the way to the row.
+    let placed: i64 = sqlx::query_scalar("SELECT count(*) FROM place WHERE reality_id = $1")
+        .bind(authored_reality)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("count authored places: {e}"))?;
+    if placed != 2 {
+        return Err(format!("authored world seeded {placed} place(s), wanted 2"));
+    }
+    eprintln!(
+        "A3 AUTHORED WORLD: {} nodes, {} places, from contracts/world/demo_v1.json",
+        rep2.channels_written, placed
+    );
+
     // ── 4. THE SPAWN. An actor is sited in the place that was just seeded, and
     //       the occupancy query answers -- which is the sentence this whole
     //       round was aimed at.
