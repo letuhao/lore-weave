@@ -39,6 +39,7 @@ from app.routers import (
     internal_kal_temporal,
     internal_kg_neighborhood,
     internal_kg_state,
+    internal_project_access,
     internal_mirror,
     internal_parse,
     internal_parse_pdf,
@@ -841,6 +842,7 @@ app.include_router(context.router)
 app.include_router(working_memory.router)
 app.include_router(coref.router)
 app.include_router(internal_admin.router)
+app.include_router(internal_project_access.router)
 app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)

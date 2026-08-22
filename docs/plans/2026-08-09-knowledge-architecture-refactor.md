@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `hasProjectAccess` (§8.7) — the grant primitive the last 3 federations need. T54 and T56 are CLOSED; T46's merged-store substrate stays a PO question.**
+**RESUME: the project-scoped KAL controller — `hasProjectAccess` is BUILT (T55/g); what is left is the routes that call it + 3 consumers. T54/T56 CLOSED; T46's substrate stays a PO question.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**61 of 69 rows done · 8 open · 66 of 113 evidence blocks closed inside them.**
+**61 of 69 rows done · 8 open · 67 of 114 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (4/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (10/17) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T55` (5/5) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -19748,6 +19748,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⛔ **Owed:** `hasProjectAccess` and the controller that uses it. A knowledge-gateway/auth
   question now, not an INV-KAL one. The ledger keeps all three named at
   `MAX_FEDERATE_OWED = 3`, so they cannot quietly drop off.
+
+
+  ---
+  ### ✅ T55/g 2026-08-23 — **`hasProjectAccess` — the primitive §8.7 named, built on the rule that already existed**
+
+  ```
+  knowledge-service  NEW  GET /internal/projects/{id}/access   9 unit tests
+  knowledge-gateway  NEW  hasProjectAccess + a SHARED /access reader   9 spec tests
+  unit 4342 -> 4351 · gateway 34 -> 43
+  ```
+
+  🎯 **Nothing about the authorisation rule is new here.** knowledge-service already owns it,
+  in `app/auth/grant_deps._resolve_owner`: **owner wins outright · a project WITH a book defers
+  to the book grant · a BOOK-LESS project is owner-only (R1)**. What was missing was an HTTP
+  surface the gateway could ask. `_project_grant_level` is that same decision expressed once as
+  a LEVEL instead of as an exception — writing the three branches again would be the
+  *"one concept, two readers"* pattern §8.4 names.
+
+  🔴 **Always 200, `"none"` for both missing and forbidden.** book-service's own note is
+  *"Always 200 {grant_level}; `none` for missing/forbidden (no oracle, R4)"*. A 404 for "no
+  such project" and a 200-`none` for "no grant" would let any internal caller enumerate which
+  project ids exist from the status code alone. **Live, on the rebuilt image:**
+
+  ```
+  the OWNER                        200 {"grant_level":"owner","lifecycle_state":""}
+  a stranger (project HAS a book)  200 {"grant_level":"none", "lifecycle_state":""}
+  a project that does NOT exist    200 {"grant_level":"none", "lifecycle_state":""}
+                                       ^ byte-identical to the line above
+  ```
+
+  ⚖️ **The gateway half is an EXTRACTION, not a copy.** `hasBookAccess` and `hasProjectAccess`
+  now share one `/access` reader, because every rule for reading that answer is subtle in the
+  same way — fail closed on a transport error, fail closed on a non-200, cache POSITIVES only,
+  treat an empty lifecycle as not-disqualifying. A hand-written second copy inherits whichever
+  of those was current the day it was written. The dead original was **deleted**, not left
+  beside it.
+
+  🔬 **`grants.ts` had no test file at all before this.** Worth stating plainly rather than
+  quietly fixing: it is the KAL's entire user-mode authorisation, every failure mode is
+  "fail closed", and a fail-closed bug is invisible in production until someone is wrongly let
+  **in** — the direction that generates no support ticket.
+
+  ```
+  18  cache the NEGATIVE too              RED — a freshly-granted user stays locked out
+  19  drop the cache NAMESPACE            RED — a project id answers for an equal book id
+  ```
+
+  Bite 19 is the one that would never have been found by reading: the pre-existing key was
+  `${bookId}:${userId}`, and adding projects under the same scheme makes a project's positive
+  entry serve a book lookup that never reaches book-service. The test uses the **same id** for
+  both on purpose.
+
+  **QC (a) gates:** knowledge unit **4351**, gateway **43** (7 suites), `tsc --noEmit` clean,
+  all repo gates green.
+  **QC (b) live smoke:** the three-arm table above, both images REBUILT on `lw-iso`, backend
+  `age`. The seam crossed is gateway → knowledge-service.
+  **QC (c) real data:** the live answers are against a real project row (`01a0298e…`, book
+  `0000…b001`) and a real owner, not a fixture.
+
+  ⛔ **Owed, and now only this:** the project-scoped KAL controller that CALLS
+  `hasProjectAccess`, plus repointing the three consumers. `MAX_FEDERATE_OWED = 3` keeps them
+  named on every gate run.
 
 
 - [x] **T56** — **The anti-rot audit set** — every check earned by a defect this plan actually hit
