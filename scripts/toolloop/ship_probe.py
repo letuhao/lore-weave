@@ -26,6 +26,19 @@ WHAT EACH CASE MEANS, and why the interesting answer is often "they are identica
 SAFETY: every id used is nonexistent by construction (a fresh UUID) or belongs to the run's own
 throwaway. Nothing here can write: a refusal is the expected outcome, and a call that SUCCEEDS is
 itself the finding and is reported as one.
+
+🔴 IT CANNOT REACH AN OP-DISPATCH TOOL'S ID, AND IT REPORTS "refused" ANYWAY. The cases are built
+from the tool's REQUIRED arguments, and a flat-superset tool declares only `op` as required — every
+id it acts on is optional in the schema. Measured 2026-08-22 on composition_arc_template_edit and
+composition_motif_link_edit: all three cases returned the SAME op-dispatch refusal ("op=create
+requires code and name"), so the run read as a clean 3-for-3 while never touching arc_id or the
+motif ids at all. A green boundary check that never reached the boundary is worse than no check,
+because it is recorded as evidence.
+
+Until this takes an explicit argument override, an op-dispatch tool must be probed by hand with a
+concrete op plus the id under test (see docs/eval/toolloop/2026-08-14/c2-ship-probe-opdispatch.txt),
+and its ledger row must say WHICH op was exercised. 15 catalogue tools declare `op` as their only
+required argument (measured, 2026-08-22).
 """
 from __future__ import annotations
 
