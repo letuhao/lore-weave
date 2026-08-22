@@ -1,0 +1,311 @@
+[
+ {
+  "tool": "settings_model_update",
+  "pre": [],
+  "args": {
+   "user_model_id": "01a029ba-e29d-719d-98c0-b2001d4d05f0",
+   "alias": "Drafting Model"
+  },
+  "first": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "alias": "LOOP-THROWAWAY-model-Kisipopu",
+      "user_model_id": "01a029ba-e29d-719d-98c0-b2001d4d05f0"
+     },
+     "tool": "settings_model_update"
+    },
+    "model": {
+     "alias": "Drafting Model",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:48:28.700982Z",
+     "is_active": true,
+     "is_favorite": false,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:48:41.124651Z",
+     "user_model_id": "01a029ba-e29d-719d-98c0-b2001d4d05f0"
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "alias": "Drafting Model",
+      "user_model_id": "01a029ba-e29d-719d-98c0-b2001d4d05f0"
+     },
+     "tool": "settings_model_update"
+    },
+    "model": {
+     "alias": "Drafting Model",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:48:28.700982Z",
+     "is_active": true,
+     "is_favorite": false,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:48:54.915712Z",
+     "user_model_id": "01a029ba-e29d-719d-98c0-b2001d4d05f0"
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:48:28.700982+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:48:41.124651+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:48:41.124651+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:48:54.915712+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [
+    "01a029ba-e29d-719d-98c0-b2001d4d05f0"
+   ],
+   "book_id": "01a029ba-e0ce-75e6-a830-9f6f222d0a0a",
+   "title": "LOOP-THROWAWAY-idem-settings_model_update-17f994d6",
+   "tables": {
+    "composition(project)": "01a029ba-e22a-7d22-88c1-33dbe4c92454"
+   }
+  }
+ },
+ {
+  "tool": "settings_model_set_active",
+  "pre": [],
+  "args": {
+   "user_model_id": "01a029bb-8db6-7227-9d55-32e715a35310",
+   "value": false
+  },
+  "first": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "user_model_id": "01a029bb-8db6-7227-9d55-32e715a35310",
+      "value": true
+     },
+     "tool": "settings_model_set_active"
+    },
+    "model": {
+     "alias": "LOOP-THROWAWAY-model-Lutogalo",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:49:12.502054Z",
+     "is_active": false,
+     "is_favorite": false,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:49:29.576207Z",
+     "user_model_id": "01a029bb-8db6-7227-9d55-32e715a35310"
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "user_model_id": "01a029bb-8db6-7227-9d55-32e715a35310",
+      "value": false
+     },
+     "tool": "settings_model_set_active"
+    },
+    "model": {
+     "alias": "LOOP-THROWAWAY-model-Lutogalo",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:49:12.502054Z",
+     "is_active": false,
+     "is_favorite": false,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:49:42.673723Z",
+     "user_model_id": "01a029bb-8db6-7227-9d55-32e715a35310"
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:49:12.502054+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:49:29.576207+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:49:29.576207+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:49:42.673723+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [
+    "01a029bb-8db6-7227-9d55-32e715a35310"
+   ],
+   "book_id": "01a029bb-8b57-7b90-b4cd-386e0941ed7d",
+   "title": "LOOP-THROWAWAY-idem-settings_model_set_active-9c606eff",
+   "tables": {
+    "composition(project)": "01a029bb-8d24-7b6d-996c-21904746ee65"
+   }
+  }
+ },
+ {
+  "tool": "settings_model_set_favorite",
+  "pre": [],
+  "args": {
+   "user_model_id": "01a029bc-4605-7eeb-b5f2-9e73e6866cd1",
+   "value": true
+  },
+  "first": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "user_model_id": "01a029bc-4605-7eeb-b5f2-9e73e6866cd1",
+      "value": false
+     },
+     "tool": "settings_model_set_favorite"
+    },
+    "model": {
+     "alias": "LOOP-THROWAWAY-model-Mipotula",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:49:59.68587Z",
+     "is_active": true,
+     "is_favorite": true,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:50:11.882665Z",
+     "user_model_id": "01a029bc-4605-7eeb-b5f2-9e73e6866cd1"
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "_meta_undo_hint": {
+     "args": {
+      "user_model_id": "01a029bc-4605-7eeb-b5f2-9e73e6866cd1",
+      "value": true
+     },
+     "tool": "settings_model_set_favorite"
+    },
+    "model": {
+     "alias": "LOOP-THROWAWAY-model-Mipotula",
+     "capability_flags": {},
+     "context_length": null,
+     "created_at": "2026-08-22T13:49:59.68587Z",
+     "is_active": true,
+     "is_favorite": true,
+     "notes": "",
+     "pricing": {},
+     "provider_credential_id": "019eeb08-3743-7e67-832b-92617ad3cb09",
+     "provider_kind": "web_search",
+     "provider_model_name": "loop-throwaway-probe",
+     "sort_order": null,
+     "tags": [],
+     "updated_at": "2026-08-22T13:50:24.905605Z",
+     "user_model_id": "01a029bc-4605-7eeb-b5f2-9e73e6866cd1"
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:49:59.68587+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:50:11.882665+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_provider_registry.user_models": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-22 13:50:11.882665+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-22 13:50:24.905605+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [
+    "01a029bc-4605-7eeb-b5f2-9e73e6866cd1"
+   ],
+   "book_id": "01a029bc-4407-7c5c-b1ff-86526876e0d6",
+   "title": "LOOP-THROWAWAY-idem-settings_model_set_favorite-be94a239",
+   "tables": {
+    "composition(project)": "01a029bc-4580-7019-99c5-91b8c1819b9e"
+   }
+  }
+ }
+]

@@ -130,18 +130,18 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
         args = _resolve_pre(args, pre_results, fx)
         out["args"] = args
 
-        before = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id)
+        before = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
         try:
             out["first"] = ["ok", fx.mcp.call(tool, args)]
         except MCPToolError as e:
             out["first"] = ["refused", str(e)[:200]]
-        mid = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id)
+        mid = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
 
         try:
             out["second"] = ["ok", fx.mcp.call(tool, args)]
         except MCPToolError as e:
             out["second"] = ["refused", str(e)[:200]]
-        after = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id)
+        after = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
 
         out["diff_first"] = store_diff(before, mid)
         out["diff_second"] = store_diff(mid, after)

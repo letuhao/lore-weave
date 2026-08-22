@@ -24,12 +24,22 @@ more databases hold 30 book-scoped tables, 17 tables are CHAPTER-scoped with no 
 whole world/map store keys on map_id/world_id and carries neither. For every tool writing to any
 of those, "the store did not change" was a sentence about a place the snapshot never looked.
 
-So the scope is now four keys, and each exists because a real tool was invisible without it:
+So the scope is now FIVE keys, and every one of them was added because a real tool had written
+somewhere this file could not see. That is the honest summary: not a design, a list of misses.
 
-    book_id      the original sweep, across every owning database
-    chapter_id   tables like `active_chapter_translation_versions`, keyed (chapter_id, language)
-    project_id   composition, resolved from the book through `composition_work`
-    world_id     `world_maps`/`map_regions`/`map_markers`, which have no book column at all
+    book_id        the original sweep, across every owning database
+    chapter_id     `active_chapter_translation_versions` and 16 others, keyed by chapter
+    project_id     applied to EVERY swept database, not composition alone — `kg_triage_items`
+    world_id       `world_maps`/`map_regions`/`map_markers`, which have no book column at all
+    user_model_id  `user_models` in loreweave_provider_registry, which is account-scoped
+
+WHAT IS STILL NOT COVERED, named rather than implied. The agent registry's `skills` are
+account-scoped in the same way `user_models` was, and `registry_set_skill_enabled` writes a
+per-user override there — it has no key here yet, so its DATA bar is silent exactly as the others
+were. Neo4j is counted for `Fact` nodes only, so any other node or relationship type is invisible.
+And a store reachable by none of these five keys will read as "unchanged" no matter what happens
+in it; the fix for each has been to add the key the tool actually writes by, one measured miss at
+a time.
 
 and `scripts/test_the_snapshot_sweeps_every_book_scoped_store_gate.py` fails when a database with
 book-scoped tables is missing from DATABASES, so the list cannot silently go stale again.
@@ -259,8 +269,44 @@ def _world_counts(world_id: str) -> dict:
     return out
 
 
+def _model_counts(user_model_id: str) -> dict:
+    """🔴 THE SIXTH STORE THE DATA BAR COULD NOT SEE, AND THIS ONE WAS PREDICTED.
+
+    The world/map write-up ended: "every OTHER non-book-scoped store has the same shape.
+    `user_models` and the agent registry's `skills` are ACCOUNT-scoped, and the four tools excluded
+    from the approval arm write to them. When their fixture is built, its snapshot needs the same
+    treatment or their DATA bar will be silent in exactly this way." It was, verbatim.
+
+    Measured: `settings_model_update` renamed a run-owned model — its own undo_hint carries the
+    OLD alias on the first call and `Drafting Model` on the second, so the rename plainly landed —
+    and the diff was empty both times. `user_models` lives in `loreweave_provider_registry`, which
+    is not an owning store for a BOOK and is deliberately outside DATABASES.
+
+    Scoped to the ONE model the fixture registered, not to the account: an owner-wide count would
+    fold in the account's real models and lose the attribution. `user_default_models` and
+    `user_model_tags` ride along because they are keyed by the same id — a favourite or a default
+    set against this model is part of what these tools do.
+    """
+    q = user_model_id.replace("'", "''")
+    rows = _psql("loreweave_provider_registry", (
+        f"select 'user_models', count(*)::text, coalesce(max(updated_at)::text,'-') "
+        f"from user_models where user_model_id='{q}' "
+        f"union all select 'user_default_models', count(*)::text, "
+        f"coalesce(max(updated_at)::text,'-') from user_default_models where user_model_id='{q}' "
+        f"union all select 'user_model_tags', count(*)::text, '-' "
+        f"from user_model_tags where user_model_id='{q}';"))
+    out = {}
+    for r in rows:
+        bits = r.split("|")
+        if len(bits) >= 2 and bits[1] != "0":
+            out[f"loreweave_provider_registry.{bits[0]}"] = {
+                "rows": int(bits[1]), "latest": bits[2] if len(bits) > 2 else "-"}
+    return out
+
+
 def snapshot(book_id: str, project_id: str | None = None,
-             world_id: str | None = None, chapter_id: str | None = None) -> dict:
+             world_id: str | None = None, chapter_id: str | None = None,
+             user_model_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
     itself the signal that something was created.
@@ -310,6 +356,8 @@ def snapshot(book_id: str, project_id: str | None = None,
                 snap[f"{db}.{k}"] = v
     if world_id:
         snap.update(_world_counts(world_id))
+    if user_model_id:
+        snap.update(_model_counts(user_model_id))
     try:
         snap.update(_neo4j(project_id))
     except Exception as e:  # noqa: BLE001 — a graph that is down must not silently read as "clean"

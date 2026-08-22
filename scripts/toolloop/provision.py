@@ -128,6 +128,8 @@ class Throwaway:
         # teardown: the world/map store carries no `book_id`, so the DATA bar cannot see it
         # without being told which world belongs to this run. See store_snapshot._world_counts.
         self.world_id: str | None = None
+        #: The registered model this fixture created, if any — exposed for the SNAPSHOT.
+        self.user_model_id: str | None = None
         self.seeded: list[dict] = []
 
     # ── build ────────────────────────────────────────────────────────────────────────────
@@ -308,6 +310,11 @@ class Throwaway:
         if tool == "world_create" and isinstance(r, dict):
             w = r.get("world") if isinstance(r.get("world"), dict) else r
             self.world_id = str(w.get("world_id") or w.get("id") or "") or None
+        # Same reason as the world: user_models is account-scoped and the DATA bar cannot find it
+        # without being told which model belongs to this run.
+        if tool == "settings_model_register" and isinstance(r, dict):
+            m = r.get("model") if isinstance(r.get("model"), dict) else r
+            self.user_model_id = str(m.get("user_model_id") or m.get("id") or "") or None
 
     _STEP_REF = re.compile(r"\{step:(\d+):([A-Za-z0-9_.]+)\}")
 
@@ -410,11 +417,58 @@ class Throwaway:
             out["worlds"] = self._purge_worlds()
         except Exception as e:  # noqa: BLE001 — a world sweep must never mask a book teardown
             out["worlds_error"] = f"{type(e).__name__}: {e}"
+        try:
+            out["models"] = self._purge_models()
+        except Exception as e:  # noqa: BLE001 — same rule: never mask the book teardown
+            out["models_error"] = f"{type(e).__name__}: {e}"
         if not self.book_id:
             out.update({"deleted": 0, "reason": "no book was created"})
             return out
         out.update(purge_book(self.book_id))
         return out
+
+    def _purge_models(self) -> list[str]:
+        """Delete the registered MODELS this fixture's seed created.
+
+        🔴 A REGISTERED MODEL IS ACCOUNT-SCOPED, LIKE A WORLD, AND THIS IS THE SAME LEAK ONE STORE
+        OVER. It exists so the four tools the owner's rule excludes — settings_model_update,
+        _set_active, _set_favorite and registry_set_skill_enabled — can be measured against an
+        object THE RUN OWNS instead of against the account's real models. Those tools were kept out
+        of the approved arm precisely because their targets were pre-existing; a fixture that
+        creates its own target brings them inside the rule, and a fixture that creates one it
+        cannot remove would put them back outside it.
+
+        🔴 AND `settings_model_delete` DOES NOT DELETE. It mints a `confirm_token` and returns —
+        so a teardown that just calls it leaves the model in place while reporting success. This
+        redeems the token, which the 2026-08-22 owner decision permits for an object the run's own
+        fixture created and is tearing down.
+
+        Guarded by PROVENANCE, not by name: the id came back from this fixture's own
+        `settings_model_register`. That is the lesson `_purge_worlds` paid for — a name-prefix
+        guard silently matched nothing for 35 worlds.
+        """
+        made = [r["result"] for r in self.seeded
+                if r.get("tool") == "settings_model_register" and isinstance(r.get("result"), dict)]
+        if not made:
+            return []
+        from scripts.eval.tool_liveness import confirm as _confirm
+        gone = []
+        for r in made:
+            m = r.get("model") if isinstance(r.get("model"), dict) else r
+            mid = m.get("user_model_id") or m.get("id")
+            if not mid:
+                continue
+            res = self.mcp.call("settings_model_delete", {"user_model_id": str(mid)})
+            tok = _confirm.find_confirm_token(res)
+            if tok:
+                ok, code, _ = _confirm.confirm(_tle_auth(), "settings_model_delete", tok)
+                if not ok:
+                    raise ProvisionError(
+                        f"could not confirm the delete of throwaway model {mid} (HTTP {code}). "
+                        "Leaving it would put an account-scoped fixture on the account, which is "
+                        "the leak this method exists to prevent.")
+            gone.append(str(mid))
+        return gone
 
     def _purge_worlds(self) -> list[str]:
         """Delete the worlds this fixture's seed created.
