@@ -115,6 +115,35 @@ orphans.** The gap is empty in practice, and `0027` adds the key `NOT VALID` in 
 **`A2` STOPS HERE.** Everything that can be done without writing to a non-throwaway reality is done.
 The remaining step is nine live invocations against real realities, which is `D-2` and the STOP list.
 | `A3` | **Something DECLARES a world** — `OR-3` from the previous board. Every caller passes an empty declaration today, so the seed step reports `Skipped` on every path. Where the declaration LIVES is this row's decision | `[x]` | **DONE 2026-08-22 — §3.4.** `contracts/world/demo_v1.json`, validated in CI and **seeded against a real database: 5 nodes, 2 places.** The live arm caught a defect the pure check could not see, and that gap is now closed too |
+#### 3.3b · `A2` — the authorised step is now ONE fail-closed command
+
+`migrate` takes **one migration id per invocation**, so bringing a reality from `0021_turn_slot` to
+`0030_encounter` is nine of them, in order, with the same six flags each time. **That is a procedure
+nobody can re-run correctly** — `G2`'s defect about a demo assembled across six hand-typed shells,
+and `EO-2`'s about `E1` before it.
+
+`scripts/bring-reality-forward.sh` **fails closed twice over**: no `--reality`, no run (`rc=2`); no
+`--confirm`, no write. It reads the migration list **out of the manifest** rather than hard-coding a
+second copy, refuses if it reads none, goes **through the orchestrator** (`I-3`) rather than `psql`,
+and verifies afterwards against the reality itself — because a run that reports success while the
+table is absent is `1b12-05`'s shape, found once already.
+
+**Plan mode, against the real registry, read-only:**
+
+```
+  == 9 migration(s) from the manifest: 0022_actors … 0030_encounter
+  == PLAN ONLY (no --confirm). Nothing will be written.
+  -- plan 0022_actors
+       drainable fleet: 10
+       would apply to : 1
+         00c7e2c5-…  lw_reality_00c7e2c5cabc @ pg-shard-0.internal
+  == planned only. Re-run with --confirm to apply.        rc=0, 9 plans
+```
+
+**And plan mode caught a real defect before any write** — exactly its purpose. `mapfile` kept the
+`` from python's CRLF output on Windows, and `migrate` answered
+`ERROR: migration "0022_actors" not found`. **The fifth escaping failure of this session**, and the
+first one a dry run caught rather than a test.
 #### 3.4 · `A3` — the declaration, and the defect only a database could see
 
 **`contracts/world/` is the home.** A declaration is **data an author edits**, so it is a contract
