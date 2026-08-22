@@ -23304,12 +23304,12 @@
   }
  },
  "settings_provider_inventory": {
-  "description": "List the upstream models a configured provider credential currently offers (its live inventory), so the user can pick one to register. Takes a provider_credential_id. No secrets returned.",
+  "description": "List the upstream models a configured provider credential currently OFFERS RIGHT NOW \u2014 its LIVE inventory, fetched from the provider. This is NOT the same set as settings_list_models, which lists models already REGISTERED in this account: a model retired upstream still sits in the registry, and a model the provider newly offers is not in it yet. If the user asks what their provider actually offers, or what they COULD register, this is the only tool that can answer \u2014 settings_list_models cannot, and answering from it is wrong in exactly the case the question was asked to detect. Needs a provider_credential_id from settings_list_providers. No secrets returned.",
   "inputSchema": {
    "additionalProperties": false,
    "properties": {
     "provider_credential_id": {
-     "description": "the provider credential whose live model inventory to list (UUID)",
+     "description": "the provider credential whose live model inventory to list (UUID). NOT a name and NOT a model id \u2014 call settings_list_providers first and pass the provider_credential_id it returns",
      "type": "string"
     }
    },
@@ -24456,7 +24456,7 @@
      "type": "string"
     },
     "map_id": {
-     "description": "the map to add a marker to (UUID; you must own it)",
+     "description": "the map to add a marker to (UUID; you must own it). NOT a name \u2014 if you have the map's NAME, call world_map_list first and match it to get the id",
      "type": "string"
     },
     "marker_type": {
@@ -24504,7 +24504,7 @@
      "type": "string"
     },
     "map_id": {
-     "description": "the map to add a region to (UUID; you must own it)",
+     "description": "the map to add a region to (UUID; you must own it). NOT a name \u2014 if you have the map's NAME, call world_map_list first and match it to get the id",
      "type": "string"
     },
     "name": {
@@ -24659,7 +24659,7 @@
    "additionalProperties": false,
    "properties": {
     "marker_id": {
-     "description": "the marker to remove (UUID; on a map you own)",
+     "description": "the marker to remove (UUID; on a map you own) \u2014 obtained from world_map_get, which returns the map with all its markers + regions",
      "type": "string"
     }
    },
@@ -24683,7 +24683,7 @@
    "additionalProperties": false,
    "properties": {
     "region_id": {
-     "description": "the region to remove (UUID; on a map you own)",
+     "description": "the region to remove (UUID; on a map you own) \u2014 obtained from world_map_get, which returns the map with all its markers + regions",
      "type": "string"
     }
    },
@@ -24725,7 +24725,7 @@
      ]
     },
     "map_id": {
-     "description": "the map to update (UUID; you must own it)",
+     "description": "the map to update (UUID; you must own it). NOT a name \u2014 if you have the map's NAME, call world_map_list first and match it to get the id",
      "type": "string"
     },
     "name": {
@@ -24772,7 +24772,7 @@
      ]
     },
     "marker_id": {
-     "description": "the marker to update (UUID; on a map you own)",
+     "description": "the marker to update (UUID; on a map you own) \u2014 obtained from world_map_get, which returns the map with all its markers + regions",
      "type": "string"
     },
     "marker_type": {
@@ -24856,7 +24856,7 @@
      ]
     },
     "region_id": {
-     "description": "the region to update (UUID; on a map you own)",
+     "description": "the region to update (UUID; on a map you own) \u2014 obtained from world_map_get, which returns the map with all its markers + regions",
      "type": "string"
     }
    },
@@ -24931,7 +24931,7 @@
      ]
     },
     "world_id": {
-     "description": "the world to update (UUID; you must own it)",
+     "description": "the world to update (UUID; you must own it). NOT a name \u2014 if you have the world's NAME, call world_list first and match it to get the id",
      "type": "string"
     }
    },
