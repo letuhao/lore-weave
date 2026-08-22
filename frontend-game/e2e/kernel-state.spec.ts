@@ -26,12 +26,31 @@ import { expect, test } from '@playwright/test';
 // committed a real event, advanced the turn, and rendered an empty roster. That
 // is the partial success this assertion exists to refuse.
 //
-// # Running it
+// # Running it -- RUN AND VERIFIED 2026-08-22 (`B2`); this is what actually works
 //
-//   bash scripts/smoke/kernel-state-demo.sh          # stand the stack up
-//   cd frontend-game && VITE_GAME_SERVER_URL=ws://localhost:2577 \
-//     VITE_INTERNAL_TOKEN=kernel_demo_token npx vite --port 5199 --strictPort
-//   LOREWEAVE_E2E_FULL=1 KERNEL_STATE_BASE=http://localhost:5199 npx playwright test kernel-state
+// The version of these instructions that shipped with the file had never been
+// executed and was missing the whole token half, which is why the board read
+// `[ ] automated` for a suite that was already fully written.
+//
+//   # 1. a real user, because /play CLEARS a token it cannot use
+//   curl -sX POST http://localhost:8204/v1/auth/register //     -H 'content-type: application/json' -d '{"email":"...","password":"..."}'
+//   curl -sX POST http://localhost:8204/v1/auth/login //     -H 'content-type: application/json' -d '{"email":"...","password":"..."}'
+//     # -> access_token, and user_profile.user_id
+//
+//   # 2. the stack, with THAT user holding the binding. The two must be one
+//   #    person: `user_ref_id` is server-stamped from the redeemed WS ticket, so
+//   #    the subject resolves against the token's `sub`.
+//   DEMO_DRIVER=<user_id> bash scripts/smoke/kernel-state-demo.sh
+//
+//   # 3. the app
+//   cd frontend-game && VITE_GAME_SERVER_URL=ws://localhost:2577 //     VITE_INTERNAL_TOKEN=kernel_demo_token npx vite --port 5199 --strictPort
+//
+//   # 4. the suite -- --project=chromium, which is what CI runs. Without it
+//   #    playwright also launches firefox and webkit, and a MISSING BROWSER
+//   #    BINARY reads exactly like a failing assertion in the output.
+//   LOREWEAVE_E2E_FULL=1 KERNEL_STATE_BASE=http://localhost:5199 //     KERNEL_STATE_ACCESS_TOKEN=<access_token> KERNEL_STATE_USER_ID=<user_id> //     npx playwright test kernel-state --project=chromium
+//
+//   bash scripts/smoke/kernel-state-demo.sh --down   # when finished
 //
 // It SKIPS without `LOREWEAVE_E2E_FULL=1`, loudly, naming the script — a live
 // assertion that passes quietly with no stack is worse than one nobody wrote.
@@ -62,6 +81,22 @@ const STRUCK_TARGET = 'entity-2';
 const SESSION = process.env.KERNEL_STATE_ACCESS_TOKEN ?? '';
 
 /**
+ * The user the token belongs to, and the user the binding names.
+ *
+ * These are ONE person or the demo does not work: `user_ref_id` is server-stamped
+ * from the redeemed WS ticket, so the subject resolves against the token's `sub`,
+ * while `kernel-state-demo.sh` grants the binding to `DEMO_DRIVER`. Run the script
+ * with `DEMO_DRIVER=<the sub of the token you pass here>`.
+ *
+ * It was a hard-coded literal until `B2` first RAN this suite. That literal is the
+ * script's default driver, which is fine as long as nobody uses a real token -- and
+ * a real token is exactly what the other skip demands. Two constants that must
+ * agree, in two files, neither naming the other: the drift was built in.
+ */
+const USER_ID =
+  process.env.KERNEL_STATE_USER_ID ?? '33333333-2222-4333-8444-000000000003';
+
+/**
  * Seed a session, then open `/play`.
  *
  * `/play` sits behind `<RequireAuth>`, so a fresh context lands on `/login` and
@@ -88,16 +123,16 @@ const SESSION = process.env.KERNEL_STATE_ACCESS_TOKEN ?? '';
  * adopted it.)
  */
 async function openPlay(page: import('@playwright/test').Page): Promise<void> {
-  await page.addInitScript((token: string) => {
+  await page.addInitScript(([token, user]: [string, string]) => {
     localStorage.setItem(
       'lw_auth',
       JSON.stringify({ accessToken: token, refreshToken: token }),
     );
     localStorage.setItem(
       'lw_user',
-      JSON.stringify({ user_id: '33333333-2222-4333-8444-000000000003', email: 'e2e@local' }),
+      JSON.stringify({ user_id: user, email: 'e2e@local' }),
     );
-  }, SESSION);
+  }, [SESSION, USER_ID]);
   await page.goto(`${BASE}/play`);
 }
 

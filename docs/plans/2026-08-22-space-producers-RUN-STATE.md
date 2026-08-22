@@ -341,7 +341,7 @@ that file is ungoverned history, and a third copy is the drift this run keeps fi
 | # | Row | Status | Evidence |
 |---|---|---|---|
 | `B1` | **reality-layer `3C` + `3D` as ONE commit** — `ids.rs` re-added, `CapabilityToken`, `trait ControlPlane`, `SessionContext`, the `#[cfg(test)]` double. The producer `3C` was waiting for is the control-plane seam, and `3D` *is* that seam | `[x]` | **DONE 2026-08-22 — §3.7. ALREADY BUILT; the board was never told.** Verified by the rows' OWN criteria: `clippy -p dp -D warnings` **rc=0**, and the field → `pub` bite reds `forged_reality_id`. Both boards updated |
-| `B2` | **kernel-state `G5` automated.** Its status cell ticks the MANUAL leg and leaves the AUTOMATED leg unticked — the browser render is proven by hand and by nothing that runs again | `[ ]` | |
+| `B2` | **kernel-state `G5` automated.** Its status cell ticks the MANUAL leg and leaves the AUTOMATED leg unticked — the browser render is proven by hand and by nothing that runs again | `[x]` | **DONE 2026-08-22 — §3.8. The suite was already written and had never been RUN.** 2 passed on chromium in ~1.9 s against the real stack; bite `XLEN 1→0` reds both. `FLOW-19`'s shape a second time |
 | `B3` | **game-tier `1b5-*` — eight rows marked `⬜ OPEN` at `:1700`–`:1707` that a discharge table at `:1787` closes.** The work shipped; the register was never told | `[ ]` | |
 | `B4` | **lore-bible `LB1`/`LB2`/`LB3` — unpark or park with a trigger.** `LB0` closed by finding a 252-file `lore-enrichment-service` already doing `LB2`'s sweep. A board parked for a *good* reason still needs the reason written where the next reader looks | `[ ]` | |
 
@@ -370,6 +370,51 @@ the rest has not. Stays parked behind slice 5, and `OUT-2` is unchanged.
 **0 open of 35** while `3E` was still `⬜` — because **`⬜` is not in `goal-prompt.py`'s vocabulary**.
 Measured across every board: **27 open rows are invisible for that reason alone**, and they are not
 incidental rows — they are `1b5-H1..L5` (`B3`'s subject), `LB1..LB3` (`B4`'s subject), `3E` and `W8`.
+
+#### 3.8 · `B2` — the suite existed; nobody had ever run it
+
+**`frontend-game/e2e/kernel-state.spec.ts` was already complete** — the roster assertion, the reason
+the roster and not the turn number is the assertion, and a **non-vacuity arm** pinning the entry
+inside the channel panel beside the `Strike` its own event enables. The board said `[ ] automated`
+because the file **had never been executed**.
+
+**This is `FLOW-19`'s shape exactly** — *"a deferral whose discharge procedure has never been run is a
+promise, not a plan"* — one tier up: a TEST that has never been run is a claim, not a check.
+
+Two skips stood in the way, and neither was a real blocker:
+
+- `LOREWEAVE_E2E_FULL=1` — a flag `playwright.config.ts` had documented since it was written and
+  **nothing had ever read**; this suite is its first consumer.
+- a token auth-service issued, because `/play` **clears** a token it cannot use. `GO-2` had already
+  cleared this on 2026-08-21 (*"auth-service was already running … `infra-auth-service-1` had been
+  `Up (healthy)` on :8204 the whole time"*), and the suite's own run-instructions **omitted the token
+  half entirely** — which is why it looked harder than it was.
+
+**Measured, against the real stack** (`kernel-state-demo.sh`: spine committed 1 event, publisher →
+`lw.events.<reality>` XLEN=1, world-service :7150, game-server :2577):
+
+```
+ok 1 [chromium] the roster entry is in the channel panel, not somewhere else on the page (1.8s)
+ok 2 [chromium] a committed strike renders as a roster entry (1.9s)
+2 passed (4.5s)
+```
+
+**The bite** — `DEL lw.events.<reality>`, XLEN 1 → 0:
+
+```
+Error: no roster entry — the committed event did not reach the fold.
+       Check XLEN lw.events.<reality> and the publisher log.
+```
+
+and **`you are entity 1` still passed**, which is the precise part: the STATE hop failed while the
+SUBJECT hop held. Re-seeded, both green again.
+
+**Two real defects fixed while running it.** The spec hard-coded the driver's uuid while the token
+supplies its own `sub`, and those must be one person — two constants in two files, neither naming the
+other, so the drift was built in; it now takes `KERNEL_STATE_USER_ID`. And the run-instructions have
+been replaced with the ones that were actually executed, including `--project=chromium`: without it
+playwright launches firefox and webkit too, and **a missing browser BINARY reads exactly like a
+failing assertion** — 4 "failures" that were nothing of the kind.
 
 ### Lane C — the tooling that hid the work
 
@@ -438,7 +483,7 @@ row. A question that reaches its row unanswered stops the row, not the run.
 
 ## 8 · RESUME
 
-**RESUME: `B2` — kernel-state `G5`'s automated leg. Then `B3`/`B4`. Note what `B1` produced: `C1` now has TWO measured gaps, and the second (`⬜` invisible, 27 rows) covers the very rows `B3` and `B4` are about — so `C1` may be worth pulling ahead of them, since a fix there makes both verifiable instead of hand-checked.**
+**RESUME: `B3` — the game-tier `1b5-*` register drift: eight rows marked open that a discharge table below them closes. Then `B4`. Both are rows `C1`'s second gap makes invisible to tooling, so verify them by reading, not by a tool, until `C1` lands.**
 
 ```goal-prompt
 goal: the space substrate has producers reachable by the production path, and the four boards still holding rows open are closed or carry a mechanism
