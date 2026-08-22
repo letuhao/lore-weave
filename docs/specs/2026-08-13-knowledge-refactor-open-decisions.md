@@ -857,6 +857,54 @@ is therefore disarmed, and re-extraction of an affected chapter is now safe** �
 §4.1's precondition was protecting. The 6 refusals are unchanged before and after; they are the
 planner declining to guess, not residue.
 
+
+### 6.3c T46's remaining scope, re-measured — the ENGINE is decided; the TOPOLOGY is the question — **DECIDED · one PO input named (T46h, 2026-08-23)**
+
+🔴 **The RESUME line said T46 was "X1's engine choice, the one PO decision left". It is not, and
+that sentence would have sent the next session chasing a decision made the day before.** §8.1
+(2026-08-22): *"The engine choice is **AGE**, made here."* X1's contest was scoped as "build both
+candidates and let T43 choose"; T43 signed off on 9-of-9 agreement and named no winner, and §8.1
+closed that gap explicitly. **Nothing about the engine is owed.** This is the `T17` failure shape
+§1.3 records — a pointer outliving the thing it points at — caught after one session rather than
+ten.
+
+**Where T46's four named capabilities actually stand:**
+
+```
+maintain_chain, pin-aware supersession   ✅ landed T46f — bitemporal-parity 1 -> 0 asymmetries
+content-addressed natural key            ✅ present on the KG side
+half-open interval invariant             ✅ present and tested
+anchor+delta fold + folds_since_reground ⛔ SCOPED OUT with the measurement (§6.3b)
+the recanon precondition                 ✅ APPLIED against the real dev graph (T46d)
+```
+
+**So the machinery half of the row is complete.** What remains is the second clause of §6.3
+amendment 1 — *"choosing the merged store's SUBSTRATE **and moving both onto it**"* — and with
+the engine settled the open part is TOPOLOGY. Measured on the running stack:
+
+```
+GLOSSARY_DB_URL        postgres:5432/loreweave_glossary
+KNOWLEDGE_DB_URL       postgres:5432/loreweave_knowledge
+KNOWLEDGE_AGE_DB_URL   knowledge-pg:5432/loreweave_knowledge_vectors     <- a DIFFERENT host
+```
+
+⚖️ **Decided here: "merge the stores" does NOT mean one database.** Each service owns its own —
+`knowledge-access-gate` exists to enforce exactly that, and moving the KG into
+`loreweave_glossary` would put one service's tables under another's owner. The merge §6.3 asks
+for is of the two BITEMPORAL IMPLEMENTATIONS onto one substrate kind, and AGE-on-Postgres is
+that substrate: both halves are now Postgres, both speak the same bitemporal rules, and T46f
+closed the capability gap that made the KG the weaker side.
+
+⛔ **The ONE input that is genuinely a PO call, stated narrowly so it cannot inflate:** whether
+the AGE graph stays on its own `knowledge-pg` instance or moves onto the shared `postgres`. That
+is an operational question — extensions, resource profile, backup and restore blast radius — and
+it is not derivable from anything in this repo. It does not block the row's correctness; it
+decides where the bytes live.
+
+**Not owed, explicitly:** the engine (§8.1, AGE), the fold (§6.3b, out), the precondition
+(T46d, applied), the parity capability (T46f, closed).
+
+
 ### 6.4 Phase 9 closes the plan: `T47 → T48 → T49` — **DECIDED**
 Docs (mandatory under the plan's own `Docs: yes`), then `/aif-verify`, then handoff and
 archive. **This is how the plan ends**, and it may not begin until every other row is `[x]` or

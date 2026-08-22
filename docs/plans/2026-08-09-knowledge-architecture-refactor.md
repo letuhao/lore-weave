@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T46 — the merged store's SUBSTRATE, X1's engine choice and the one PO decision left. The whole F chain (T17 floor · T54 · T55 · T56) is CLOSED.**
+**RESUME: T46's TOPOLOGY input (§6.3c) — does the AGE graph stay on `knowledge-pg` or move to shared `postgres`? The ENGINE is NOT owed (§8.1: AGE). F chain T54·T55·T56 CLOSED.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -20028,6 +20028,56 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `gate-number-visibility-gate` OK (9 thresholds, 0 silent), both red under bite. All repo
   gates green. **QC (b):** N/A — no service seam crossed. **QC (c):** N/A — this row produces
   no data; its output is two gates and a standard.
+
+
+  ---
+  ### 🟡 T46h 2026-08-23 — **the RESUME pointed at a decision made the day before**
+
+  ```
+  RESUME said   "T46 — the merged store's SUBSTRATE, X1's engine choice and the one PO
+                 decision left"
+  §8.1 says     "The engine choice is AGE, made here, 2026-08-22."
+  ```
+
+  🔴 **I wrote that RESUME line myself, this session, and it was wrong within hours.** X1's
+  contest was scoped *"build both candidates and let T43 choose"*; T43 signed off on 9-of-9
+  agreement and **named no winner**, and §8.1 closed that gap explicitly the day before. Nothing
+  about the engine is owed. **This is the `T17` failure shape §1.3 records** — a pointer
+  outliving the thing it points at — caught after one session instead of ten, which is the only
+  thing to be pleased about.
+
+  📐 **Re-measured, T46's machinery half is COMPLETE:**
+
+  ```
+  maintain_chain, pin-aware supersession   ✅ T46f — bitemporal-parity 1 -> 0 asymmetries
+  content-addressed natural key            ✅ present on the KG side
+  half-open interval invariant             ✅ present and tested
+  anchor+delta fold + folds_since_reground ⛔ SCOPED OUT with its measurement (§6.3b)
+  the recanon precondition                 ✅ APPLIED to the real dev graph (T46d)
+  ```
+
+  ⚖️ **And "merge the stores" is decided (§6.3c) NOT to mean one database.** Each service owns
+  its own — `knowledge-access-gate` exists to enforce exactly that, and moving the KG into
+  `loreweave_glossary` would put one service's tables under another's owner. The merge §6.3 asks
+  for is of the two BITEMPORAL IMPLEMENTATIONS onto one substrate kind; AGE-on-Postgres is that
+  substrate, and T46f closed the capability gap that made the KG the weaker side.
+
+  ⛔ **What is genuinely owed, stated narrowly so it cannot inflate:** whether the AGE graph
+  stays on its own `knowledge-pg` instance or moves onto the shared `postgres`. Measured live:
+
+  ```
+  GLOSSARY_DB_URL       postgres:5432/loreweave_glossary
+  KNOWLEDGE_DB_URL      postgres:5432/loreweave_knowledge
+  KNOWLEDGE_AGE_DB_URL  knowledge-pg:5432/loreweave_knowledge_vectors   <- a DIFFERENT host
+  ```
+
+  Extensions, resource profile, backup and restore blast radius. **Not derivable from anything
+  in this repo**, and it decides where the bytes live rather than whether the row is correct.
+
+  **QC (a) gates:** four plan gates green; no code changed, so no suite moved.
+  **QC (b) live smoke:** N/A — nothing deployed. **QC (c) real data:** the three DSNs above are
+  read from the RUNNING container, not from compose, because compose carries `${...}` references
+  and would have shown one host where there are two.
 
 
 - [~] **T48** — `/aif-verify` against this plan
