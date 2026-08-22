@@ -238,6 +238,25 @@ pub struct SkeletonTemplate {
     // The 16x16 DEFAULT stays, because it is what the v4 evidence was measured
     // on (section 1 Gap 2) and what every V1 skeleton uses. Nothing in the
     // 4-layer pipeline depends on the number being fixed at the TYPE level.
+    //
+    // AND RECURSION HAS A PRICE (`SDF-R6`, R-48). Barotrauma's own developers
+    // document that over-fragmenting into many small linked hulls makes a
+    // CONTINUOUS FIELD numerically unstable -- "large spikes of water throwing
+    // the crew about before it eventually equalises" -- and their fix is to
+    // collapse linked hulls into ONE computational entity. A palace as a
+    // Domain-of-Domains carrying an atmosphere or temperature layer IS that
+    // graph, so `SPG-R5` bought tractable layout at the cost of a harder field.
+    //
+    // `SDF-A27` is what pays it, and it costs no new authoring surface: a
+    // layer's SIMULATION GROUP is the connected components of the graph
+    // restricted to edges where its own `EdgePolicy` says Propagates. A palace
+    // of 30 chambers with open archways is therefore ONE air group, not 30 --
+    // automatically, because an author who said "this door blocks air" has
+    // already declared the grouping. Barotrauma had to add `linked hulls` by
+    // hand to get the same result.
+    //
+    // Both halves are stated together ON PURPOSE. A justification without its
+    // cost reads as "recursion is free", and it is not.
     pub tiles: Grid<char>,                                // default 16x16; see SPG-R5
 
     pub zones_decl: HashMap<String, ZoneBounds>,          // declarative zone bounds

@@ -5,7 +5,7 @@
      namespace, which is the opposite of what the catalog is for. -->
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
-> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **six applied, three proposed** —
+> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **seven applied, two remaining** —
 > open `SDF-Q1..Q18`, of which **sixteen are resolved and TWO remain** — `Q12`, blocked on a `PROG_001`
 > parameter that does not exist and which this tier may not invent, and `Q15`, which needs a space
 > view to measure and that view is not built yet, §8.1).
@@ -500,7 +500,7 @@ RUN-STATE §22):
 
 ## 7 — Amendments this doc raises against sealed docs 36 and 37
 
-**Status: SIX of nine are APPLIED (2026-08-22) — `SDF-R1` `R2` `R3` `R7` `R8` `R9`. Three remain PROPOSED: `R4` (an Encounter closure, `COMB_*`'s), `R5` (**blocked** — layers bind to `MapKind` and the layer registry `T4` is unbuilt) and `R6` (the 16×16 default, `CSC_001`'s).** Doc 36's `SPG-A17` now carries the integer `Transform`
+**Status: SEVEN of nine are APPLIED (2026-08-22) — `SDF-R1` `R2` `R3` `R6` `R7` `R8` `R9`. Two remain: `R4` (an Encounter closure — `COMB_*`'s to design, and this tier may not) and `R5` (**blocked on unbuilt infrastructure** — layers bind to `MapKind` and the layer registry `T4` does not exist).** Doc 36's `SPG-A17` now carries the integer `Transform`
 and an amendment note recording what applying it corrected; every other row is still only here, which is
 the mechanism. `R1..R6` come from
 the first pass; **`R7..R9` were raised by the deep dives in §11–§13** and two of them target doc 37, which
@@ -513,7 +513,7 @@ is why the section title changed.
 | `SDF-R3` ✅ **APPLIED 2026-08-22** | doc 36 §3 | add **`PortalSet`** — containment ≠ connectivity; portals first-class, bidirectional, resident below their `Domain`'s tier | **APPLIED as `SPG-A18`** (doc 36 §3.2) **and built as `0028_portal`.** The load-bearing shape: **ONE ROW, TWO ENDS**, with a unique index over `LEAST/GREATEST` of the pair — so `R-59`'s one-sided door link is **unrepresentable** rather than validated. Ends are `a`/`b`, not `from`/`to`, because the directed reading is what produced the defect. **No world coordinates**, so a mobile `Domain` keeps every portal valid with zero fixups |
 | `SDF-R4` | `SPG-D1` | in-place combat needs an **Encounter closure**; `Arena` and `Encounter` are different things | `R-6` · `R-7` |
 | `SDF-R5` | `SPG-A2` | layers bind to `MapKind`; `home_kinds` required, validated on write | `R-29` |
-| `SDF-R6` | `SPG-R5` | the 16×16 default gains a quantitative justification **and a cost**: layout solvers fall over at ~30 rooms (so recursion is mandatory), but over-fragmentation makes a continuous field numerically unstable | `R-62` (Edgar) · `R-48` (Barotrauma) |
+| `SDF-R6` ✅ **APPLIED 2026-08-22** | `SPG-R5` | the 16×16 default gains a quantitative justification **and a cost** | **APPLIED at `CSC_001` §4.2, both halves together.** The justification (`R-62`: Edgar is documented as *"fewer than 30 rooms; not suitable for large levels"*, so recursion is mandatory) landed with `SPG-R5`; **the COST (`R-48`) did not, and the cost is the half that matters** — over-fragmenting destabilises a continuous field, which is what `SPG-R5` bought tractable layout with. `SDF-A27` pays it at no new authoring surface. **Stated together on purpose: a justification without its cost reads as "recursion is free"** |
 | **`SDF-R7`** ✅ **APPLIED 2026-08-22** | `SPG-A3` | add a **SCALE matrix** beside the containment matrix, so `Domain → World` is legal *at `Pocket`* | **APPLIED in `world_seed`**: `NodeDecl` carries a `scale`, and the edge is refused at `Megaplanet` **and at `None`** — silence is not consent, since an undeclared scale inherits a generator default that is not `Pocket`. Bounded to **that edge only**; a `Gigaplanet` under a `Universe` passes, because checking every `World` would be the quota `SDF-A19` refuses. `WorldScale` is mirrored rather than imported, with a **parity gate** in both directions |
 | **`SDF-R8`** ✅ **APPLIED 2026-08-22** | doc 37 | **snapshot-compaction is absent** | **APPLIED as `WDS-A9`.** The absence was found by grep, not review: `compact`, `truncate` and `fold-baseline` returned **zero hits** the day after doc 37 was committed. The finding is that **refusing alone is WORSE than `R-61`'s NMS behaviour** — NMS degrades, a bare refusal means a long-lived world permanently cannot be edited by its owner. Compaction moves the bound from *lifetime* edits to *un-compacted delta*, and its retention cost is stated: the original baseline survives while any replay target predates the fold |
 | **`SDF-R9`** ✅ **APPLIED 2026-08-22** | doc 37 | state the SCOPE rule, not the instance | **APPLIED as `WDS-A10`** — seed-derived shared by digest · log-derived per-reality · registry per-ruleset. Carried in with the **measured** numbers rather than the claim: 251 B/node as stored, 1.10 MB per reality against a 14.9 MB shared baseline, **92 % saved at N=100** — and the note that it holds ONLY because `SDF-A31` keeps generated cells out of the row space |
