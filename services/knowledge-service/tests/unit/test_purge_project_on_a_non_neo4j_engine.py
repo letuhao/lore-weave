@@ -155,3 +155,45 @@ async def test_fulltext_search_is_NOT_refused_on_neo4j():
     except Exception:
         pass  # the stub session is not a real driver; only the REFUSAL is under test here
     assert session.ran, "the Neo4j path must actually issue a query"
+
+
+# ── summary blend: the third site, and the one on the context hot path ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_summary_index_search_refuses_by_name_on_a_non_neo4j_session():
+    """`query_summary_index` reaches `CALL db.index.vector.queryNodes` and runs on a
+    backend-following session via `context/modes/full.py::_safe_summary_blend`.
+
+    Measured on iso before the guard: `PostgresSyntaxError: syntax error at or near "."`,
+    swallowed by `except Exception` into a WARNING with a stack trace reading
+    *"summary_blend failed — degrading"*, on every Mode 3 request.
+    """
+    from app.db.neo4j_repos.vector_indexes import query_summary_index
+
+    with pytest.raises(NotImplementedError) as exc:
+        await query_summary_index(
+            _Session("age"), project_id="p", embedding_model_uuid="e",
+            level="chapter", query_embedding=[0.1] * 8, top_k=3,
+        )
+    msg = str(exc.value)
+    assert "query_summary_index" in msg and "vector index search" in msg
+    assert "'age'" in msg and "§3.1" in msg
+
+
+@pytest.mark.asyncio
+async def test_summary_index_search_is_NOT_refused_on_neo4j():
+    """Control arm — the summary blend must still run on the engine that has the indexes."""
+    from app.db.neo4j_repos.vector_indexes import query_summary_index
+
+    session = _Session("neo4j")
+    try:
+        await query_summary_index(
+            session, project_id="p", embedding_model_uuid="e",
+            level="chapter", query_embedding=[0.1] * 8, top_k=3,
+        )
+    except NotImplementedError:  # pragma: no cover
+        pytest.fail("a Neo4j session must reach the driver, not the refusal")
+    except Exception:
+        pass  # the stub is not a real driver; only the REFUSAL is under test
+    assert session.ran, "the Neo4j path must actually issue the query"

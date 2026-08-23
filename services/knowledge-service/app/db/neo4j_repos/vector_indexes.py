@@ -214,6 +214,7 @@ async def query_summary_index(
     interpolation below, which is what makes that interpolation safe: Cypher cannot
     parameterise a node label or a property name.
     """
+    require_neo4j_only(session, "vector_indexes.query_summary_index", "vector index search")
     idx_name = summary_index_name(project_id, embedding_model_uuid, level)
     cypher = _SUMMARY_QUERY_CYPHER.format(node_label=level.capitalize(), level=level)
     result = await session.run(

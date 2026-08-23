@@ -342,6 +342,19 @@ async def _safe_summary_blend(
             user_id, project.project_id, settings.context_l3_timeout_s,
         )
         return []
+    except NotImplementedError as exc:
+        # A PERMANENT capability gap, not a failure. `query_summary_index` reaches
+        # `CALL db.index.vector.queryNodes`, which is Neo4j-only, and this runs on
+        # `neo4j_session()` — backend-following since T54c, AGE by default. Logged at INFO
+        # WITHOUT a stack trace and without the word "failed", because on a default
+        # deployment this is the expected steady state, and an every-request WARNING with a
+        # traceback trains readers to ignore the one that means something. §3.1 moves the
+        # summary indexes to Postgres, which is where this comes back.
+        logger.info(
+            "Mode 3 summary_blend unavailable on this engine user_id=%s project_id=%s: %s",
+            user_id, project.project_id, exc,
+        )
+        return []
     except Exception:
         logger.warning(
             "Mode 3 summary_blend failed user_id=%s project_id=%s — degrading",

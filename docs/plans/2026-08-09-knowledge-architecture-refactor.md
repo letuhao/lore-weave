@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 63 of 106 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 64 of 107 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (21/31) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (22/32) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A18 2026-08-23 — **the sweep closes: 9 Neo4j-only sites, 3 leaks, all named**
+
+  ```
+  DERIVED, not listed — every CALL db.* / SHOW INDEX / CREATE|DROP INDEX in neo4j_repos:
+
+    entities.py         2   find_entities_by_vector      Neo4jVectorStore only   engine-scoped
+    passages.py         1   find_passages_by_vector      Neo4jVectorStore only   engine-scoped
+    passages.py         1   find_passages_by_fulltext    BACKEND-FOLLOWING   ⛔ A17
+    vector_indexes.py   6   list/drop/ensure_summary_*   BACKEND-FOLLOWING   ⛔ A16
+                            query_summary_index          BACKEND-FOLLOWING   ⛔ THIS
+                            ensure_passage_vector_index  benchmarks only     class (c)
+  ```
+
+  🎯 **The third and last leak, and it is on the context hot path.** `query_summary_index`
+  reaches `CALL db.index.vector.queryNodes` and runs through
+  `context/modes/full.py::_safe_summary_blend`, which opens a `neo4j_session()` —
+  backend-following since T54c, AGE by default. Measured on iso before the guard:
+
+  ```
+  query_summary_index(age_session, level="chapter", …)
+      -> PostgresSyntaxError: syntax error at or near "."
+  ```
+
+  ⚖️ **What made this one worse than A16's is the VOLUME.** The caller's `except Exception`
+  logged, with a full stack trace, on **every Mode 3 abstract query**:
+
+  ```
+  WARNING  Mode 3 summary_blend failed user_id=… project_id=… — degrading   + traceback
+  ```
+
+  On a default deployment that is not an incident, it is the steady state. A permanent gap
+  logged at WARNING with a traceback on every request is how a log stops being read — and the
+  next line to be ignored is the one that meant something. Now `INFO`, no traceback, and it says
+  *unavailable on this engine* rather than *failed*.
+
+  📐 **Rule 8 killed most of this batch, twice.** Nine sites, and only three needed anything:
+  the two vector readers are reached solely through `Neo4jVectorStore` (engine-scoped by
+  construction) and `ensure_passage_vector_index` is called only by the two benchmarks, which
+  are class (c) and pin Neo4j deliberately. **Guarding all nine would have looked thorough and
+  changed nothing but the diff.** The discriminator is not "does it name a Neo4j capability" but
+  *"can a backend-following session reach it"* — derived per call site, not assumed from the
+  file it lives in.
+
+  🧪 **Two bites, and the first attempt at the second one was INVALID.**
+
+  ```
+  BITE 6  drop the guard from query_summary_index
+          Failed: DID NOT RAISE <class 'NotImplementedError'>
+  BITE 7  (1st, VOID)  inserted `class _Never` at line 0
+          SyntaxError: from __future__ imports must occur at the beginning of the file
+          — a bite that only breaks the PARSER proves nothing about the guard
+  BITE 7  (2nd)  `except NotImplementedError` -> `except KeyboardInterrupt`, file still parses
+          AssertionError: a permanent capability gap must not log at WARNING:
+          [('WARNING', 'Mode 3 summary_blend failed user_id=…')]
+  ```
+
+  ✅ **Both control arms.** `test_summary_index_search_is_NOT_refused_on_neo4j` — the blend must
+  still run on the engine that HAS the indexes. And
+  `test_a_REAL_failure_still_warns_with_its_traceback` — quieting the gap must not quiet a
+  genuine fault, which is the risk this change actually carries.
+
+  ⚠️ **The gap must stay VISIBLE, and a test says so.** `assert recs` — logging nothing at all
+  would pass an "it does not warn" assertion while hiding a real capability gap from whoever is
+  debugging an empty blend. Silence is its own defect.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4693 passed, 716 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`; the same call that returned
+  `PostgresSyntaxError` now returns the named refusal, read out of the running container.
+  **QC (c) real data:** the before/after pair are real calls against the live AGE graph on the
+  default backend; the site census above is derived by AST + regex over `neo4j_repos`, not
+  hand-listed.
+
   ---
   ### ✅ T17 A17 2026-08-23 — **CJK search was permanently dead on the DEFAULT backend, reported as an outage**
 
