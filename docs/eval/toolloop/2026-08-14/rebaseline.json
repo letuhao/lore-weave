@@ -1215,7 +1215,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): called 5/5 through the chat path with the OWNING STORE unchanged on every run — the only movement is the async outbox / global neo4j count, neither of which is this tool's store.",
         "absent_case": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): an absent id refuses 'not found or not accessible'.",
-        "idempotency": "OWED — NOT EXERCISED. Patching a translation block twice needs a book with an existing translation VERSION and a block index in it; the fixture builds no translation, so a first call cannot land and a second no-op would prove nothing.",
+        "idempotency": "EXERCISED and IDEMPOTENT IN EFFECT, measured from the STORE (docs/eval/toolloop/2026-08-14/idem-patchblock.json). Patching the SAME block to the same text twice returned the SAME version_id both times and left chapter_translations at 2 rows — the base version plus ONE human version. It does not create a second human version, which is exactly what this case asked.\n\nThe first patch is what creates the human version (rows 1 -> 2, and a new active_chapter_translation_versions row); the second re-writes that same row in place, moving only `latest`. Consistent with the tool's own description: 'The first patch creates the human version from the base version and makes it active; later patches edit it in place.'\n\nThe id came from a {sql:...} lookup because this fixture is seeded by raw INSERT — the tool path SPENDS — and an INSERT hands back no id for {step:N:key} to address.",
         "tenancy": "EXERCISED (docs/eval/toolloop/2026-08-14/c9-13-ship-probe.txt): a foreign id refuses IDENTICALLY — no existence oracle."
       },
       "defects": [],
