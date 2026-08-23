@@ -326,6 +326,11 @@ class AgeGraphStore:
         a CASE: keep the list when the type is already present, append when it is not.
         """
         canonical = canonicalize_entity_name(name)
+        # A23 — `auto_created`, `provenance` and `job_id` are on the PORT's signature and this
+        # adapter accepted and DISCARDED all three, along with the lifecycle fields the Neo4j
+        # writer maintains. That is why A21 found live AGE entities holding `version = NULL`:
+        # the read-side coalesce was papering over a writer that never wrote it.
+        now = datetime.now(timezone.utc).isoformat()
         # MERGE keys on the identity tuple, not on a derived id — the derived-id scheme is
         # what T35 is retiring, and repeating it here would build the second adapter on the
         # defect the first one is being cured of.
@@ -341,7 +346,22 @@ class AgeGraphStore:
             e.source_types  = CASE
                 WHEN e.source_types IS NULL THEN [{_lit(source_type)}]
                 WHEN {_lit(source_type)} IN e.source_types THEN e.source_types
-                ELSE e.source_types + [{_lit(source_type)}] END
+                ELSE e.source_types + [{_lit(source_type)}] END,
+            e.provenances   = CASE
+                WHEN e.provenances IS NULL THEN [{_lit(provenance)}]
+                WHEN {_lit(provenance)} IN e.provenances THEN e.provenances
+                ELSE e.provenances + [{_lit(provenance)}] END,
+            e.auto_created  = CASE
+                WHEN e.auto_created IS NULL THEN {_lit(auto_created)}
+                WHEN {_lit(auto_created)} = false THEN false
+                ELSE e.auto_created END,
+            e.user_edited   = coalesce(e.user_edited, false),
+            e.created_job_id = CASE
+                WHEN e.created_at IS NULL THEN {_lit(job_id)}
+                ELSE e.created_job_id END,
+            e.created_at    = coalesce(e.created_at, {_lit(now)}),
+            e.version       = coalesce(e.version, 0) + 1,
+            e.updated_at    = {_lit(now)}
         RETURN e
         """
         rows = await self._run(cy)

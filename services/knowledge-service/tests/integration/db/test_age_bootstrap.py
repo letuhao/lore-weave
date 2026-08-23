@@ -250,3 +250,71 @@ async def test_a_value_containing_the_dollar_quote_tag_cannot_escape_the_sql(age
     # run its trailing statements.
     async with age_pool.acquire() as conn:
         assert await conn.fetchval("SELECT 1") == 1
+
+
+# ── A23: the write path dropped the port's own parameters ────────────────────
+
+
+async def test_resolve_or_merge_entity_PERSISTS_the_ports_three_parameters(age_pool):
+    """The port declares `auto_created`, `provenance` and `job_id`; this adapter accepted and
+    DISCARDED all three, along with every lifecycle field the Neo4j writer maintains.
+
+    That is the root of what A21 found on the READ side: live AGE entities held
+    `version = NULL`, and the read-side coalesce was papering over a writer that never wrote
+    it. Optimistic concurrency was not merely mis-read on the default backend — it was not
+    being maintained at all.
+
+    Driven against a real AGE graph because the defect is in the Cypher, not in Python: a
+    unit test with a fake session would assert the string this adapter builds, which is the
+    thing under suspicion.
+    """
+    import uuid as _uuid
+
+    from app.adapters.age_graph_store import AgeGraphStore
+    from app.db.age_bootstrap import ensure_graph as _ensure
+
+    async with age_pool.acquire() as conn:
+        gname = await _ensure(conn, _uuid.uuid4())
+    store = AgeGraphStore(age_pool, gname)
+
+    uid, pid = f"u-{_uuid.uuid4().hex[:8]}", f"p-{_uuid.uuid4().hex[:8]}"
+    job = str(_uuid.uuid4())
+
+    first = await store.resolve_or_merge_entity(
+        user_id=uid, project_id=pid, name="Kai", kind="person",
+        source_type="chapter", confidence=0.9,
+        auto_created=True, provenance="extraction", job_id=job,
+    )
+    assert first.auto_created is True, "the port's `auto_created` reached the graph"
+    assert first.version == 1, "a created entity starts at version 1"
+    assert first.created_at is not None and first.updated_at is not None
+
+    # The MERGE arm: same identity tuple, so this must UPDATE rather than mint.
+    second = await store.resolve_or_merge_entity(
+        user_id=uid, project_id=pid, name="Kai", kind="person",
+        source_type="chat", confidence=0.9,
+        auto_created=False, provenance="human_authored", job_id=str(_uuid.uuid4()),
+    )
+    assert second.id == first.id, "the upsert minted a second node"
+    assert second.version == 2, (
+        f"version did not increment on the merge arm ({first.version} -> {second.version}); "
+        f"OCC cannot work if the writer never advances it"
+    )
+    assert second.auto_created is False, (
+        "a later auto_created=False call is a REAL extraction claiming the node — the Neo4j "
+        "writer documents exactly this arm, and dropping the parameter lost it"
+    )
+
+    rows = await store._run(
+        f"MATCH (e:Entity {{id: '{first.id}'}}) RETURN e", columns="v agtype")
+    from app.adapters.age_graph_store import _props
+
+    props = _props(rows[0]["v"])
+    assert sorted(props.get("provenances") or []) == ["extraction", "human_authored"], (
+        f"provenances must ACCUMULATE a deduped set, mirroring source_types: "
+        f"{props.get('provenances')}"
+    )
+    assert props.get("created_job_id") == job, (
+        "created_job_id credits the job that MINTED the node and must not move to the second "
+        "job — the Neo4j writer sets it create-only for exactly this reason"
+    )

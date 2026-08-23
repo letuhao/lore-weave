@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 68 of 111 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 69 of 112 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (26/36) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (27/37) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,74 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A23 2026-08-23 — **the WRITE path discarded three of the port's own parameters, and never advanced the OCC token**
+
+  ```
+  live, rebuilt image, throwaway graph:      before        after
+    version    (create -> merge)             1 -> 1        1 -> 2
+    auto_created                             always False  True -> False
+    provenances                              never set     ['extraction', 'human_authored']
+    created_job_id credits the MINTING job   never set     True
+  ```
+
+  🔴 **`GraphStore.resolve_or_merge_entity` DECLARES `auto_created`, `provenance` and
+  `job_id`.** The AGE adapter accepted all three and used none of them — each appeared exactly
+  once in the whole method, in the signature. That is a contract violation, not a design choice:
+  the port names them, so a caller is entitled to assume they land.
+
+  🎯 **And it is the ROOT of what A21 found on the read side.** A21 saw live AGE entities holding
+  `version = NULL` and added a read-side coalesce mirroring the Neo4j mapper's. The reason they
+  were NULL is here: **the writer never wrote `version` at all.** Optimistic concurrency was not
+  merely mis-read on the default backend — it was not being maintained. The bite makes the
+  relationship visible in one line:
+
+  ```
+  BITE 12  drop `e.version = coalesce(e.version, 0) + 1`
+    AssertionError: version did not increment on the merge arm (1 -> 1); OCC cannot work
+    if the writer never advances it
+  ```
+
+  It still reads **1**, not `None` — A21's coalesce is what turns the missing write into a
+  plausible number. A read-side default over an unwritten field is indistinguishable from a
+  correctly-written one, which is why the bite had to assert the INCREMENT rather than the value.
+
+  📐 **Rule 8 changed what this cycle was.** The sweep began on a heuristic that flagged eight
+  methods; reading them killed most:
+
+  ```
+  invalidate_relation / valid_until   FALSE POSITIVE — persisted via a `stamp` variable
+  update_event_fields / expected_version  FALSE POSITIVE — an OCC guard, belongs in the WHERE
+  merge_fact, merge_event params      FALSE POSITIVE — used, multiple mentions
+  resolve_or_merge_entity x3          REAL — one mention each, the signature
+  ```
+
+  A second derived check claimed **ten** methods subscript a column their query does not return.
+  They do not: `_run` aliases every result to `v` in the SQL (`as (v agtype)`), so the Cypher
+  alias is irrelevant. **My check was wrong, not the code** — checked before it was reported.
+
+  ⚖️ **The one genuinely hard call, decided from the spec rather than deferred.**
+  `created_job_id` is create-only on Neo4j, and its comment says why: *"`coalesce` would
+  BACK-FILL net-new attribution"* to 4413 NULL nodes. AGE has no `existed` flag in a single
+  MERGE, so the create marker here is `e.created_at IS NULL` — which on a pre-existing node
+  lacking both would mis-attribute exactly as that comment warns. It is safe **on this graph and
+  only because §8.5 says so**: *"The dev AGE graph starts EMPTY, by decision."* There is no
+  population of legitimately-old AGE nodes to mis-credit, unlike Neo4j's 4413.
+
+  ✅ **The test drives a real AGE graph, not a fake session**, because the defect is in the
+  Cypher — a unit test with a fake session would assert the string this adapter builds, which is
+  the thing under suspicion. Both arms are exercised: create, then the same identity tuple again
+  so the MERGE arm must UPDATE rather than mint, which is what makes the increment and the
+  `auto_created=False` claim observable at all.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4709 passed, 716 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`; the table at the top is
+  read out of the running container.
+  **QC (c) real data:** the run created its own per-project graph via `ensure_graph`, wrote to
+  that, and **dropped it afterwards** — rule 6, a throwaway, not the shared graph.
+
   ---
   ### ✅ T17 A22 2026-08-23 — **the other three mappers, and one of them dropped the BI-TEMPORAL fields**
 
