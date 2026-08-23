@@ -1,219 +1,220 @@
 {
- "_note": "Batch 15. TWO OF THE FIVE ARE RE-RUNS OF TOOLS I WITHDREW on 2026-08-14 when the gate's answer bar was repaired and stopped being vacuous — memory_search (2 of 3 replies stated a FALSE ABSENCE over a seeded fixture) and jobs_list (4 of 5 correct, the fifth silent with no card). Both re-run at K=5, not K=3, because both failures were distributional and a K=3 that happens to miss them would re-prove nothing. The memory_search fixture is deliberately the SAME Obsidian Trench chapter as batch 6, so this is a re-measure of one defect rather than a new question. ARC TEMPLATES ARE ACCOUNT-SCOPED, not book-scoped, despite meta.scope=book: the archive scenario seeds its own throwaway template with a unique code and its card is NEVER approved, because archiving a template the author actually uses is damage no throwaway book can contain.",
- "scenarios": [
-  {
-   "id": "memory-search-v2",
-   "tool_under_test": "memory_search",
-   "expect_tool": "memory_search",
-   "intent": "read",
-   "tier": "R",
-   "scope": "project",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "What has been established about the Obsidian Trench so far?",
-   "prompt_source": "meta.synonyms['what has been established'], verbatim — the SAME prompt as batch 6, deliberately unchanged so this measures the tool and not a new phrasing.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
+  "_note": "Batch 15. TWO OF THE FIVE ARE RE-RUNS OF TOOLS I WITHDREW on 2026-08-14 when the gate's answer bar was repaired and stopped being vacuous — memory_search (2 of 3 replies stated a FALSE ABSENCE over a seeded fixture) and jobs_list (4 of 5 correct, the fifth silent with no card). Both re-run at K=5, not K=3, because both failures were distributional and a K=3 that happens to miss them would re-prove nothing. The memory_search fixture is deliberately the SAME Obsidian Trench chapter as batch 6, so this is a re-measure of one defect rather than a new question. ARC TEMPLATES ARE ACCOUNT-SCOPED, not book-scoped, despite meta.scope=book: the archive scenario seeds its own throwaway template with a unique code and its card is NEVER approved, because archiving a template the author actually uses is damage no throwaway book can contain.",
+  "scenarios": [
     {
-     "tool": "book_chapter_create",
-     "args": {
-      "book_id": "{book_id}",
-      "original_language": "en",
-      "title": "Chapter II — The Waterline",
-      "body": "The Obsidian Trench is only walkable during low tide. Aldric Vane had learned that the hard way, and the waterline still marked the stone where the sea had nearly taken him."
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_book",
-     "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
-     "expect": "2",
-     "why": "The seeded chapter plus the fixture's own. The phrase 'only walkable during low tide' exists in the manuscript and is its ONLY source, so a reply carrying it read something and a reply denying the Trench exists is a FALSE ABSENCE over text the author can see."
-    }
-   ],
-   "answer_expect": {
-    "all_of": [
-     "low tide"
-    ],
-    "none_of": [
-     "hasn't been written",
-     "has not been written",
-     "couldn't find any mention",
-     "could not find any mention"
-    ],
-    "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
-   },
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
-   "ship_audit": {
-    "empty_case": "OWED — a project with no matching knowledge must say so, and 'nothing matched' must be distinguishable from 'nothing is indexed', which is the distinction that broke here.",
-    "tenancy": "OWED — project-scoped."
-   },
-   "defects": [],
-   "_seed_note": "FIXTURE CORRECTED after the first attempt failed 5/5 with PROVISION 400 on POST /v1/books/{book_id}/chapters. I had written the seed as a REST call with a `content` field; the working seed — the one batch 6 used for this same tool — is the `book_chapter_create` TOOL with `body` and `original_language`. The 0/5 called in that first run is therefore a SEED failure and says nothing about memory_search."
-  },
-  {
-   "id": "jobs-list-v3",
-   "tool_under_test": "jobs_list",
-   "expect_tool": "jobs_list",
-   "intent": "read",
-   "tier": "R",
-   "scope": "user",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Show me my background jobs.",
-   "prompt_source": "meta.synonyms['background jobs'] + ['my jobs'], verbatim.",
-   "needs_target": false,
-   "editor_context": false,
-   "approve": null,
-   "seed": [],
-   "answer_expect": {
-    "none_of": [
-     "you have 10 background jobs",
-     "you currently have 10",
-     "there are 10 jobs"
-    ],
-    "why": "D-PAGE-READ-AS-A-TOTAL, pinned as a needle. The batch-7 conclusion rested on a reply that said 'You currently have 10 background jobs running' — the PAGE SIZE — against 31 actually active. The tool now returns page {returned, has_more} and a guidance line naming jobs_summary; these needles fail if the page size is reported as the total again."
-   },
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR a reply reports the page size as the total, OR any run produces NO text with no confirm card. THE SECOND CLAUSE IS THE REASON THIS IS HERE: at K=5 on 2026-08-14 four replies were correct and the fifth was silent, which is D-SILENT-TURN-NO-CARD-NO-PROSE. The recording of that case is fixed (it is stored `failed` now, not `completed`) but the silence itself is not, so this run is also the live reproduction attempt the defect is owed. CONTROL: this account has real jobs, so an answer of 'none' contradicts a known reading.",
-   "ship_audit": {
-    "empty_case": "OWED — an account with no jobs must say so rather than describe what a job is.",
-    "tenancy": "OWED — owner-scoped, and its description claims only the caller's own jobs are ever returned."
-   },
-   "defects": []
-  },
-  {
-   "id": "composition-arc-list",
-   "tool_under_test": "composition_arc_list",
-   "expect_tool": "composition_arc_list",
-   "intent": "read",
-   "tier": "R",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Show me the arc tree for this book — the whole story structure.",
-   "prompt_source": "meta.synonyms['arc tree'] + ['story structure'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc I — The Hollow Keep"
-     }
+      "id": "memory-search-v2",
+      "tool_under_test": "memory_search",
+      "expect_tool": "memory_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What has been established about the Obsidian Trench so far?",
+      "prompt_source": "meta.synonyms['what has been established'], verbatim — the SAME prompt as batch 6, deliberately unchanged so this measures the tool and not a new phrasing.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Waterline",
+            "body": "The Obsidian Trench is only walkable during low tide. Aldric Vane had learned that the hard way, and the waterline still marked the stone where the sea had nearly taken him."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "The seeded chapter plus the fixture's own. The phrase 'only walkable during low tide' exists in the manuscript and is its ONLY source, so a reply carrying it read something and a reply denying the Trench exists is a FALSE ABSENCE over text the author can see."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "low tide"
+        ],
+        "none_of": [
+          "hasn't been written",
+          "has not been written",
+          "couldn't find any mention",
+          "could not find any mention"
+        ],
+        "why": "THIS IS THE WITHDRAWAL, RE-ARMED. The batch-6 note claimed 'the answer carried the seeded chapter's fact'; once the answer bar could actually read all_of, 1 of 3 carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet'. The none_of needles are those exact sentences. The tool's own description promises lexical search 'so it finds an exact phrase even with nothing indexed yet', which is what makes a false absence a defect rather than a fixture gap."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR any reply states the Trench is not in the manuscript while the seeded chapter contains it (D-DEGRADED-READ-REPORTED-AS-ABSENCE, the class story_search is BLOCKED on), OR a reply carries Trench details the chapter does not contain. K=5, because at K=3 the batch-6 distribution (1 good, 2 false) could land 3/3 good by luck and I would re-prove nothing.",
+      "ship_audit": {
+        "empty_case": "OWED — a project with no matching knowledge must say so, and 'nothing matched' must be distinguishable from 'nothing is indexed', which is the distinction that broke here.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_seed_note": "FIXTURE CORRECTED after the first attempt failed 5/5 with PROVISION 400 on POST /v1/books/{book_id}/chapters. I had written the seed as a REST call with a `content` field; the working seed — the one batch 6 used for this same tool — is the `book_chapter_create` TOOL with `body` and `original_language`. The 0/5 called in that first run is therefore a SEED failure and says nothing about memory_search."
     },
     {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc II — The Drowned Court"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
-     "expect": "2",
-     "why": "TWO arcs, so a reply naming one is visibly partial and a reply naming neither is not a reading. Two also makes the declared ordering (depth, then rank) observable."
-    }
-   ],
-   "answer_expect": {
-    "all_of": [
-     "Hollow Keep",
-     "Drowned Court"
-    ],
-    "why": "Both seeded arcs are the entire tree; naming both is the minimum evidence the list was read rather than described. Batch 11 measured the opposite failure on composition_conformance_status — inventing a verdict for a book that had never run one."
-   },
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply names only one arc, OR it describes arc CONTENT (beats, tracks, cast) that title-only nodes do not have — this tool returns the spec tree, so any pacing or roster detail in the reply is fabricated.",
-   "ship_audit": {
-    "empty_case": "OWED — a book with no arcs must be reported as having none, not as having a default structure.",
-    "tenancy": "OWED — book-scoped.",
-    "absent_case": "OWED — include_archived must actually change what comes back, or the flag is decoration."
-   },
-   "defects": []
-  },
-  {
-   "id": "composition-arc-template-drift",
-   "tool_under_test": "composition_arc_template_drift",
-   "expect_tool": "composition_arc_template_drift",
-   "intent": "read",
-   "tier": "R",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "How far from the template has this arc drifted?",
-   "prompt_source": "meta.synonyms['how far from the template'] + ['arc template drift'], verbatim.",
-   "needs_target": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc I — The Hollow Keep"
-     }
-    }
-   ],
-   "seed_assert": [
-    {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
-     "expect": "1",
-     "why": "One arc exists. CONTROL STATED UP FRONT: it was created directly, so it has NO pinned arc_template_id — drift from a template it never came from is unanswerable, and the honest outcome is a refusal that says so. A confident drift percentage over an unpinned arc is fabrication, and that is what this scenario is really testing."
-    }
-   ],
-   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the tool returns a drift figure for an arc with no pinned template, OR the model invents a node_id/project_id rather than resolving them (both are REQUIRED and neither is ambient — project_id is the Work, not the book, which is itself a resolution step worth watching). A turn that cannot proceed is a PRECONDITION finding, not a tool defect, and must be recorded as such.",
-   "ship_audit": {
-    "absent_case": "This scenario IS the absent case — an arc with no template pin. The refusal is the evidence.",
-    "tenancy": "OWED — book-scoped, and project_id is a second scope that must be checked independently."
-   },
-   "defects": []
-  },
-  {
-   "id": "composition-arc-template-edit",
-   "tool_under_test": "composition_arc_template_edit",
-   "expect_tool": "composition_arc_template_edit",
-   "intent": "write",
-   "tier": "W",
-   "scope": "book",
-   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
-   "prompt_source": "meta.synonyms['archive arc template'], verbatim, plus the template's own name so the target is unambiguous.",
-   "needs_target": false,
-   "editor_context": false,
-   "approve": null,
-   "seed": [
-    {
-     "tool": "composition_arc_create",
-     "args": {
-      "book_id": "{book_id}",
-      "title": "Arc I — The Hollow Keep"
-     }
+      "id": "jobs-list-v3",
+      "tool_under_test": "jobs_list",
+      "expect_tool": "jobs_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me my background jobs.",
+      "prompt_source": "meta.synonyms['background jobs'] + ['my jobs'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "answer_expect": {
+        "none_of": [
+          "you have 10 background jobs",
+          "you currently have 10",
+          "there are 10 jobs"
+        ],
+        "why": "D-PAGE-READ-AS-A-TOTAL, pinned as a needle. The batch-7 conclusion rested on a reply that said 'You currently have 10 background jobs running' — the PAGE SIZE — against 31 actually active. The tool now returns page {returned, has_more} and a guidance line naming jobs_summary; these needles fail if the page size is reported as the total again."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR a reply reports the page size as the total, OR any run produces NO text with no confirm card. THE SECOND CLAUSE IS THE REASON THIS IS HERE: at K=5 on 2026-08-14 four replies were correct and the fifth was silent, which is D-SILENT-TURN-NO-CARD-NO-PROSE. The recording of that case is fixed (it is stored `failed` now, not `completed`) but the silence itself is not, so this run is also the live reproduction attempt the defect is owed. CONTROL: this account has real jobs, so an answer of 'none' contradicts a known reading.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so rather than describe what a job is.",
+        "tenancy": "OWED — owner-scoped, and its description claims only the caller's own jobs are ever returned."
+      },
+      "defects": []
     },
     {
-     "tool": "composition_arc_extract_template",
-     "args": {
-      "node_id": "{step:0:id}",
-      "code": "throwaway-loop-skeleton-b15",
-      "name": "Throwaway Loop Skeleton"
-     }
-    }
-   ],
-   "seed_assert": [
+      "id": "composition-arc-list",
+      "tool_under_test": "composition_arc_list",
+      "expect_tool": "composition_arc_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the arc tree for this book — the whole story structure.",
+      "prompt_source": "meta.synonyms['arc tree'] + ['story structure'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Hollow Keep"
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc II — The Drowned Court"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "2",
+          "why": "TWO arcs, so a reply naming one is visibly partial and a reply naming neither is not a reading. Two also makes the declared ordering (depth, then rank) observable."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "Hollow Keep",
+          "Drowned Court"
+        ],
+        "why": "Both seeded arcs are the entire tree; naming both is the minimum evidence the list was read rather than described. Batch 11 measured the opposite failure on composition_conformance_status — inventing a verdict for a book that had never run one."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply names only one arc, OR it describes arc CONTENT (beats, tracks, cast) that title-only nodes do not have — this tool returns the spec tree, so any pacing or roster detail in the reply is fabricated.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no arcs must be reported as having none, not as having a default structure.",
+        "tenancy": "OWED — book-scoped.",
+        "absent_case": "OWED — include_archived must actually change what comes back, or the flag is decoration."
+      },
+      "defects": []
+    },
     {
-     "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM arc_template WHERE code='throwaway-loop-skeleton-b15' AND status <> 'archived'",
-     "expect": "1",
-     "why": "THE SAFETY FIXTURE. Arc templates are ACCOUNT-scoped — the tool's own description says 'one of YOUR arc templates' — so there is no throwaway book that can contain the damage of archiving a real one. The scenario therefore creates its OWN template with a unique code and names it in the prompt, and the card is NEVER approved. This row must still be unarchived afterwards. SCHEMA VERIFIED, NOT GUESSED: arc_template has no archived_at column — archival is the `status` column, CHECK-constrained to draft|active|archived (27 active and 26 archived rows exist right now). The table also carries owner_user_id, which is the column that confirms this is account-scoped rather than book-scoped."
+      "id": "composition-arc-template-drift",
+      "tool_under_test": "composition_arc_template_drift",
+      "expect_tool": "composition_arc_template_drift",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How far from the template has this arc drifted?",
+      "prompt_source": "meta.synonyms['how far from the template'] + ['arc template drift'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Hollow Keep"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "1",
+          "why": "One arc exists. CONTROL STATED UP FRONT: it was created directly, so it has NO pinned arc_template_id — drift from a template it never came from is unanswerable, and the honest outcome is a refusal that says so. A confident drift percentage over an unpinned arc is fabrication, and that is what this scenario is really testing."
+        }
+      ],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the tool returns a drift figure for an arc with no pinned template, OR the model invents a node_id/project_id rather than resolving them (both are REQUIRED and neither is ambient — project_id is the Work, not the book, which is itself a resolution step worth watching). A turn that cannot proceed is a PRECONDITION finding, not a tool defect, and must be recorded as such.",
+      "ship_audit": {
+        "absent_case": "This scenario IS the absent case — an arc with no template pin. The refusal is the evidence.",
+        "tenancy": "OWED — book-scoped, and project_id is a second scope that must be checked independently."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-arc-template-edit",
+      "tool_under_test": "composition_arc_template_edit",
+      "expect_tool": "composition_arc_template_edit",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+      "prompt_source": "meta.synonyms['archive arc template'], verbatim, plus the template's own name so the target is unambiguous.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "Arc I — The Hollow Keep"
+          }
+        },
+        {
+          "tool": "composition_arc_extract_template",
+          "args": {
+            "node_id": "{step:0:id}",
+            "code": "throwaway-loop-skeleton-{run_id}",
+            "name": "Throwaway Loop Skeleton"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM arc_template WHERE code='throwaway-loop-skeleton-{run_id}' AND status <> 'archived'",
+          "expect": "1",
+          "why": "THE SAFETY FIXTURE. Arc templates are ACCOUNT-scoped — the tool's own description says 'one of YOUR arc templates' — so there is no throwaway book that can contain the damage of archiving a real one. The scenario therefore creates its OWN template with a unique code and names it in the prompt, and the card is NEVER approved. This row must still be unarchived afterwards. SCHEMA VERIFIED, NOT GUESSED: arc_template has no archived_at column — archival is the `status` column, CHECK-constrained to draft|active|archived (27 active and 26 archived rows exist right now). The table also carries owner_user_id, which is the column that confirms this is account-scoped rather than book-scoped."
+        }
+      ],
+      "falsifier": "REFUTED IF: a template is archived with NO confirm card (Tier W), OR the model targets ANY template other than the one named — the account holds several real ones and picking the wrong row is the worst outcome here — OR op is not `archive` when the user said archive (its enum spans create|update|archive|restore, so a destructive mis-pick is reachable). Store check: arc_template rows for this account are identical before and after, because the card is never approved.",
+      "ship_audit": {
+        "gate": "OWED — Tier W, and the op enum includes archive, which is the whole point of the card.",
+        "absent_case": "OWED — archiving a template code that does not exist must be refused.",
+        "idempotency": "OWED — archiving an already-archived template must be a clear no-op or refusal, not a second archive.",
+        "tenancy": "OWED — ACCOUNT-scoped, not book-scoped: another account's template must not be archivable, and this is the scope that matters most for this tool."
+      },
+      "defects": [],
+      "_nonced_2026_08_23": "🔴 THE FIXED CODE WAS A TRAP AND THIS COPY STILL HAD IT. 'throwaway-loop-skeleton-b15' was created 2026-08-20, ARCHIVED by the model on a later run (archiving is what this scenario asks for) and never restored, so every run afterwards failed its own seed assertion — status <> 'archived' reading 0 — and the report showed the tool at 0/5 called, which reads as a SURFACING failure.\n\nscenarios-c2-rerun.json was fixed to {run_id} and these copies were not, so 'last file wins' could pick the regressed one — the same hazard build_rerun_set.py documents for tool_load and this loop already paid for on the skill fixture. Measured: 5 PROVISION failures still attributed to 'transport' in the corpus."
     }
-   ],
-   "falsifier": "REFUTED IF: a template is archived with NO confirm card (Tier W), OR the model targets ANY template other than the one named — the account holds several real ones and picking the wrong row is the worst outcome here — OR op is not `archive` when the user said archive (its enum spans create|update|archive|restore, so a destructive mis-pick is reachable). Store check: arc_template rows for this account are identical before and after, because the card is never approved.",
-   "ship_audit": {
-    "gate": "OWED — Tier W, and the op enum includes archive, which is the whole point of the card.",
-    "absent_case": "OWED — archiving a template code that does not exist must be refused.",
-    "idempotency": "OWED — archiving an already-archived template must be a clear no-op or refusal, not a second archive.",
-    "tenancy": "OWED — ACCOUNT-scoped, not book-scoped: another account's template must not be archivable, and this is the scope that matters most for this tool."
-   },
-   "defects": []
-  }
- ]
+  ]
 }
