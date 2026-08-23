@@ -145,5 +145,150 @@
       "rev": "01a02d23",
       "unverified": 1
     }
-  ]
+  ],
+  "second_measurement_target_tier_critic": {
+    "critic": "51ea9fd7 google/gemma-4-26b-a4b — the PO's stated target tier",
+    "verdict": "1a UNSCORABLE, same as the 7B",
+    "post_verification": {
+      "planted_flagged": 3,
+      "planted_control_flagged": 5,
+      "n_per_arm": 8
+    },
+    "pre_verification": {
+      "planted_flagged": 7,
+      "planted_control_flagged": 7,
+      "n_per_arm": 8
+    },
+    "diagnosis": "the model TIER is not the cause: pre-verification the two arms are identical. The critic reports ~2 findings on nearly every draft, planted or not, so the plant does not rise above its own false-positive floor.",
+    "runs": [
+      {
+        "arm": "planted",
+        "canon": 4,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "019ffad4",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "019ffad4",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 1,
+        "rev": "01a02513",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02513",
+        "unverified": 2
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02514",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02514",
+        "unverified": 2
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 3,
+        "rev": "01a0255e",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 3,
+        "raw": 3,
+        "rev": "01a0255e",
+        "unverified": 0
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 0,
+        "raw": 2,
+        "rev": "01a02d1e",
+        "unverified": 2
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d1e",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d20",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 3,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d20",
+        "unverified": 1
+      },
+      {
+        "arm": "planted",
+        "canon": 5,
+        "attributed": 0,
+        "raw": 0,
+        "rev": "01a02d21",
+        "unverified": 0
+      },
+      {
+        "arm": "planted_control",
+        "canon": 5,
+        "attributed": 0,
+        "raw": 0,
+        "rev": "01a02d21",
+        "unverified": 0
+      },
+      {
+        "arm": "planted",
+        "canon": 2,
+        "attributed": 2,
+        "raw": 3,
+        "rev": "01a02d23",
+        "unverified": 1
+      },
+      {
+        "arm": "planted_control",
+        "canon": 2,
+        "attributed": 1,
+        "raw": 2,
+        "rev": "01a02d23",
+        "unverified": 1
+      }
+    ]
+  }
 }

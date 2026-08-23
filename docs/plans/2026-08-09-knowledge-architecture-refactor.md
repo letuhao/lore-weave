@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 95 of 139 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 95 of 140 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/54) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/55) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,63 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### 🔻 QC-5 C38 2026-08-24 — **1a re-measured at the PO's TARGET tier: unchanged. The model is not the cause; the noise floor is**
+
+  ```
+  same 8 drafts · same route · same rebuilt image · only the CRITIC model differs
+                                    planted   control
+    qwen2.5-7b   pre-verification     8/8       7/8      1a UNSCORABLE
+    gemma-4-26b  pre-verification     7/8       7/8      1a UNSCORABLE
+    gemma-4-26b  post-verification    3/8       5/8      1a UNSCORABLE
+  32 live runs across the two tiers, all in the measurement file
+  ```
+
+  📐 **The PO's own words made this the next measurement, not a new decision.** *"This project
+  targets mid size and above model, 7b model is weak model i never use in real life."* The
+  acceptance book's CRITIC was that 7B, so C37's failure had an obvious candidate cause. Pointing
+  `ModelRole.CRITIC` at the 26B and re-running the identical 8×2 measurement tests it directly.
+
+  🔴 **It changes nothing. Pre-verification the two arms are IDENTICAL — 7/8 and 7/8.** A
+  target-tier critic flags the untouched draft exactly as often as the one with a canon
+  antagonist swapped out. The tier is not the variable.
+
+  ⚖️ **Verified that the switch took, rather than trusting the setting (rule 2).** The first read
+  of the numbers was "essentially identical to the 7B run", which is what a setting that silently
+  did nothing also produces. `llm_jobs` settles it:
+
+  ```
+  prose_critic         019eb620   16      <- the 7B measurement
+  prose_critic         51ea9fd7   16      <- this one
+  prose_critic_verify  51ea9fd7   60
+  ```
+
+  🎯 **So the diagnosis is structural, and it is the honest end of this line.** The critic returns
+  **~2 findings on nearly every draft**, planted or not. The plant — one character's name swapped
+  across a real chapter — does not rise above the critic's own false-positive floor, at either
+  tier. That is `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE` stated as an acceptance result: the
+  clause cannot discriminate while the floor is this high, and the floor is the deferral.
+
+  ⚠️ **What C31–C36 did and did not buy, measured.** The verification pass halves the findings on
+  both arms (7/8 → 3/8 planted, 7/8 → 5/8 control). It removes real false positives — the
+  invented-clause R5 verdict, 3/3, is gone — but it does not separate the arms, because it drops
+  from both. Precision improved; **discrimination did not**.
+
+  ⛔ **This is the ⏸ checkpoint, and it is the PO's.** The GRANT reads *"QC-5 CLAUSE 1 → 1a
+  planted violation attributed (C14 3/3)"*, and C14's 3/3 was one hand-built passage with no
+  matched control — the arm the gate says it needs and says was missing. Measured with that arm,
+  across 8 real drafts and two model tiers, **1a does not pass**. The grant's premise does not
+  hold for the acceptance measurement, which is a sealed decision proving wrong rather than a
+  task to push through.
+
+  **QC (a) gates:** four plan gates green; `qc5-acceptance-gate` verdicts pasted for both tiers.
+  **QC (b) live smoke:** 32 critiques against a REBUILT image on lw-iso, through the studio's
+  route, with the model actually used verified from `llm_jobs` rather than from the setting.
+  **QC (c) real data:**
+  [`docs/measurements/2026-08-24-qc5-1a-planted-vs-control.json`](../measurements/2026-08-24-qc5-1a-planted-vs-control.json)
+  — both tiers, both arms, pre- and post-verification, every run.
+  **Fixture restored:** the Work's critic is back to the 7B it was found with; `critic_verifier`
+  stays as C34 recorded.
   ---
   ### 🔻 QC-5 C37 2026-08-24 — **1a measured WITH its matched control for the first time: UNSCORABLE, and the critic is the side that fails**
 
