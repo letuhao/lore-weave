@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 64 of 107 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 65 of 108 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (22/32) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (23/33) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A19 2026-08-23 — **three leaks found BY HAND is three found by LUCK — the census is now derived**
+
+  ```
+  Neo4j procedures    6/6 -> 9/9    the ratchet was counting 6 of 9 real sites
+  Neo4j-only guards   NEW  0/0      every site refuses by name or is exempt WITH A REASON
+  ```
+
+  🔴 **The gate's own scope list was 5/6 true, and its comment said so.**
+  `_PROCEDURE_PATTERNS` carried `CALL db.*` and `SHOW ... INDEX` under a comment reading
+  *"Admin commands. Neo4j-only by definition; AGE rejects the keyword outright"* — while
+  `CREATE VECTOR INDEX` and `DROP INDEX`, which are admin commands by exactly that definition,
+  were absent. A18 had to widen its own throwaway regex to see three of its sites; the gate
+  should have been keeping that census. Widened, and **the derived count landed on 9 — the same
+  number the by-hand sweep reached independently.**
+
+  🎯 **The new check is the point.** A16, A17 and A18 each found a leak by reading call sites.
+  Nothing stopped a fourth. `scan_neo4j_only_guards()` derives, per function, whether it reaches
+  a Neo4j-only capability, and requires each to either call `require_neo4j_only` (rule 9) or
+  carry an entry in `_NEO4J_ONLY_EXEMPT` **saying why a backend-following session cannot reach
+  it**:
+
+  ```
+  entities.find_entities_by_vector          exempt — Neo4jVectorStore (+benchmarks) only
+  passages.find_passages_by_vector          exempt — same
+  vector_indexes.ensure_passage_vector_index exempt — the two benchmarks, class (c) §1.3c
+  ```
+
+  **A reason, not a name.** "It is fine" is what the hand sweep believed about all three leaks
+  before it read their call sites, and a bare allowlist would have recorded exactly that belief.
+  A stale exemption — one naming a call site that has moved or gone — fails the gate too: it
+  reads as a considered decision about code that no longer exists.
+
+  📐 **Attribution follows CONSTANTS, and that is not a detail.** `query_summary_index`'s site
+  lives in a module-level `_SUMMARY_QUERY_CYPHER`, so a line-number rule files it under "module"
+  and the function reads clean. **That is precisely how A18's leak hid from the by-hand pass
+  until the constants were followed**, and the selftest pins it.
+
+  🔴 **The selftest failed on its first run, and the bug was MINE.**
+
+  ```
+  FAIL — a docstring MENTIONING an admin command was scored as a call site
+  ```
+
+  A function whose docstring explains *"SHOW VECTOR INDEXES is Neo4j-only"* is documenting the
+  rule, not breaking it — and my detector walked every string constant including that one. Fixed
+  by excluding bare string expressions by node identity. **The check was written to catch
+  green-by-construction and its first act was to catch itself.**
+
+  ✅ **Six selftest cases, none of them one of the three leaks** (rule 3 — a detector fed the
+  cases it was derived from is green by construction): an unguarded reader is reported · a
+  guarded one is not · a site reached through a module-level constant is attributed to its
+  function · a docstring mention is not a call site · a stale exemption is reported · and the
+  two newly-added patterns match real DDL.
+
+  🧪 **BITE 8 — remove a real guard, by line number:**
+
+  ```
+  [port-adoption-gate] FAIL — 1 function(s) reach a Neo4j-only capability without
+  refusing by name: ['passages.find_passages_by_fulltext']
+  EXIT=1
+  ```
+
+  Restored; `0/0` and PASS.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` green with **six new
+  cases**, and both ratchets moved in this commit — `MAX_VECTOR_PROCEDURE_SITES` 6 → 9 alongside
+  the widened patterns, `MAX_UNGUARDED_NEO4J_ONLY = 0` new. `knowledge-service` **4693 passed,
+  716 skipped** with `TEST_AGE_DSN` set; the two `test_coaching_gate1.py` failures are the
+  pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A — no service code changed and no seam crossed. This cycle moves a
+  gate; the behaviour it guards was smoked live in A16–A18 against rebuilt images.
+  **QC (c) real data:** the census itself — 9 sites derived by AST over `neo4j_repos`, agreeing
+  with A18's independently-derived hand count.
+
   ---
   ### ✅ T17 A18 2026-08-23 — **the sweep closes: 9 Neo4j-only sites, 3 leaks, all named**
 

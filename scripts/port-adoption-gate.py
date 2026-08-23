@@ -581,6 +581,72 @@ def selftest() -> int:
         print("  FAIL — the procedure scanner missed `CALL db.index.vector.queryNodes`, the "
               "construct it exists for")
         ok = False
+    # ── A19 — the Neo4j-only GUARD check, validated on cases it was not derived from ──
+    # The detector was built from three real leaks. Feeding it those three back would be
+    # green by construction (rule 3), so every case below is synthetic and none of them is
+    # one of the three.
+    leak = (chr(10).join([
+        "async def reads(session):",
+        '    return await session.run("CALL db.index.vector.queryNodes($i, $n, $v)")',
+    ]) + chr(10))
+    un, stale = scan_neo4j_only_guards({"probe": leak})
+    if un != ["probe.reads"]:
+        print(f"  FAIL — an UNGUARDED Neo4j-only reader was not reported: {un}")
+        ok = False
+
+    guarded = (chr(10).join([
+        "async def reads(session):",
+        '    require_neo4j_only(session, "probe.reads", "vector index search")',
+        '    return await session.run("CALL db.index.vector.queryNodes($i, $n, $v)")',
+    ]) + chr(10))
+    if scan_neo4j_only_guards({"probe": guarded})[0]:
+        print("  FAIL — a GUARDED reader was still reported; the check cannot tell the cure "
+              "from the disease and would be unsatisfiable")
+        ok = False
+
+    # The subtle one: the Cypher lives in a module-level CONSTANT, so a line-number rule
+    # files it under "module" and the function looks clean. This is how A18's site hid.
+    via_const = (chr(10).join([
+        'Q = "CALL db.index.vector.queryNodes($i, $n, $v)"',
+        "async def reads(session):",
+        "    return await session.run(Q)",
+    ]) + chr(10))
+    if scan_neo4j_only_guards({"probe": via_const})[0] != ["probe.reads"]:
+        print("  FAIL — a site reached through a module-level Cypher CONSTANT was not "
+              "attributed to the function that uses it; that is exactly how one of the three "
+              "leaks hid from the by-hand sweep")
+        ok = False
+
+    # A construct named only in a DOCSTRING is prose, not a call site.
+    prose = (chr(10).join([
+        "async def reads(session):",
+        '    """Uses SHOW VECTOR INDEXES on Neo4j; AGE has no such command."""',
+        "    return []",
+    ]) + chr(10))
+    if scan_neo4j_only_guards({"probe": prose})[0]:
+        print("  FAIL — a docstring MENTIONING an admin command was scored as a call site")
+        ok = False
+
+    # An exemption naming something that no longer exists must be reported, not ignored.
+    if not scan_neo4j_only_guards({"probe": "x = 1" + chr(10)})[1]:
+        print("  FAIL — stale exemptions went unreported; an exemption for a deleted call "
+              "site reads as a considered decision about code that is gone")
+        ok = False
+
+    # The two patterns A18 had to add by hand, proven to match real DDL.
+    for _src, _fam in ((chr(10).join([
+            "async def make(session):",
+            '    await session.run("CREATE VECTOR INDEX ix IF NOT EXISTS FOR (p:P) ON (p.e)")',
+        ]) + chr(10), "CREATE ... INDEX"),
+        (chr(10).join([
+            "async def kill(session):",
+            '    await session.run("DROP INDEX ix IF EXISTS")',
+        ]) + chr(10), "DROP INDEX")):
+        if scan_procedures({"probe": _src}).get("probe", {}).get(_fam) != 1:
+            print(f"  FAIL — the procedure scanner missed `{_fam}`, which the census read as "
+                  f"6-of-9 until A18 widened it")
+            ok = False
+
     show = 'Q = "SHOW VECTOR INDEXES YIELD name"' + chr(10)
     if scan_procedures({"probe": show}).get("probe", {}).get("SHOW ... INDEX") != 1:
         print("  FAIL — the procedure scanner missed `SHOW VECTOR INDEXES`")
@@ -858,7 +924,7 @@ _DIALECT_ROOT = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
 #: `CALL db.index.vector.queryNodes` is in a PYTHON comment describing the migration. Both
 #: are excluded by the same `_code_strings` + `//`-strip that T87 had to add twice, and
 #: counting them would make the number un-closable by prose alone.
-MAX_VECTOR_PROCEDURE_SITES = 6
+MAX_VECTOR_PROCEDURE_SITES = 9
 
 _PROCEDURE_PATTERNS = (
     # `db.<anything>` as a CALL target. NOT a bare `db.` match: `self.db.execute` and a
@@ -866,7 +932,117 @@ _PROCEDURE_PATTERNS = (
     ("CALL db.*", re.compile(r"\bCALL\s+db\.[a-zA-Z_.]+", re.I)),
     # Admin commands. Neo4j-only by definition; AGE rejects the keyword outright.
     ("SHOW ... INDEX", re.compile(r"\bSHOW\s+[A-Z ]*INDEX(ES)?\b", re.I)),
+    # ⚠️ These two were MISSING while the comment above already claimed admin commands
+    # were in scope, so the census read 6 when the real Neo4j-only surface was 9.
+    # `CREATE VECTOR INDEX` and `DROP INDEX` are exactly as unportable as `SHOW`: AGE
+    # rejects the keyword. Found by A18's by-hand sweep, which had to widen its own
+    # regex to see three of its sites -- a census the gate should have been keeping.
+    ("CREATE ... INDEX",
+     re.compile(r"\bCREATE\s+(?:VECTOR|FULLTEXT|RANGE|TEXT|POINT)?\s*INDEX\b", re.I)),
+    ("DROP INDEX", re.compile(r"\bDROP\s+INDEX\b", re.I)),
 )
+
+
+# ── A19: every Neo4j-only site is GUARDED or exempt WITH A REASON ────────────────────────
+#
+# A16/A17/A18 found three leaks BY HAND — repo functions reaching a Neo4j-only capability on
+# a session that follows the configured backend, which since T54 defaults to AGE. Each one
+# failed with a raw `PostgresSyntaxError` that a caller's `except Exception` turned into a
+# false statement: "graph orphaned, re-sweep owed" for a graph that was not orphaned,
+# `cjk_lexical: "unavailable"` for an engine that can never do it, and a WARNING with a stack
+# trace on every Mode 3 request.
+#
+# Three found by hand is three found by luck. This derives the census instead.
+
+#: Functions that reach a Neo4j-only capability and are NOT guarded — each with the reason a
+#: backend-following session cannot reach them. A reason, not a name: "it is fine" is what the
+#: hand sweep believed about all three leaks before it read the call sites.
+_NEO4J_ONLY_EXEMPT = {
+    "entities.find_entities_by_vector":
+        "reached only through Neo4jVectorStore (+ benchmarks), which is engine-scoped by "
+        "construction — the provider hands entity reads to PgVectorStore when the backend is "
+        "AGE, so this body only ever sees a Bolt session",
+    "passages.find_passages_by_vector":
+        "same: Neo4jVectorStore + benchmark call sites only",
+    "vector_indexes.ensure_passage_vector_index":
+        "called only by benchmark/flat_knn_rawsearch.py and benchmark/vector_backend_bench.py, "
+        "which pin Neo4j deliberately — class (c), out of port scope per §1.3c",
+}
+
+MAX_UNGUARDED_NEO4J_ONLY = 0
+
+
+def scan_neo4j_only_guards(sources=None) -> tuple[list[str], list[str]]:
+    """`(unguarded, stale_exemptions)` — which functions reach a Neo4j-only capability
+    without refusing by name, and which exemptions no longer correspond to anything.
+
+    Attribution is by AST, and a module-level Cypher CONSTANT is attributed to the functions
+    that reference it — `query_summary_index`'s site lives in `_SUMMARY_QUERY_CYPHER`, so a
+    line-number-only rule would file it under "module" and miss the leak entirely. That is
+    exactly how A18's site hid from the by-hand pass until the constants were followed.
+    """
+    if sources is None:
+        sources = {}
+        if os.path.isdir(_DIALECT_ROOT):
+            for fname in sorted(os.listdir(_DIALECT_ROOT)):
+                if fname.endswith(".py"):
+                    try:
+                        sources[fname[:-3]] = open(
+                            os.path.join(_DIALECT_ROOT, fname), encoding="utf-8",
+                            errors="replace").read()
+                    except OSError:
+                        continue
+    unguarded: list[str] = []
+    seen: set[str] = set()
+    for mod, src in sorted(sources.items()):
+        try:
+            tree = ast.parse(src)
+        except SyntaxError:
+            continue
+
+        # Docstrings and bare string expressions are PROSE. Collected up front and excluded
+        # by identity, because a function whose docstring explains "SHOW VECTOR INDEXES is
+        # Neo4j-only" is documenting the rule, not breaking it. The selftest caught this
+        # detector scoring exactly that as a call site.
+        _prose = {id(n.value) for n in ast.walk(tree)
+                  if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
+                  and isinstance(n.value.value, str)}
+
+        def _hits(node) -> bool:
+            """Does this subtree carry a Neo4j-only construct in a CODE string?"""
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Constant) and isinstance(sub.value, str)
+                        and id(sub) not in _prose):
+                    blob = _CYPHER_COMMENT.sub("", sub.value)
+                    if any(pat.search(blob) for _n, pat in _PROCEDURE_PATTERNS):
+                        return True
+            return False
+
+        # Module-level Cypher constants -> the functions that use them.
+        const_owner: dict[str, bool] = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and _hits(node.value):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        const_owner[tgt.id] = True
+
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            body_hits = _hits(fn)
+            uses_const = any(isinstance(n, ast.Name) and n.id in const_owner
+                             for n in ast.walk(fn))
+            if not (body_hits or uses_const):
+                continue
+            qual = f"{mod}.{fn.name}"
+            seen.add(qual)
+            guarded = any(
+                isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "require_neo4j_only" for n in ast.walk(fn))
+            if not guarded and qual not in _NEO4J_ONLY_EXEMPT:
+                unguarded.append(qual)
+    stale = sorted(k for k in _NEO4J_ONLY_EXEMPT if k not in seen)
+    return sorted(unguarded), stale
 
 
 def scan_procedures(sources=None) -> dict:
@@ -1461,6 +1637,29 @@ def main() -> int:
     else:
         print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
               f"the repo layer — §10.1's second path to class (d) zero")
+    # ── A19: those sites must REFUSE by name, not leak a SQL parse error ───────────────
+    unguarded, stale_exempt = scan_neo4j_only_guards()
+    if stale_exempt:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(stale_exempt)} Neo4j-only exemption(s) "
+              f"name nothing that exists: {stale_exempt}{chr(10)}")
+        print("  A stale exemption is worse than none: it reads as a considered decision about")
+        print("  a call site that has since moved or been deleted. Remove it in the same commit.")
+        return 1
+    if len(unguarded) > MAX_UNGUARDED_NEO4J_ONLY:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(unguarded)} function(s) reach a "
+              f"Neo4j-only capability without refusing by name: {unguarded}{chr(10)}")
+        print("  Since T54 the default backend is AGE and `neo4j_session()` follows it, so a")
+        print("  raw `PostgresSyntaxError` from here reaches a caller's `except Exception` and")
+        print("  becomes a FALSE statement — A16 reported a graph orphaned that was not, A17")
+        print("  reported a permanent gap as an outage, A18 logged a traceback every request.")
+        print("  Call `require_neo4j_only(session, operation, capability)` (rule 9), or add an")
+        print("  entry to `_NEO4J_ONLY_EXEMPT` saying WHY a backend-following session cannot")
+        print("  reach it. A name with no reason is what made all three leaks invisible.")
+        return 1
+    print(f"[port-adoption-gate] Neo4j-only guards {len(unguarded)}/{MAX_UNGUARDED_NEO4J_ONLY} "
+          f"unguarded — every site refuses by name or is exempt with a reason "
+          f"({len(_NEO4J_ONLY_EXEMPT)} exempt)")
+
     # ── Neo4j server-side procedures, counted apart from the dialect backlog ────────────
     procs = scan_procedures()
     n_proc = sum(sum(v.values()) for v in procs.values())
