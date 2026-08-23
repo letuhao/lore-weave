@@ -1,0 +1,88 @@
+[
+ {
+  "tool": "kg_ontology_propose",
+  "pre": [],
+  "args": {
+   "op": "adopt_template",
+   "project_id": "01a02d2a-2eec-70fc-9aae-1091433ea4ca",
+   "source_schema_id": "019feb06-2a98-710f-8d39-bdce8ec022ee"
+  },
+  "first": [
+   "ok",
+   {
+    "proposed": true,
+    "confirm_token": "eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX2Fkb3B0IiwiZXhwIjoxNzg3NDY0NzUxLCJqdGkiOiIzNmZmYjQ0MS1lYmMyLTQxMDgtYTQ5Ni0xYWY5NDRhZTE0NGYiLCJwIjp7InNvdXJjZV9zY2hlbWFfaWQiOiIwMTlmZWIwNi0yYTk4LTcxMGYtOGQzOS1iZGNlOGVjMDIyZWUifSwicGlkIjoiMDFhMDJkMmEtMmVlYy03MGZjLTlhYWUtMTA5MTQzM2VhNGNhIiwidSI6IjAxOWQ1ZTNjLTdjYzUtN2U2YS04YjI3LTEzNDRlMTQ4YmY3YyJ9.mkOALjHrCE_d8z59DKAjdhQbYl2yAVcjRJzjM641v28",
+    "expires_in_s": 600,
+    "descriptor": "kg_adopt",
+    "summary": "adopt template 'Fantasy' (3 edge types, 9 node kinds, 4 fact types)",
+    "requires": "human confirmation via the review surface (no change applied yet)"
+   }
+  ],
+  "confirm": {
+   "first": "200 query",
+   "second": "200 query"
+  },
+  "second": [
+   "ok",
+   {
+    "proposed": true,
+    "confirm_token": "eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX2Fkb3B0IiwiZXhwIjoxNzg3NDY0NzY1LCJqdGkiOiIyOTY1Njg1MC1kZDFiLTQ1NTMtOGFmZS02NmE5MjEwMWVmZTIiLCJwIjp7InNvdXJjZV9zY2hlbWFfaWQiOiIwMTlmZWIwNi0yYTk4LTcxMGYtOGQzOS1iZGNlOGVjMDIyZWUifSwicGlkIjoiMDFhMDJkMmEtMmVlYy03MGZjLTlhYWUtMTA5MTQzM2VhNGNhIiwidSI6IjAxOWQ1ZTNjLTdjYzUtN2U2YS04YjI3LTEzNDRlMTQ4YmY3YyJ9.yMx2oQIjnKM0Zd86O8RSvO1buU0zWV7_d5J_gK87ZYQ",
+    "expires_in_s": 600,
+    "descriptor": "kg_adopt",
+    "summary": "adopt template 'Fantasy' (3 edge types, 9 node kinds, 4 fact types)",
+    "requires": "human confirmation via the review surface (no change applied yet)"
+   }
+  ],
+  "diff_first": {
+   "loreweave_glossary.book_active_genres": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "-"
+    }
+   },
+   "loreweave_glossary.book_attributes": {
+    "before": null,
+    "after": {
+     "rows": 30,
+     "latest": "2026-08-23 05:49:11.629478+00"
+    }
+   },
+   "loreweave_glossary.book_genres": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-23 05:49:11.629478+00"
+    }
+   },
+   "loreweave_glossary.book_kind_genres": {
+    "before": null,
+    "after": {
+     "rows": 4,
+     "latest": "-"
+    }
+   },
+   "loreweave_glossary.book_kinds": {
+    "before": null,
+    "after": {
+     "rows": 4,
+     "latest": "2026-08-23 05:49:11.629478+00"
+    }
+   }
+  },
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d2a-2d6c-70b1-99cb-b8dd8bb5398c",
+   "title": "LOOP-THROWAWAY-idem-kg_ontology_propose-84a95207",
+   "tables": {
+    "composition(project)": "01a02d2a-2eec-70fc-9aae-1091433ea4ca"
+   }
+  }
+ }
+]

@@ -46,6 +46,7 @@ import httpx  # noqa: E402 — used by _redeem_if_gated
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from eval.tool_liveness import config as _tlc  # noqa: E402
+from eval.tool_liveness.confirm import domain_of as _domain_of  # noqa: E402
 _DOMAIN_BASE = _tlc.DOMAIN_BASE
 _INTERNAL_TOKEN = _tlc.INTERNAL_TOKEN
 _USER_ID = _tlc.USER_ID
@@ -146,19 +147,42 @@ def _redeem_if_gated(result, out: dict, slot: str) -> None:
     token = result.get("confirm_token")
     if not isinstance(token, str) or not token:
         return
-    domain = out["tool"].split("_", 1)[0]
+    # 🔴 THE PREFIX IS NOT THE DOMAIN. `kg_*` lives in `knowledge` and `plan_*` in `composition`,
+    # so a bare split would have looked up a base url for "kg" and found none. Reuse the mapping
+    # the liveness kit already keeps, which is itself a mirror of the platform's own `_domain_of` —
+    # a second copy here would be a third place for the same table to drift.
+    domain = _domain_of(out["tool"])
     base = _DOMAIN_BASE.get(domain)
     if not base:
         out.setdefault("confirm", {})[slot] = f"no base url for domain {domain!r}"
         return
-    try:
-        r = httpx.post(f"{base}/v1/{domain}/actions/confirm",
-                       params={"token": token},
-                       headers={"X-Internal-Token": _INTERNAL_TOKEN, "X-User-Id": _USER_ID},
-                       timeout=180)
-        out.setdefault("confirm", {})[slot] = r.status_code
-    except Exception as e:  # noqa: BLE001 — recorded, never swallowed
-        out.setdefault("confirm", {})[slot] = f"{type(e).__name__}: {e}"
+    # 🔴 TWO CONFIRM CONVENTIONS ON ONE PLATFORM, measured 2026-08-23:
+    #   composition/book/translation : POST /v1/{domain}/actions/confirm?token=…   (query param)
+    #   knowledge (kg_*)             : POST /v1/kg/actions/confirm {"confirm_token": …}  (body)
+    # and note the PATH segment is `kg`, not the domain name `knowledge`. Redeeming a kg token at
+    # /v1/knowledge/actions/confirm returns 404 — which is what this probe did until the recorded
+    # status made it visible. `scripts/eval/tool_liveness/confirm.py` builds exactly that URL, so
+    # the same 404 is waiting there for every kg_* tool.
+    #
+    # Both shapes are tried and the one that answered is recorded, so a future reader sees WHICH
+    # convention a service actually uses rather than inferring it from a name.
+    seg = "kg" if domain == "knowledge" else domain
+    attempts = (
+        (f"{base}/v1/{seg}/actions/confirm", {"params": {"token": token}}),
+        (f"{base}/v1/{seg}/actions/confirm", {"json": {"confirm_token": token}}),
+    )
+    hdr = {"X-Internal-Token": _INTERNAL_TOKEN, "X-User-Id": _USER_ID}
+    last = None
+    for url, kw in attempts:
+        try:
+            r = httpx.post(url, headers=hdr, timeout=180, **kw)
+        except Exception as e:  # noqa: BLE001 — recorded, never swallowed
+            last = f"{type(e).__name__}: {e}"
+            continue
+        last = f"{r.status_code} {'query' if 'params' in kw else 'body'}"
+        if r.status_code in (200, 201, 202, 204):
+            break
+    out.setdefault("confirm", {})[slot] = last
 
 
 def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None) -> dict:
