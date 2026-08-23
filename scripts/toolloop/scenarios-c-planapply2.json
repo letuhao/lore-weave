@@ -2,7 +2,7 @@
   "_note": "plan_bootstrap_apply with a COMPILED run - the state plan_bootstrap_propose requires before it will mint a proposal_id.",
   "scenarios": [
     {
-      "id": "plan-bootstrap-apply-compiled",
+      "id": "plan-bootstrap-apply-compiled-answered",
       "tool_under_test": "plan_bootstrap_apply",
       "expect_tool": "plan_bootstrap_apply",
       "intent": "write",
@@ -58,7 +58,11 @@
       "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
       "_problem": "P4-PRECONDITION",
       "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away.",
-      "rebuilt_why": "Rebuilt 2026-08-23 after R1 was made transitive over declared argument emitters. That change made the model call plan_bootstrap_propose - the declared supplier of proposal_id - on 5 of 5 runs, where before it called plan_compile and read the outline. The supplier then refused for a STATE it did not have, which is what this seed now provides. The two fixes are separate and both were needed: the surface could not offer the step, and the fixture could not satisfy it."
+      "rebuilt_why": "Rebuilt 2026-08-23 after R1 was made transitive over declared argument emitters. That change made the model call plan_bootstrap_propose - the declared supplier of proposal_id - on 5 of 5 runs, where before it called plan_compile and read the outline. The supplier then refused for a STATE it did not have, which is what this seed now provides. The two fixes are separate and both were needed: the surface could not offer the step, and the fixture could not satisfy it.",
+      "follow_ups": [
+        "Yes, please create them."
+      ],
+      "follow_up_why": "🔴 THE MODEL ASKS A DIRECT YES/NO AND NOBODY ANSWERS IT. Measured 5/5 on the previous arm: with the supplier on the wire and the run compiled, the turn ends 'Would you like me to go ahead and create these chapters so we can start writing?' while holding the proposal_id plan_bootstrap_apply needs. A user answering that question is the honest continuation of the journey, not a nudge toward the tool.\n\nIT IS NOT THE MOVE THAT WAS ALREADY REFUTED. composition_arc_apply was re-run with 'Yes, go ahead and do it.' and stayed 0/5, correctly - there the model had asked WHICH TEMPLATE, and a bare affirmative cannot answer a which-one question. Here the question is a yes/no with a single referent the model itself named (four chapters, listed by title), so 'yes' is a complete answer. If the tool is still not called after this, the ask was never a real question."
     }
   ]
 }

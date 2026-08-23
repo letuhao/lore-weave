@@ -533,7 +533,8 @@
       "worst_measured": "plan_bootstrap_apply - the turn holds proposal_id, names the four chapters it would create, and asks. The whole chain compile -> propose -> apply is satisfied except its last call.",
       "tools": [
         "plan_bootstrap_apply"
-      ]
+      ],
+      "the_confirmation_turn_cannot_reach_the_tool": "MEASURED 2026-08-23, and it makes this problem harder than 'the model should just act'.\n\nThe obvious next step was to answer the model's own question, and it was run: follow-up 'Yes, please create them.', K=5, zero errored runs. Result - surfaced 0/5, called 0/5. On the confirmation turn R1 logs no match at all (the affirmative matches no tool's vocabulary) and the wire log carries NEITHER plan_bootstrap_apply NOR its supplier.\n\nSo on this journey the tool is reachable only on the turn where the user ASKS, and the model uses that turn to ask back. By the time the user answers, the tool is gone. Whatever fixes this problem has to make the confirmation turn able to reach the tool, or make the first turn act - and the first is D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL, which is an owner decision about how far back a turn may look for its request."
     },
     {
       "id": "P9-INTENT-GATE",
