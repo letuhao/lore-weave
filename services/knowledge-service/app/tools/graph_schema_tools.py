@@ -581,7 +581,8 @@ class KgCreateNodeArgs(ProjectScopedArgs):
         min_length=1, max_length=100,
         description=(
             "the entity kind — one of: character, location, organization, "
-            "concept, item"
+            "concept, item. Ordinary synonyms are accepted and folded to these "
+            "(person → character, place → location, group → organization)."
         ),
     )
 
@@ -591,9 +592,13 @@ class KgCreateNodeArgs(ProjectScopedArgs):
         # only mint the same closed set the human REST create accepts. ONE home
         # for the set: neo4j_repos.entities.AUTHORABLE_KINDS (imported lazily to
         # keep the tools layer free of an eager data-layer import at class-def).
-        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS, canonical_kind
 
-        if self.kind.strip() not in AUTHORABLE_KINDS:
+        # TOLERATE AT THE EDGE, STORE THE CANONICAL VALUE. `kind="person"` was rejected on every
+        # call in a measured K=5 run and took both of that batch's failures with it; the alias is
+        # folded to `character` HERE so nothing downstream ever sees a second vocabulary.
+        self.kind = canonical_kind(self.kind)
+        if self.kind not in AUTHORABLE_KINDS:
             raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
         return self
 
