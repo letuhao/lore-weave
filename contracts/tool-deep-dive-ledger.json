@@ -3600,6 +3600,12 @@
         "why_it_matters_beyond_the_probe": "This is the DATA bar's blind-spot class, found repeatedly in this loop (the world/map store, 47 more tables, the account-scoped arc templates). Every one cost a wrong conclusion before it was found.",
         "measured_by": "docs/eval/toolloop/2026-08-14/idem-authoring3.json"
       }
+    },
+    "D-CONFIRM-REFUSAL-IS-AN-OPAQUE-ACTION-ERROR": {
+      "status": "OPEN — measured 2026-08-23",
+      "what": "composition's confirm route refuses the authoring_run_gate descriptor with 400 {\"code\": \"action_error\"} and NO detail. The same route's authoring_run_start refusal says exactly what is wrong — 409 'start requires status=gated, run is draft' — and that one sentence is what put op=gate into the fixture chain. The gate's refusal cannot be acted on at all: three separate raise sites in the handler produce the identical bare code.",
+      "why_it_matters": "A caller — model or human — can only respond to a refusal that names its precondition. This is the same class as kg_add_nodes' `kind` enum, where the message WAS good and the model still could not act; here there is no message. It is the difference between a blocker I could close in one step and one I cannot diagnose from the response.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/idem-authoring6.json + a targeted re-run"
     }
   },
   "deferred_questions": {

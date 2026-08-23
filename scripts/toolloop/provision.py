@@ -298,7 +298,16 @@ class Throwaway:
                     f"    Either the path is wrong, OR DOMAIN_BASE[{spec['domain']!r}] = {base} "
                     f"points at a DIFFERENT service. Check by route, not by /health — several "
                     f"services answer /health with a bare 'ok' and cannot be told apart by it.")
-            r.raise_for_status()
+            # 🔴 raise_for_status() THROWS AWAY THE REASON. A seed that fails with
+            # "Client error '400 Bad Request' for url …" tells the reader the shape of the failure
+            # and nothing about its cause, and the cause is sitting in the body. Measured
+            # 2026-08-23: an authoring-run gate confirm 400'd and the detail — the thing that says
+            # WHICH precondition is unmet — was discarded by this line.
+            if r.status_code >= 400:
+                raise ProvisionError(
+                    f"SEED REST {r.status_code}: "
+                    f"{spec.get('method', 'POST')} {base}{spec['path']} -> "
+                    f"{str(r.text)[:400]}")
             # 🔴 RECORD THE RESPONSE BODY, so a later step can reference what this call CREATED.
             # Measured 2026-08-23 building composition_authoring_run_manage's fixture: a Tier-W seed
             # step mints a confirm_token and creates NOTHING until a REST redemption — and the thing
