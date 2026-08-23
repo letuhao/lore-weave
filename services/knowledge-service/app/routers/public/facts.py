@@ -22,7 +22,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.facts import Fact, get_fact, invalidate_fact, revalidate_fact
 from app.events.outbox_emit import (
     FACT_CORRECTED,
@@ -52,7 +52,7 @@ async def invalidate_fact_endpoint(
 
     404 on cross-user / missing (the repo filters on `user_id`, so a fact that
     isn't the caller's returns None → 404, no existence oracle)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         before = await get_fact(session, user_id=str(user_id), fact_id=fact_id)
         invalidated = await invalidate_fact(
             session, user_id=str(user_id), fact_id=fact_id,
@@ -103,7 +103,7 @@ async def revalidate_fact_endpoint(
     """S-05b (F9) — UNDO a mark-wrong: clear `valid_until` so the fact re-appears.
     Owner-scoped (the repo filters on `user_id`); 404 on cross-user / missing (no
     existence oracle). Idempotent. No correction event (a self-undo isn't a signal)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         revalidated = await revalidate_fact(
             session, user_id=str(user_id), fact_id=fact_id,
         )

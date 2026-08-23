@@ -68,7 +68,7 @@ async def apply_salience(
     user_id: UUID,
     project_id: UUID,
     *,
-    neo4j_session=None,
+    graph_session=None,
 ) -> list:
     """Builder entry point: guard on the weight flags FIRST so the defaults
     (both 0.0) do no I/O and return the input unchanged — byte-identical.
@@ -85,10 +85,10 @@ async def apply_salience(
         access = await entity_access_repo.load_salience(user_id, project_id)
 
     promotion: dict[str, PromotionSignals] = {}
-    if w_promote > 0 and neo4j_session is not None:
+    if w_promote > 0 and graph_session is not None:
         try:
             promotion = await load_promotion_signals(
-                neo4j_session,
+                graph_session,
                 user_id=str(user_id),
                 project_id=str(project_id),
                 glossary_entity_ids=[

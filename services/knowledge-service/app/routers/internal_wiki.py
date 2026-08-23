@@ -36,7 +36,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
 from app.wiki.fingerprint import stable_hash
@@ -168,7 +168,7 @@ async def get_wiki_neighborhood(
             return WikiNeighborhoodResponse(glossary_entity_id=req.glossary_entity_id)
         project_id = str(row["project_id"])
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # T17 — through the port. Same domain question as the KG-neighborhood endpoint,
         # and it was reaching past the port to the same repo function.
         detail = await get_graph_store(session).neighborhood(

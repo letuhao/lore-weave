@@ -40,7 +40,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos import maintenance
 from app.db.neo4j_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
@@ -1234,7 +1234,7 @@ async def _delete_project_graph(
     the only survivor.
     """
     deleted_total = 0
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for label in maintenance.PROJECT_GRAPH_LABELS:
             deleted_total += await maintenance.delete_project_nodes_by_label(
                 session, user_id=str(user_id), project_id=str(project_id), label=label,
@@ -1489,7 +1489,7 @@ async def rebuild_extraction(
         # change_embedding_model). Defense-in-depth: holds even if a caller bypasses
         # the FE confirm dialog.
         if not confirm:
-            async with neo4j_session() as session:
+            async with graph_session() as session:
                 _rec = await maintenance.project_graph_stats(
                     session, user_id=str(user_id), project_id=str(project_id),
                 )
@@ -1678,13 +1678,13 @@ async def change_embedding_model(
         try:
             from app.clients.book_client import get_book_client
             from app.clients.embedding_client import get_embedding_client
-            from app.db.neo4j import neo4j_session
+            from app.db.neo4j import graph_session
             from app.extraction.passage_ingester import (
                 backfill_published_passages,
                 backfill_source_lang,
             )
 
-            async with neo4j_session() as session:
+            async with graph_session() as session:
                 bf = await backfill_published_passages(
                     session,
                     get_book_client(),
@@ -2013,7 +2013,7 @@ async def get_flywheel(
     if latest is None:
         return FlywheelDeltaResponse(has_delta=False)
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         delta = await get_flywheel_delta(
             session, job_id=str(latest.job_id), user_id=str(user_id),
         )
@@ -2297,7 +2297,7 @@ async def get_project_graph_stats(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         counts = await maintenance.project_graph_stats(
             session, user_id=str(user_id), project_id=str(project_id),
         )

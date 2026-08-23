@@ -364,7 +364,7 @@ class _PooledAgeSession:
     in the plan (T54b): `Neo4j schema applied` and `AGE pool ready` seconds apart, extraction
     reading the empty one without erroring.
 
-    That split existed because `neo4j_session()` could only ever return a Bolt session. It can
+    That split existed because `graph_session()` could only ever return a Bolt session. It can
     now return this instead, so the same 135 call sites follow the configured backend and the
     two halves of the service read the SAME store. The cure is one function, not 34 module
     migrations — which is what §10.1 decided and what T83/T84 made true.

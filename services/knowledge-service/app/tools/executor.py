@@ -52,7 +52,7 @@ from app.ports.vector_store import VectorFilter
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.entities import (
     get_entity_with_relations,
 )
@@ -502,7 +502,7 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                 # caller reads: `attributes["text"]` and `attributes["source_type"]` are
                 # populated by BOTH adapters, so the snippet and the source label survive the
                 # engine change that `h.passage.<field>` would not have.
-                async with neo4j_session() as session:
+                async with graph_session() as session:
                     store = await get_vector_store(session)
                     hits = await store.search(
                         scope="passage", user_id=str(ctx.user_id),
@@ -564,7 +564,7 @@ async def _handle_memory_recall_entity(
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         matches = await get_graph_store(session).find_entities_by_name(  # T17
             user_id=str(ctx.user_id),
             project_id=project_id,
@@ -608,7 +608,7 @@ async def _handle_memory_timeline(
     await _require_project_owner_memory(ctx)  # H-U: owner-only project gate
     project_id = str(ctx.project_id) if ctx.project_id else None
     exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         participant_candidates: list[str] | None = None
         if args.entity_name:
             matches = await get_graph_store(session).find_entities_by_name(  # T17
@@ -719,7 +719,7 @@ async def _handle_memory_remember(
                 "fact_type": pending.fact_type,
             }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         fact = await merge_fact(
             session,
             user_id=str(ctx.user_id),
@@ -745,7 +745,7 @@ async def _handle_memory_forget(
     # id and invalidate_fact is OWNER-keyed (user_id scoped), so a fact belonging to
     # another user simply doesn't match (→ "no matching fact"). The owner boundary
     # here is the user_id, not a project.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         fact = await invalidate_fact(
             session, user_id=str(ctx.user_id), fact_id=args.fact_id
         )

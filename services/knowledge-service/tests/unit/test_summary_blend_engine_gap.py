@@ -22,7 +22,7 @@ class _NoopSession:
 async def _run(side_effect, caplog):
     from app.context.modes import full
 
-    with patch.object(full, "neo4j_session", new=lambda: _NoopSession()), \
+    with patch.object(full, "graph_session", new=lambda: _NoopSession()), \
          patch.object(full, "is_abstract_query", return_value=True), \
          patch("app.context.selectors.summary_blend.select_summary_blend",
                new=AsyncMock(side_effect=side_effect)):

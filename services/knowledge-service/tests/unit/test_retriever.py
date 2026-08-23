@@ -109,7 +109,7 @@ def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_hybrid_fuses_both_legs(embed, find):
     embed.return_value = [0.1] * 1024
@@ -156,7 +156,7 @@ def test_window_raw_passages_drops_unknown_and_future():
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_before_sort_order_drops_future_chapters(embed, find):
     # semantic hit is chapter 9 (a future chapter for a reader at chapter 5);
@@ -176,7 +176,7 @@ async def test_before_sort_order_drops_future_chapters(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_before_sort_order_fail_closed_returns_nothing(embed, find):
     # An unresolvable reading position (-1) must yield NO hits — a reader whose
@@ -194,7 +194,7 @@ async def test_before_sort_order_fail_closed_returns_nothing(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_before_sort_order_drops_unknown_chapter_canon_passage(embed, find):
     # THE FAIL-OPEN THE REVIEW CAUGHT: a canon passage whose chapter_index is None
@@ -214,7 +214,7 @@ async def test_before_sort_order_drops_unknown_chapter_canon_passage(embed, find
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_no_cutoff_is_unchanged_author_behavior(embed, find):
     # Omitting the cutoff (None) is the author/wiki path — both chapters present.
@@ -267,7 +267,7 @@ async def test_lexical_unavailable_degrades():
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_lexical_mode_skips_rerank(embed, find):
     book, emb, rr = _clients(lex_hits=[_lex_hit()])
@@ -283,7 +283,7 @@ async def test_lexical_mode_skips_rerank(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_no_project_rerank_falls_back_to_user_default(embed, find):
     # Project has NO per-project rerank model, but the user has a DEFAULT rerank
@@ -305,7 +305,7 @@ async def test_no_project_rerank_falls_back_to_user_default(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_no_rerank_anywhere_marks_not_configured(embed, find):
     # No per-project model AND no user default → skip rerank, mark degraded.
@@ -325,7 +325,7 @@ async def test_no_rerank_anywhere_marks_not_configured(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_surface_canon_default_excludes_drafts_both_legs(embed, find):
     """Default surface=canon → semantic include_drafts=False AND lexical surface=canon
@@ -343,7 +343,7 @@ async def test_surface_canon_default_excludes_drafts_both_legs(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_surface_all_includes_drafts_both_legs(embed, find):
     """surface=all → semantic include_drafts=True AND lexical surface=all."""
@@ -372,7 +372,7 @@ def test_passage_to_hit_carries_source_lang():
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_pref_lang_orders_matching_first_rerank_off(embed, find):
     """A vi reader's pref lifts the vi passage above the zh one (rerank OFF)."""
@@ -394,7 +394,7 @@ async def test_pref_lang_orders_matching_first_rerank_off(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_pref_lang_survives_rerank(embed, find):
     """/review-impl HIGH regression — the language preference is the FINAL pass,
@@ -423,7 +423,7 @@ async def test_pref_lang_survives_rerank(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_pref_lang_wins_per_chapter_cap_under_rerank(embed, find):
     """The language pass runs BEFORE the per-chapter cap, so for a chapter with
@@ -446,7 +446,7 @@ async def test_pref_lang_wins_per_chapter_cap_under_rerank(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_no_pref_lang_leaves_order_unboosted(embed, find):
     """pref_lang=None (wiki path / no reader pref) → no langMatch annotation."""
@@ -467,7 +467,7 @@ async def test_no_pref_lang_leaves_order_unboosted(embed, find):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_cjk_query_runs_cjk_lexical_leg(embed, find, _stub_cjk_leg):
     """KG-ML M6 — a CJK query fuses the cjk full-text leg; its passage shows up
@@ -490,7 +490,7 @@ async def test_cjk_query_runs_cjk_lexical_leg(embed, find, _stub_cjk_leg):
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_latin_query_skips_cjk_leg(embed, find, _stub_cjk_leg):
     """A Latin-script query never invokes the cjk leg — pre-M6 behavior is
@@ -522,13 +522,13 @@ def test_passage_to_hit_surface_reflects_canon_flag():
 
 @pytest.mark.asyncio
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 async def test_cjk_leg_reports_an_ENGINE_GAP_differently_from_an_OUTAGE(embed, find,
                                                                        _stub_cjk_leg):
     """A permanent capability gap must not wear an outage's label.
 
-    `CALL db.index.fulltext.queryNodes` is Neo4j-only and this leg runs on `neo4j_session()`,
+    `CALL db.index.fulltext.queryNodes` is Neo4j-only and this leg runs on `graph_session()`,
     which since T54c follows the configured backend — AGE by default. So on a default
     deployment the leg raised `PostgresSyntaxError` and was recorded as
     `cjk_lexical: "unavailable"`, which is what a Neo4j that happened to be DOWN also reports.

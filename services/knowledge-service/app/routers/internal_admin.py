@@ -25,7 +25,7 @@ from uuid import UUID
 
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos import maintenance
 from app.db.neo4j_repos.passages import (
     delete_all_kg_nodes_for_project,
@@ -114,7 +114,7 @@ async def model_deletion_cleanup(user_id: UUID = Query(...), model_id: UUID = Qu
     # remain harmless data, but no graph node may advertise a deleted model.
     graph_nodes = 0
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             graph_nodes = await maintenance.clear_embedding_model_tag(
                 session, user_id=str(user_id), model_id=str(model_id),
             )
@@ -132,7 +132,7 @@ async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) ->
     review MED-3): the project_id identifies the passages, so a PG-first delete that then failed on Neo4j
     would strand the raw diary passages under a project_id nothing can re-resolve. Also clears the
     pending-facts inbox + rejection tombstones (they hold decryptable diary fact text, no FK cascade)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         passages_deleted = await delete_all_passages_for_project(
             session, user_id=str(user_id), project_id=str(project_id),
         )
@@ -322,12 +322,12 @@ async def recall_assistant_facts(body: _RecallFactsIn) -> dict:
     book), then returns confirmed :Fact nodes in the event_date range (optionally ABOUT a subject),
     newest-first. This is the read that answers "what did <subject> say about <topic> last month" — it
     is project-scoped (never all-projects), so it cannot surface another project's facts (D16)."""
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.facts import group_supersessions, recall_facts
 
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         facts = await recall_facts(
             session,
             user_id=str(body.user_id),
@@ -390,7 +390,7 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     Idempotent-ish: a `from_name` that no longer resolves (already merged) → 404 `from_not_found`. Same
     entity both sides → 400 `same_entity`. Internal-token; the diary subjects are KG-only auto-created
     entities (no glossary anchor), so this never touches an authored glossary row."""
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import (
         MergeEntitiesError,
         find_entities_by_name,
@@ -405,7 +405,7 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
     pid = str(project.project_id)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # Resolve within the assistant project only (D16 — never fold a novel entity into a diary one).
         src = await get_graph_store(session).find_entities_by_name(  # T17
             user_id=str(body.user_id), project_id=pid, name=from_name)
@@ -451,7 +451,7 @@ async def close_assistant_epoch(body: _CloseEpochIn) -> dict:
     (`valid_until` — the bi-temporal close) then ARCHIVE the project so default recall can never resolve
     it again. The gateway `new-epoch` orchestration then trashes the old diary book + provisions a fresh
     project + diary volume (WS-2.10b). Internal-token; idempotent. Returns the closed project id."""
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.facts import invalidate_all_facts_for_project
 
     pool = get_knowledge_pool()
@@ -459,7 +459,7 @@ async def close_assistant_epoch(body: _CloseEpochIn) -> dict:
     if created:
         # There was no prior epoch to close (a get_or_create just minted an empty one). Nothing to do.
         return {"closed": False, "reason": "no_active_epoch", "project_id": str(project.project_id)}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         invalidated = await invalidate_all_facts_for_project(
             session, user_id=str(body.user_id), project_id=str(project.project_id),
         )
@@ -482,7 +482,7 @@ async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
     inboxes + the project row) — so this is the epoch-scoped sibling of the account-scoped D-R27 erase and
     the entity-scoped WS-2.6c forget: one primitive, three scopes. Export-before-purge order means a purge
     failure never loses the export. Owner/project scoped; internal-token."""
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.facts import export_facts_for_project
 
     pool = get_knowledge_pool()
@@ -496,7 +496,7 @@ async def export_purge_assistant_epoch(body: _ExportPurgeEpochIn) -> dict:
     if not proj.is_archived:
         raise HTTPException(status_code=409, detail={"error_code": "epoch_not_closed",
                             "message": "export-purge targets a CLOSED epoch; close it first"})
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         facts = await export_facts_for_project(
             session, user_id=str(body.user_id), project_id=str(body.project_id),
         )
@@ -530,7 +530,7 @@ async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
     are needed for a complete forget; this endpoint returns the resolved name so the caller can redact.
 
     Idempotent: a name that no longer resolves → `forgotten:false` (already gone). Internal-token."""
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import erase_entity_subgraph, find_entities_by_name
     from app.db.repositories.pending_facts import PendingFactsRepo
     from app.events.outbox_emit import ENTITY_FORGOTTEN, emit_correction
@@ -542,7 +542,7 @@ async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
     pid = str(project.project_id)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         matches = await get_graph_store(session).find_entities_by_name(  # T17
             user_id=str(body.user_id), project_id=pid, name=name)
         if not matches:
@@ -596,7 +596,7 @@ async def invalidate_diary_day(body: _InvalidateDayIn) -> dict:
 
     pool = get_knowledge_pool()
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         invalidated = await invalidate_facts_for_day(
             session,
             user_id=str(body.user_id),
@@ -653,7 +653,7 @@ async def prune_summary_indexes(
     ),
 ) -> PruneSummaryIndexesResponse:
     # 1. Enumerate all summary vector indexes from Neo4j.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         indexes = await list_summary_vector_indexes(session)
 
         if not indexes:

@@ -59,7 +59,7 @@ def _pool(project_found=True, projects=None):
 def _wire(monkeypatch, *, loser, winner, merge_exc=None):
     """Patch the inline-imported deps so the handler runs without infra."""
     monkeypatch.setattr(config_mod.settings, "neo4j_uri", "bolt://x", raising=False)
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda: _FakeSession())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda: _FakeSession())
     monkeypatch.setattr(canon_mod, "canonicalize_entity_name", lambda s: (s or "").lower().strip())
 
     async def fake_get(session, *, user_id, project_id, glossary_entity_id):
@@ -199,7 +199,7 @@ async def test_absent_nodes_in_one_project_does_not_block_the_other(monkeypatch)
     calls: list = []
 
     monkeypatch.setattr(config_mod.settings, "neo4j_uri", "bolt://x", raising=False)
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda: _FakeSession())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda: _FakeSession())
     monkeypatch.setattr(canon_mod, "canonicalize_entity_name", lambda s: (s or "").lower().strip())
 
     project_b = uuid4()

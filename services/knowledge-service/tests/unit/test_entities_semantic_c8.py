@@ -135,7 +135,7 @@ def test_status_serialized_in_api_payload():
         new_callable=AsyncMock,
         return_value=([_entity(glossary_entity_id="g-9")], 1),
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client = _make_client()
         resp = client.get("/v1/knowledge/entities")
@@ -149,7 +149,7 @@ def test_status_serialized_in_api_payload():
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_status_filter_threaded_to_repo(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -161,7 +161,7 @@ def test_status_filter_threaded_to_repo(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_status_filter_rejects_unknown_value(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -173,7 +173,7 @@ def test_status_filter_rejects_unknown_value(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_sort_by_anchor_score_threaded_to_repo(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -185,7 +185,7 @@ def test_sort_by_anchor_score_threaded_to_repo(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_sort_by_defaults_to_mention_count(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -197,7 +197,7 @@ def test_sort_by_defaults_to_mention_count(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_sort_by_rejects_unknown_value(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -243,7 +243,7 @@ def _patch_semantic_deps(projects_repo, embed_client):
     )
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_semantic_query_returns_vector_ranked_results():
     """The happy path: project has an embedding model → query is embedded
     via the BYOK provider-registry model_ref → vector hits returned."""
@@ -299,7 +299,7 @@ def test_semantic_query_mutually_exclusive_with_search():
     assert resp.status_code == 422
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_semantic_query_project_not_found_404():
     projects_repo = AsyncMock()
     projects_repo.get = AsyncMock(return_value=None)
@@ -313,7 +313,7 @@ def test_semantic_query_project_not_found_404():
     assert resp.status_code == 404
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_semantic_query_not_indexed_returns_empty():
     """Project with no embedding model → empty + null model (FE shows
     'not indexed yet'), and no vector call is made."""
@@ -335,7 +335,7 @@ def test_semantic_query_not_indexed_returns_empty():
     get_store.assert_not_awaited()
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_semantic_query_status_filter_applied_post_vector():
     """status filter narrows the vector result set by derived status."""
     from app.main import app

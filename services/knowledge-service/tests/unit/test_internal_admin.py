@@ -112,7 +112,7 @@ async def test_drop_summary_index_uses_if_exists():
 
 
 def _make_neo4j_session_with_indexes(index_rows: list[dict]):
-    """Build a MagicMock that behaves like neo4j_session() context manager
+    """Build a MagicMock that behaves like graph_session() context manager
     returning a session whose `run()` returns an async-iterable of records.
 
     `index_rows` is the list of {name: str, ...} dicts SHOW VECTOR INDEXES
@@ -138,7 +138,7 @@ def _make_neo4j_session_with_indexes(index_rows: list[dict]):
     session = MagicMock()
     session.run = AsyncMock(side_effect=_run)
 
-    # neo4j_session() is an async context manager.
+    # graph_session() is an async context manager.
     class _Ctx:
         async def __aenter__(self):
             return session
@@ -165,7 +165,7 @@ def test_prune_endpoint_empty_neo4j_returns_zero(client: TestClient):
     """No summary indexes at all → empty response, no pool call."""
     ctx, _ = _make_neo4j_session_with_indexes([])
     with patch(
-        "app.routers.internal_admin.neo4j_session",
+        "app.routers.internal_admin.graph_session",
         return_value=ctx,
     ):
         resp = client.post(
@@ -210,7 +210,7 @@ def test_prune_dry_run_lists_orphans_without_dropping(client: TestClient):
     ])
 
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -245,7 +245,7 @@ def test_prune_non_dry_run_drops_orphans(client: TestClient):
     pool = _patch_pool_with_projects([])  # project deleted
 
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -282,7 +282,7 @@ def test_prune_classifies_unset_embedding_model_distinctly(client: TestClient):
         {"proj_hex": proj, "emb_hex": None},  # column is NULL
     ])
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -312,7 +312,7 @@ def test_prune_ignores_non_summary_indexes(client: TestClient):
         {"proj_hex": proj, "emb_hex": emb},
     ])
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):

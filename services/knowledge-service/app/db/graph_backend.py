@@ -2,7 +2,7 @@
 
 ⚠️ **This module exists because the answer was living inside `graph_store_provider`, and by
 T54c three separate layers needed it**: the adapter provider (which `GraphStore` to build),
-`db.neo4j.neo4j_session` (which session to open for the repo layer), and the AGE session
+`db.neo4j.graph_session` (which session to open for the repo layer), and the AGE session
 itself. Importing an ADAPTER module to learn a piece of CONFIGURATION is the wrong direction,
 and `port-adoption-gate` said so immediately — its GraphStore-adopter count rose from 19 to 21
 on two imports that touch no store at all. A number that counts "modules using the port" must

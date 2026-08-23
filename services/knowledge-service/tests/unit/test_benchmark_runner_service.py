@@ -187,7 +187,7 @@ def _patch_happy_path(monkeypatch):
         seen_engine["engine"] = engine
         return _FakeSession()
 
-    monkeypatch.setattr(runner_module, "neo4j_session", _fake_session)
+    monkeypatch.setattr(runner_module, "graph_session", _fake_session)
     monkeypatch.setattr(runner_module, "_SEEN_ENGINE", seen_engine, raising=False)
     # Mode3QueryRunner ctor is called but the runner object is only
     # used by AsyncBenchmarkRunner which we've swapped; stub ctor.

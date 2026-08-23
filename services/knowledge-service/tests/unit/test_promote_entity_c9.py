@@ -159,7 +159,7 @@ def test_promote_creates_draft_then_anchors():
         new_callable=AsyncMock,
         return_value=anchored,
     ) as mock_link, patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, gclient = _make_client(propose_return=_propose_ok())
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -202,7 +202,7 @@ def test_promote_normalizes_extractor_kind_to_glossary_kind_code():
         new_callable=AsyncMock,
         return_value=anchored,
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, gclient = _make_client(propose_return=_propose_ok())
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -223,7 +223,7 @@ def test_promote_404_when_entity_missing_or_cross_user():
         new_callable=AsyncMock,
         return_value=None,
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, gclient = _make_client()
         resp = client.post("/v1/knowledge/entities/ghost/promote")
@@ -240,7 +240,7 @@ def test_promote_409_when_already_anchored():
         new_callable=AsyncMock,
         return_value=already,
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, gclient = _make_client()
         resp = client.post(f"/v1/knowledge/entities/{already.id}/promote")
@@ -257,7 +257,7 @@ def test_promote_422_when_project_has_no_book():
         new_callable=AsyncMock,
         return_value=discovered,
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, gclient = _make_client(project=_project_meta(None))
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -281,7 +281,7 @@ def test_promote_502_when_glossary_draft_fails_no_anchor():
         "app.routers.public.entities.link_to_glossary",
         new_callable=AsyncMock,
     ) as mock_link, patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, _gclient = _make_client(propose_return=None)
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -304,7 +304,7 @@ def test_promote_502_when_anchor_fails_after_draft_created():
         new_callable=AsyncMock,
         return_value=None,
     ), patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, _gclient = _make_client(propose_return=_propose_ok())
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -333,7 +333,7 @@ def test_promote_502_when_draft_response_tombstoned():
         "app.routers.public.entities.link_to_glossary",
         new_callable=AsyncMock,
     ) as mock_link, patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, _gclient = _make_client(propose_return=skipped)
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -366,7 +366,7 @@ def test_promote_anchors_when_draft_skipped_as_existing_noop_merge():
         new_callable=AsyncMock,
         return_value=anchored,
     ) as mock_link, patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, _gclient = _make_client(propose_return=existing)
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")
@@ -392,7 +392,7 @@ def test_promote_502_when_draft_response_has_empty_entity_id():
         "app.routers.public.entities.link_to_glossary",
         new_callable=AsyncMock,
     ) as mock_link, patch(
-        "app.routers.public.entities.neo4j_session", new=lambda: _noop_session()
+        "app.routers.public.entities.graph_session", new=lambda: _noop_session()
     ):
         client, _repo, _gclient = _make_client(propose_return=empty)
         resp = client.post(f"/v1/knowledge/entities/{discovered.id}/promote")

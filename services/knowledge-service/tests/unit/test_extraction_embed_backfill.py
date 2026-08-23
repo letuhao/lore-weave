@@ -29,7 +29,7 @@ _PRODUCER = "app.extraction.entity_embedder.embed_project_entities"
 
 @asynccontextmanager
 async def _fake_session():
-    """Stand-in for neo4j_session() — the producer is mocked so the session
+    """Stand-in for graph_session() — the producer is mocked so the session
     object is never actually used."""
     yield MagicMock()
 
@@ -71,7 +71,7 @@ def test_drains_across_multiple_batches():
     ]
     with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side), \
             patch("app.routers.internal_extraction.get_glossary_client"), \
-            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.routers.internal_extraction.graph_session", _fake_session), \
             patch("app.clients.embedding_client.get_embedding_client"):
         resp = _post(client)
     assert resp.status_code == 200
@@ -90,7 +90,7 @@ def test_max_entities_cap_exits_the_loop():
     side = [EmbedEntitiesResult(embedded=200, skipped=0, candidates=200)] * 10
     with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side) as mock_prod, \
             patch("app.routers.internal_extraction.get_glossary_client"), \
-            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.routers.internal_extraction.graph_session", _fake_session), \
             patch("app.clients.embedding_client.get_embedding_client"):
         resp = client.post(
             "/internal/extraction/embed-entities-backfill",
@@ -111,7 +111,7 @@ def test_no_progress_terminator_stops_the_loop():
     side = [EmbedEntitiesResult(embedded=0, skipped=200, candidates=200)] * 500
     with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side) as mock_prod, \
             patch("app.routers.internal_extraction.get_glossary_client"), \
-            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.routers.internal_extraction.graph_session", _fake_session), \
             patch("app.clients.embedding_client.get_embedding_client"):
         resp = _post(client)
     assert resp.status_code == 200
@@ -170,7 +170,7 @@ def test_a_provider_failure_is_NOT_reported_as_a_clean_drain():
     side = [EmbedEntitiesResult(embedded=0, skipped=0, candidates=25, embed_failed=True)]
     with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side), \
             patch("app.routers.internal_extraction.get_glossary_client"), \
-            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.routers.internal_extraction.graph_session", _fake_session), \
             patch("app.clients.embedding_client.get_embedding_client"):
         resp = _post(client)
     assert resp.status_code == 200
@@ -193,7 +193,7 @@ def test_a_GENUINE_short_batch_still_drains_so_the_fix_is_not_a_blanket_never_dr
     side = [EmbedEntitiesResult(embedded=25, skipped=0, candidates=25)]
     with patch(_PRODUCER, new_callable=AsyncMock, side_effect=side), \
             patch("app.routers.internal_extraction.get_glossary_client"), \
-            patch("app.routers.internal_extraction.neo4j_session", _fake_session), \
+            patch("app.routers.internal_extraction.graph_session", _fake_session), \
             patch("app.clients.embedding_client.get_embedding_client"):
         resp = _post(client)
     body = resp.json()

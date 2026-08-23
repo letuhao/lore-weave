@@ -53,7 +53,7 @@ from app.context.formatters.stopwords import (
 )
 from app.extraction.scripts import CJK_FAMILY_RUN_RE, LATIN_NAME_RE
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_helpers import CypherSession
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter
@@ -368,7 +368,7 @@ async def _semantic_with_pinned(
 ) -> list[GlossaryEntityForContext]:
     """mui #4 K-2: vector-ranked entities + pinned merged ahead. Returns []
     if semantic yielded nothing (caller falls back to FTS)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         semantic = await select_glossary_semantic(
             session=session,
             embedding_client=embedding_client,

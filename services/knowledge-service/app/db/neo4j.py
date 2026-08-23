@@ -49,7 +49,7 @@ __all__ = [
     "close_neo4j_driver",
     "get_neo4j_driver",
     "init_neo4j_driver",
-    "neo4j_session",
+    "graph_session",
 ]
 
 
@@ -149,10 +149,10 @@ def get_neo4j_driver() -> AsyncDriver:
     return _driver
 
 
-def neo4j_session(*, engine: str | None = None, **kwargs: Any) -> Any:
+def graph_session(*, engine: str | None = None, **kwargs: Any) -> Any:
     """Open a repo-layer session against the **configured graph backend**.
 
-    Call sites write `async with neo4j_session() as s:` and get whichever engine
+    Call sites write `async with graph_session() as s:` and get whichever engine
     `KNOWLEDGE_GRAPH_BACKEND` names. Repo code must wrap the session's `run(...)`
     in K11.4's `run_read` / `run_write` helpers, NOT call it directly — those are
     also what render the dialect for the session's engine (T83).

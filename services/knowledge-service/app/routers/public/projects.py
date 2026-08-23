@@ -35,7 +35,7 @@ from app.db.models import (
     ProjectExtractionConfigUpdate,
     ProjectUpdate,
 )
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.project_graph import purge_project
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
@@ -798,7 +798,7 @@ async def delete_project(
     # delete no longer orphans the graph. A Neo4j fault must NOT fail the delete —
     # the row is already gone (re-sweep can reclaim a stray orphan); log + move on.
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             purged = await purge_project(session, str(project_id))
         logger.info(
             "purged neo4j for deleted project %s: %s nodes, %s indexes",

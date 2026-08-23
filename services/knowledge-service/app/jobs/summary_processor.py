@@ -101,7 +101,7 @@ class SummaryProcessorDeps:
     worker-ai's task setup.
     """
     knowledge_pool: asyncpg.Pool
-    neo4j_session: CypherSession
+    graph_session: CypherSession
     llm_client: Any                  # LLMClientProtocol from SDK
     embedding_client: Any            # exposes embed(text, model_uuid) -> list[float]
     summary_enqueue: SummaryEnqueueFn  # for M4 re-enqueue
@@ -183,7 +183,7 @@ async def process_summarize_message(
             book_id=book_id,
             embedding_model_uuid=msg.embedding_model_uuid,
             repo=repo,
-            neo4j_session=deps.neo4j_session,
+            graph_session=deps.graph_session,
         )
     except _DefensiveCheckFailed as exc:
         # D9: children not ready yet. Re-enqueue.
@@ -268,7 +268,7 @@ async def process_summarize_message(
     if outcome.race_winner:
         # Only race winner writes Neo4j (avoid duplicate vector index ops).
         await _write_neo4j_summary(
-            neo4j_session=deps.neo4j_session,
+            graph_session=deps.graph_session,
             level=msg.level,
             node_path=msg.node_path,
             summary_text=summary_text,
@@ -313,7 +313,7 @@ async def _load_children_for_level(
     book_id: UUID,
     embedding_model_uuid: str,
     repo: LevelSummariesRepo,
-    neo4j_session: CypherSession,
+    graph_session: CypherSession,
 ) -> tuple[list[str], list[str]]:
     """Return (child_texts, entity_names) for the given level node.
 
@@ -339,14 +339,14 @@ async def _load_children_for_level(
             raise _DefensiveCheckFailed(
                 f"chapter {node_id} has no :Scene children (legacy?)"
             )
-        entity_names = await _load_top_entities_for_chapter(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_chapter(graph_session, node_id)
         return scene_texts, entity_names
 
     elif level == "part":
         # Defensive: load all chapter summaries for the book; if fewer than
         # the part's children expects, re-enqueue.
         expected_chapters = await _count_expected_chapter_children(
-            neo4j_session, node_id,
+            graph_session, node_id,
         )
         chapter_summaries = await repo.list_by_book(
             book_id=book_id, level="chapter",
@@ -354,7 +354,7 @@ async def _load_children_for_level(
         )
         # Filter chapter summaries to ONLY those under this part.
         part_chapter_summaries = await _filter_summaries_under_part(
-            neo4j_session, chapter_summaries, part_id=node_id,
+            graph_session, chapter_summaries, part_id=node_id,
         )
         if len(part_chapter_summaries) < expected_chapters:
             raise _DefensiveCheckFailed(
@@ -362,12 +362,12 @@ async def _load_children_for_level(
                 f"summaries, found {len(part_chapter_summaries)}"
             )
         child_texts = [s.summary_text for s in part_chapter_summaries]
-        entity_names = await _load_top_entities_for_part(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_part(graph_session, node_id)
         return child_texts, entity_names
 
     elif level == "book":
         expected_parts = await _count_expected_part_children(
-            neo4j_session, node_id,
+            graph_session, node_id,
         )
         part_summaries = await repo.list_by_book(
             book_id=book_id, level="part",
@@ -379,7 +379,7 @@ async def _load_children_for_level(
                 f"summaries, found {len(part_summaries)}"
             )
         child_texts = [s.summary_text for s in part_summaries]
-        entity_names = await _load_top_entities_for_book(neo4j_session, node_id)
+        entity_names = await _load_top_entities_for_book(graph_session, node_id)
         return child_texts, entity_names
 
     raise ValueError(f"unknown level {level!r}")
@@ -496,7 +496,7 @@ async def _filter_summaries_under_part(
 
 async def _write_neo4j_summary(
     *,
-    neo4j_session: CypherSession,
+    graph_session: CypherSession,
     level: Level,
     node_path: str,
     summary_text: str,
@@ -515,13 +515,13 @@ async def _write_neo4j_summary(
     # H1: ensure index family exists for this project + embedding_model.
     if project_id:
         await ensure_summary_indexes(
-            neo4j_session,
+            graph_session,
             project_id=project_id,
             embedding_model_uuid=embedding_model_uuid,
             embedding_dimension=embedding_dimension,
         )
     await hierarchy_repo.write_summary_to_node(
-        neo4j_session,
+        graph_session,
         level=level,
         node_path=node_path,
         summary_text=summary_text,

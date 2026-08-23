@@ -28,7 +28,7 @@ from app.clients.book_client import (
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.entities import get_entity
 from app.db.neo4j_repos.events import (
     EVENTS_MAX_LIMIT,
@@ -297,7 +297,7 @@ async def list_timeline_events(
         # REVEAL_ALL / absent → before_order stays None → unbounded, this surface's
         # long-standing default (an author timeline is not spoiler-windowed by default).
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # C10 (D-K19e-α-01): resolve entity_id → participant candidates
         # BEFORE the list query so the repo's Cypher can filter in a
         # single round-trip via `ANY(c IN $candidates WHERE c IN
@@ -457,7 +457,7 @@ async def list_world_timeline(
     # banner never shows though more exist. Track per-project truncation so the
     # flag is honest whether the overflow is within ONE book or ACROSS the union.
     any_project_truncated = False
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for pid in project_ids:
             rows, project_total = await list_events_filtered(
                 session,

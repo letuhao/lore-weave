@@ -2,7 +2,7 @@
 
 Tests the membership → project-resolution → union orchestration + the
 WorldNotFound→404 / BookServiceUnavailable→503 mapping, with the book client,
-projects repo, get_world_subgraph and neo4j_session all faked/patched. The live
+projects repo, get_world_subgraph and graph_session all faked/patched. The live
 cross-service round-trip is the W2 live-smoke.
 """
 from __future__ import annotations
@@ -86,7 +86,7 @@ def test_rollup_resolves_world_and_member_projects_and_unions():
             "app.routers.public.entities.get_world_subgraph",
             new_callable=AsyncMock, return_value=sg,
         ) as mock_union, patch(
-            "app.routers.public.entities.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.entities.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/subgraph")
         assert resp.status_code == 200, resp.json()
@@ -114,7 +114,7 @@ def test_shared_member_book_project_excluded():
             "app.routers.public.entities.get_world_subgraph",
             new_callable=AsyncMock, return_value=Subgraph(),
         ) as mock_union, patch(
-            "app.routers.public.entities.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.entities.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/subgraph")
         assert resp.status_code == 200, resp.json()
@@ -130,7 +130,7 @@ def test_world_not_found_maps_to_404():
         with patch(
             "app.routers.public.entities.get_world_subgraph", new_callable=AsyncMock,
         ) as mock_union, patch(
-            "app.routers.public.entities.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.entities.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/subgraph")
         assert resp.status_code == 404
@@ -146,7 +146,7 @@ def test_book_service_unavailable_maps_to_503():
         with patch(
             "app.routers.public.entities.get_world_subgraph", new_callable=AsyncMock,
         ), patch(
-            "app.routers.public.entities.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.entities.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/subgraph")
         assert resp.status_code == 503

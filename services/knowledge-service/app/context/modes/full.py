@@ -72,7 +72,7 @@ from app.context.selectors.summary_blend import LevelSummaryHit  # select_summar
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.repositories.summaries import SummariesRepo
 from app.metrics import (
     layer_timeout_total,
@@ -102,7 +102,7 @@ async def _safe_l2_facts(
     roughly Mode 2 shape plus absence-of-graph instructions.
     """
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 select_l2_facts(
                     session,
@@ -147,7 +147,7 @@ async def _safe_expand_from_passages(
     if not passage_texts:
         return []
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 expand_facts_from_passages(
                     session,
@@ -227,7 +227,7 @@ async def _safe_l3_passages(
     working_window = settings.context_working_scope_window
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             working_chapter_index: int | None = None
             if working_boost > 0.0 and current_chapter_id is not None:
                 working_chapter_index = await get_chapter_index_for_source(
@@ -325,7 +325,7 @@ async def _safe_summary_blend(
         return []
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 select_summary_blend(
                     session,
@@ -345,7 +345,7 @@ async def _safe_summary_blend(
     except NotImplementedError as exc:
         # A PERMANENT capability gap, not a failure. `query_summary_index` reaches
         # `CALL db.index.vector.queryNodes`, which is Neo4j-only, and this runs on
-        # `neo4j_session()` — backend-following since T54c, AGE by default. Logged at INFO
+        # `graph_session()` — backend-following since T54c, AGE by default. Logged at INFO
         # WITHOUT a stack trace and without the word "failed", because on a default
         # deployment this is the expected steady state, and an every-request WARNING with a
         # traceback trains readers to ignore the one that means something. §3.1 moves the
@@ -779,10 +779,10 @@ async def build_full_mode(
     # defaults 0.0 → no DB read, no Neo4j fetch, no re-order (byte-identical).
     # The Neo4j session is only opened when the promotion flag is on.
     if settings.salience_promote_weight > 0:
-        async with neo4j_session() as _sal_session:
+        async with graph_session() as _sal_session:
             entities = await apply_salience(
                 entity_access_repo, entities, user_id, project.project_id,
-                neo4j_session=_sal_session,
+                graph_session=_sal_session,
             )
     else:
         entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)

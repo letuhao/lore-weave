@@ -1,7 +1,7 @@
 """The process-wide AGE connection pool — a `db` concern, not an adapter one.
 
 ⚠️ **This lived in `adapters/graph_store_provider` until T54c, and only because that is who
-needed it first.** Once `neo4j_session` had to open a repo-layer session against AGE, the
+needed it first.** Once `graph_session` had to open a repo-layer session against AGE, the
 session factory had to import an ADAPTER module to get a connection pool — and
 `port-adoption-gate` caught it immediately: its GraphStore-adopter floor rose from 19 to 20 on
 an import that touches no store. A number meaning *"modules that adopted the port"* must not

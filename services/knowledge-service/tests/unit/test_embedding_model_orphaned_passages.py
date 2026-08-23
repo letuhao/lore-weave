@@ -53,7 +53,7 @@ class TestGraphDeletePassageScope:
 
         cm, _ = _mock_neo4j()
         purge = AsyncMock(return_value=7)
-        with patch("app.routers.public.extraction.neo4j_session", return_value=cm), \
+        with patch("app.routers.public.extraction.graph_session", return_value=cm), \
              patch("app.db.neo4j_repos.passages.delete_all_passages_for_project", purge):
             total = await _delete_project_graph(_USER, _PROJECT, include_passages=True)
 
@@ -76,7 +76,7 @@ class TestGraphDeletePassageScope:
 
         cm, _ = _mock_neo4j()
         purge = AsyncMock(return_value=7)
-        with patch("app.routers.public.extraction.neo4j_session", return_value=cm), \
+        with patch("app.routers.public.extraction.graph_session", return_value=cm), \
              patch("app.db.neo4j_repos.passages.delete_all_passages_for_project", purge):
             total = await _delete_project_graph(_USER, _PROJECT)
 
@@ -127,7 +127,7 @@ class TestPassageExistenceProbe:
         from app.db.neo4j_repos.graph_state import project_has_embedded_passages
 
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", side_effect=RuntimeError("down")):
+             patch("app.db.neo4j.graph_session", side_effect=RuntimeError("down")):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
 
     @pytest.mark.asyncio
@@ -136,7 +136,7 @@ class TestPassageExistenceProbe:
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", return_value=cm), \
+             patch("app.db.neo4j.graph_session", return_value=cm), \
              patch("app.db.neo4j_repos.passages.project_has_passages",
                    AsyncMock(return_value=True)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is True
@@ -147,7 +147,7 @@ class TestPassageExistenceProbe:
 
         cm, _ = _mock_neo4j()
         with patch("app.config.settings.neo4j_uri", "bolt://x"), \
-             patch("app.db.neo4j.neo4j_session", return_value=cm), \
+             patch("app.db.neo4j.graph_session", return_value=cm), \
              patch("app.db.neo4j_repos.passages.project_has_passages",
                    AsyncMock(return_value=False)):
             assert await project_has_embedded_passages(_USER, _PROJECT) is False

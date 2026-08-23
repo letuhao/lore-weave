@@ -57,7 +57,7 @@ def test_backfill_orders_runs_and_returns_stats(monkeypatch):
         yield MagicMock()
 
     monkeypatch.setattr(
-        "app.routers.internal_backfill.neo4j_session", fake_session,
+        "app.routers.internal_backfill.graph_session", fake_session,
     )
     monkeypatch.setattr(
         "app.routers.internal_backfill.get_book_client", lambda: MagicMock(),
@@ -108,8 +108,8 @@ def test_backfill_passages_ingests_published_chapters(monkeypatch):
     async def fake_session():
         yield MagicMock()
 
-    # neo4j_session + ingest live in the shared helper module now.
-    monkeypatch.setattr("app.extraction.passage_backfill.neo4j_session", fake_session)
+    # graph_session + ingest live in the shared helper module now.
+    monkeypatch.setattr("app.extraction.passage_backfill.graph_session", fake_session)
 
     bc = MagicMock()
     bc.list_chapters = AsyncMock(return_value=[

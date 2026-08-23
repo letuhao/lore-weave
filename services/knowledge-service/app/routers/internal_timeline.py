@@ -30,7 +30,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 # T17 A4 — the browse goes through the PORT (`events_page`, grown in A3 by this
 # router's demand). `EVENT_ORDER_CHAPTER_STRIDE` stays a domain constant, not an
 # operation: it is the reading-axis stride every producer stamps on, and moving it
@@ -105,7 +105,7 @@ async def get_timeline(req: TimelineRequest) -> TimelineResponse:
     if req.chapter_order > _TIMELINE_CHAPTER_WINDOW:
         after_order = (req.chapter_order - _TIMELINE_CHAPTER_WINDOW) * EVENT_ORDER_CHAPTER_STRIDE
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # `after`/`before` are ORDINALS here because the axis is `narrative` (the default) —
         # the port types them as a union precisely so the axis stays a value a caller can
         # pass through, rather than three methods a caller has to choose between.

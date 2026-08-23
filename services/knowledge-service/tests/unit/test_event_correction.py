@@ -158,7 +158,7 @@ async def _noop_session():
 
 # ── create route (D-KG-EVENT-CREATE-ROUTE) ──────────────────────────
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.events.emit_correction", new_callable=AsyncMock)
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.merge_event", new_callable=AsyncMock)
 def test_create_event_happy(mock_merge, mock_emit):
@@ -187,7 +187,7 @@ def test_create_event_happy(mock_merge, mock_emit):
     assert emit_kwargs["payload"]["before"] is None
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.merge_event", new_callable=AsyncMock)
 def test_create_event_blank_title_422(mock_merge):
     resp = _client().post(
@@ -198,7 +198,7 @@ def test_create_event_blank_title_422(mock_merge):
     mock_merge.assert_not_awaited()
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.merge_event", new_callable=AsyncMock)
 def test_create_event_missing_project_422(mock_merge):
     resp = _client().post("/v1/knowledge/events", json={"title": "The Duel"})
@@ -228,7 +228,7 @@ def _event_model(version=3):
     )
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.update_event_fields", new_callable=AsyncMock)
 def test_patch_event_happy(mock_update):
     mock_update.return_value = (_event_model(version=4), {
@@ -240,7 +240,7 @@ def test_patch_event_happy(mock_update):
     assert resp.headers["ETag"] == 'W/"4"'
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.update_event_fields", new_callable=AsyncMock)
 def test_patch_event_missing_if_match_428(mock_update):
     resp = _client().patch(f"/v1/knowledge/events/{_EID}", json={"title": "X"})
@@ -248,7 +248,7 @@ def test_patch_event_missing_if_match_428(mock_update):
     mock_update.assert_not_awaited()
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.update_event_fields", new_callable=AsyncMock)
 def test_patch_event_version_mismatch_412(mock_update):
     mock_update.side_effect = VersionMismatchError(_event_model(version=9))
@@ -258,7 +258,7 @@ def test_patch_event_version_mismatch_412(mock_update):
     assert resp.headers["ETag"] == 'W/"9"'
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.update_event_fields", new_callable=AsyncMock)
 def test_patch_event_404(mock_update):
     mock_update.return_value = (None, None)
@@ -267,14 +267,14 @@ def test_patch_event_404(mock_update):
     assert resp.status_code == 404
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.update_event_fields", new_callable=AsyncMock)
 def test_patch_event_empty_body_422(mock_update):
     resp = _client().patch(f"/v1/knowledge/events/{_EID}", json={}, headers={"If-Match": 'W/"3"'})
     assert resp.status_code == 422
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.archive_event", new_callable=AsyncMock)
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_event", new_callable=AsyncMock)
 def test_archive_event_happy(mock_get, mock_archive):
@@ -285,7 +285,7 @@ def test_archive_event_happy(mock_get, mock_archive):
     mock_archive.assert_awaited_once()
 
 
-@patch("app.routers.public.events.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.events.graph_session", new=lambda: _noop_session())
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.archive_event", new_callable=AsyncMock)
 @patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.get_event", new_callable=AsyncMock)
 def test_archive_event_404(mock_get, mock_archive):

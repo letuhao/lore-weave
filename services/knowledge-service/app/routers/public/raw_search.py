@@ -292,7 +292,7 @@ async def index_drafts(
 
     # Inline imports mirror the event-handler pattern (avoid circular import at
     # module load before the Neo4j driver is wired).
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.pool import get_knowledge_pool
     from app.extraction.passage_ingester import ingest_chapter_passages
 
@@ -306,7 +306,7 @@ async def index_drafts(
         pool = get_knowledge_pool()
     except RuntimeError:
         pool = None
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for item in items:
             try:
                 chapter_id = UUID(str(item["chapter_id"]))

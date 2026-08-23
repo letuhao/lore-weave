@@ -386,7 +386,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     from app.db.neo4j import (
         close_neo4j_driver,
         init_neo4j_driver,
-        neo4j_session,
+        graph_session,
     )
     from app.config import settings
 
@@ -407,7 +407,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
         settings.neo4j_uri or "<unset>",
     )
     try:
-        async with neo4j_session(engine="neo4j") as session:
+        async with graph_session(engine="neo4j") as session:
             plan = await run_recanon_backfill(session, apply=args.apply)
     finally:
         await close_neo4j_driver()

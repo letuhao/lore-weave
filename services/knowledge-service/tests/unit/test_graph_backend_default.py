@@ -65,7 +65,7 @@ def test_age_without_a_DSN_REFUSES_rather_than_falling_back_to_neo4j():
     import os
 
     # T54c moved the pool to `db.age_pool` — it is a database handle, and holding it in the
-    # adapter module made `neo4j_session` import an adapter to open a session. The provider
+    # adapter module made `graph_session` import an adapter to open a session. The provider
     # re-exports the accessor, so patch the pool where it now LIVES rather than where it is
     # re-exported from: patching the alias would leave the real module-level `_POOL` in place
     # and the refusal below could pass for the wrong reason.

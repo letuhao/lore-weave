@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.pricing import cost_per_token
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.neo4j_repos.passages import count_passages_by_source_type
 
@@ -188,7 +188,7 @@ async def search_drawers(
 
     # C8: facet counts run once per request, BEFORE the early-return
     # branches below so "not indexed yet" states still show coverage.
-    async with neo4j_session() as count_session:
+    async with graph_session() as count_session:
         counts = await count_passages_by_source_type(
             count_session,
             user_id=str(user_id),
@@ -252,7 +252,7 @@ async def search_drawers(
     query_vector = embed_result.embeddings[0]
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             # T24b-b — through the PORT. Default-off: with KNOWLEDGE_VECTOR_DB_URL unset the
             # provider hands back a Neo4jVectorStore over this very session, so the query is
             # the one this endpoint has always run.

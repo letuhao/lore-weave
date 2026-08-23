@@ -312,7 +312,7 @@ def _patch_deriver(monkeypatch, *, project_rows, events_by_project):
     """project_rows: list of asyncpg-style row dicts (project_id, book_id).
     events_by_project: dict[str(project_id)] -> list[event]."""
     monkeypatch.setattr(deriver_mod, "get_knowledge_pool", lambda: _FakePool(project_rows))
-    monkeypatch.setattr(deriver_mod, "neo4j_session", lambda: _FakeNeo4jSession())
+    monkeypatch.setattr(deriver_mod, "graph_session", lambda: _FakeNeo4jSession())
 
     # T17 — the deriver reaches the graph through the PORT now, so the double is the
     # port's method. Patching `list_events_in_order` would leave these green against a

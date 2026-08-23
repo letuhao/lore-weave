@@ -409,11 +409,11 @@ async def lifespan(app: FastAPI):
     refresh_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.neo4j import graph_session
             from app.jobs.anchor_refresh_loop import run_anchor_refresh_loop
 
             def _anchor_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             refresh_task = asyncio.create_task(
                 run_anchor_refresh_loop(
@@ -445,7 +445,7 @@ async def lifespan(app: FastAPI):
     global_regen_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.neo4j import graph_session
             from app.db.repositories.summaries import SummariesRepo
             from app.db.repositories.summary_spending import SummarySpendingRepo
             from app.jobs.summary_regen_scheduler import (
@@ -454,7 +454,7 @@ async def lifespan(app: FastAPI):
             )
 
             def _summary_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             # C16-BUILD — single SummarySpendingRepo instance shared
             # across both regen loops. Wires D-K20α-01 budget pre-check
@@ -528,7 +528,7 @@ async def lifespan(app: FastAPI):
     mirror_drift_task = None
     if settings.neo4j_uri:
         try:
-            from app.db.neo4j import neo4j_session
+            from app.db.neo4j import graph_session
             from app.db.repositories.sweeper_state import SweeperStateRepo
             from app.jobs.reconcile_evidence_count_scheduler import (
                 run_reconcile_loop,
@@ -538,7 +538,7 @@ async def lifespan(app: FastAPI):
             )
 
             def _scheduler_session_factory():
-                return neo4j_session()
+                return graph_session()
 
             # C14b — pass the sweeper_state repo so reconciler's
             # per-user cursor resumes mid-sweep on restart.

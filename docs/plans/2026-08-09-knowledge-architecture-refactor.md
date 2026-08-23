@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 86 of 129 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 87 of 130 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
+**OPEN:** `T17` (33/43) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,89 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A29 2026-08-24 — **the session stops naming an engine it no longer returns: `neo4j_session` → `graph_session`, 647 sites**
+
+  ```
+  bare `neo4j_session`   647 -> 0      app 245 · tests 433 · eval 4 · chaos script 3
+  files touched                            117 (115 app+tests, 2 benchmarks) + 1 gate
+  suite      BEFORE  4666 passed, 812 skipped   ->  AFTER  4666 passed, 812 skipped
+  gate       engine-pinned sessions 9/9, ceiling held
+  ```
+
+  📐 **§10.1 names the two things binding the layer to Neo4j: "the Cypher dialect and the session
+  type".** The dialect ratchets have read `0/0` since T63/T67. **The session type was the other
+  half and was never done** — and since T54c the function had become actively false: on the
+  default backend `neo4j_session()` returns an **AGE** session. A factory named for one engine
+  handing back another's is not cosmetic here; it is the exact confusion behind A16–A19, where
+  three repo functions leaked `PostgresSyntaxError` because the call site's own words said the
+  session was Neo4j.
+
+  🔴 **The measurement KILLED the batch I was going to run, which is rule 8 working.** The first
+  candidate was renaming `neo4j_repos` itself — measured at **613 references across 223 modules
+  plus four gates** (45 in `port-adoption-gate` alone). That is not one honest cycle, and it is
+  recorded here rather than half-done. The second measurement then killed the *blind* form of
+  this one:
+
+  ```
+  643  neo4j_session                       <- rename
+   10  mock_neo4j_session                  <- LEAVE: test-local doubles
+    8  _neo4j_session_factory              <- LEAVE: takes a real neo4j_driver; it IS one
+    4  test_..._on_a_non_neo4j_session     <- LEAVE: means a genuinely Neo4j session
+    1  test_a_neo4j_session_is_NOT_refused <- LEAVE: same, and it is the control arm of T48
+  ```
+
+  A `sed` would have made four test names **lie about what they assert** — the T48 refusal tests
+  whose whole point is that a Neo4j session is *not* refused. `\bneo4j_session\b` matches only
+  the bare identifier, because `_` is a word character, so every compound name above is untouched
+  by construction rather than by an exclusion list.
+
+  🎯 **The gate proved its own coupling before I touched it, and it did it the RIGHT way.** Run
+  after the rename and before updating its regex:
+
+  ```
+  [port-adoption-gate] FAIL — engine-pinned session call sites fell to 0 (recorded 9).
+  ```
+
+  A one-sided ceiling would have read `0 <= 9` and **passed**, silently crediting a detector that
+  had stopped seeing. Both directions are real, and bite Q pins the other one:
+
+  ```
+  BITE P  (unplanned, and the better evidence) the rename itself, gate not yet moved
+          FAIL — fell to 0 (recorded 9)
+  BITE Q  plant a 10th `graph_session(engine="neo4j")` in service code
+          FAIL — engine-pinned session call sites GREW to 10 (recorded 9)
+  ```
+
+  Regex and prose moved in **this** commit (rule 5); the count returned to `9/9`.
+
+  ⚖️ **The rename's proof is the suite being IDENTICAL, and the conditions are stated so the
+  comparison means something.** `4666 passed, 812 skipped` before and after, taken back-to-back
+  with the throwaway containers **down** in both runs — hence 812 skips rather than T48b's 9. A
+  before/after under one set of conditions answers "did this change anything"; it does not claim
+  to be the full suite. And it is a real proof of the rename in particular: pytest imports all
+  **115** referencing files at collection, so a single missed site is an `ImportError`, not a
+  quiet pass.
+
+  ⚠️ **Two things the in-service sweep did NOT cover, both found by sweeping the REPO.**
+  `eval/` sits outside `app/` and `tests/`, so the two benchmarks — the ones the gate declares
+  *evaluation-only* — still imported the old name, as did `scripts/chaos/c06_neo4j_drift.sh`.
+  Seven references that the suite could never have caught, because nothing runs them. Fixed;
+  repo-wide executable references are now **0**.
+
+  📌 **Docs keep the old name deliberately.** ~20 references survive in `docs/plans/` and
+  `docs/audit/` and are **history** — they record what was true when written, including this
+  plan's own T54 narrative. No standard and no contract names the function, checked. Rewriting
+  history to match today is how a measurement stops meaning what it measured.
+
+  **QC (a) gates:** `port-adoption-gate` PASS at the ceiling (pinned sessions 9/9, dialect 0/0,
+  engine literals 0/0); `graph-port-gate` PASS; `bitemporal-parity-gate` OK; four plan gates green.
+  The gate's own `--selftest` is unchanged — the regex moved, not the rule.
+  **QC (b) live smoke:** N/A — no behaviour changed. This is one identifier; the function body,
+  its signature and its backend selection are byte-identical, and the suite result is too.
+  **QC (c) real data:** N/A — produces no data. The figures are the reference census before and
+  after, and the two suite runs.
+
   ---
   ### ✅ T17 A28 2026-08-23 — **the census CLOSES: 4 of 94 parameters unconformed, and every one is structurally unassertable**
 

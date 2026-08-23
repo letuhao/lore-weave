@@ -102,11 +102,11 @@ def _mock_count_passages():
     being present in responses without each adding its own patch.
     Individual tests opt in to non-zero counts by overriding the mock.
 
-    Also patches ``neo4j_session`` used by the count path — early-return
+    Also patches ``graph_session`` used by the count path — early-return
     branches (no_embedding, unsupported_dim, error_502) now reach the
     count session before returning, so every test needs this stub.
     Tests that also want to mock the vector-search session must patch
-    ``neo4j_session`` themselves (overrides this fixture's patch for
+    ``graph_session`` themselves (overrides this fixture's patch for
     the duration of the test, which is fine — count + vector search
     both get the same noop session anyway).
     """
@@ -114,7 +114,7 @@ def _mock_count_passages():
         "app.routers.public.drawers.count_passages_by_source_type",
         new_callable=AsyncMock,
     ) as m, patch(
-        "app.routers.public.drawers.neo4j_session",
+        "app.routers.public.drawers.graph_session",
         new=lambda: _noop_session(),
     ):
         m.return_value = {"chapter": 0, "chat": 0, "glossary": 0}
@@ -179,7 +179,7 @@ def _make_client(
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_happy(mock_find):
     mock_find.return_value = [_hit_stub(0, 0.9), _hit_stub(1, 0.8)]
@@ -220,7 +220,7 @@ def _lang_hit(chunk_index: int, source_lang: str, score: float) -> PassageSearch
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_language_partition_and_coverage(mock_find):
     """KG-ML M7 (C12) — ?language=vi soft-orders vi hits first (stable, not a
@@ -251,7 +251,7 @@ def test_drawers_language_partition_and_coverage(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_no_language_has_null_coverage(mock_find):
     mock_find.return_value = [_lang_hit(0, "zh", 0.9)]
@@ -268,7 +268,7 @@ def test_drawers_no_language_has_null_coverage(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_limit_forwarded(mock_find):
     mock_find.return_value = []
@@ -289,7 +289,7 @@ def test_drawers_limit_forwarded(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_embed_cost_surfaced_for_priced_model(mock_find):
     """When the provider reports prompt_tokens AND the model has a known
@@ -319,7 +319,7 @@ def test_drawers_embed_cost_surfaced_for_priced_model(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_embed_cost_zero_for_free_local_model(mock_find):
     """A self-hosted model (rate 0) reports its tokens with an explicit
@@ -344,7 +344,7 @@ def test_drawers_embed_cost_zero_for_free_local_model(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_embed_cost_null_when_tokens_unreported(mock_find):
     """Provider omits usage (prompt_tokens=0, e.g. Ollama) → both fields
@@ -434,7 +434,7 @@ def test_drawers_unsupported_dim_returns_empty(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_embedding_returns_empty_vectors(mock_find):
     """Provider returned 200 OK but no embeddings — treat as empty."""
@@ -513,7 +513,7 @@ def test_drawers_embedding_error_non_retryable(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_empty_inner_vector_returns_empty(mock_find):
     """Review-impl L4: provider returns ``EmbeddingResult(embeddings=
@@ -544,7 +544,7 @@ def test_drawers_empty_inner_vector_returns_empty(mock_find):
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_dim_mismatch_502(mock_find):
     """If the live embedding's length disagrees with the project's
@@ -616,7 +616,7 @@ def test_drawers_bad_project_uuid_rejected():
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_source_type_counts_in_response(mock_find, _mock_count_passages):
     """Happy path response carries source_type_counts with the 3 known
@@ -645,7 +645,7 @@ def test_drawers_source_type_counts_in_response(mock_find, _mock_count_passages)
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_source_type_filter_threads_to_repo(mock_find, _mock_count_passages):
     """source_type=chapter query param must reach the vector-search
@@ -666,7 +666,7 @@ def test_drawers_source_type_filter_threads_to_repo(mock_find, _mock_count_passa
     new_callable=AsyncMock,
 )
 @patch(
-    "app.routers.public.drawers.neo4j_session", new=lambda: _noop_session()
+    "app.routers.public.drawers.graph_session", new=lambda: _noop_session()
 )
 def test_drawers_source_type_null_default_passes_none(mock_find, _mock_count_passages):
     """Omitting source_type must pass None to the repo (not an empty

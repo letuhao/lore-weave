@@ -204,7 +204,7 @@ async def test_apply_salience_promotion_only_loads_neo4j_not_repo(monkeypatch):
     monkeypatch.setattr(mod, "load_promotion_signals", fake_load)
     repo = AsyncMock()
     ents = [_e("a", 0.5), _e("b", 0.5)]
-    out = await mod.apply_salience(repo, ents, uuid4(), uuid4(), neo4j_session=object())
+    out = await mod.apply_salience(repo, ents, uuid4(), uuid4(), graph_session=object())
     repo.load_salience.assert_not_called()
     assert [e.entity_id for e in out] == ["b", "a"]
 
@@ -222,7 +222,7 @@ async def test_apply_salience_promotion_neo4j_failure_degrades(monkeypatch):
 
     monkeypatch.setattr(mod, "load_promotion_signals", boom)
     ents = [_e("a", 0.5)]
-    out = await mod.apply_salience(AsyncMock(), ents, uuid4(), uuid4(), neo4j_session=object())
+    out = await mod.apply_salience(AsyncMock(), ents, uuid4(), uuid4(), graph_session=object())
     assert out is ents  # degrade to identity, never raise
 
 

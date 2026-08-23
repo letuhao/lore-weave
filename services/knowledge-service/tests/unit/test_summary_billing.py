@@ -88,14 +88,14 @@ def _wire(mock_repo_cls, deps):
     mock_repo_cls.return_value = repo
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
     return repo
 
 
 def _deps() -> SummaryProcessorDeps:
     return SummaryProcessorDeps(
         knowledge_pool=MagicMock(),
-        neo4j_session=MagicMock(),
+        graph_session=MagicMock(),
         llm_client=MagicMock(),
         embedding_client=MagicMock(),
         summary_enqueue=AsyncMock(return_value="msg-id"),

@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_helpers import run_read
 from loreweave_extraction.canonical import canonicalize_entity_name
 from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
@@ -153,7 +153,7 @@ async def list_user_entities_endpoint(
     on the next chat turn rather than UI restore (matches existing
     `archive_entity` semantics).
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows = await list_user_entities(
             session,
             user_id=str(user_id),
@@ -185,7 +185,7 @@ async def archive_user_entity(
     and a fresh `archive_reason`. Callers (the FE panel) should
     treat 204 + 404 symmetrically as "entity is now hidden".
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # Phase B: read the pre-archive snapshot first (for the correction
         # event). archive is idempotent + op=delete → diff_class=spurious-drop
         # regardless of `before` content, so a read-before-write here is
@@ -257,7 +257,7 @@ async def restore_user_entity(
     documented, not a bug: the row is visible and anchored immediately; only its
     ranking weight lags one pass.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # T17 — through the port. `restore_entity` is a 1:1 match; the sibling
         # `user_archive_entity` above is NOT (it carries `reason='user_archived'` and its own
         # semantics distinct from the port's `archive_entity`), so it stays a direct repo
@@ -474,7 +474,7 @@ async def list_entities(
         before_order, _ = await resolve_before_order(book_client, chapter)
     # mode is REVEAL_ALL (explicit whole-cast) or None (legacy omission) → unfiltered.
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows, total = await list_entities_filtered(
             session,
             user_id=str(user_id),
@@ -572,7 +572,7 @@ async def _semantic_search_entities(
         # `attributes` because *"a backend that had to reproduce a scoring formula to be
         # swappable would not be swappable"*. Same ordering, computed by the caller that owns
         # the policy.
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             store = await get_vector_store(session)
             # Oversample so post-filtering by kind/status doesn't starve the page: ask for
             # limit*N candidates, then trim after the Python-side filters.
@@ -699,7 +699,7 @@ async def list_entity_statuses(
         before_order, available = ORDINAL_OPEN_CEILING, True
     else:
         before_order, available = await resolve_before_order(book_client, chapter)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows, _total = await list_entities_filtered(
             session,
             user_id=str(user_id),
@@ -751,7 +751,7 @@ async def get_entity_detail(
     C9: ETag header handed back so the FE can send `If-Match: W/"N"`
     on the next PATCH.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         detail = await get_entity_with_relations(
             session,
             user_id=str(user_id),
@@ -830,7 +830,7 @@ async def list_entity_facts(
         available = True
     else:
         before_order, available = await resolve_before_order(book_client, chapter)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         facts = await list_facts_for_entity(
             session,
             user_id=str(user_id),
@@ -893,7 +893,7 @@ async def create_entity_fact(
     `:ABOUT` edge so `list_facts_for_entity` (which matches on that edge) returns it.
     Idempotent on (user, project, type, normalized content) — re-authoring the same
     fact returns the same node, not a duplicate."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_entity(
             session, user_id=str(user_id), canonical_id=entity_id
         )
@@ -955,7 +955,7 @@ async def project_entities_from_glossary(
     # twin and the tool behave identically on a sloppy client payload.
     raw_ids = body.entity_ids if body else None
     entity_ids = [e.strip() for e in raw_ids if e and e.strip()] if raw_ids else None
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await project_glossary_entities_to_nodes(
             session, glossary, user_id=str(owner), project_id=str(project_id),
             book_id=book_id, entity_ids=entity_ids or None,
@@ -1031,7 +1031,7 @@ async def get_project_gaps(
     never accepts a user_id field, so a caller can't read another user's
     gaps.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         gaps = await find_gap_candidates(
             session,
             user_id=str(user_id),
@@ -1112,7 +1112,7 @@ async def get_project_subgraph_endpoint(
     Read-only: returns raw nodes + edges, no server-side layout. Editing
     reuses the existing entity/relation dialogs (C19).
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_project_subgraph(
             session,
             user_id=str(user_id),
@@ -1176,7 +1176,7 @@ async def get_world_subgraph_endpoint(
             detail="world membership unavailable",
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         return await get_world_subgraph(
             session,
             user_id=str(user_id),
@@ -1326,7 +1326,7 @@ async def create_entity_endpoint(
     returns the same node (no duplicate places). ``source_type='manual'`` +
     confidence 1.0 mark it user-asserted.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
                         user_id=str(user_id),
             project_id=str(body.project_id),
@@ -1373,7 +1373,7 @@ async def patch_entity(
             detail="If-Match header required — GET the entity first to obtain an ETag",
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         try:
             updated, before = await update_entity_fields(
                 session,
@@ -1454,7 +1454,7 @@ async def unlock_entity(
 
     Cross-user / missing id collapses to 404 per KSA §6.4.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         updated = await unlock_entity_user_edited(
             session,
             user_id=str(user_id),
@@ -1552,7 +1552,7 @@ async def promote_entity(
     """
     user_id_str = str(user_id)
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_entity(
             session, user_id=user_id_str, canonical_id=entity_id,
         )
@@ -1751,7 +1751,7 @@ async def merge_entity_into(
             },
         )
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # C17 step 1 — capture source pre-merge so we can write
         # alias-map rows after surgery (the source node is gone by
         # then). get_entity already enforces user-id ownership; if
@@ -1824,7 +1824,7 @@ async def merge_entity_into(
             )
 
     # C17 step 4 — alias-map writes + chain re-point. Outside the
-    # neo4j_session block because Postgres I/O is independent. The
+    # graph_session block because Postgres I/O is independent. The
     # Neo4j surgery is already committed; alias-map writes are
     # best-effort per ADR §5.4. Review-impl HIGH-2: wrap in try so
     # a transient Postgres failure doesn't surface as 500 (which

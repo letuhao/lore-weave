@@ -103,7 +103,7 @@ def _make_client():
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_happy(mock_list):
     mock_list.return_value = ([_entity_stub("Kai"), _entity_stub("Phoenix")], 42)
     client = _make_client()
@@ -153,7 +153,7 @@ def test_list_entities_cypher_templates_are_format_safe():
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_spoiler_window_threads_before_order(mock_list, mock_resolve):
     """before_chapter_id → resolve_before_order → before_order threaded to the repo."""
     mock_resolve.return_value = (7, True)  # reader's chapter resolves to fact-ordinal 7
@@ -171,7 +171,7 @@ def test_list_entities_spoiler_window_threads_before_order(mock_list, mock_resol
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_no_window_passes_none(mock_list, mock_resolve):
     """No before_chapter_id → before_order=None (editor/curation whole-cast view); the
     resolver is never called."""
@@ -187,7 +187,7 @@ def test_list_entities_no_window_passes_none(mock_list, mock_resolve):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_window_fail_closed_threads_minus_one(mock_list, mock_resolve):
     """An UNRESOLVABLE reader position → resolve returns -1 → before_order=-1 goes to the
     repo, whose predicate (from_order <= -1) matches nothing → EMPTY, never the full cast."""
@@ -215,7 +215,7 @@ def test_list_entities_semantic_plus_window_rejected():
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_project_filter(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -232,7 +232,7 @@ def test_list_entities_project_filter(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_search_param(mock_list):
     mock_list.return_value = ([_entity_stub("Kai")], 1)
     client = _make_client()
@@ -244,7 +244,7 @@ def test_list_entities_search_param(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_search_min_length_rejected(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -258,7 +258,7 @@ def test_list_entities_search_min_length_rejected(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_pagination_params(mock_list):
     mock_list.return_value = ([], 100)
     client = _make_client()
@@ -272,7 +272,7 @@ def test_list_entities_pagination_params(mock_list):
 @patch(
     "app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_list_entities_pagination_out_of_range_rejected(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -291,7 +291,7 @@ def test_list_entities_pagination_out_of_range_rejected(mock_list):
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_entity_detail_happy(mock_detail):
     mock_detail.return_value = EntityDetail(
         entity=_entity_stub(),
@@ -316,7 +316,7 @@ def test_entity_detail_happy(mock_detail):
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_entity_detail_not_found_404(mock_detail):
     """Repo returns None for both cross-user AND missing entities —
     router collapses both to 404 per KSA §6.4 anti-leak."""
@@ -331,7 +331,7 @@ def test_entity_detail_not_found_404(mock_detail):
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_entity_detail_rejects_oversized_id(mock_detail):
     """Review-impl L1: `entity_id` Path has max_length=200. 201-char
     id should 422 before hitting Neo4j."""
@@ -349,7 +349,7 @@ def test_entity_detail_rejects_oversized_id(mock_detail):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_happy(mock_update):
     stub = _entity_stub(name="Kai the Brave")
     # Phase B: update_entity_fields now returns (entity, before_snapshot).
@@ -378,7 +378,7 @@ def test_patch_entity_happy(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_rejects_empty_body(mock_update):
     mock_update.return_value = None
     client = _make_client()
@@ -395,7 +395,7 @@ def test_patch_entity_rejects_empty_body(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_rejects_empty_alias(mock_update):
     mock_update.return_value = None
     client = _make_client()
@@ -412,7 +412,7 @@ def test_patch_entity_rejects_empty_alias(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_not_found(mock_update):
     mock_update.return_value = (None, None)  # Phase B: (entity, before)
     client = _make_client()
@@ -432,7 +432,7 @@ def test_patch_entity_not_found(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_missing_if_match_428(mock_update):
     """D-K19d-γa-01: any PATCH without If-Match is almost certainly a
     stale client. Strict: 428 Precondition Required."""
@@ -449,7 +449,7 @@ def test_patch_entity_missing_if_match_428(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_bad_if_match_422(mock_update):
     """Malformed If-Match (not a weak ETag with integer version)
     returns 422. Matches projects.py/_parse_if_match contract."""
@@ -467,7 +467,7 @@ def test_patch_entity_bad_if_match_422(mock_update):
     "app.routers.public.entities.update_entity_fields",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_patch_entity_version_mismatch_412_with_current_body(mock_update):
     """D-K19d-γa-01: mismatch returns 412 with the CURRENT entity as
     body + refreshed ETag header, so the FE can reset its baseline
@@ -494,7 +494,7 @@ def test_patch_entity_version_mismatch_412_with_current_body(mock_update):
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_get_entity_detail_sets_etag_header(mock_detail):
     """D-K19d-γa-01: GET detail hands out an ETag the FE can send back
     on the next PATCH."""
@@ -516,7 +516,7 @@ def test_get_entity_detail_sets_etag_header(mock_detail):
     "app.routers.public.entities.unlock_entity_user_edited",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_unlock_entity_happy(mock_unlock):
     """D-K19d-γa-02: POST /unlock flips user_edited=false, bumps
     version, returns 200 with fresh ETag."""
@@ -535,7 +535,7 @@ def test_unlock_entity_happy(mock_unlock):
     "app.routers.public.entities.unlock_entity_user_edited",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_unlock_entity_not_found(mock_unlock):
     """Cross-user / missing id — 404 via None return from repo."""
     mock_unlock.return_value = None
@@ -548,7 +548,7 @@ def test_unlock_entity_not_found(mock_unlock):
     "app.routers.public.entities.unlock_entity_user_edited",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_unlock_entity_does_not_require_if_match(mock_unlock):
     """/unlock matches /archive pattern — idempotent flag flip, no
     baseline-refresh dance required. A request without If-Match must
@@ -564,7 +564,7 @@ def test_unlock_entity_does_not_require_if_match(mock_unlock):
     "app.routers.public.entities.get_entity_with_relations",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_entity_detail_truncation_flag(mock_detail):
     mock_detail.return_value = EntityDetail(
         entity=_entity_stub(),
@@ -593,7 +593,7 @@ def test_entity_detail_truncation_flag(mock_detail):
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_happy(mock_merge, mock_get_entity):
     mock_merge.return_value = _entity_stub(name="Kai (merged)")
     client = _make_client()
@@ -618,7 +618,7 @@ def test_merge_entity_happy(mock_merge, mock_get_entity):
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_same_entity_400(mock_merge, mock_get_entity):
     mock_merge.side_effect = MergeEntitiesError(
         "same_entity", "source and target must be distinct"
@@ -640,7 +640,7 @@ def test_merge_entity_same_entity_400(mock_merge, mock_get_entity):
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_not_found_404(mock_merge, mock_get_entity):
     mock_merge.side_effect = MergeEntitiesError(
         "entity_not_found", "entity not found"
@@ -662,7 +662,7 @@ def test_merge_entity_not_found_404(mock_merge, mock_get_entity):
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_archived_409(mock_merge, mock_get_entity):
     mock_merge.side_effect = MergeEntitiesError(
         "entity_archived", "cannot merge archived entities"
@@ -684,7 +684,7 @@ def test_merge_entity_archived_409(mock_merge, mock_get_entity):
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_glossary_conflict_409(mock_merge, mock_get_entity):
     mock_merge.side_effect = MergeEntitiesError(
         "glossary_conflict", "distinct glossary anchors"
@@ -732,7 +732,7 @@ def _source_stub_with_aliases(aliases: list[str], canonical_name: str = "kai") -
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_writes_alias_map_rows_post_merge(
     mock_merge, mock_get_entity, mock_collision,
 ):
@@ -792,7 +792,7 @@ def test_merge_entity_writes_alias_map_rows_post_merge(
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_collision_precheck_returns_409(
     mock_merge, mock_get_entity, mock_collision,
 ):
@@ -836,7 +836,7 @@ def test_merge_entity_collision_precheck_returns_409(
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_forwards_alias_map_repo_dep(
     mock_merge, mock_get_entity, mock_collision,
 ):
@@ -871,7 +871,7 @@ def test_merge_entity_forwards_alias_map_repo_dep(
 # ── C17 review-impl regression locks ───────────────────────────────
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_self_merge_returns_400_same_entity_pre_precheck():
     """C17 review-impl HIGH-1: /entities/X/merge-into/X must surface
     400 same_entity, NOT 409 alias_collision. The collision precheck
@@ -899,7 +899,7 @@ def test_merge_entity_self_merge_returns_400_same_entity_pre_precheck():
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
     mock_merge, mock_get_entity, mock_collision,
 ):
@@ -949,7 +949,7 @@ def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
     "app.routers.public.entities.merge_entities",
     new_callable=AsyncMock,
 )
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_merge_entity_repoint_target_failure_swallowed(
     mock_merge, mock_get_entity, mock_collision,
 ):

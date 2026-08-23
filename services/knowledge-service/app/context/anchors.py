@@ -37,7 +37,7 @@ except Exception:  # dep missing in a stripped env — degrade to no dict-anchor
         "(select_l2_facts falls back to classifier-only anchors)."
     )
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.entities import (
     get_most_connected_entity,
     list_project_entity_names,
@@ -171,7 +171,7 @@ async def get_anchor_index(
         return cached[1]
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             rows = await list_project_entity_names(
                 session, user_id=user_id, project_id=project_id
             )
@@ -222,7 +222,7 @@ async def get_project_protagonist(
     if cached is not None and (now - cached[0]) < ttl_s:
         return cached[1]
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             name = await get_most_connected_entity(
                 session, user_id=user_id, project_id=project_id
             )

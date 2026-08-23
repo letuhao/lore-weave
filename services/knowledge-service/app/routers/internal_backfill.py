@@ -30,7 +30,7 @@ from app.db.migrations.backfill_status import (
     make_llm_classify_fn,
     run_status_backfill,
 )
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.pool import get_knowledge_pool
 from app.middleware.internal_auth import require_internal_token
 
@@ -64,7 +64,7 @@ async def backfill_orders(project_id: UUID) -> dict:
             "skipped": "neo4j_unavailable",
         }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await run_orders_backfill(
             session,
             get_book_client(),
@@ -101,7 +101,7 @@ async def backfill_participant_anchors(project_id: UUID) -> dict:
         # Track 1 (no graph) — nothing to backfill; clean no-op.
         return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await run_participant_anchor_backfill(
             session,
             user_id=str(user_id),
@@ -269,7 +269,7 @@ async def backfill_status(project_id: UUID, body: BackfillStatusRequest) -> dict
         model_source=body.model_source,
         model_ref=body.model_ref,
     )
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await run_status_backfill(
             session,
             user_id=str(user_id),

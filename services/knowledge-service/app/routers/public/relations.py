@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 # T17 A4 — through the GraphStore PORT. This router asks nothing Neo4j-specific: it
 # fetches, invalidates and recreates edges, all three of which the port grew in A1
 # BY THIS ROUTER'S DEMAND. Binding it to the concrete layer bought nothing and cost
@@ -54,7 +54,7 @@ async def get_relation_endpoint(
 ) -> Relation:
     """Fetch a single relation by id (for the FE correction dialog). 404 on
     cross-user / missing."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         rel = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
     if rel is None:
@@ -69,7 +69,7 @@ async def invalidate_relation_endpoint(
 ) -> Relation:
     """User marks a relation wrong → soft-invalidate (set valid_until). Emits a
     `spurious-drop` correction (after=null). Idempotent."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         before = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
         invalidated = await store.invalidate_relation(
@@ -115,7 +115,7 @@ async def correct_relation_endpoint(
     (resurrecting `valid_until` if that tuple was previously invalidated, F5).
     Emits a `predicate-fix` correction. `after` is read POST-write so it
     reflects the live (resurrected) edge, not the request payload."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         before = await store.get_relation(
             user_id=str(user_id), relation_id=body.old_relation_id,
@@ -209,7 +209,7 @@ async def create_relation_endpoint(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="subject_id and object_id must differ",
         )
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         rel = await store.recreate_relation(
             user_id=str(user_id),

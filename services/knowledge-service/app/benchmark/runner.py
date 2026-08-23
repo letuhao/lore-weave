@@ -36,7 +36,7 @@ from uuid import UUID
 import asyncpg
 
 from app.clients.embedding_client import EmbeddingClient
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
 from .core import (
@@ -153,7 +153,7 @@ async def _has_real_passages(user_id: str, project_id: str) -> bool:
     """
     from app.db.neo4j_repos.passages import count_passages_by_source_types
 
-    async with neo4j_session(engine="neo4j") as session:
+    async with graph_session(engine="neo4j") as session:
         n = await count_passages_by_source_types(
             session, user_id=user_id, project_id=project_id,
             source_types=sorted(KNOWN_SOURCE_TYPES),
@@ -232,7 +232,7 @@ async def run_project_benchmark(
         # so running the min is cheap and is the only path to a valid pass. The
         # FE already pins runs:3; this closes the trap for API/agent callers.
         runs = max(runs, int(getattr(golden, "thresholds", {}).get("min_runs", 3)))
-        async with neo4j_session(engine="neo4j") as session:
+        async with graph_session(engine="neo4j") as session:
             loaded = await load_golden_set_as_passages(
                 session,
                 embedding_client,

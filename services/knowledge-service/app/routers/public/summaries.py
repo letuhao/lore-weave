@@ -31,7 +31,7 @@ from typing import Literal
 from app.clients.llm_client import LLMClient, ProviderError
 from app.config import settings
 from app.db.models import Summary, SummaryContent, SummaryVersion
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
@@ -563,7 +563,7 @@ async def regenerate_global_bio(
             model_source=body.model_source,
             model_ref=body.model_ref,
             pool=get_knowledge_pool(),
-            session_factory=neo4j_session,
+            session_factory=graph_session,
             llm_client=llm_client,
             summaries_repo=repo,
             summary_spending_repo=spending_repo,
@@ -624,7 +624,7 @@ async def regenerate_project_bio(
             model_source=body.model_source,
             model_ref=body.model_ref,
             pool=get_knowledge_pool(),
-            session_factory=neo4j_session,
+            session_factory=graph_session,
             llm_client=llm_client,
             summaries_repo=repo,
             summary_spending_repo=spending_repo,

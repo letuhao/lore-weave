@@ -132,7 +132,7 @@ def _url(mode="hybrid", query="duel"):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_hybrid_fuses_both_legs(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
@@ -150,7 +150,7 @@ def test_hybrid_fuses_both_legs(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_mode_semantic_skips_lexical(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
@@ -183,7 +183,7 @@ def test_no_project_returns_404_not_indexed():
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_book_service_down_degrades_to_semantic(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
@@ -231,7 +231,7 @@ def test_bad_mode_rejected():
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_no_language_param_resolves_reader_pref(mock_embed, mock_find):
     """Without ?language=, the endpoint resolves the CALLER's stored
@@ -246,7 +246,7 @@ def test_no_language_param_resolves_reader_pref(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
     """An explicit ?language= wins — the stored reader-pref is NOT consulted."""
@@ -260,7 +260,7 @@ def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
     """/review-impl LOW — a malformed ?language= is IGNORED and resolution falls
@@ -276,7 +276,7 @@ def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
 
 @patch("app.routers.public.raw_search.detect_primary_language")
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect):
     """/review-impl LOW — a too-short query can't reliably detect a language, so
@@ -292,7 +292,7 @@ def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect
 
 @patch("app.routers.public.raw_search.detect_primary_language", return_value="en")
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
     """A query long enough to detect reliably DOES fall through to detection."""
@@ -306,7 +306,7 @@ def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1536  # user changed model out-of-band
@@ -319,7 +319,7 @@ def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_semantic_hit_titles_enriched(mock_embed, mock_find):
     cid = uuid4()
@@ -364,7 +364,7 @@ def test_bad_granularity_rejected():
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
     # the floor is OFF by default (compressed cosine → lossy); an explicit
@@ -379,7 +379,7 @@ def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
     # default min_relevance=0.0 → low-cosine hit survives (no global threshold)
@@ -392,7 +392,7 @@ def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
     # MED-2: chapter granularity caps on chapterId ALONE — a chapter with BOTH
@@ -414,7 +414,7 @@ def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_block_mode_keeps_both_surfaces(mock_embed, mock_find):
     # block granularity lifts the cap → both surfaces of the same chapter surface.
@@ -447,7 +447,7 @@ def _override_reranker(return_value=None, side_effect=None):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_floors_and_reorders(mock_embed, mock_find):
     # 2 fused hits; reranker scores idx0=0.2 (< 0.30 floor → dropped),
@@ -471,7 +471,7 @@ def test_rerank_floors_and_reorders(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_unavailable_degrades(mock_embed, mock_find):
     # reranker None → keep fusion order + degraded marker (never 500).
@@ -493,7 +493,7 @@ def test_lexical_mode_skips_rerank():
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_false_skips(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
@@ -506,7 +506,7 @@ def test_rerank_false_skips(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_skipped_when_project_has_no_rerank_model(mock_embed, mock_find):
     # D-RERANK-NOT-BYOK: rerank is BYOK + OPTIONAL. A project with no rerank_model
@@ -524,7 +524,7 @@ def test_rerank_skipped_when_project_has_no_rerank_model(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_results_carry_relevance(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
@@ -539,7 +539,7 @@ def test_results_carry_relevance(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_owner_surface_all_passes_through_to_both_legs(mock_embed, mock_find):
     # caller (_USER) == project.user_id (owner) → surface=all honoured.
@@ -553,7 +553,7 @@ def test_owner_surface_all_passes_through_to_both_legs(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_collaborator_surface_all_downgraded_to_canon(mock_embed, mock_find):
     # A collaborator searches the OWNER's project (resolve-to-owner) so
@@ -592,7 +592,7 @@ def test_index_drafts_owner_indexes_draft_chapters():
     ])
     ingest = AsyncMock(return_value=IngestResult(chunks_created=3, chunks_skipped=0))
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
-         patch("app.db.neo4j.neo4j_session", new=lambda: _noop_session()), \
+         patch("app.db.neo4j.graph_session", new=lambda: _noop_session()), \
          patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
         resp = client.post(_drafts_url())
     assert resp.status_code == 200, resp.json()
@@ -612,7 +612,7 @@ def test_index_drafts_zero_chunks_counts_as_skipped():
     ])
     ingest = AsyncMock(return_value=IngestResult(chunks_created=0, chunks_skipped=0))
     with patch("app.routers.public.raw_search.settings.neo4j_uri", "bolt://x"), \
-         patch("app.db.neo4j.neo4j_session", new=lambda: _noop_session()), \
+         patch("app.db.neo4j.graph_session", new=lambda: _noop_session()), \
          patch("app.extraction.passage_ingester.ingest_chapter_passages", ingest):
         resp = client.post(_drafts_url())
     assert resp.json() == {"indexed": 0, "skipped": 1, "chapters": 1}
@@ -680,7 +680,7 @@ def _url_cutoff(chapter_id, mode="hybrid", query="duel"):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
     # Reader's furthest chapter resolves to sort_order 5. The semantic hit is
@@ -697,7 +697,7 @@ def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
     # book-service can't resolve the reader's chapter ({}) → endpoint-level
@@ -712,7 +712,7 @@ def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
 
 
 @patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.graph_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_omitted_is_author_path(mock_embed, mock_find):
     # No cutoff → author behavior: both surfaces present, and the resolver is

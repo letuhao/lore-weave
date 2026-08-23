@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Response, s
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 # T17 A4 — through the GraphStore PORT. All four operations were grown in A2 BY THIS
 # ROUTER'S DEMAND, so nothing here needs the concrete layer's vocabulary.
 from app.adapters.graph_store_provider import get_graph_store
@@ -117,7 +117,7 @@ async def create_event_endpoint(
     correction (op=create, before=null) for the corrections log.
     """
     participants = [p.strip() for p in body.participants if p and p.strip()]
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         event = await store.merge_event(
             user_id=str(user_id),
@@ -196,7 +196,7 @@ async def patch_event(
             status_code=status.HTTP_428_PRECONDITION_REQUIRED,
             detail="If-Match header required — GET the event first to obtain an ETag",
         )
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         try:
             updated, before = await store.update_event_fields(
@@ -257,7 +257,7 @@ async def archive_event_endpoint(
     """Soft-archive an event (user "delete"). Idempotent. Emits a
     `spurious-drop` correction (after=null). `before` read before archiving
     (op=delete → low-stakes)."""
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         store = get_graph_store(session)
         before_event = await store.get_event(user_id=str(user_id), event_id=event_id)
         result = await store.archive_event(user_id=str(user_id), event_id=event_id)

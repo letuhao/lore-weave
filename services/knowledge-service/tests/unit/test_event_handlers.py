@@ -305,7 +305,7 @@ async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch
             yield MagicMock()
 
         ingest_mock = AsyncMock()
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -357,7 +357,7 @@ async def test_chapter_published_passage_failure_does_not_block_graph_queue(
 
         # ingest blows up — must be swallowed, queue must survive.
         ingest_mock = AsyncMock(side_effect=RuntimeError("embed 503"))
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -613,7 +613,7 @@ async def test_chapter_unpublished_does_not_retract_the_knowledge_graph(monkeypa
         remove_mock = AsyncMock(return_value=3)
         delete_mock = AsyncMock(return_value=7)
         set_canon_mock = AsyncMock(return_value=5)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
@@ -661,7 +661,7 @@ async def test_chapter_unpublished_demotion_failure_is_non_fatal(monkeypatch):
         async def fake_session():
             yield MagicMock()
 
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.db.neo4j_repos.passages.set_canon_for_source",
             AsyncMock(side_effect=RuntimeError("neo4j transient")),
@@ -695,7 +695,7 @@ async def test_chapter_kg_excluded_retracts_graph_and_passages(monkeypatch):
         remove_mock = AsyncMock(return_value=3)
         cleanup_mock = AsyncMock(return_value=MagicMock(total=2))
         delete_mock = AsyncMock(return_value=7)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         # Retract by NATURAL KEY (the helper hashes the ExtractionSource id) — a raw-id
         # call matches a hashed-id MATCH and removes ZERO edges.
         monkeypatch.setattr(
@@ -762,7 +762,7 @@ async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
 
         remove_mock = AsyncMock(side_effect=RuntimeError("neo4j transient"))
         delete_mock = AsyncMock(return_value=7)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
@@ -794,7 +794,7 @@ async def test_chapter_kg_excluded_success_does_not_raise(monkeypatch):
         async def fake_session():
             yield MagicMock()
 
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
             AsyncMock(return_value=3),
@@ -894,7 +894,7 @@ async def test_glossary_updated_triggers_sync(monkeypatch):
     )
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", _fake_neo4j_session)
         monkeypatch.setattr(
             "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
             sync_mock,
@@ -932,7 +932,7 @@ async def test_glossary_updated_idempotent_on_replay(monkeypatch):
     )
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", _fake_neo4j_session)
         monkeypatch.setattr(
             "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
             sync_mock,
@@ -1030,7 +1030,7 @@ async def test_translation_published_dual_indexes_vi(monkeypatch):
             yield MagicMock()
 
         ingest_mock = AsyncMock()
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -1163,7 +1163,7 @@ async def test_chapter_deleted_decrements_evidence_instead_of_bare_detach_delete
     ctx = MagicMock()
     ctx.__aenter__ = AsyncMock(return_value=session)
     ctx.__aexit__ = AsyncMock(return_value=False)
-    monkeypatch.setattr("app.db.neo4j.neo4j_session", lambda: ctx)
+    monkeypatch.setattr("app.db.neo4j.graph_session", lambda: ctx)
 
     event = _event(
         "chapter.deleted", aggregate_id=str(_CHAPTER), payload={"book_id": str(_BOOK)},

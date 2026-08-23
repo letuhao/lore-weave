@@ -44,7 +44,7 @@ from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.graph_views import (
     read_entity_edge_timeline,
     read_project_graph_edges,
@@ -405,7 +405,7 @@ async def _resolve_entity_project_grant(
     """
     from app.db.neo4j_repos.entities import get_entity_by_id_any_owner
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         ent = await get_entity_by_id_any_owner(session, entity_id)
     if ent is None or not ent.project_id or not ent.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
@@ -603,7 +603,7 @@ async def read_graph(
         if selected_view is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="view not found")
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         records = await read_project_graph_edges(
             session, user_id=str(owner), project_id=project_str, limit=limit,
         )
@@ -690,7 +690,7 @@ async def read_edge_timeline(
     # owner-scoped, so a grantee correctly reads the owner's arc (mirrors the
     # graph-read route). Binding the caller here would re-introduce the 404 the
     # lane fixes (caller != owner ⇒ no rows).
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         records = await read_entity_edge_timeline(
             session, user_id=str(owner), entity_id=entity_id,
             edge_type=edge_type, limit=limit,

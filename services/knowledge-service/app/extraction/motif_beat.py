@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 # T17 — the model comes from the engine-neutral domain module, so this file no longer
 # imports `neo4j_repos` at all.
@@ -205,7 +205,7 @@ async def derive_motif_beat_sequences(
         return []
 
     sequences: list[list[dict]] = []
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _container_book_id in containers:
             # T17 — through the port. Unbounded narrative order is exactly
             # `events_in_window(axis="narrative")` with no bounds, and the adapter routes

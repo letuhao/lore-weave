@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["get_graph_store", "init_age_pool"]
 
 # T54c — one home. `db.graph_backend` owns the env name and the default; three layers read
-# them now (this provider, `neo4j_session`, the AGE session) and a duplicated default is one
+# them now (this provider, `graph_session`, the AGE session) and a duplicated default is one
 # edit away from putting half the service on each engine.
 from app.db.graph_backend import BACKEND_ENV as _BACKEND_ENV  # noqa: E402
 from app.db.graph_backend import DEFAULT_BACKEND as _DEFAULT_BACKEND  # noqa: E402
@@ -54,7 +54,7 @@ from app.db.graph_backend import DEFAULT_BACKEND as _DEFAULT_BACKEND  # noqa: E4
 
 
 # T54c — the POOL moved to `db.age_pool`. It is a database handle, and keeping it here made
-# `neo4j_session` import an adapter module to open a session, which `port-adoption-gate`
+# `graph_session` import an adapter module to open a session, which `port-adoption-gate`
 # counted as GraphStore adoption. Re-exported so the lifespan and any existing caller keep
 # working; this module still owns WHICH store to build, which is the decision that belongs
 # to a provider.
@@ -66,7 +66,7 @@ def get_graph_store(session: CypherSession) -> GraphStore:
     """The configured `GraphStore` for this session. Neo4j unless told otherwise.
 
     Takes the session rather than opening one: every current call site already holds an open
-    `neo4j_session()`, and having the provider open a second would double the connection
+    `graph_session()`, and having the provider open a second would double the connection
     count and silently move the work outside the caller's transaction scope — a behaviour
     change smuggled in by a refactor whose whole value is that it changes nothing.
 

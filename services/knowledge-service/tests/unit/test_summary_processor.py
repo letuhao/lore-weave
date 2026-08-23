@@ -133,12 +133,12 @@ def _deps(
     # Mock repo via patching at module level — return value depends on test.
     deps = SummaryProcessorDeps(
         knowledge_pool=MagicMock(),
-        neo4j_session=MagicMock(),
+        graph_session=MagicMock(),
         llm_client=MagicMock(),
         embedding_client=MagicMock(),
         summary_enqueue=AsyncMock(return_value="msg-id-1"),
     )
-    # Wire neo4j_session.run to async-iterable mocks.
+    # Wire graph_session.run to async-iterable mocks.
     return deps
 
 
@@ -192,7 +192,7 @@ async def test_retry_at_in_future_sleeps_then_processes_without_burning_budget(
     deps = _deps()
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
 
     result = await process_summarize_message(msg, deps)
 
@@ -238,7 +238,7 @@ async def test_resolved_context_length_threaded_into_summarize_level(
     deps = _deps()
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
 
     await process_summarize_message(msg, deps)
 
@@ -277,7 +277,7 @@ async def test_retry_at_absurd_future_sleep_capped_at_max(
     deps = _deps()
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
 
     await process_summarize_message(msg, deps)
 
@@ -345,7 +345,7 @@ async def test_cache_miss_calls_llm_then_upsert_then_neo4j_write(
     deps = _deps()
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1] * 1024)
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
 
     msg = _msg()
     result = await process_summarize_message(msg, deps)
@@ -385,7 +385,7 @@ async def test_race_loser_skips_neo4j_write(
     deps = _deps()
     deps.embedding_client = MagicMock()
     deps.embedding_client.embed = AsyncMock(return_value=[0.1])
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
     msg = _msg()
     result = await process_summarize_message(msg, deps)
     assert result.race_winner is False
@@ -393,7 +393,7 @@ async def test_race_loser_skips_neo4j_write(
     # (It IS called for ensure_summary_indexes + _load_scene_leaf_texts mocks,
     # but those are bypassed via patch.)
     # Check: SET cypher was not invoked.
-    cypher_calls = [c.args[0] for c in deps.neo4j_session.run.call_args_list]
+    cypher_calls = [c.args[0] for c in deps.graph_session.run.call_args_list]
     assert not any("SET n.summary_text" in c for c in cypher_calls)
 
 
@@ -420,7 +420,7 @@ async def test_part_level_defensive_check_reenqueues_when_children_missing(
 
     msg = _msg(level="part", node_id=_PART_ID)
     deps = _deps()
-    deps.neo4j_session.run = AsyncMock()
+    deps.graph_session.run = AsyncMock()
     result = await process_summarize_message(msg, deps)
     assert result.re_enqueued is True
     deps.summary_enqueue.assert_awaited_once()

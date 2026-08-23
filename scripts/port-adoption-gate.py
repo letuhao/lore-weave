@@ -1319,9 +1319,9 @@ MAX_ENGINE_LITERALS = 0
 _ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
 
 
-#: `neo4j_session(engine="neo4j")` — call sites PINNED to one engine. Shrink-only.
+#: `graph_session(engine="neo4j")` — call sites PINNED to one engine. Shrink-only.
 #:
-#: T54's blocker was that `neo4j_session()` could only return a Bolt session, so flipping
+#: T54's blocker was that `graph_session()` could only return a Bolt session, so flipping
 #: `KNOWLEDGE_GRAPH_BACKEND` put the 19 `GraphStore` adopters on AGE and the 54 `neo4j_repos`
 #: binders on Neo4j — one conceptual graph, two stores, one empty, inside one service (T54b,
 #: measured on dev and reverted). Since T83/T84 the repo layer runs on either engine and the
@@ -1334,7 +1334,7 @@ _ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
 #: rises only if someone pins a call site that should have followed the configuration.
 MAX_PINNED_SESSIONS = 9
 
-_PINNED_SESSION = re.compile(r"""neo4j_session\(\s*engine\s*=""")
+_PINNED_SESSION = re.compile(r"""graph_session\(\s*engine\s*=""")
 
 
 def scan_pinned_sessions() -> dict[str, int]:
@@ -1387,7 +1387,7 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: 🔴 **This exists because class (d)'s printed claim went false.** That number was labelled
 #: *"AGE cannot be the only engine until 0"*, which was true while `neo4j_repos` could only run
 #: on Neo4j: a module binding it was pinned to one engine. Since T83/T84 the layer runs on
-#: either, and since T54c `neo4j_session()` follows the configured backend — so a class (d)
+#: either, and since T54c `graph_session()` follows the configured backend — so a class (d)
 #: module is no longer engine-pinned. Class (d) still measures something real (port-adoption
 #: debt: operations the port does not have), but it stopped measuring engine readiness, and a
 #: number carrying a claim it no longer supports is worse than no number.
@@ -1894,7 +1894,7 @@ def main() -> int:
     if len(unguarded) > MAX_UNGUARDED_NEO4J_ONLY:
         print(f"{chr(10)}[port-adoption-gate] FAIL — {len(unguarded)} function(s) reach a "
               f"Neo4j-only capability without refusing by name: {unguarded}{chr(10)}")
-        print("  Since T54 the default backend is AGE and `neo4j_session()` follows it, so a")
+        print("  Since T54 the default backend is AGE and `graph_session()` follows it, so a")
         print("  raw `PostgresSyntaxError` from here reaches a caller's `except Exception` and")
         print("  becomes a FALSE statement — A16 reported a graph orphaned that was not, A17")
         print("  reported a permanent gap as an outage, A18 logged a traceback every request.")
@@ -1957,7 +1957,7 @@ def main() -> int:
               f"{n_pin} (recorded {MAX_PINNED_SESSIONS}).{chr(10)}")
         for mod, n in sorted(pinned.items()):
             print(f"    {mod}  x{n}")
-        print(f"{chr(10)}  `neo4j_session()` follows KNOWLEDGE_GRAPH_BACKEND. Only the "
+        print(f"{chr(10)}  `graph_session()` follows KNOWLEDGE_GRAPH_BACKEND. Only the "
               f"benchmarks and the{chr(10)}  one-shot scripts may pin an engine — service code "
               f"that pins one recreates{chr(10)}  the two-store split T54b measured. Move the "
               f"number in the same commit.{chr(10)}")

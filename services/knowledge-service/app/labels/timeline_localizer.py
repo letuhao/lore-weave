@@ -32,7 +32,7 @@ from uuid import UUID
 
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.entities import resolve_participant_anchors
 from app.db.neo4j_repos.events import Event
 from app.db.repositories.event_text_translations import (
@@ -71,7 +71,7 @@ async def _resolve_names_to_entity_ids(
     """
     if not names:
         return {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         return await resolve_participant_anchors(
             session, user_id=user_id, project_id=project_id, names=names,
         )

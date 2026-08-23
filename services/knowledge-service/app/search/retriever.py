@@ -28,7 +28,7 @@ from app.context.query_embedding import embed_query_cached
 from app.adapters.vector_store_provider import get_vector_store
 from app.ports.vector_store import VectorFilter, VectorHit
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.neo4j_repos.passages import PassageSearchHit, find_passages_by_fulltext
 from app.search.hybrid_fusion import (
@@ -337,7 +337,7 @@ async def run_hybrid_search(
         if mode == "semantic" or not query_has_cjk(q):
             return []
         try:
-            async with neo4j_session() as session:
+            async with graph_session() as session:
                 raw_hits = await find_passages_by_fulltext(
                     session,
                     user_id=str(user_id),
@@ -385,7 +385,7 @@ async def run_hybrid_search(
             degraded["semantic"] = "embed_unavailable"
             return []
         try:
-            async with neo4j_session() as session:
+            async with graph_session() as session:
                 # T24b-b — through the PORT. The provider returns a plain Neo4jVectorStore
                 # unless KNOWLEDGE_VECTOR_DB_URL is set, so with the migration off this is
                 # the same repo call it always was, one method deeper. Nothing about which

@@ -408,7 +408,7 @@ def test_full_extraction_lifecycle():
     mock_neo = _mock_neo4j()
     with patch("app.routers.public.extraction.app_settings") as ms:
         ms.neo4j_uri = "bolt://localhost:7687"
-        with patch("app.routers.public.extraction.neo4j_session") as mn:
+        with patch("app.routers.public.extraction.graph_session") as mn:
             mn.return_value.__aenter__ = AsyncMock(return_value=mock_neo)
             mn.return_value.__aexit__ = AsyncMock(return_value=False)
             resp = client.delete(
@@ -424,7 +424,7 @@ def test_full_extraction_lifecycle():
     mock_neo2 = _mock_neo4j()
     with patch("app.routers.public.extraction.app_settings") as ms:
         ms.neo4j_uri = "bolt://localhost:7687"
-        with patch("app.routers.public.extraction.neo4j_session") as mn:
+        with patch("app.routers.public.extraction.graph_session") as mn:
             mn.return_value.__aenter__ = AsyncMock(return_value=mock_neo2)
             mn.return_value.__aexit__ = AsyncMock(return_value=False)
             with patch("app.routers.public.extraction.get_knowledge_pool",

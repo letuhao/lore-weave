@@ -112,7 +112,7 @@ def test_route_persists_to_mined_motif_code_and_counts(mock_settings):
     set_realized = AsyncMock(return_value=99)  # must NOT be called
 
     with patch("app.routers.internal_extraction.get_llm_client", return_value=object()), \
-         patch("app.routers.internal_extraction.neo4j_session", lambda: _Sess()), \
+         patch("app.routers.internal_extraction.graph_session", lambda: _Sess()), \
          patch("app.extraction.motif_beat._list_user_book_projects",
                new=AsyncMock(return_value=[(proj, book)])), \
          patch("app.db.neo4j_repos.events.list_events_in_order",
@@ -175,7 +175,7 @@ def test_route_neutralizes_vocab_before_classify(mock_settings):
             return False
 
     with patch("app.routers.internal_extraction.get_llm_client", return_value=object()), \
-         patch("app.routers.internal_extraction.neo4j_session", lambda: _Sess()), \
+         patch("app.routers.internal_extraction.graph_session", lambda: _Sess()), \
          patch("app.extraction.motif_beat._list_user_book_projects",
                new=AsyncMock(return_value=[(uuid4(), uuid4())])), \
          patch("app.db.neo4j_repos.events.list_events_in_order",
@@ -207,7 +207,7 @@ def test_route_corpus_routes_through_corpus_containers(mock_settings):
             return False
 
     with patch("app.routers.internal_extraction.get_llm_client", return_value=object()), \
-         patch("app.routers.internal_extraction.neo4j_session", lambda: _Sess()), \
+         patch("app.routers.internal_extraction.graph_session", lambda: _Sess()), \
          patch("app.extraction.motif_beat._list_user_book_projects", new=list_projects):
         resp = _post({"user_id": str(uuid4()), "corpus": True,
                       "motifs": [{"code": "revenge.duel"}],

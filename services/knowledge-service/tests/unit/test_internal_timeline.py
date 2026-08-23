@@ -60,7 +60,7 @@ class _FakeNeo4jSession:
 
 def _patch_db(monkeypatch, *, project_row, events=None, total=0):
     monkeypatch.setattr(mod, "get_knowledge_pool", lambda: _FakePool(project_row))
-    monkeypatch.setattr(mod, "neo4j_session", lambda: _FakeNeo4jSession())
+    monkeypatch.setattr(mod, "graph_session", lambda: _FakeNeo4jSession())
     # T17 A4 — the router now browses through the PORT (`events_page`), so the mock goes on
     # the store the provider hands back, not on a module-level repo function. Patching the
     # old name would still pass by patching NOTHING the router calls: the test would be

@@ -39,7 +39,7 @@ async def _run(args: Any) -> int:
     from uuid import UUID as _UUID
 
     from app.clients.embedding_client import init_embedding_client
-    from app.db.neo4j import init_neo4j_driver, neo4j_session
+    from app.db.neo4j import init_neo4j_driver, graph_session
     from app.db.neo4j_repos.passages import find_passages_by_vector
     # T25 ③ step 5 — this benchmark OWNS its index. It used to inherit
     # `passage_embeddings_<dim>` from `neo4j_schema.cypher`, which the cutover deletes;
@@ -60,13 +60,13 @@ async def _run(args: Any) -> int:
     k = args.k
 
     await init_neo4j_driver()
-    async with neo4j_session(engine="neo4j") as _s:
+    async with graph_session(engine="neo4j") as _s:
         _idx = await ensure_passage_vector_index(_s, args.embedding_dim)
         print(f"[flat_knn] ensured {_idx}", file=_sys.stderr)
     embed = init_embedding_client()
 
     per_query: list[dict] = []
-    async with neo4j_session(engine="neo4j") as session:
+    async with graph_session(engine="neo4j") as session:
         for q in queries:
             res = await embed.embed(
                 user_id=_UUID(user_id), model_source=args.model_source,

@@ -1,6 +1,6 @@
 """K21.2/7/8 — unit tests for the memory tool executor.
 
-Every repo call + `neo4j_session` is patched, so these are pure-logic
+Every repo call + `graph_session` is patched, so these are pure-logic
 tests of dispatch, result projection, the memory_remember guardrails
 (confidence / source tag / rate limit / fail-open), and the
 tool-error vs. infra-error split.
@@ -58,14 +58,14 @@ class _BrokenRedis:
 
 @pytest.fixture(autouse=True)
 def _patch_neo4j_session(monkeypatch):
-    """Every handler opens `async with neo4j_session()`; the repo calls
+    """Every handler opens `async with graph_session()`; the repo calls
     inside are themselves patched, so the session is just a stand-in."""
 
     @asynccontextmanager
     async def _fake():
         yield MagicMock()
 
-    monkeypatch.setattr("app.tools.executor.neo4j_session", _fake)
+    monkeypatch.setattr("app.tools.executor.graph_session", _fake)
 
 
 def _ctx(*, project_id=_PROJECT, project_owner=_USER, book_id=_BOOK, redis=None,

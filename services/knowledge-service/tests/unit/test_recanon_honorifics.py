@@ -248,7 +248,7 @@ def test_the_cli_INITIALISES_the_driver_rather_than_merely_getting_it(monkeypatc
     import app.db.neo4j as neo4j_mod
     monkeypatch.setattr(neo4j_mod, "init_neo4j_driver", _fake_init)
     monkeypatch.setattr(neo4j_mod, "close_neo4j_driver", _fake_close)
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda **kw: _Session())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda **kw: _Session())
     monkeypatch.setattr(mod, "run_recanon_backfill", _fake_run)
     monkeypatch.setattr("sys.argv", ["recanon_honorifics"])
 
@@ -287,7 +287,7 @@ def test_the_cli_closes_the_driver_even_when_the_backfill_RAISES(monkeypatch):
     import app.db.neo4j as neo4j_mod
     monkeypatch.setattr(neo4j_mod, "init_neo4j_driver", lambda: _noop(calls, "init"))
     monkeypatch.setattr(neo4j_mod, "close_neo4j_driver", lambda: _noop(calls, "close"))
-    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda **kw: _Session())
+    monkeypatch.setattr(neo4j_mod, "graph_session", lambda **kw: _Session())
     monkeypatch.setattr(mod, "run_recanon_backfill", _boom)
     monkeypatch.setattr("sys.argv", ["recanon_honorifics"])
 

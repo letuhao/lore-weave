@@ -55,7 +55,7 @@ from app.clients.embedding_client import get_embedding_client
 from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
@@ -2020,7 +2020,7 @@ async def project_entities_resource(project_id: str, ctx: MCPContext) -> str:
     # anchor_score ordering surfaces the strongest anchors first. Repo params
     # are str ids (the Neo4j property space), unlike the UUID-typed Postgres
     # repos above.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows, total = await list_entities_filtered(
             session,
             user_id=str(user_id),

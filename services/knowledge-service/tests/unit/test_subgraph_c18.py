@@ -93,7 +93,7 @@ def test_subgraph_returns_nodes_and_edges():
             new_callable=AsyncMock,
             return_value=sg,
         ), patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -139,7 +139,7 @@ def test_limit_within_cap_passes_through():
             new_callable=AsyncMock,
             return_value=sg,
         ) as mock_sg, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -170,7 +170,7 @@ def test_partition_scoping_threads_user_and_project():
             new_callable=AsyncMock,
             return_value=sg,
         ) as mock_sg, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -195,7 +195,7 @@ def test_foreign_project_returns_empty_no_foreign_nodes():
             new_callable=AsyncMock,
             return_value=sg,
         ) as mock_sg, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -223,7 +223,7 @@ def test_hops_limit_center_params_passed_through():
             new_callable=AsyncMock,
             return_value=sg,
         ) as mock_sg, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -248,7 +248,7 @@ def test_default_params():
             new_callable=AsyncMock,
             return_value=sg,
         ) as mock_sg, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()

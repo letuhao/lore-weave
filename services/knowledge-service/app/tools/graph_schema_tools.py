@@ -65,7 +65,7 @@ from app.ontology.confirm import (
     mint_action_token,
 )
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.graph_views import (
     read_entity_edge_timeline,
     read_project_graph_edges,
@@ -1533,7 +1533,7 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
 
             raise ToolExecutionError(f"view not found: {args.view!r}")
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         records = await read_project_graph_edges(
             session,
             user_id=str(owner),
@@ -1615,7 +1615,7 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             "note": note + ".",
         }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_world_subgraph(
             session,
             user_id=str(ctx.user_id),
@@ -1702,7 +1702,7 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             "note": note + ".",
         }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_world_subgraph(
             session,
             user_id=str(ctx.user_id),
@@ -1763,7 +1763,7 @@ async def _handle_kg_entity_edge_timeline(
         # error — no existence oracle, uniform with the HTTP route.
         raise ToolExecutionError(str(exc.detail))
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         records = await read_entity_edge_timeline(
             session,
             user_id=str(ctx.user_id),
@@ -1965,7 +1965,7 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
     # gated), the one stateful check worth a round-trip to avoid the dead-end.
     endpoint_ids = [args.source_entity_id, args.target_entity_id]
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         present = await existing_entity_node_ids(
             session, user_id=str(owner), ids=endpoint_ids,
         )
@@ -2022,7 +2022,7 @@ async def _handle_kg_project_entities_to_nodes(
         )
 
     entity_ids = [e.strip() for e in (args.entity_ids or []) if e and e.strip()]
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         res = await project_glossary_entities_to_nodes(
             session,
             get_glossary_client(),
@@ -2096,7 +2096,7 @@ async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> 
     kind = args.kind.strip()
     if not name or not kind:
         raise ToolExecutionError("name and kind must both be non-empty")
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
                         user_id=str(owner),
             project_id=str(ctx.project_id),

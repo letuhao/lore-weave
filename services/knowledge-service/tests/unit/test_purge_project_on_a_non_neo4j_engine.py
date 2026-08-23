@@ -122,7 +122,7 @@ async def test_fulltext_search_refuses_by_name_on_a_non_neo4j_session():
 
     The two vector readers are reached only through `Neo4jVectorStore`, which is engine-scoped
     by construction. `find_passages_by_fulltext` is different: `search/retriever.py` calls it on
-    a `neo4j_session()`, which since T54c follows the CONFIGURED backend — AGE by default. So on
+    a `graph_session()`, which since T54c follows the CONFIGURED backend — AGE by default. So on
     a default deployment it ran and raised `PostgresSyntaxError: syntax error at or near "."`,
     measured on iso.
     """

@@ -73,7 +73,7 @@ def test_no_completed_job_returns_has_delta_false():
     assert body["entities_added"] == 0 and body["new_items"] == []
 
 
-@patch("app.routers.public.extraction.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.extraction.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.extraction.get_flywheel_delta", new_callable=AsyncMock)
 def test_maps_latest_completed_job_delta(mock_delta):
     mock_delta.return_value = FlywheelDelta(

@@ -40,7 +40,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.neo4j_repos.enrichment import (
     promote_enriched_facts,
     retract_enriched_facts,
@@ -160,7 +160,7 @@ async def enriched_writeback(
     anchor_confidence = min(max((f.confidence for f in req.facts), default=0.5), 0.99)
 
     written: list[EnrichedFactRef] = []
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # The anchor upsert moved to `neo4j_repos/enrichment.py` (plan T17) — including
         # the null-before-claim ordering and the strict ON CREATE / ON MATCH split that
         # keep enrichment from ever making a node look like canon.
@@ -240,7 +240,7 @@ async def enriched_promote(
     facts of THIS proposal are touched (filtered on ``promoted_from_proposal_id``
     + ``origin='enrichment'``). Idempotent.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         affected = await promote_enriched_facts(
             session,
             user_id=str(req.user_id),
@@ -271,7 +271,7 @@ async def enriched_retract(
     Mirrors the glossary recycle-bin soft-delete (M6) on the KG side. Only
     touches this proposal's enriched facts; never deletes canon. Idempotent.
     """
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         affected = await retract_enriched_facts(
             session,
             user_id=str(req.user_id),

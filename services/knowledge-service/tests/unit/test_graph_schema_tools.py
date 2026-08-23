@@ -543,14 +543,14 @@ async def test_propose_fact_queues_into_pending_inbox(monkeypatch):
 def _patch_endpoints_present(monkeypatch, present=("a", "b")):
     """Make kg_propose_edge's WS-4B endpoint precheck see both endpoints as
     existing nodes, so the test exercises the park path (not the fail-fast).
-    Also stubs neo4j_session so no real driver is needed."""
+    Also stubs graph_session so no real driver is needed."""
 
     @asynccontextmanager
     async def _fake_session(**_kwargs):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     monkeypatch.setattr(
         "app.db.neo4j_repos.entities.existing_entity_node_ids",
@@ -649,7 +649,7 @@ async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     # only "a" exists as a node; "b" is missing.
     monkeypatch.setattr(
@@ -688,7 +688,7 @@ async def test_project_entities_to_nodes_returns_counts(monkeypatch):
         yield object()
 
     monkeypatch.setattr(
-        "app.tools.graph_schema_tools.neo4j_session", _fake_session,
+        "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
@@ -723,7 +723,7 @@ async def test_project_entities_to_nodes_refreshes_stat_cache(monkeypatch):
     async def _fake_session(**_kwargs):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
         MagicMock(return_value=MagicMock()),
@@ -753,7 +753,7 @@ async def test_project_entities_to_nodes_survives_stat_recount_failure(monkeypat
     async def _fake_session(**_kwargs):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     monkeypatch.setattr(
         "app.clients.glossary_client.get_glossary_client",
         MagicMock(return_value=MagicMock()),
@@ -1278,7 +1278,7 @@ async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypat
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
     ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
     res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4()), "limit": 50})
@@ -1323,7 +1323,7 @@ async def test_kg_world_query_surfaces_node_cap_hit_as_meta_truncated(monkeypatc
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
     ctx = _ctx(user_id=_OWNER, projects_repo=repo, book_client=book)
     res = await execute_tool(ctx, "kg_world_query", {"world_id": str(uuid4())})
@@ -1403,7 +1403,7 @@ def _patch_subgraph(monkeypatch, seen: dict):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(gst, "neo4j_session", lambda: _CM())
+    monkeypatch.setattr(gst, "graph_session", lambda: _CM())
 
 
 @pytest.mark.asyncio
@@ -1628,7 +1628,7 @@ async def test_kg_create_node_creates_and_returns_endpoint_id(monkeypatch):
     async def _fake_session(**_):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-sha", name="Kai", kind="character"))
     monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
@@ -1667,7 +1667,7 @@ async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
     async def _fake_session(**_):
         yield object()
 
-    monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.tools.graph_schema_tools.graph_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-1", name="Kai", kind="character"))
     monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
@@ -1782,7 +1782,7 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
         yield object()
 
     monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
     res = await execute_tool(_ctx(), "kg_graph_query", {"limit": 3})
@@ -1811,7 +1811,7 @@ async def test_kg_graph_query_not_truncated_when_within_limit(monkeypatch):
         yield object()
 
     monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
     res = await execute_tool(_ctx(), "kg_graph_query", {"limit": 3})
@@ -1845,7 +1845,7 @@ async def test_kg_entity_edge_timeline_overfetches_and_signals_truncation(monkey
         yield object()
 
     monkeypatch.setattr(gst, "read_entity_edge_timeline", _fake_read)
-    monkeypatch.setattr(gst, "neo4j_session", _fake_session)
+    monkeypatch.setattr(gst, "graph_session", _fake_session)
     monkeypatch.setattr(gst, "_resolve_entity_project_grant", AsyncMock())
 
     res = await execute_tool(

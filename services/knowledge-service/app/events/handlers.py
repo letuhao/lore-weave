@@ -402,7 +402,7 @@ async def _ingest_published_passages(
 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import get_embedding_client
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     book_client = get_book_client()
@@ -414,7 +414,7 @@ async def _ingest_published_passages(
     chapter_index = sort_orders.get(chapter_uuid)
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             await ingest_chapter_passages(
                 session,
                 book_client,
@@ -501,7 +501,7 @@ async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import get_embedding_client
     from app.clients.translation_client import get_translation_client
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     # Fetch the ACTIVE translated text for this language.
@@ -522,7 +522,7 @@ async def handle_translation_published(event: EventData, *, pool: asyncpg.Pool) 
     chapter_index = sort_orders.get(chapter_uuid)
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             await ingest_chapter_passages(
                 session,
                 book_client,
@@ -602,10 +602,10 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
 
     # Demote — do NOT delete. The index request survives an editorial unpublish.
     try:
-        from app.db.neo4j import neo4j_session
+        from app.db.neo4j import graph_session
         from app.db.neo4j_repos.passages import set_canon_for_source
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             demoted = await set_canon_for_source(
                 session,
                 user_id=str(user_id),
@@ -706,10 +706,10 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
 
     # Graph retract (independent; failure recorded, not swallowed).
     try:
-        from app.db.neo4j import neo4j_session
+        from app.db.neo4j import graph_session
         from app.db.neo4j_repos.provenance import remove_evidence_for_natural_key
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             # CM3b-RETRACT-FIX: retract by NATURAL KEY. The prior call passed the
             # raw chapter_id to `remove_evidence_for_source`, which matches the
             # HASHED ExtractionSource id — so it removed ZERO edges and unpublish
@@ -749,10 +749,10 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
     # Passage retract (INDEPENDENT: a graph-retract failure above must NOT suppress this,
     # else the user's retracted prose lingers in the semantic index — R3-WARN#2).
     try:
-        from app.db.neo4j import neo4j_session
+        from app.db.neo4j import graph_session
         from app.db.neo4j_repos.passages import delete_passages_for_source
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             deleted = await delete_passages_for_source(
                 session,
                 user_id=str(user_id),
@@ -829,14 +829,14 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
         try:
             from app.config import settings
             if settings.neo4j_uri:
-                from app.db.neo4j import neo4j_session
+                from app.db.neo4j import graph_session
                 from app.extraction.passage_ingester import (
                     delete_chapter_passages,
                 )
                 from app.db.neo4j_repos.provenance import delete_source_cascade
 
                 chapter_uuid = _uuid(chapter_id)
-                async with neo4j_session() as session:
+                async with graph_session() as session:
                     # Delete the extraction source THROUGH the provenance repo (plan T12).
                     #
                     # This replaces an inline Cypher statement that matched the
@@ -1080,13 +1080,13 @@ async def handle_glossary_entity_updated(
     # handlers at startup before the Neo4j driver is wired) — same pattern
     # as _ingest_published_passages. Kept OUTSIDE the try/except so an
     # ImportError crashes loud rather than being masked as a transient failure.
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.extraction.glossary_sync import sync_glossary_entity_to_neo4j
 
     # Let exceptions propagate to the consumer's DLQ/retry path (K14.8):
     # a transient Neo4j outage SHOULD redeliver, not silently drop the
     # propagation. The MERGE keeps redelivery idempotent.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await sync_glossary_entity_to_neo4j(
             session,
             user_id=str(user_id),
@@ -1127,7 +1127,7 @@ async def index_glossary_entity_passage(
     from app.clients.embedding_client import get_embedding_client
     from app.clients.glossary_client import get_glossary_client
     from app.config import settings
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.extraction.glossary_passage import (
         render_glossary_passage,
         sync_glossary_entity_passage,
@@ -1156,7 +1156,7 @@ async def index_glossary_entity_passage(
         )
         lang = next((a.lang for a in ent.attributes if a.lang), "unknown")
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             outcome = await sync_glossary_entity_passage(
                 session, get_embedding_client(),
                 user_id=str(user_id), project_id=str(project_id),
@@ -1246,7 +1246,7 @@ async def handle_glossary_entity_merged(
         )
         return
 
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from loreweave_extraction.canonical import canonicalize_entity_name
     from app.db.neo4j_repos.entities import (
         MergeEntitiesError,
@@ -1271,7 +1271,7 @@ async def handle_glossary_entity_merged(
         uid = str(user_id)
         pid = str(project_id)
 
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             loser = await get_entity_by_glossary_id(
                 session, user_id=uid, project_id=pid,
                 glossary_entity_id=str(loser_gid),
@@ -1320,7 +1320,7 @@ async def handle_glossary_entity_merged(
                 # anti-resurrection). Re-link the loser so redelivery retries
                 # cleanly. Use a fresh session (the merge's own tx is unwound).
                 try:
-                    async with neo4j_session() as relink_session:
+                    async with graph_session() as relink_session:
                         await link_to_glossary(
                             relink_session, user_id=uid, canonical_id=loser_id,
                             glossary_entity_id=str(loser_gid), name=loser_name,
@@ -1464,12 +1464,12 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
     invalidate_anchor_cache(str(user_id), str(project_id))
 
     from app.adapters.graph_store_provider import get_graph_store
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import get_entity_by_glossary_id
 
     # Exceptions propagate to the consumer's retry path: a transient Neo4j outage SHOULD
     # redeliver rather than silently drop the propagation. Archiving is idempotent.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # T17 — `archive_entity` goes through the port; `get_entity_by_glossary_id` does NOT
         # and stays a direct repo call. The port has no anchor-keyed lookup, and inventing
         # one to make this module "fully migrated" would grow the port by convenience rather
@@ -1506,10 +1506,10 @@ async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Poo
         return
     project_id, user_id, glossary_entity_id = resolved
 
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import restore_entity_by_glossary_id
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # T28 scope: a recycle-bin restore undoes a `glossary_deleted` archive only. A node
         # archived because its status is `rejected` stays archived — the trash and the status
         # axis retire an entity for different reasons, and neither may silently undo the other.
@@ -1539,10 +1539,10 @@ async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool)
         return
     project_id, user_id, glossary_entity_id = resolved
 
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import purge_entity_by_glossary_id
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         deleted = await purge_entity_by_glossary_id(
             session, user_id=str(user_id), project_id=str(project_id),
             glossary_entity_id=str(glossary_entity_id),
@@ -1590,7 +1590,7 @@ async def handle_glossary_entity_status_changed(
         )
         return
 
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.entities import (
         get_entity_by_glossary_id,
         restore_entity_by_glossary_id,
@@ -1600,7 +1600,7 @@ async def handle_glossary_entity_status_changed(
     # Exceptions propagate to the consumer's retry path — a transient Neo4j outage SHOULD
     # redeliver rather than silently drop the propagation. Both directions are idempotent.
     if status == "active":
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             entity = await restore_entity_by_glossary_id(
                 session, user_id=str(user_id), project_id=str(project_id),
                 glossary_entity_id=str(glossary_entity_id),
@@ -1618,7 +1618,7 @@ async def handle_glossary_entity_status_changed(
         )
         return
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         entity = await get_entity_by_glossary_id(
             session, user_id=str(user_id), project_id=str(project_id),
             glossary_entity_id=str(glossary_entity_id),

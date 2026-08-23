@@ -90,14 +90,14 @@ async def apply_proposed_edge(
     OWNER, then mark the item resolved. Raises ProposedEdgeNotFound (404),
     ProposedEdgeDrift (422), or ProposedEdgeWriteFailed (409) — the router maps."""
     # Imported lazily so the module has no hard Neo4j import at collection time
-    # (mirrors the router's lazy neo4j_session import).
-    from app.db.neo4j import neo4j_session
+    # (mirrors the router's lazy graph_session import).
+    from app.db.neo4j import graph_session
     from app.ontology.triage_apply import Neo4jReapplyWriter, TriageApplyError
 
     triage_id = UUID(params.triage_id)
     item = await _load_pending_proposed_edge(triage, owner, project_id, triage_id)
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         writer = Neo4jReapplyWriter(session, owner_user_id=str(owner))
         try:
             # `map` semantics here = place the parked edge verbatim (no re-code).

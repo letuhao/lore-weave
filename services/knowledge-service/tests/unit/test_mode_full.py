@@ -145,11 +145,11 @@ def _patch_mode3_pieces(
         AsyncMock(return_value=l3_passages or []),
     )
 
-    # neo4j_session context-manager factory.
+    # graph_session context-manager factory.
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
-    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+    monkeypatch.setattr("app.context.modes.full.graph_session", fake_session)
 
 
 @pytest.mark.asyncio
@@ -1460,7 +1460,7 @@ def _fake_neo4j_session(monkeypatch):
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
-    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+    monkeypatch.setattr("app.context.modes.full.graph_session", fake_session)
 
 
 @pytest.mark.asyncio

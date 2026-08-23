@@ -51,7 +51,7 @@ def wired(monkeypatch):
 
         monkeypatch.setattr(mirror_route, "detect_mirror_drift", _detect)
         import app.db.neo4j as neo4j_mod
-        monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda *a, **k: _Session())
+        monkeypatch.setattr(neo4j_mod, "graph_session", lambda *a, **k: _Session())
     return _install
 
 

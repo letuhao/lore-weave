@@ -124,7 +124,7 @@ def test_wrong_token_returns_401():
 # -- Chapter extraction --------------------------------------------
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -136,7 +136,7 @@ def test_chapter_extraction_success(
     mock_extract.return_value = _MOCK_RESULT
     mock_llm.return_value = MagicMock()
 
-    # Mock neo4j_session as async context manager
+    # Mock graph_session as async context manager
     mock_session = AsyncMock()
     mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
     mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -160,7 +160,7 @@ def test_chapter_without_text_returns_422():
     with patch("app.routers.internal_extraction.settings") as ms:
         ms.neo4j_uri = "bolt://localhost:7687"
         ms.internal_service_token = _TEST_TOKEN
-        with patch("app.routers.internal_extraction.neo4j_session") as mn:
+        with patch("app.routers.internal_extraction.graph_session") as mn:
             mock_session = AsyncMock()
             mn.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mn.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -175,7 +175,7 @@ def test_chapter_without_text_returns_422():
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -229,7 +229,7 @@ def test_extract_item_threads_schema_split_to_orchestrator(
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chat_turn")
 @patch("app.routers.internal_extraction.settings")
@@ -268,7 +268,7 @@ def test_extract_item_chat_turn_also_threads_schema_split(
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -367,7 +367,7 @@ def test_resolve_schemas_for_extract_item_resolve_failure_returns_none_none(
 # -- Chat turn extraction ------------------------------------------
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chat_turn")
 @patch("app.routers.internal_extraction.settings")
@@ -397,7 +397,7 @@ def test_chat_turn_without_messages_returns_422():
     with patch("app.routers.internal_extraction.settings") as ms:
         ms.neo4j_uri = "bolt://localhost:7687"
         ms.internal_service_token = _TEST_TOKEN
-        with patch("app.routers.internal_extraction.neo4j_session") as mn:
+        with patch("app.routers.internal_extraction.graph_session") as mn:
             mock_session = AsyncMock()
             mn.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mn.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -436,7 +436,7 @@ def test_empty_source_id_returns_422():
 # -- ExtractionError stage mapping ---------------------------------
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -464,7 +464,7 @@ def test_provider_exhausted_returns_502(
     assert "transient" in data["detail"]["error"]
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -492,7 +492,7 @@ def test_provider_error_returns_422(
     assert "API key" in data["detail"]["error"]
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -581,7 +581,7 @@ def test_persist_pass2_neo4j_not_configured_returns_503(mock_settings):
 
 
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_happy_path_returns_write_counts(
@@ -621,7 +621,7 @@ def test_persist_pass2_happy_path_returns_write_counts(
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schema_for_persist", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_forwards_resolved_schema_and_triage_repo(
@@ -660,7 +660,7 @@ def test_persist_pass2_forwards_resolved_schema_and_triage_repo(
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schema_for_persist", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_schema_none_still_passes_triage_repo(
@@ -762,7 +762,7 @@ def test_resolve_schema_resolve_failure_returns_has_schema_false(mock_repo_cls, 
 @patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
 @patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_retract_uses_natural_key_and_sweeps_on_reextract(
@@ -806,7 +806,7 @@ def test_persist_pass2_retract_uses_natural_key_and_sweeps_on_reextract(
 @patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
 @patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_first_extract_skips_sweep(
@@ -833,7 +833,7 @@ def test_persist_pass2_first_extract_skips_sweep(
 
 
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_empty_candidates_lists_still_calls_writer(
@@ -892,7 +892,7 @@ def test_persist_pass2_missing_required_field_returns_422():
 @patch("app.routers.internal_extraction.JobLogsRepo")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_default_extraction_model_flows_through(
@@ -926,7 +926,7 @@ def test_persist_pass2_default_extraction_model_flows_through(
 @patch("app.routers.internal_extraction.JobLogsRepo")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_emits_pass2_write_job_logs_event(
@@ -977,7 +977,7 @@ def test_persist_pass2_emits_pass2_write_job_logs_event(
 @patch("app.routers.internal_extraction.JobLogsRepo")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_telemetry_failure_is_non_fatal(
@@ -1011,7 +1011,7 @@ def test_persist_pass2_telemetry_failure_is_non_fatal(
 @patch("app.routers.internal_extraction.JobLogsRepo")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_passes_anchors_to_writer(
@@ -1064,7 +1064,7 @@ def _hierarchy_paths_payload(**overrides):
 
 
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_forwards_hierarchy_paths_to_writer(
@@ -1097,7 +1097,7 @@ def test_persist_pass2_p3_forwards_hierarchy_paths_to_writer(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_enqueues_chapter_summary_when_all_deps_present(
@@ -1133,7 +1133,7 @@ def test_persist_pass2_p3_enqueues_chapter_summary_when_all_deps_present(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_c12_summaries_gated_out_when_not_in_targets(
@@ -1167,7 +1167,7 @@ def test_persist_pass2_c12_summaries_gated_out_when_not_in_targets(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_desilences_skipped_summary_enqueue(
@@ -1209,7 +1209,7 @@ def test_persist_pass2_desilences_skipped_summary_enqueue(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_c12_summaries_enqueued_when_in_targets(
@@ -1242,7 +1242,7 @@ def test_persist_pass2_c12_summaries_enqueued_when_in_targets(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_last_chapter_also_enqueues_part_and_book(
@@ -1281,7 +1281,7 @@ def test_persist_pass2_p3_last_chapter_also_enqueues_part_and_book(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_skips_enqueue_when_embedding_deps_missing(
@@ -1311,7 +1311,7 @@ def test_persist_pass2_p3_skips_enqueue_when_embedding_deps_missing(
 
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.settings")
 def test_persist_pass2_p3_enqueue_failure_does_not_500(
@@ -1390,7 +1390,7 @@ def test_summarize_message_validates_embedding_dimension_positive():
     assert resp.status_code == 422
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 def test_summarize_message_dispatches_to_processor(
@@ -1418,7 +1418,7 @@ def test_summarize_message_dispatches_to_processor(
         assert deps.summary_enqueue is mock_get_enqueue.return_value
         assert deps.embedding_client is not None
         assert deps.llm_client is not None
-        assert deps.neo4j_session is not None
+        assert deps.graph_session is not None
         return fake_result
 
     mock_session = AsyncMock()
@@ -1441,7 +1441,7 @@ def test_summarize_message_dispatches_to_processor(
     assert data["summary_id"] == str(expected_summary_id)
 
 
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._get_summary_enqueue")
 def test_summarize_message_returns_re_enqueued_flag(
@@ -1526,7 +1526,7 @@ def test_embedding_adapter_raises_on_empty_vector():
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")
@@ -1569,7 +1569,7 @@ def test_extract_item_threads_the_chapter_ORDINAL_to_the_orchestrator(
 @patch("app.routers.internal_extraction.get_knowledge_pool")
 @patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.get_llm_client")
 @patch("app.routers.internal_extraction.extract_pass2_chapter")
 @patch("app.routers.internal_extraction.settings")

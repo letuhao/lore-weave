@@ -3,7 +3,7 @@
 Tests the membership→project-resolution→event-union orchestration: per-project
 reads merged + re-sorted on the global axis + capped, with the same
 WorldNotFound→404 / BookServiceUnavailable→503 mapping as the subgraph rollup.
-The book client, projects repo, list_events_filtered, neo4j_session and the
+The book client, projects repo, list_events_filtered, graph_session and the
 chapter-title enricher are faked/patched.
 """
 from __future__ import annotations
@@ -106,7 +106,7 @@ def test_union_merges_member_timelines_sorted_by_event_order():
             "app.routers.public.timeline.list_events_filtered",
             new=AsyncMock(side_effect=fake_list),
         ), patch(
-            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
         ), patch(
             "app.routers.public.timeline.enrich_events_with_chapter_titles",
             new=AsyncMock(return_value=None),
@@ -144,7 +144,7 @@ def test_single_busy_project_over_cap_flags_truncated():
             "app.routers.public.timeline.list_events_filtered",
             new=AsyncMock(side_effect=fake_list),
         ), patch(
-            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
         ), patch(
             "app.routers.public.timeline.enrich_events_with_chapter_titles",
             new=AsyncMock(return_value=None),
@@ -183,7 +183,7 @@ def test_multi_project_union_over_cap_flags_truncated():
             "app.routers.public.timeline.list_events_filtered",
             new=AsyncMock(side_effect=fake_list),
         ), patch(
-            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
         ), patch(
             "app.routers.public.timeline.enrich_events_with_chapter_titles",
             new=AsyncMock(return_value=None),
@@ -204,7 +204,7 @@ def test_world_not_found_maps_to_404():
         with patch(
             "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock,
         ) as mock_list, patch(
-            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/timeline")
         assert resp.status_code == 404
@@ -220,7 +220,7 @@ def test_book_service_unavailable_maps_to_503():
         with patch(
             "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock,
         ), patch(
-            "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+            "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
         ):
             resp = _client(repo, book).get(f"/v1/knowledge/worlds/{_WORLD}/timeline")
         assert resp.status_code == 503

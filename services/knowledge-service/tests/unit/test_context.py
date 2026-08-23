@@ -78,7 +78,7 @@ def _glossary(entities):
 
 async def _gather(*, entities, relations, retrieval):
     g = _glossary(entities)
-    with patch("app.wiki.context.neo4j_session", new=lambda: _noop_session()), \
+    with patch("app.wiki.context.graph_session", new=lambda: _noop_session()), \
          patch("app.wiki.context.get_graph_store",
                new=lambda _s: SimpleNamespace(relations_for=AsyncMock(return_value=relations))), \
          patch("app.wiki.context.run_hybrid_search",
@@ -181,7 +181,7 @@ async def test_not_indexed_degrades_keeps_brief_and_kg():
 @pytest.mark.asyncio
 async def test_kg_down_degrades():
     g = _glossary([_entity()])
-    with patch("app.wiki.context.neo4j_session", new=lambda: _noop_session()), \
+    with patch("app.wiki.context.graph_session", new=lambda: _noop_session()), \
          patch("app.wiki.context.get_graph_store",
                new=lambda _s: SimpleNamespace(relations_for=AsyncMock(side_effect=RuntimeError("neo4j down")))), \
          patch("app.wiki.context.run_hybrid_search",

@@ -26,7 +26,7 @@ from app.clients.default_model import resolve_user_default_model
 from app.clients.glossary_client import get_glossary_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -498,7 +498,7 @@ async def _load_anchors_for_extraction(
         if book_id is None:
             _anchor_cache[cache_key] = []
             return []
-        async with neo4j_session() as anchor_session:
+        async with graph_session() as anchor_session:
             anchors = await load_glossary_anchors(
                 anchor_session,
                 get_glossary_client(),
@@ -572,7 +572,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     # C3 (D-K19b.8-02) — stage producer for the FE JobLogsPanel.
     # Inlined like `_try_spend` elsewhere rather than Depends() since
     # the rest of this router already resolves collaborators inline
-    # (module-level neo4j_session, get_llm_client, etc.). Matches
+    # (module-level graph_session, get_llm_client, etc.). Matches
     # the "internal router, no DI" convention. Best-effort: if the
     # pool isn't initialised (unit tests that only mock the extractor
     # helpers, or a pre-migration boot), the producer is silently
@@ -623,7 +623,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     )
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             if body.item_type == "chapter":
                 if not body.chapter_text:
                     raise HTTPException(
@@ -831,7 +831,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     except Exception:
         triage_repo = None
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
         # that disappeared from the new revision instead of leaving stale canon;
@@ -1114,7 +1114,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 )
             wb_book_id = row["book_id"] if row else None
             if wb_book_id is not None:
-                async with neo4j_session() as wb_session:
+                async with graph_session() as wb_session:
                     proposed = await writeback_discovered_entities(
                         wb_session,
                         get_glossary_client(),
@@ -1152,7 +1152,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             cd_book_id = row["book_id"] if row else None
             if cd_book_id is not None:
                 uid, pid = str(body.user_id), str(body.project_id)
-                async with neo4j_session() as cd_session:
+                async with graph_session() as cd_session:
                     kinds = await coref_detect.load_anchored_kinds(
                         cd_session, user_id=uid, project_id=pid
                     )
@@ -1315,7 +1315,7 @@ async def glossary_sync_entity(
     (the helper itself doesn't catch them).
     """
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             result = await sync_glossary_entity_to_neo4j(
                 session,
                 user_id=str(body.user_id),
@@ -1618,10 +1618,10 @@ async def process_summarize_message_endpoint(
     # does multiple session.run calls but treats them as a single logical
     # work unit; a per-call session matches the existing /persist-pass2
     # pattern and avoids leaking sessions across worker-ai requests.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         deps = SummaryProcessorDeps(
             knowledge_pool=pool,
-            neo4j_session=session,
+            graph_session=session,
             llm_client=get_llm_client(),
             # E0-3 2a-2: bind the embed provider call to the billing user when a
             # collaborator triggered the extraction (gated on billing_user_id —
@@ -1832,7 +1832,7 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -1903,7 +1903,7 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -1984,7 +1984,7 @@ async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -2047,7 +2047,7 @@ async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
     containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
     considered = 0
     written = 0
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -2095,7 +2095,7 @@ async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsR
 
     containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
     seen: set[tuple[str, str]] = set()
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             for c, e in await get_causal_motif_pairs(
                     session, user_id=str(body.user_id), project_id=str(project_id)):
@@ -2170,7 +2170,7 @@ async def embed_entities_backfill(
     drained = False
     embed_failed = False
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         while iterations < _EMBED_BACKFILL_MAX_ITER and embedded < body.max_entities:
             res = await embed_project_entities(
                 session,

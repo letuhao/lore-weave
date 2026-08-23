@@ -31,7 +31,7 @@ async def project_has_embedded_passages(user_id: UUID | str, project_id: UUID | 
     confirm-gated path that would have been correct anyway. So an unknown answer is `True`.
     """
     from app.config import settings
-    from app.db.neo4j import neo4j_session
+    from app.db.neo4j import graph_session
     from app.db.neo4j_repos.passages import project_has_passages
 
     if not settings.neo4j_uri:
@@ -39,7 +39,7 @@ async def project_has_embedded_passages(user_id: UUID | str, project_id: UUID | 
         # This is the ONE case where "unknown" collapses to a real "no".
         return False
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await project_has_passages(
                 session, user_id=str(user_id), project_id=str(project_id),
             )
