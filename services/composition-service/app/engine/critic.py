@@ -58,11 +58,52 @@ def parse_critique_json(text: str) -> dict[str, Any] | None:
         elif ch == "}":
             depth -= 1
             if depth == 0 and start >= 0:
+                candidate = cleaned[start:i + 1]
                 try:
-                    return json.loads(cleaned[start:i + 1])
+                    return json.loads(candidate)
                 except (ValueError, TypeError):
-                    return None
+                    return _repair_missing_commas(candidate)
     return None
+
+
+#: A closing quote, a line break, then a quoted identifier followed by `:` — i.e. the next
+#: token is unambiguously a KEY, so the only thing that can belong between them is a comma.
+_MISSING_COMMA_RE = re.compile(r'"(\s*\n\s*)"([A-Za-z_][A-Za-z0-9_-]*)"(\s*):')
+
+
+def _repair_missing_commas(candidate: str) -> dict[str, Any] | None:
+    """Last resort: insert the comma a judge left out, and accept the result ONLY if it parses.
+
+    🔴 **Measured live (C34), not imagined.** On the real 4757-char chapter-10 draft the shipped
+    critic returned `canon=None raw=0` on **3 of 3** runs. `llm_jobs` ruled out truncation —
+    `finish_reason=stop`, 2257–2273 tokens each time — and the raw reply was JSON-shaped and
+    invalid by one character:
+
+        "note": "...does not fit well with the established narrative flow."
+                    "span": "..."                                  <- no comma
+
+    The whole object was then refused, discarding the `violations` array ABOVE it, which had
+    already found and attributed R1. A verdict thrown away over punctuation is the same family
+    as C12's dropped finding, one layer lower.
+
+    ⚠️ **Narrow on purpose.** It repairs the ONE shape that was observed and nothing else, and
+    it is reached only after both strict parse and balanced extraction have failed. If the
+    repair does not produce valid JSON the answer is still `None` — a parser that guesses its
+    way to an object would invent a verdict, which is worse than reporting none. Do not widen
+    this to "fix whatever the model emitted" without a measurement showing the new shape.
+    """
+    repaired, n = _MISSING_COMMA_RE.subn(r'",\1"\2"\3:', candidate)
+    if not n:
+        return None
+    try:
+        out = json.loads(repaired)
+    except (ValueError, TypeError):
+        return None
+    logger.info(
+        "parse_critique_json salvaged a verdict by inserting %d missing comma(s) — the judge "
+        "emitted invalid JSON and the finding would otherwise have been discarded", n,
+    )
+    return out if isinstance(out, dict) else None
 
 
 def _coerce_score(value: Any) -> int | None:

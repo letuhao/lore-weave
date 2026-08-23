@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 93 of 136 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 94 of 137 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (27/51) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (28/52) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,75 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C35 2026-08-24 — **one comma restored the verdict, and the LIVE clean arm is measurable at last**
+
+  ```
+  LIVE clean arm, real 4757-char chapter-10 draft, rebuilt image, 3 runs each
+    BEFORE  canon=None  raw=0  kept=0                     3/3   verdict DISCARDED
+    AFTER   canon=2     raw=2  kept=1  unverified=1       3/3   identical, all three
+  composition 3803 -> 3808 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **C34 diagnosed it to the byte; this fixes it.** The judge emitted a `craft_notes` entry
+  with two adjacent values and no comma, so `parse_critique_json` refused the whole object and
+  threw away the `violations` array **above** it — a finding lost to punctuation. The salvage is
+  a third stage, reached only after strict parse and balanced extraction both fail, and it
+  accepts its own output **only if the repair parses**.
+
+  🎯 **And the verifier is now doing real work on real input, stably.** The same R5 finding was
+  refuted on all three runs:
+
+  ```
+  REFUTED  R5: "Lâm Uyên cannot control the L-Field when his spiritual energy is drained"
+  R5 says, in full: "Lâm Uyên controls the L-Field."
+  ```
+
+  <!-- doc-language-gate: ok -- the judge's claim against the rule's own words IS the finding -->
+
+  That is C31's invented-clause class exactly — a requirement attached to a real rule id that the
+  rule does not state — dropped live, 3/3, by the `critic_verifier` role C33 added.
+
+  ⚖️ **The survivor is STILL false, and saying so is the point.** The kept R1 verdict claims the
+  passage shows Lâm Trạch as *neutral, with no sign of betrayal*, and quotes a span that **is not
+  in the text**: the chapter reads *"Đó là Lục Vô Tội. Kẻ trung lập…"* and the judge rendered it
+  with a different character's name substituted in. So live precision on the clean arm is
+  **1 of 2 dropped, and the remaining 1 is a false positive whose span is fabricated**. Halved,
+  not solved — and that is a real number where C34 had none at all.
+
+  🔴 **That failure mode is MECHANICALLY detectable, and it is the next unit.** A span the judge
+  quotes must appear in the passage it was given. C31 rejected span-only SEMANTIC verification
+  for a measured reason (0/3 recall — the contradiction is not inside the span), but span
+  **containment** is a different check and a cheap one: this verdict fails it outright. Recorded
+  here rather than built, because it was diagnosed after the batch was chosen.
+
+  🧪 **Bites, and the second one caught my own test.**
+
+  ```
+  BITE L  remove the salvage stage
+          × test_the_live_malformed_reply_is_SALVAGED_with_its_violation_intact
+  BITE M (1st, 2nd)  accept the repair WITHOUT checking it parses     5 passed — NO BITE
+  BITE M (3rd)  same mutation, after the test was fixed
+          × test_a_repair_that_does_not_yield_valid_json_is_REFUSED
+  ```
+
+  M is the one worth keeping. The refusal test's input had **no closing brace**, so the
+  balanced-object scan never completed and the salvage was never reached — the test asserted
+  `None` and got it for a reason that had nothing to do with the branch it named. Deleting the
+  parse check left it green: a criterion that cannot fail, written by the person who had just
+  written the rule about them. The input now balances, so the salvage runs and the assertion
+  means what it says.
+
+  ⚠️ **Narrow on purpose.** The repair fires on ONE shape — a closing quote, a line break, then a
+  quoted identifier followed by `:` — because that is the one that was measured. A parser that
+  guessed its way to an object would invent a verdict, and `critic_unparsable` is a state a
+  consumer can act on where a fabricated score is not.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3808 passed, 403 skipped, 0
+  failed**.
+  **QC (b) live smoke:** the table above, against a REBUILT image on lw-iso — three runs before,
+  three after, on the same real chapter through the same route.
+  **QC (c) real data:** the six critique responses, and the raw model output C34 quotes.
   ---
   ### ✅ QC-5 C34 2026-08-24 — **the LIVE run: it proved the wiring and found TWO defects the suite could not**
 
