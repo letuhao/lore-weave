@@ -1,0 +1,37 @@
+[
+ {
+  "tool": "composition_motif_bind_edit",
+  "pre": [],
+  "args": {
+   "op": "bind",
+   "project_id": "01a02cff-3a97-7323-a2ee-04faaded8f9e",
+   "node_id": "01a02cff-3c6f-7928-b013-202fddf9746d",
+   "motif_id": "01a02cff-3b8e-7a58-91ab-879e4cc5fbce"
+  },
+  "first": [
+   "refused",
+   "MCP composition_motif_bind_edit error: Error executing tool composition_motif_bind_edit: not found or not accessible"
+  ],
+  "second": [
+   "refused",
+   "MCP composition_motif_bind_edit error: Error executing tool composition_motif_bind_edit: not found or not accessible"
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [
+    "01a02cff-3b8e-7a58-91ab-879e4cc5fbce"
+   ],
+   "book_id": "01a02cff-38c3-730a-bd12-fc28c4a95012",
+   "title": "LOOP-THROWAWAY-idem-composition_motif_bind_edit-94c2e1c0",
+   "tables": {
+    "composition(project)": "01a02cff-3a97-7323-a2ee-04faaded8f9e"
+   }
+  }
+ }
+]
