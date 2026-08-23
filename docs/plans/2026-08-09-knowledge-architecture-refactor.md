@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 89 of 132 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 90 of 133 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (24/48) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,104 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C31 2026-08-24 — **PO chose precision. It is built, and the measurement says the 7B critic cannot audit itself**
+
+  ```
+  historical corpus     16 attributed violations · 9 runs · 3 critics   (n=4 -> n=16)
+  shipped critic        qwen2.5-7b-instruct        the one authors get
+  harness critic        google/gemma-4-26b-a4b     the one C25 scored on
+  composition suite     3793 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **The PO's decision (2026-08-24): try precision first; if it cannot be reached, default the
+  judge OFF behind an explicit user setting on the FE, consistent with the settings GUI that
+  already exists.** This row is the first half. The second half is not owed yet.
+
+  🔴 **Root cause, and it is one clause of the prompt.** `build_critique_prompt` asks for *"a
+  `why` that **describes THAT rule**"*. The judge obeys: of the 16 verdicts, the false ones
+  restate the rule as the reason a passage obeying it is a violation —
+
+  <!-- doc-language-gate: ok -- the judge's own words against the rule's own words ARE the finding; translating either would destroy the verbatim match that makes it visible -->
+  ```
+  RULE  Lâm Trạch là kẻ phản bội Lâm Uyên. Không ai khác là kẻ phản bội…
+  WHY   Lâm Trạch là kẻ phản bội Lâm Uyên và không ai khác là kẻ phản bội…   <- verbatim
+  SPAN  (Lâm Trạch confessing to the trap — the rule being OBEYED)
+  ```
+  <!-- doc-language-gate: end -->
+
+  That clause was added for a real reason (a judge borrowing another rule's reason) and it
+  bought this instead. Adjudicated against the rule texts pulled from `canon_rule`: **3 shapes** —
+  restate-the-rule, invent-a-clause-on-a-real-id (*"…and no one can drain his spiritual energy"*,
+  which R5 does not say), and flag-what-the-rule-permits.
+
+  ⚖️ **The obvious fix FAILED, and that is why it is not what shipped.** Rewriting the clause to
+  demand both halves of a contradiction gave the model a form to fill, and it filled it:
+
+  <!-- doc-language-gate: ok -- the model's verbatim output IS the measurement -->
+  ```
+  treatment  "The rule requires Lâm Trạch to be the betrayer, but the passage shows him as
+              the one who betrayed Lâm Uyên."          <- the rule OBEYED, in contradiction dress
+  also       output language flipped vi -> en
+  ```
+  <!-- doc-language-gate: end -->
+
+  🎯 **What works is a narrow SECOND pass, and both control arms are what make that readable.**
+  One question, one rule, one passage. Planted-vs-clean on one passage differing by a single
+  name (QC-5 arm 1a's own method: the canon antagonist replaced by a character who does not
+  exist, so R1 is false by construction):
+
+  ```
+  verifier        planted (a REAL R1 violation)   clean          historical (14 adjudicated)
+  gemma-4-26b     kept 4/4                        dropped 2/2    dropped 14/14
+  qwen2.5-7b      kept 4/4                        kept 0/3       —
+  span-only/26b   kept 0/3                        —              dropped 11/11
+  ```
+
+  Three rows, three different failures, and only one of them is a filter. The **7B keeps
+  everything**; the **span-only** variant drops everything — and its own reasons said why, which
+  is the finding under the finding: *"trying to resist the L-Field"* contradicts *"Lâm Uyên
+  controls the L-Field"* only once you know who is resisting. **The span is not sufficient
+  evidence for the verdict it carries**, so a span-only criterion cannot pass for a true case.
+
+  ⚠️ **So this helps exactly as far as the configured critic can audit itself, and the row says
+  so rather than implying otherwise.** A book on a 7B critic is left where it was — nothing
+  invented, nothing silently dropped, `violations_unverified` on the envelope. An independent
+  verifier model would need a **7th member of `ModelRole`**, which `model_roles.py` calls *"the
+  one canonical closed set … shared across all three model stores"*, and the provider-gateway
+  invariant bars the cheap alternative (a per-service `*_MODEL` env var). That is a cross-service
+  change and it is the PO's to approve; it is not smuggled in here.
+
+  🧪 **Bites, each landing on exactly one test.**
+
+  ```
+  BITE A  unwire the call from judge_prose   × test_judge_prose_ACTUALLY_CALLS_the_verifier
+  BITE B  fail CLOSED on LLMError            × test_it_fails_OPEN_when_the_verifier_errors
+  BITE C  refuse every verdict               × test_a_confirmed_verdict_SURVIVES
+                                             × ..._still_reaches_the_caller_through_judge_prose
+  ```
+
+  A is the one that matters: a correct filter nothing calls is the shape this plan keeps finding,
+  so the wiring has its own test and B/C are the two control arms — fail-open, and "does not
+  empty every critique".
+
+  📌 **The existing suite caught a real defect in this change and it is worth naming.**
+  `test_the_degrade_critic_shape_carries_every_key_the_success_shape_does` went red: the new key
+  was on the success shape and not on `_empty_critic`, so a consumer reading it would have raised
+  `KeyError` the moment a judge degraded — the exact bug that test documents itself as
+  preventing. Fixed in the same commit, and `violations_unverified` is now stamped **even at
+  zero**, like `violations_dropped` beside it.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3793 passed, 403 skipped, 0
+  failed**. No new gate, so no `--selftest` is owed.
+  **QC (b) live smoke:** **partial, and stated as such.** The MECHANISM was measured live — real
+  LM Studio, the shipped 7B and the 26B, the real chapter-10 revision and the book's six real
+  `canon_rule` rows — and the wiring is proven by test. What was NOT done is a full authoring-flow
+  re-run against a rebuilt composition image; that is what would close QC-5 itself, and it is the
+  next step rather than a claim made here.
+  **QC (c) real data:** the 16 violations and their rule texts, read from `authoring_run_units`
+  and `canon_rule` on the isolated Postgres; the planted/clean arms above; the model identities
+  resolved from `user_models`.
   ### 🔻 QC-5 C29 2026-08-23 — **the re-score, run TWICE: my first one measured the wrong critic**
 
   ```
@@ -12757,6 +12855,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | The per-rule verdict channel is what made this visible at all: the four dimension scores are identical across the two arms, so anything keyed on the score alone reads them as the same passage. §2.3's *"`violations[]` keyed by `rule_id` is the enforceable output"* is why the difference is inspectable. |
   | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
   | **Re-evidenced on the SHIPPED critic 2026-08-23 (C30)** | C26's n=4 was taken on the harness critic (`51ea9fd7…`) — the one `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` says the acceptance should never have been scored on. Re-adjudicated on the book's critic (`019eb620…`), the one authors get: **4 attributed verdicts, 4 false, 0 sound** (C26 was 3 false, 1 sound). The shape is worse, not better: two of the four cite a **real** rule id and invent its CONTENT, so `map_rule_tokens` cannot drop them the way it drops an invented id. The decision is unchanged in kind and no longer rests on verdicts from a critic users do not get. |
+  | **DECIDED BY THE PO 2026-08-24 (C31)** | **Spend on precision first**; if precision cannot be reached, default the judge OFF behind an explicit user-controlled setting on the FE, consistent with the settings GUI that already exists — *"already have strong GUI setting for user, just allow they choice"* — and build that surface immediately if it is missing or inconsistent. C31 delivers the first half: the root cause is one prompt clause (`a why that describes THAT rule`), the obvious prompt rewrite FAILED (the model fills the contradiction template with the rule being obeyed), and a narrow passage-aware SECOND pass keeps a planted violation 4/4 while dropping 2/2 clean and 14/14 historical false positives — **on a 26B verifier**. The shipped 7B critic keeps 0/3, so it cannot audit itself. Remaining: an end-to-end re-run against a rebuilt image, and the PO call on whether an independent verifier model justifies a 7th `ModelRole` (a closed set shared across three model stores). |
   | **Retry when** | ⚠️ **INVESTIGATED 2026-08-21 (C26), per the PO's *investigate before deciding*.** Four attributed verdicts adjudicated by hand against the rule texts and quoted spans: **3 false, 1 sound**. The false ones share one shape — *the stated reason contradicts the span it cites or the rule it names* (a simile read as a factual claim; a non-sequitur; a span that obeys the rule it is flagged under). The sound one is the `flow_control` R5 verdict, which is what C25's clause 2 rests on — checked first, so C25 stands. **The decision is now informed and still owed:** accept this as the local ceiling knowing this judge is ON by default, or spend on precision. n=4 is small and self-selected (they are the verdicts already in evidence), which the PO should weigh. |
 
   ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**

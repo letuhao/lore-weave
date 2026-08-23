@@ -251,6 +251,97 @@ def build_critique_prompt(
     return system, user
 
 
+VERIFIER_SYSTEM = (
+    "You audit a proposed canon violation for a work of fiction. You are given one canon RULE, "
+    "the SPAN a critic flagged, and the full PASSAGE for context. "
+    "Answer true ONLY if the passage makes the rule false. "
+    "Answer false if the passage is consistent with the rule, if the rule does not speak to "
+    "what the passage describes, or if the claim would need a requirement the RULE TEXT does "
+    "not literally state. Restating the rule is not a contradiction. "
+    'Return ONLY {"contradicts": true|false, "reason": "<one short sentence>"}.'
+)
+
+
+async def verify_violations(
+    judge: LLMClient, *, user_id: str, model_source: str, model_ref: str, passage: str,
+    violations: list[dict[str, Any]], active_rules: list[dict[str, Any]],
+    trace_id: str | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Second, NARROW pass per attributed violation: does the passage make the rule FALSE?
+
+    🔴 **The critique call is the wrong shape for this judgement and the measurement says so.**
+    It asks one model to score four dimensions and find violations across a whole chapter at
+    once, and `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE` is what comes back: of 14 attributed
+    violations adjudicated by hand against their rule texts, the false ones restate the rule
+    ("Lam Trach is the betrayer and no one else" as the REASON a passage depicting exactly that
+    is a violation), invent a clause and hang it on a real rule id ("...and no one can drain his
+    spiritual energy", which R5 does not say), or flag prose the rule plainly permits.
+
+    Asking one question about one rule and one passage is a task the same model can do. Measured
+    on the arms below, planted-vs-clean on one passage differing by a single name:
+
+        verifier      planted (a real R1 violation)   clean        historical false
+        gemma-4-26b   kept 4/4                        dropped 2/2  dropped 14/14
+        qwen2.5-7b    kept 4/4                        kept 0/3     -
+
+    ⚠️ So this HELPS exactly as far as the configured critic can audit itself, and the 7B row is
+    why that is stated rather than assumed: it says `true` to everything, which is the mirror of
+    the span-only variant that said `false` to everything. Neither is a filter. A book whose
+    critic cannot discriminate is left where it was — no verdict is invented and none is
+    silently dropped — and `violations_unverified` says so on the envelope.
+
+    ⚖️ **The span alone is NOT enough context, measured before this shape was chosen.** A
+    span-only verifier scored 0/3 on the sound verdicts, and its own reasons said why: "trying
+    to resist the L-Field" contradicts "Lâm Uyên controls the L-Field" only once you know who
+    is resisting. A criterion that cannot pass for a true case is not a filter.
+
+    Fails OPEN, per CC4: a verifier that errors must not delete a finding. Returns
+    `(kept, dropped_reasons)`.
+    """
+    by_id = {str(r.get("rule_id")): str(r.get("text", "")) for r in active_rules}
+    kept: list[dict[str, Any]] = []
+    dropped: list[str] = []
+    for v in violations:
+        rule_text = by_id.get(str(v.get("rule_id")), "")
+        if not rule_text:
+            # Nothing to audit against. `map_rule_tokens` already refuses unattributable
+            # verdicts, so this is belt-and-braces rather than a live branch — and it keeps
+            # rather than drops, because an unauditable verdict is not a disproven one.
+            kept.append(v)
+            continue
+        user = (f"RULE:{chr(10)}{rule_text}{chr(10)}{chr(10)}FLAGGED SPAN:{chr(10)}"
+                f"{v.get('span', '')}{chr(10)}{chr(10)}PASSAGE:{chr(10)}{passage}")
+        try:
+            job = await judge.submit_and_wait(
+                user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
+                input={
+                    "messages": [{"role": "system", "content": VERIFIER_SYSTEM},
+                                 {"role": "user", "content": user}],
+                    "response_format": {"type": "text"}, "temperature": 0.0, "max_tokens": 400,
+                    **no_thinking_fields(),
+                },
+                job_meta={"usage_purpose": "prose_critic_verify", "extractor": "verify_violations"},
+                trace_id=trace_id, cancel_check=cancel_check,
+            )
+        except LLMError as exc:
+            logger.warning("verify_violations degraded (LLM error), KEEPING the verdict: %s", exc)
+            kept.append(v)
+            continue
+        if job.status != "completed":
+            kept.append(v)
+            continue
+        parsed = parse_critique_json(extract_judge_content(job.result))
+        if not isinstance(parsed, dict) or "contradicts" not in parsed:
+            # Unparsable is not a refutation. Same reasoning as the LLMError arm.
+            kept.append(v)
+            continue
+        if parsed.get("contradicts"):
+            kept.append(v)
+        else:
+            dropped.append(f"{v.get('rule_id')}: {str(parsed.get('reason', ''))[:160]}")
+    return kept, dropped
+
+
 async def judge_prose(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
@@ -342,6 +433,34 @@ async def judge_prose(
             dropped, len(raw_violations),
             [str(v.get("rule_id"))[:24] for v in raw_violations], len(active_rules),
         )
+    # ── The verdict is now ATTRIBUTABLE. Whether it is TRUE is a different question ──────
+    #
+    # `map_rule_tokens` proves the judge answered about a rule we sent. It cannot tell whether
+    # the passage actually contradicts that rule, and `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-
+    # PROSE` is the gap: 14 attributed violations adjudicated by hand, and the false ones cite a
+    # REAL rule id while inventing its content — which is exactly the class attribution cannot
+    # catch, by construction. The narrow second pass is measured in `verify_violations`.
+    # Always stamped, even at zero — `violations_dropped` beside it is, and a key that
+    # appears only when it is non-zero makes every consumer write a `.get`, which is how
+    # a missing field and a clean result become the same observation.
+    crit["violations_unverified"] = 0
+    if crit["violations"]:
+        verified, unverified = await verify_violations(
+            judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            passage=passage, violations=crit["violations"], active_rules=active_rules,
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+        crit["violations"] = verified
+        # Counted and NAMED, for the reason every other drop on this envelope is: a verdict that
+        # vanished silently turns "the judge was refuted" into "the passage is clean", and those
+        # need opposite responses. The reasons are the verifier's own words, bounded.
+        crit["violations_unverified"] = len(unverified)
+        if unverified:
+            crit["violations_unverified_reasons"] = unverified[:5]
+            logger.info(
+                "judge_prose verifier refuted %d of %d attributed verdict(s)",
+                len(unverified), len(unverified) + len(verified),
+            )
     # HOW MANY RULES THE JUDGE WAS ACTUALLY GIVEN, stamped here rather than by the caller.
     # `authoring_run_service` has added this since C5 and `quality_report` never did, so the
     # SAME empty `violations: []` was self-explaining on one seam and mute on the other — and

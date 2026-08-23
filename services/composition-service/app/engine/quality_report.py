@@ -68,6 +68,12 @@ def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
         "violations_dropped": 0,
         "violations_raw_count": 0,
         "violations_dropped_labels": [],
+        # QC-5: the verification pass adds a FIFTH, for the same reason and caught by the
+        # same paired test — which is the point of comparing key SETS rather than a
+        # literal. A consumer reading `violations_unverified` on a healthy judge would
+        # otherwise raise KeyError the moment one degraded.
+        "violations_unverified": 0,
+        "violations_unverified_reasons": [],
         "active_rule_count": 0,
         "present_fact_count": 0,
         "error": err,
