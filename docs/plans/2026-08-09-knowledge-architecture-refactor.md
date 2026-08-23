@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 90 of 133 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 91 of 134 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (24/48) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (25/49) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,72 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C32 2026-08-24 — **the critic's OFF switch existed and no author could reach it**
+
+  ```
+  critic_enabled   run param, default TRUE, since D5
+  writers in frontend/src                                    0   measured, not assumed
+  tier before this row      run param only  ->  per-book work.settings, params override
+  composition 3793 -> 3799 passed · frontend/composition 1068 passed (155 files)
+  ```
+
+  📐 **The PO's fallback was *"allow user to control that setting, like other config — already
+  have strong GUI setting for user, just allow they choice"*.** Measured what the GUI already
+  had: `CompositionSettingsView` lets an author pick the critic's **model** (`critic_model_ref`
+  + `critic_model_source`, S6) and the assembly mode and the narrative-thread toggle. What it
+  could not do is turn the critic **off** — `critic_enabled` is read at
+  `authoring_run_service.py:1452` as a RUN param and written by **nothing** in `frontend/src`.
+  So the one control an author would reach for after reading C31's false positives was the one
+  control that did not exist.
+
+  ⚖️ **A switch has a TIER before a name (rule 4), and the tier is the Work.** Beside
+  `critic_model_ref`, read the same way: **run params override the per-book setting**, which is
+  exactly the precedence `resolve_critic` uses for the model. One concept, one precedence order —
+  and an autonomous run can still force the net on or off for a single run without editing the
+  book.
+
+  🎯 **Read where the settings already are.** `run_driver` keeps its `params.critic_enabled`
+  gate (the run-scoped override, and the cheap one); the BOOK-scoped read lives in
+  `EngineCriticSeam._critique`, the first point that has `work_settings` — reading it in the
+  driver would cost a Work load per unit for a value that changes almost never. A disabled book
+  returns `severity="ok"`, not `warn`: a tier the author deliberately turned off is not a problem
+  with the run, and a `warn` there would trip the breakers and reports built to notice trouble.
+
+  🔴 **The default is UNCHANGED, deliberately, and that is the honest half.** C31 showed precision
+  is reachable — the verifier keeps a planted violation 4/4 and drops 16/16 false ones — **but
+  only when the configured critic can audit itself**, which the shipped `qwen2.5-7b-instruct`
+  cannot. Flipping the shipped default to OFF is a product decision informed by that, not a
+  consequence of adding the control, so this row adds the control and leaves the default where
+  it was. `critic_enabled !== false` on both sides, so a book saved before this control existed
+  reads identically to one saved after it.
+
+  🧪 **Four bites, two per side, each landing on one test.**
+
+  ```
+  BITE D  the checkbox's onChange writes nothing      × ..._WRITES_critic_enabled_when_toggled
+  BITE E  default to `=== true` instead of `!== false`
+          × is CHECKED for a book that has never set it   (+ the write test)
+  BITE F  delete the branch from `_critique`          × test_critique_HONOURS_the_books_off_switch
+          ...and the control arm stayed GREEN, which is what says F caught the wiring
+  BITE G  make `critic_enabled` ignore run params     × ..._OVERRIDE_the_book_setting_in_both_directions
+  ```
+
+  E is the one worth naming: `?? true` and `!== false` read the same until a book has no key at
+  all, which is **every book that exists today**. F is the wiring bite — a resolver nothing calls
+  is the shape this plan keeps finding, so `_critique` is driven for real, network-free: with the
+  switch ON and no model to resolve it runs PAST the branch and stops at the next guard
+  (*"params.model_ref required"*), which a guard that always skipped would never reach.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3799 passed, 403 skipped, 0
+  failed**; `frontend/src/features/composition` **1068 passed, 155 files**; `tsc --noEmit` exit 0.
+  No new gate, so no `--selftest` is owed.
+  **QC (b) live smoke:** N/A for the seam — the setting is resolved in-process and its wiring is
+  driven by a real `_critique` call rather than a mock at the chokepoint. The end-to-end studio
+  drive against a rebuilt image is still what would close QC-5, and it is owed by C31, not by
+  this row.
+  **QC (c) real data:** N/A — produces no data. The measured figure is the one that motivated the
+  row: **0** writers of `critic_enabled` in `frontend/src`.
   ---
   ### ✅ QC-5 C31 2026-08-24 — **PO chose precision. It is built, and the measurement says the 7B critic cannot audit itself**
 

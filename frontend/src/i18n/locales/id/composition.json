@@ -402,7 +402,9 @@
     "criticModel": "Model kritikus (juri independen)",
     "criticModelHint": "Model yang BERBEDA akan menilai setiap draf berdasarkan kanon Anda, dan dapat memblokir bab yang bertentangan dengannya. Tanpa model ini, tidak ada yang memeriksa prosa secara independen — sebuah model tidak dapat menilai karyanya sendiri.",
     "criticSameAsDrafter": "Ini adalah model yang sama dengan penulis prosa, sehingga ia akan menilai karyanya sendiri — server akan menolaknya dan melewati kritik. Pilih model yang berbeda.",
-    "noCritic": "Tanpa kritikus — draf tidak dinilai secara mandiri"
+    "noCritic": "Tanpa kritikus — draf tidak dinilai secara mandiri",
+    "criticEnabled": "Nilai setiap draf berdasarkan kanon",
+    "criticEnabledHint": "Aktif secara default. Kritikus dapat menghentikan proses jika memberikan vonis yang berat. Model kritikus kecil mungkin melaporkan kontradiksi yang sebenarnya tidak ada, jadi matikan fitur ini jika catatan yang diberikan hanya berupa gangguan — draf tidak akan terpengaruh dalam kondisi apa pun."
   },
   "loadingStats": "Memuat statistik kualitas...",
   "statsUnavailable": "Statistik kualitas tidak tersedia.",

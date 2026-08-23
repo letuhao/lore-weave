@@ -49,6 +49,7 @@ from typing import Any
 
 __all__ = [
     "CriticStatus", "CriticResolution", "resolve_critic", "resolve_critic_refs",
+    "critic_enabled",
     "resolve_critic_verified",
 ]
 
@@ -99,6 +100,33 @@ class CriticResolution:
     def distinct(self) -> bool:
         """True ⇒ an independent model will judge. The predicate the seven sites hand-rolled."""
         return self.status is CriticStatus.CONFIGURED
+
+
+def critic_enabled(settings: Mapping[str, Any] | None, params: Mapping[str, Any] | None) -> bool:
+    """Is the prose critic on for this run? Run params OVERRIDE the Work's setting.
+
+    🔴 **The toggle existed and no user could reach it.** `run.params["critic_enabled"]` has
+    defaulted TRUE since D5 and is written by nothing in `frontend/src` — measured — so an
+    author could choose the critic's MODEL in the settings GUI but could not turn the critic
+    off. That matters because `judge_prose` is on by default and reaches authors, and QC-5's
+    C31 measured what it says when the configured critic is small: of 16 attributed violations
+    adjudicated against their rule texts, the false ones restate the rule as the reason a
+    passage obeying it is a violation.
+
+    The TIER is the per-book Work setting, beside `critic_model_ref` (rule 4: a switch has a
+    tier before a name). Run params stay an override so an autonomous run can still force the
+    net on or off for one run without editing the book — the same params-override-settings
+    shape `resolve_critic` uses for the model, and for the same reason: one concept, one
+    precedence order.
+
+    Default TRUE, deliberately: flipping the shipped default is a product decision, not a
+    consequence of adding the control.
+    """
+    p = params or {}
+    if "critic_enabled" in p:
+        return bool(p["critic_enabled"])
+    val = (settings or {}).get("critic_enabled")
+    return True if val is None else bool(val)
 
 
 def resolve_critic(settings: Mapping[str, Any] | None, drafter_ref: Any) -> CriticResolution:

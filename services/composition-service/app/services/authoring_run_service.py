@@ -655,7 +655,7 @@ class EngineCriticSeam:
         from app.db.repositories.canon_rules import CanonRulesRepo
         from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
-        from app.engine.critic_policy import resolve_critic_refs
+        from app.engine.critic_policy import critic_enabled, resolve_critic_refs
         from app.engine.model_roles import role_ref
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
@@ -690,6 +690,20 @@ class EngineCriticSeam:
         except Exception:  # noqa: BLE001 — best-effort, exactly as before
             logger.debug("critic Work resolve failed", exc_info=True)
         work_settings = getattr(marked_work, "settings", None) or {}
+        # ── the per-book OFF switch, read where the Work's settings already are ──────────
+        #
+        # `run_driver` gates on `params.critic_enabled` before it ever calls this, which is the
+        # run-scoped override. The BOOK-scoped setting has to be read here, because this is the
+        # first point that has `work_settings` — and reading it in the driver would cost a Work
+        # load per unit for a value that almost never changes.
+        #
+        # `ok` rather than `warn`: a tier the author deliberately turned off is not a problem
+        # with the run, and a warn here would trip breakers and reports built to notice trouble.
+        if not critic_enabled(work_settings, params):
+            return CriticVerdict(
+                severity="ok",
+                summary="critic skipped (turned off for this book)",
+            )
 
         # C28 — SETTINGS FIRST, run params as an OVERRIDE.
         #

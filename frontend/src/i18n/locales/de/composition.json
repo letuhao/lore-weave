@@ -402,7 +402,9 @@
     "criticModel": "Kritiker-Modell (unabhängiger Richter)",
     "criticModelHint": "Ein ANDERES Modell bewertet jeden Entwurf anhand Ihres Kanons und kann ein Kapitel blockieren, das diesem widerspricht. Ohne ein solches Modell wird der Text nicht unabhängig auf seinen Stil geprüft – ein Modell kann seine eigene Arbeit nicht bewerten.",
     "criticSameAsDrafter": "Dies ist dasselbe Modell, das den Text schreibt; es würde also seine eigene Arbeit bewerten – der Server wird dies ablehnen und die Kritik überspringen. Wählen Sie ein anderes Modell.",
-    "noCritic": "Keine Kritik – Entwürfe werden nicht separat bewertet"
+    "noCritic": "Keine Kritik – Entwürfe werden nicht separat bewertet",
+    "criticEnabled": "Jeden Entwurf am Kanon messen",
+    "criticEnabledHint": "Standardmäßig aktiviert. Der Kritiker kann einen Durchlauf bei einem schwerwiegenden Urteil unterbrechen. Ein kleines Kritiker-Modell meldet unter Umständen Widersprüche, die nicht existieren; schalten Sie dies aus, wenn die Anmerkungen nur Rauschen sind – die Entwürfe bleiben in jedem Fall unbeeinflusst."
   },
   "loadingStats": "Qualitätsstatistiken werden geladen…",
   "statsUnavailable": "Qualitätsstatistiken nicht verfügbar.",

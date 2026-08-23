@@ -402,7 +402,9 @@
     "criticModel": "Eleştirmen modeli (bağımsız yargıç)",
     "criticModelHint": "Farklı bir model, her taslağı kanonunuza göre puanlar ve kanonla çelişen bir bölümü engelleyebilir. Bir model olmazsa, metni bağımsız olarak kontrol eden hiçbir şey olmaz; bir model kendi yazdığı işi puanlayamaz.",
     "criticSameAsDrafter": "Bu, metni yazan modelin aynısıdır; dolayısıyla kendi yazdığı işi puanlayacaktır — sunucu bunu reddedecek ve eleştiriyi atlayacaktır. Farklı bir model seçin.",
-    "noCritic": "Eleştirmen yok — taslaklar bağımsız olarak puanlanmaz"
+    "noCritic": "Eleştirmen yok — taslaklar bağımsız olarak puanlanmaz",
+    "criticEnabled": "Her taslağı kanona göre değerlendir",
+    "criticEnabledHint": "Varsayılan olarak açıktır. Eleştirmen, ağır bir hüküm durumunda akışı durdurabilir. Küçük bir eleştirmen modeli, aslında olmayan çelişkileri rapor edebilir; bu nedenle notlar gürültüden ibaretse bunu kapatın — her iki durumda da taslaklar etkilenmez."
   },
   "loadingStats": "Kalite yükleniyor…",
   "statsUnavailable": "Kalite istatistikleri kullanılamıyor.",

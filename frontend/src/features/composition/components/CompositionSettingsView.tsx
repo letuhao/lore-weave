@@ -38,6 +38,10 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
   // silently runs ungraded. The backend's `critic_policy` is the authority — this is the
   // affordance that lets the warning it returns be acted on.
   const criticIsDrafter = criticModel !== '' && criticModel === defaultModel;
+  // Default TRUE, matching the server: `critic_enabled(settings, params)` treats an absent
+  // value as on. `!== false` rather than `?? true` because a book saved before this control
+  // existed has no key at all, and those two must read the same.
+  const criticEnabled = settings.critic_enabled !== false;
   const patch = (p: Record<string, unknown>) =>
     setSettings.mutate({ projectId, currentSettings: settings, patch: p });
 
@@ -93,6 +97,30 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
             {t('workSettings.criticSameAsDrafter', { defaultValue: 'This is the same model that writes the prose, so it would be grading its own work — the server will refuse it and skip the critique. Pick a different model.' })}
           </span>
         )}
+      </label>
+
+      {/* critic ON/OFF — QC-5 C32. The toggle EXISTED and no user could reach it:
+          `run.params.critic_enabled` has defaulted TRUE since D5 and was written by nothing in
+          `frontend/src`, so an author could choose the critic's MODEL above and could not turn
+          the critic off. C31 measured why that matters — on a small critic the judge flags prose
+          that CONFORMS, citing a rule the quoted span agrees with, and it is on by default.
+          Written as a Work setting (the same tier as the model above); run params still override
+          it for a single run. Unchecked only when explicitly false, so today's default is kept. */}
+      <label className="flex cursor-pointer items-start gap-2">
+        <input
+          type="checkbox"
+          data-testid="composition-settings-critic-enabled"
+          className="mt-0.5"
+          checked={criticEnabled}
+          disabled={setSettings.isPending}
+          onChange={(e) => patch({ critic_enabled: e.target.checked })}
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{t('workSettings.criticEnabled', { defaultValue: 'Grade each draft against canon' })}</span>
+          <span className="text-xs text-neutral-500">
+            {t('workSettings.criticEnabledHint', { defaultValue: 'On by default. The critic can pause a run on a severe verdict. A small critic model reports contradictions that are not there, so turn this off if the notes are noise — the drafts are unaffected either way.' })}
+          </span>
+        </span>
       </label>
 
       {/* assembly mode — per_scene (granular) vs chapter (single-pass, more coherent long-form) */}

@@ -402,7 +402,9 @@
     "criticModel": "Modelo crítico (juez independiente)",
     "criticModelHint": "Un modelo DIFERENTE califica cada borrador según tu canon y puede bloquear un capítulo que lo contradiga. Sin uno, nada verifica la prosa de forma independiente; un modelo no puede calificar su propio trabajo.",
     "criticSameAsDrafter": "Este es el mismo modelo que escribe la prosa, por lo que estaría calificando su propio trabajo; el servidor lo rechazará y omitirá la crítica. Elige un modelo distinto.",
-    "noCritic": "Sin crítica: los borradores no se califican de forma independiente"
+    "noCritic": "Sin crítica: los borradores no se califican de forma independiente",
+    "criticEnabled": "Calificar cada borrador según el canon",
+    "criticEnabledHint": "Activado por defecto. El crítico puede pausar una ejecución ante un veredicto severo. Un modelo de crítico pequeño puede reportar contradicciones inexistentes, así que desactívalo si las notas son ruido; los borradores no se verán afectados de cualquier manera."
   },
   "loadingStats": "Cargando calidad...",
   "statsUnavailable": "Estadísticas de calidad no disponibles.",

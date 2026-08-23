@@ -402,7 +402,9 @@
     "criticModel": "Model pengkritik (hakim bebas)",
     "criticModelHint": "Model yang BERBEZA akan menilai setiap draf berdasarkan kanon anda, dan boleh menyekat bab yang bercanggah dengannya. Tanpa model ini, tiada apa yang menyemak prosa secara bebas — sesuatu model tidak boleh menilai hasil kerjanya sendiri.",
     "criticSameAsDrafter": "Ini adalah model yang sama yang menulis prosa, jadi ia akan menilai hasil kerjanya sendiri — pelayan akan menolaknya dan melangkau kritikan tersebut. Pilih model yang berbeza.",
-    "noCritic": "Tiada pengkritik — draf tidak dinilai secara berasingan"
+    "noCritic": "Tiada pengkritik — draf tidak dinilai secara berasingan",
+    "criticEnabled": "Gredkan setiap draf berdasarkan kanon",
+    "criticEnabledHint": "Diaktifkan secara lalai. Pengkritik boleh menghentikan proses jika terdapat keputusan yang serius. Model pengkritik kecil mungkin melaporkan percanggahan yang tidak wujud, jadi matikan fungsi ini jika nota yang diberikan tidak relevan — draf anda tidak akan terjejas dalam apa jua keadaan."
   },
   "loadingStats": "Memuatkan kualiti…",
   "statsUnavailable": "Statistik kualiti tidak tersedia.",

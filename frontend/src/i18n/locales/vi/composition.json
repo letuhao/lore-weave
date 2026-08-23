@@ -402,7 +402,9 @@
     "criticModel": "Mô hình phê bình (giám khảo độc lập)",
     "criticModelHint": "Một mô hình KHÁC sẽ chấm điểm từng bản thảo dựa trên hệ thống thiết lập của bạn, và có thể chặn một chương nếu nội dung mâu thuẫn với thiết lập đó. Nếu không có mô hình này, sẽ không có thực thể nào kiểm tra văn phong một cách độc lập — một mô hình không thể tự chấm điểm chính tác phẩm của mình.",
     "criticSameAsDrafter": "Đây là cùng một mô hình đã viết văn bản, vì vậy nó sẽ tự chấm điểm chính mình — máy chủ sẽ từ chối yêu cầu này và bỏ qua phần phê bình. Vui lòng chọn một mô hình khác.",
-    "noCritic": "Không có phê bình — bản thảo không được chấm điểm độc lập"
+    "noCritic": "Không có phê bình — bản thảo không được chấm điểm độc lập",
+    "criticEnabled": "Đánh giá từng bản thảo dựa trên nguyên tác",
+    "criticEnabledHint": "Mặc định ở chế độ Bật. Trình phê bình có thể tạm dừng quá trình chạy nếu đưa ra phán quyết nghiêm trọng. Một mô hình phê bình nhỏ có thể báo cáo các mâu thuẫn không có thực, vì vậy hãy tắt tùy chọn này nếu các ghi chú là nhiễu — bản thảo sẽ không bị ảnh hưởng dù bạn chọn thế nào."
   },
   "loadingStats": "Đang tải chất lượng…",
   "statsUnavailable": "Không có thống kê chất lượng.",

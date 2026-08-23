@@ -1966,3 +1966,65 @@ def test_fake_generation_jobs_repo_get_mirrors_real_signature():
     real = list(inspect.signature(GenerationJobsRepo.get).parameters)
     fake = list(inspect.signature(FakeGenerationJobsRepo.get).parameters)
     assert real == fake == ["self", "job_id"]
+
+# ── QC-5 C32: the book's OFF switch, and that `_critique` actually honours it ─────────────
+
+
+def _seam():
+    from app.services.authoring_run_service import EngineCriticSeam
+    return EngineCriticSeam()
+
+
+def _work_with(settings):
+    class _Work:
+        pass
+    w = _Work()
+    w.settings = settings
+    return w
+
+
+def _patch_work(monkeypatch, work):
+    """Make `WorksRepo(get_pool()).resolve_by_book` return one Work, network-free."""
+    import app.db.pool as pool_mod
+    import app.db.repositories.works as works_mod
+
+    class _Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        async def resolve_by_book(self, *_a, **_k):
+            return [work]
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _Repo)
+    monkeypatch.setattr(pool_mod, "get_pool", lambda: object())
+
+
+@pytest.mark.asyncio
+async def test_critique_HONOURS_the_books_off_switch(monkeypatch):
+    """🔴 The WIRING, not the rule.
+
+    `critic_enabled` passing its own tests proves nothing about whether `_critique` reads it —
+    a resolver nothing calls is the shape this plan keeps finding. This drives the real method
+    and asserts it returns before resolving a model or fetching a draft.
+    """
+    seam = _seam()
+    _patch_work(monkeypatch, _work_with({"critic_enabled": False}))
+    v = await seam._critique(created_by=OWNER, book_id=BOOK, chapter_id=uuid.uuid4(), params={})
+    assert v.severity == "ok", "a tier the author turned off is not a problem with the run"
+    assert "turned off" in v.summary
+
+
+@pytest.mark.asyncio
+async def test_critique_does_NOT_short_circuit_when_the_book_leaves_it_on(monkeypatch):
+    """The control arm, and it is network-free by construction: with the switch on and no model
+    to resolve, `_critique` runs PAST the off-switch branch and stops at the next guard. A guard
+    that returned the skip verdict unconditionally would pass the test above and silently
+    disable every critique in the product."""
+    seam = _seam()
+    _patch_work(monkeypatch, _work_with({}))
+    v = await seam._critique(created_by=OWNER, book_id=BOOK, chapter_id=uuid.uuid4(), params={})
+    assert "turned off" not in v.summary
+    assert "model_ref" in v.summary, (
+        "execution must reach the model-resolution guard, which is the first thing AFTER the "
+        "off-switch branch"
+    )

@@ -356,3 +356,36 @@ def test_a_map_critic_that_IS_the_drafter_is_still_refused():
     r = resolve_critic(s, "same")
     assert r.status is CriticStatus.SAME_AS_DRAFTER
     assert (r.source, r.ref) == (None, None), "a refused critic must not leak its model"
+
+# ── critic_enabled: the per-book OFF switch (QC-5 C32) ───────────────────────────────────
+
+def test_critic_is_ON_when_nothing_says_otherwise():
+    """The shipped default, and the control arm for every assertion below: a resolver that
+    returned False for an unconfigured book would silently disable the critic for every book
+    saved before this control existed."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({}, {}) is True
+    assert critic_enabled(None, None) is True
+
+
+def test_the_BOOK_setting_can_turn_it_off():
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {}) is False
+
+
+def test_run_params_OVERRIDE_the_book_setting_in_both_directions():
+    """Params-override-settings is the same precedence `resolve_critic` uses for the MODEL, and
+    it has to hold both ways: an autonomous run forcing the net ON for a book that turned it
+    off, and a single run turning it off without editing the book."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {"critic_enabled": True}) is True
+    assert critic_enabled({"critic_enabled": True}, {"critic_enabled": False}) is False
+
+
+def test_an_ABSENT_param_does_not_override_anything():
+    """`in` rather than truthiness: `params.get("critic_enabled")` returning None for an absent
+    key and False for an explicit off are different states, and reading them the same way would
+    make every run ignore the book's setting."""
+    from app.engine.critic_policy import critic_enabled
+    assert critic_enabled({"critic_enabled": False}, {"model_ref": "m"}) is False
+    assert critic_enabled({"critic_enabled": True}, {"model_ref": "m"}) is True

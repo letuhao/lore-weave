@@ -402,7 +402,9 @@
     "criticModel": "Modelo crítico (juiz independente)",
     "criticModelHint": "Um modelo DIFERENTE avalia cada rascunho em relação ao seu cânone e pode bloquear um capítulo que o contradiga. Sem um, nada verifica a prosa de forma independente — um modelo não pode avaliar o próprio trabalho.",
     "criticSameAsDrafter": "Este é o mesmo modelo que escreve a prosa, portanto, ele estaria avaliando o próprio trabalho — o servidor recusará a ação e pulará a crítica. Escolha um modelo diferente.",
-    "noCritic": "Sem crítica — rascunhos não recebem notas independentes"
+    "noCritic": "Sem crítica — rascunhos não recebem notas independentes",
+    "criticEnabled": "Avaliar cada rascunho com base no cânone",
+    "criticEnabledHint": "Ativado por padrão. O crítico pode pausar uma execução ao emitir um veredito severo. Um modelo de crítica pequeno pode relatar contradições inexistentes; desative esta opção se as notas forem ruído — os rascunhos não são afetados de qualquer maneira."
   },
   "loadingStats": "Carregando estatísticas...",
   "statsUnavailable": "Estatísticas de qualidade indisponíveis.",
