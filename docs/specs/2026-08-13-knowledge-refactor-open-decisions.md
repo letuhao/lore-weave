@@ -961,11 +961,20 @@ for is of the two BITEMPORAL IMPLEMENTATIONS onto one substrate kind, and AGE-on
 that substrate: both halves are now Postgres, both speak the same bitemporal rules, and T46f
 closed the capability gap that made the KG the weaker side.
 
-⛔ **The ONE input that is genuinely a PO call, stated narrowly so it cannot inflate:** whether
-the AGE graph stays on its own `knowledge-pg` instance or moves onto the shared `postgres`. That
-is an operational question — extensions, resource profile, backup and restore blast radius — and
-it is not derivable from anything in this repo. It does not block the row's correctness; it
-decides where the bytes live.
+✅ **ANSWERED (PO, 2026-08-23): the AGE graph STAYS on `knowledge-pg`.** The question was
+whether it moves onto the shared `postgres` — an operational call about extensions, resource
+profile and backup blast radius, not derivable from this repo.
+
+⚠️ **It came with a constraint that decided most of it.** §3.3c's join reads `anchor_score` from
+the graph for the ids a vector search returned, and both DSNs resolve to ONE database
+(`knowledge-pg:5432/loreweave_knowledge_vectors`). Moving AGE alone would break the join; the
+vectors would have had to move with it. Staying preserves the co-location, isolates the
+AGE/pgvector extension surface, and needs no migration.
+
+🔴 **So the live risk is now a SPLIT, and it fails silently** — a resolver pointed at a database
+with no graph (or an empty one) answers nothing, `glossary.py` maps that to `0.0`, and two-layer
+entity ranking degrades to raw cosine order with no error. `_warn_if_graph_and_vectors_are_split()`
+checks it at startup and names that consequence rather than the mismatch (T46i).
 
 **Not owed, explicitly:** the engine (§8.1, AGE), the fold (§6.3b, out), the precondition
 (T46d, applied), the parity capability (T46f, closed).

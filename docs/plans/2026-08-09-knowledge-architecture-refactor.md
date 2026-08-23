@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**62 of 69 rows done · 7 open · 67 of 114 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 58 of 100 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (22/45) · `T48` (1/2) · `T49`
 
-> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -18031,7 +18031,70 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   axes or introduce a conversion between them, because there is none — a chapter ordinal has no
   wall-clock meaning and vice versa. `T46` merges the STORES; the merged store will hold both
   axes and `AXIS_FOR_SCOPE` is what tells it which one a row is on.
-- [~] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
+- [x] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
+  ---
+  ### ✅ T46i 2026-08-23 — **the topology is DECIDED, and the half a deployment can get wrong is guarded**
+
+  ```
+  §6.3c's one owed input   ->  ANSWERED (PO, 2026-08-23): AGE stays on `knowledge-pg`
+  knowledge unit 4360 -> 4370        startup guard + 10 tests, 2 bites
+  ```
+
+  🎯 **The decision came with a technical constraint attached, and surfacing it was the point
+  of asking.** §3.3c's answer to `D-T25B-PG-ANCHOR-SCORE` — join `anchor_score` from its
+  authority instead of copying it — works only because both DSNs resolve to ONE database:
+
+  ```
+  KNOWLEDGE_AGE_DB_URL     knowledge-pg:5432/loreweave_knowledge_vectors
+  KNOWLEDGE_VECTOR_DB_URL  knowledge-pg:5432/loreweave_knowledge_vectors
+  ```
+
+  Moving AGE alone to the shared `postgres` would have broken the join; the vectors would have
+  had to move with it. **Staying keeps the co-location the resolver depends on, isolates the
+  AGE/pgvector extension surface and its resource profile from the transactional stores, and
+  needs no migration.**
+
+  ⚠️ **So the risk is no longer "which instance" — it is a SPLIT, and it fails silently.** Point
+  the two DSNs at different databases and T25r's resolver queries a database with no graph, or
+  worse an empty one. An empty answer is indistinguishable from *"nothing is anchored"*;
+  `glossary.py` maps it to `0.0`, multiplies every score by it, and two-layer entity ranking
+  degrades to **raw cosine order** with no error anywhere. A decision that depends on a
+  configuration invariant needs that invariant checked, not commented.
+
+  `_warn_if_graph_and_vectors_are_split()` runs at startup beside the existing AGE-DSN check
+  and names the CONSEQUENCE, not the mismatch: an operator reading *"DSNs differ"* has no
+  reason to act; one reading *"entity ranking falls back to raw cosine"* does.
+
+  🔬 **Address, not credentials — and that distinction is most of the test file.** A rotated
+  password, an implied `:5432`, and a differently-cased host are all the SAME database;
+  host, port and database name are the three ways it is genuinely different. Comparing DSN
+  strings would fire on every credential rotation, and a check that cries wolf is one an
+  operator learns to skim.
+
+  ```
+  30  compare the WHOLE DSN (credentials become identity)   RED — 3 of the 7 address cases
+  31  log on the MATCHING case too                          RED — "the matching case is silent"
+  ```
+
+  Bite 31 is the one that keeps the check usable: a guard that logs an error on every healthy
+  boot is a guard nobody reads on the boot that matters.
+
+  **QC (a) gates:** knowledge unit **4370** (+10), all repo gates green.
+  **QC (b) live smoke:** N/A — a startup validation; no request path changes and no service
+  seam is crossed.
+  **QC (c) real data:** the two DSNs quoted above are read from the running container, which is
+  what makes the invariant true TODAY rather than aspirational.
+
+
+  ✅ **CLOSED 2026-08-23.** The machinery half is complete — pin-aware supersession landed
+  (T46f, `bitemporal-parity` 1 → 0 asymmetries), the content-addressed natural key and the
+  half-open interval invariant are present and tested, the `anchor+delta` fold is SCOPED OUT
+  with its measurement (§6.3b), and the `recanon` precondition was applied to the real dev
+  graph (T46d). The last input — TOPOLOGY — was answered by the PO on 2026-08-23 (§6.3c):
+  **AGE stays on `knowledge-pg`**, and T46i guards the co-location the decision rests on.
+  ⚠️ *"Merge the stores"* was decided (§6.3c) NOT to mean one database: each service owns
+  its own, and the merge §6.3 asks for is of the two BITEMPORAL implementations onto one
+  substrate kind — AGE-on-Postgres, which both halves now are.
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   `maintain_chain` (pin-aware supersession), the content-addressed natural key, half-open interval
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite

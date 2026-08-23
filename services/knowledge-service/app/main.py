@@ -126,6 +126,46 @@ async def _close_all_startup_resources() -> None:
             )
 
 
+def _same_database(a: str, b: str) -> bool:
+    """Do two Postgres DSNs address the same host:port/database? Credentials are ignored."""
+    from urllib.parse import urlsplit
+
+    def key(dsn: str):
+        u = urlsplit(dsn)
+        return ((u.hostname or "").lower(), u.port or 5432, (u.path or "").lstrip("/"))
+
+    return key(a) == key(b)
+
+
+def _warn_if_graph_and_vectors_are_split() -> None:
+    """T46/§6.3c — the AGE graph and the vector tables must share ONE database.
+
+    ⚠️ This is a CONFIGURATION invariant with a silent failure mode, which is why it is a
+    startup check and not a comment. §3.3c decided that `anchor_score` is JOINED from its
+    authority rather than copied onto the vector row, and T25r's resolver reads the graph for
+    the ids a vector search returned. Split the two across databases and the resolver queries a
+    database with no graph — or worse, an EMPTY one — and an empty answer is indistinguishable
+    from "nothing is anchored". `glossary.py` then multiplies every score by 0.0 and the
+    two-layer ranking silently degrades to raw cosine order.
+
+    The PO chose (2026-08-23) to keep AGE on its own `knowledge-pg` instance rather than move
+    it to the shared `postgres`, and this is the half of that decision a deployment can get
+    wrong: moving ONE of the two DSNs looks like a tidy-up and breaks the join.
+    """
+    age_dsn = os.environ.get("KNOWLEDGE_AGE_DB_URL", "")
+    vec_dsn = os.environ.get("KNOWLEDGE_VECTOR_DB_URL", "")
+    if not age_dsn or not vec_dsn:
+        return                       # a missing DSN is the other check's business
+    if not _same_database(age_dsn, vec_dsn):
+        logger.error(
+            "T46/§6.3c: KNOWLEDGE_AGE_DB_URL and KNOWLEDGE_VECTOR_DB_URL address DIFFERENT "
+            "databases. The anchor_score resolver (§3.3c) reads the graph for the ids a vector "
+            "search returned, so it will answer NOTHING and two-layer entity ranking will "
+            "silently fall back to raw cosine order. Point both at one database, or move them "
+            "together."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(settings.log_level)
@@ -178,6 +218,7 @@ async def lifespan(app: FastAPI):
                     "KNOWLEDGE_GRAPH_BACKEND=age but KNOWLEDGE_AGE_DB_URL is unset — graph "
                     "reads will refuse. Set the DSN or select neo4j explicitly."
                 )
+            _warn_if_graph_and_vectors_are_split()
         # T25c — publish whether the vector secondary is ARMED, from configuration.
         # `knowledge_vector_dual_write_total` is pre-seeded at import, so it reads 0.0 on
         # an unarmed service exactly as it does on an armed-but-unwritten one; without
