@@ -1709,6 +1709,50 @@ make the critic useless: clause 2 passes, the verification pass removes real fal
 (the invented-clause verdict, 3/3), and the OFF switch and verifier role are shipped and
 user-controllable.
 
+## 13 · The SOAK grant would point dev's graph at an EMPTY store — PO DECISION OWED (T54d, 2026-08-24)
+
+**Measured on the real stack (rule 1), reads only (rule 6).**
+
+```
+dev Neo4j (7688)        Entity 5161 · Event 1186 · Fact 404 · ExtractionSource 172
+                        EVIDENCED_BY 2813 · RELATES_TO 1144 · ABOUT 255 · HAS_CHILD 33
+dev AGE (knowledge-pg)  1 graph registered, 0 graphs with entities, 0 entities
+infra/.env:17           KNOWLEDGE_GRAPH_BACKEND=age
+running container       pre-T54 image: has `neo4j_repos`, NO graph_backend.py, NO age_pool.py
+                        startup log shows ONLY "Neo4j driver initialised" — no "AGE pool ready"
+migration Neo4j -> AGE  none in the tree
+```
+
+**Why dev works today, and why that is the trap.** The running container predates the backend
+flip: it knows one store and it is the one with the data. `infra/.env` already declares `age`.
+The GRANT reads *"SOAK: `docker compose up -d knowledge-service` from infra/. Config is right
+(infra/.env:12); the CONTAINER is stale."* The config **is** right for dual-write. The
+consequence of acting on it is that every graph read moves to a store with nothing in it.
+
+**What is and is not recoverable.** Entities are re-projectable — `project_glossary_entities_to_nodes`
+takes a backend-following session and the glossary is their source. **Events, Facts and the 4,249
+relationships are extraction output with no projection and no migration.** They would not be
+lost from Neo4j, but they would be unreadable by a service pointed at AGE.
+
+**DECISION OWED — the GRANT's premise does not hold, so it is not exercised.** Three options,
+none of which an agent may pick unilaterally because each changes what a running deployment can
+see:
+
+1. **Pin dev to `neo4j`** until a migration exists — one line in `infra/.env`, and the flip waits
+   on the data rather than the code.
+2. **Write the Neo4j → AGE migration** for Event/Fact/relationship, then flip. This is the only
+   option that makes the declared config true.
+3. **Re-extract into AGE** — correct by construction and the most expensive; it also re-spends
+   the LLM budget that produced 1,186 events.
+
+**What this does NOT retract.** T54's code is right and iso-proven: one engine-agnostic layer,
+both halves reading the same store, `DEFAULT_BACKEND = "age"`. §9.2's DDL reasoning stands. The
+gap is not in the architecture — it is that a declared deployment's data never moved, and
+nothing in the tree would have said so.
+
+**Retry/registration:** blocks the SOAK grant. `soak-armed-gate` verifies dual-write ARMING; it
+does not and cannot verify that the store being read has the data.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

@@ -23366,6 +23366,57 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### 🔻 T54d 2026-08-24 — **the live run answers the GOAL's own question: dev is DECLARED on AGE and its AGE store is EMPTY**
+
+  ```
+  dev Neo4j (7688)        Entity 5161 · Event 1186 · Fact 404 · ExtractionSource 172
+                          EVIDENCED_BY 2813 · RELATES_TO 1144 · ABOUT 255 · HAS_CHILD 33
+  dev AGE (knowledge-pg)  1 graph registered · 0 graphs with entities · 0 entities
+  infra/.env:17           KNOWLEDGE_GRAPH_BACKEND=age
+  running container       pre-T54 image — has `neo4j_repos`, NO graph_backend.py, NO age_pool.py
+  migration Neo4j -> AGE  none in the tree
+  ```
+
+  📐 **"The architecture is implemented correctly AND a live run proves it" — this is the live
+  run, and it separates the two halves.** The architecture is right: one engine-agnostic repo
+  layer, both halves reading the same store, `DEFAULT_BACKEND = "age"`, iso-proven. What the
+  live run shows is that **the declared deployment's data never moved.**
+
+  🔴 **Why dev works today, and why that is the trap.** Its container predates the flip — the
+  image still carries `neo4j_repos` and has no `age_pool.py` at all, and its startup log shows
+  **only** *"Neo4j driver initialised"*, never *"AGE pool ready"*. It knows one store and it is
+  the one with the data. `infra/.env` already says `age`.
+
+  ⛔ **So the SOAK grant, executed as written, would point dev's graph reads at an empty store.**
+  The GRANT says *"the CONTAINER is stale"* — true — and *"config is right"* — also true, for
+  dual-write. The consequence it does not state is that restarting moves every graph read to a
+  store containing nothing. Recorded in
+  [`§13`](../specs/2026-08-13-knowledge-refactor-open-decisions.md); **the grant is not
+  exercised.**
+
+  ⚖️ **What is recoverable and what is not, measured rather than assumed.** Entities are
+  re-projectable — `project_glossary_entities_to_nodes` takes a backend-following session and the
+  glossary is their source. **Events, Facts and the 4,249 relationships are extraction output
+  with no projection and no migration.** Nothing is lost from Neo4j; it would simply be
+  unreadable by a service pointed at AGE.
+
+  🎯 **I nearly mis-measured this twice, and both are in the record.** First I queried
+  `infra-postgres-1` for `ag_catalog`, found none, and almost reported "dev has no AGE store" —
+  wrong: AGE lives on `infra-knowledge-pg-1`, exactly as on iso. Then the *iso* picture looked
+  like the same finding until I checked the project ids: all 120 populated iso graphs are
+  `p-…` benchmark fixtures, so iso proves the AGE **path**, not AGE with real traffic.
+
+  ⚠️ **This does NOT retract T54, §9.2, or the iso proof.** The code is right and stays right.
+  The gap is that a declared deployment's data never moved, and **nothing in the tree would have
+  said so** — `soak-armed-gate` verifies dual-write ARMING and cannot verify that the store being
+  read has anything in it.
+
+  **QC (a) gates:** four plan gates green.
+  **QC (b) live smoke:** this row IS a live measurement — both stacks, both stores, the running
+  image's own contents and startup log.
+  **QC (c) real data:** the label/relationship census on dev Neo4j, the graph census on both AGE
+  stores, and the running container's environment and log.
   ### ✅ T48j 2026-08-24 — **the cross-service sweep: my "repo-wide" rename sweep had a FILE-TYPE FILTER**
 
   ```
