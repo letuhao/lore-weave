@@ -1696,8 +1696,21 @@ def _advertise_discovery_tools(
     # the FIRST `td = catalog_index.get(name)` and windows the source after it. Reusing those
     # names here moved that anchor and made an established narrowing-instrumentation test read
     # the wrong block. New code must not shadow an existing guard's anchor.
+    # 🔴 R1 HAS NO OBSERVABILITY, AND THAT COST TWO MEASUREMENTS. The guarantee runs on
+    # every pass and logs nothing, so "the tool the request names is not on the wire" cannot be
+    # told apart from "the rescue fired and something downstream dropped it" — and a tool that IS
+    # advertised cannot be told apart from one the hot seed happened to include anyway. Measured
+    # 2026-08-23 on composition_arc_apply: answerable_tools picks it against the live 303-tool
+    # catalogue (with book_list and composition_arc_suggest), those two were advertised and it was
+    # not, and no evidence on hand could say which stage lost it.
+    #
+    # Logged at INFO with the reason, because a rescue that silently declines is the failure mode:
+    # every `continue` below is a decision to leave the answering tool off the wire.
+    if _answerable:
+        logger.info("R1 answerability: request matches %s", sorted(_answerable))
     for _ans_name in sorted(_answerable):
         if _ans_name in suppress_names:
+            logger.info("R1 answerability: %s NOT forced — suppressed (loop breaker)", _ans_name)
             # A suppressor is a LOOP breaker (repeated failure / repeated read / oneshot). It
             # fires on tools the model is already hammering, so forcing one back would restart
             # the loop this stage exists to stop. Answerability outranks a BUDGET, never a
@@ -1705,10 +1718,16 @@ def _advertise_discovery_tools(
             continue
         _ans_td = catalog_index.get(_ans_name)
         if _ans_td is None:
+            logger.info(
+                "R1 answerability: %s NOT forced — absent from this turn's catalog, so the "
+                "guarantee cannot reach it however well it declared itself", _ans_name,
+            )
             continue
         if restricted and tool_tier(_ans_td) not in ("R", None) and not (
             permission_mode == "plan" and _is_plan_tool(_ans_name)
         ):
+            logger.info("R1 answerability: %s NOT forced — tier %s under %s mode",
+                        _ans_name, tool_tier(_ans_td), permission_mode)
             # ask/plan mode still governs WHAT may run; answerability governs what is VISIBLE.
             continue
         _add(_ans_td)
