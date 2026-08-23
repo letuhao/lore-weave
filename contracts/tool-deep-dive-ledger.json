@@ -3844,6 +3844,13 @@
     "P7-FALSE-ABSENCE",
     "DQ-T38"
    ]
+  },
+  "D-R1-STOPPED-AT-DEPTH-1": {
+   "status": "FIXED 2026-08-23 (services/chat-service/app/services/stream_service.py, the R1 block of _advertise_discovery_tools). Test services/chat-service/tests/test_r1_carries_the_supplier_of_a_required_id.py, proven RED against the original by stashing only that file. Suite 3362 passed, 3 skipped. Measured live at K=5.",
+   "what": "R1 answerability put the tool whose declared vocabulary answers the request on the wire and carried NOTHING that tool needs. A user names a GOAL, not an intermediate step, so a supplier reached the wire only by accident.\n\nNow, when R1 forces a tool, it also forces the tools the contract registry's `argument_emitters` map declares as emitters of that tool's REQUIRED arguments - transitively, bounded by a 4-hop cap and a seen-set against declaration cycles. DECLARED DATA ONLY: never a name, a prefix or a guess, so the surface can only widen where the platform has already written down who supplies what, and a tool with no declaration is a strict no-op.",
+   "measured_live": "plan_bootstrap_apply, batch c-planapply, K=5, ZERO errored runs, and the behaviour change is total and deterministic:\n\n    BEFORE  composition_package_tree -> plan_compile -> composition_list_outline       (5/5)\n    AFTER   composition_package_tree -> plan_bootstrap_propose x2 -> composition_list_outline (5/5)\n\nchat-service logs the rescue on every pass: 'R1 answerability: also forcing declared supplier(s) [plan_bootstrap_propose (for plan_bootstrap_apply.proposal_id)]'. The model went from calling the WRONG step to calling the RIGHT one, and it called it with a real run_id.",
+   "what_it_does_not_cover": "🔴 ARGUMENT SUPPLIERS, NOT STATE PRECONDITIONS - and the same measurement shows the boundary. plan_bootstrap_propose now runs and REFUSES:\n\n    {'ok': false, 'error': 'cannot preview - run has no compiled package yet - call compile() first'}\n\nIt has every argument it needs. What it lacks is a compiled package, which is a STATE the run must be in, and no `argument_emitters` entry can express that. So plan_bootstrap_apply is still called 0/5 - the chain moved one link and stopped at a different kind of gap.\n\nTwo further limits, stated rather than discovered later. (1) The registry's argument_emitters map holds THREE real entries (plan_compile.run_id, plan_bootstrap_apply.proposal_id, book_read.chapter_id), so this rescue reaches exactly the tools someone has already declared - it is a mechanism waiting on data for the other 45 id-requiring tools that name no supplier. (2) It cannot help a tool the model never CALLS, because it fires at advertise time on the answerable set; a tool that loses its request to a sibling is P5's problem, not this one.",
+   "the_ironic_part": "Before the fix the model called plan_compile and never proposed; after it, it proposes and never compiles. The full chain is compile -> propose -> apply and the model does one of the two prerequisites either way. That is worth keeping because it argues the fix did not merely shuffle the failure: the model now reaches for the step the platform DECLARES it needs, and the step it no longer reaches for is the one nothing declares."
   }
  },
  "deferred_questions": {
@@ -4431,8 +4438,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 103,
-  "defects_other": 64
+  "defects_total": 104,
+  "defects_other": 65
  },
  "observations": [
   {

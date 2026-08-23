@@ -1708,6 +1708,61 @@ def _advertise_discovery_tools(
     # every `continue` below is a decision to leave the answering tool off the wire.
     if _answerable:
         logger.info("R1 answerability: request matches %s", sorted(_answerable))
+    # 🔴 R1 STOPPED AT DEPTH 1, AND THAT IS WHY IT COULD NOT DELIVER THE TOOL IT FORCED.
+    #
+    # The guarantee puts the tool whose declared vocabulary answers the request on the wire. It
+    # carried NOTHING that tool needs. A user names a GOAL, not an intermediate step, so a supplier
+    # is matched only by accident — and every blocked tool in P14-SUPPLIER-NOT-ON-SURFACE failed on
+    # an id whose supplier the request's words do not describe:
+    #
+    #     plan_bootstrap_apply  needs proposal_id  <- plan_bootstrap_propose
+    #         measured 2026-08-23: apply advertised on 21 wire passes, propose on ZERO
+    #
+    # The tiers refute the tempting explanation ("the budget favours writes over reads"): the plan
+    # pair is Tier A on both sides and the arc-template pair is Tier R on both sides. It is DEPTH.
+    #
+    # AND IT MUST BE TRANSITIVE, which composition_reference_update proves: reference_id comes from
+    # composition_find_references, which was ALREADY on every pass and itself refused for its own
+    # missing entity_id. A one-hop fix would have looked right on the other instances and left that
+    # turn dying one call later.
+    #
+    # DECLARED DATA ONLY. The suppliers come from the contract registry's `argument_emitters` map —
+    # the same structured source `_missing_args_message` already reads to name an emitter in a
+    # refusal — never from a name, a prefix or a guess. A tool with no declaration adds nothing, so
+    # this can only widen the surface where the platform has already written down who supplies what.
+    _r1_seed = set(_answerable)
+    _forced_suppliers: dict[str, str] = {}
+    if _r1_seed:
+        # Local import, mirroring the other reader of this registry a thousand lines below — the
+        # module-level import graph here is load-bearing and this file does not add to it lightly.
+        from app.agentruntime.toolcontract import declared_emitter
+
+        _reg = _tool_contract_registry()
+        _pending, _seen = list(_r1_seed), set(_r1_seed)
+        # Bounded: a declaration cycle (A emits for B, B for A) would otherwise loop, and a long
+        # chain is a fixture problem rather than something to advertise our way out of.
+        for _hop in range(4):
+            _next: list[str] = []
+            for _consumer in _pending:
+                _c_td = catalog_index.get(_consumer)
+                _params = ((_c_td or {}).get("function", {}).get("parameters", {}) or {})
+                for _arg in (_params.get("required") or []):
+                    _sup = declared_emitter(_reg, _consumer, _arg)
+                    if not _sup or _sup in _seen or _sup not in catalog_index:
+                        continue
+                    _seen.add(_sup)
+                    _next.append(_sup)
+                    _forced_suppliers[_sup] = f"{_consumer}.{_arg}"
+            if not _next:
+                break
+            _pending = _next
+        if _forced_suppliers:
+            logger.info(
+                "R1 answerability: also forcing declared supplier(s) %s — a tool whose required id "
+                "has a declared emitter is unusable without it",
+                sorted(f"{k} (for {v})" for k, v in _forced_suppliers.items()),
+            )
+            _answerable = _seen
     for _ans_name in sorted(_answerable):
         if _ans_name in suppress_names:
             logger.info("R1 answerability: %s NOT forced — suppressed (loop breaker)", _ans_name)
