@@ -9569,6 +9569,58 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### 🔻 QC-5 C30 2026-08-23 — **adjudicated: 4 of 4 attributed violations are FALSE. 1b's failure is the CRITIC, not the drafter.**
+
+  <!-- doc-language-gate: ok -- the rule texts and judge reasons below ARE the evidence; the finding is the gap between them -->
+
+  🔴 **The deferral I opened one commit ago blamed the wrong side.** C29 recorded *"the drafter
+  contradicted active canon"* because the shipped critic attributed two violations on 4 of 5 flow
+  runs. Rule 13 — *a divergence RECORDED is not a divergence DIAGNOSED*. Read against the rule
+  texts they cite, **every one of the four is false**, and each fails in the same way:
+
+  | # | rule cited | what the rule ACTUALLY says | what the judge asserted | verdict |
+  |---|---|---|---|---|
+  | 1 | R1 | `Lâm Trạch` is the cousin and the betrayer; no one else is the betrayer | *"in this passage Lâm Trạch appears as a loyal friend"* — the span says only that he steps out of the darkness with an unruffled robe | **FALSE** — the reason describes something the cited span does not contain |
+  | 2 | R5 | `Lâm Uyên điều khiển L-Field.` — five words, a capability | *"…and no one can drain his spirit energy"* | **FALSE** — the second clause is INVENTED; controlling a field is not immunity to being drained |
+  | 3 | R1 | as above | *"Lục Vô Tội is not the betrayer per [R1]"* — and the span calls him `kẻ trung lập`, the neutral one, present at the upheaval | **FALSE** — a non-sequitur: the reason states a rule-CONFORMING fact and returns `violated: true` |
+  | 4 | R6 | `Linh năng là hệ thống sức mạnh của thế giới này.` — what the power system IS | *"Lâm Trạch is a Lâm-family member and SHOULD SHOW SIGNS of spirit energy"* | **FALSE** — invents a requirement the rule does not state |
+
+  📐 **Two of the four invent a clause and attach it to a real rule id.** That is worse than the
+  harness critic's failure mode, not better. The harness critic invented a rule *id*, which
+  `map_rule_tokens` dropped — the drop was the system working. This judge cites a **real** id and
+  invents the *content*, so nothing downstream can catch it: the id resolves, the span is real,
+  and the verdict is attributed and kept.
+
+  🎯 **And this does not contradict 1a.** 1a's plant asserts, in the same terms as R1, that a
+  different character was the betrayer — a direct textual contradiction, caught 5/5 with the
+  control clean 0/5. The flow prose requires *inference*, and that is exactly where the judge
+  manufactures premises. The critic is precise on a blatant contradiction and imprecise on
+  ordinary prose. Both measurements are true and they are about different tasks.
+
+  ⚠️ **Which means clause 1b cannot currently tell its two causes apart.** 1b fails on
+  `attributed >= 1` and reads that as *"the drafter contradicted active canon"*. That inference
+  rests on 1a licensing trust in attribution — and 1a licenses it **on a planted direct
+  contradiction**, which is not the population 1b scores. On this measurement the same number
+  means the opposite thing. Recorded rather than repaired: changing the criterion to survive its
+  own adjudication is how a gate gets fitted to the case that embarrassed it.
+
+  ⛔ **So the residue is `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`, and it is now much better
+  evidenced.** C26 adjudicated 4 verdicts on the harness critic: **3 false, 1 sound**. This is 4
+  on the *shipped* critic: **4 false, 0 sound**. Its **To unblock** is a PO call — accept
+  prose-judge false positives as the local-model ceiling knowing this judge is **ON by default**
+  and reaches authors, or spend on precision. The n is no longer 4 self-selected verdicts on a
+  critic users do not get.
+
+  **QC (a) gates:** four plan gates green; no code changed by this cycle — it is an adjudication,
+  and the thing it corrects is a claim, not a line.
+  **QC (b) live smoke:** N/A — no seam crossed. The runs it reads were taken in C29 against the
+  rebuilt containers.
+  **QC (c) real data:** the four verdicts verbatim from `authoring_run_units.critic_verdict` on
+  runs `01a02d1d…` and `01a02d22…`, and the three rule texts read from `canon_rule` on the
+  isolated Postgres — the judge's words and the rule's words side by side, which is the only way
+  this class of error is visible at all.
+
+  ---
   ### 🔻 QC-5 C29 2026-08-23 — **the re-score, run TWICE: my first one measured the wrong critic**
 
   ```
@@ -11082,6 +11134,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Why §7.2 does not cover it** | §7.2 accepted the measured precision as the ceiling for `judge_role_attribution`, and the reason that is affordable is that **that judge is off by default**, so its false positives cannot reach an author. This is `judge_prose`, which is **on**. The acceptance and the exposure are different judges and the reasoning does not transfer — recording that rather than letting one decision quietly cover two. |
   | **Mechanism** | The per-rule verdict channel is what made this visible at all: the four dimension scores are identical across the two arms, so anything keyed on the score alone reads them as the same passage. §2.3's *"`violations[]` keyed by `rule_id` is the enforceable output"* is why the difference is inspectable. |
   | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
+  | **Re-evidenced on the SHIPPED critic 2026-08-23 (C30)** | C26's n=4 was taken on the harness critic (`51ea9fd7…`) — the one `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` says the acceptance should never have been scored on. Re-adjudicated on the book's critic (`019eb620…`), the one authors get: **4 attributed verdicts, 4 false, 0 sound** (C26 was 3 false, 1 sound). The shape is worse, not better: two of the four cite a **real** rule id and invent its CONTENT, so `map_rule_tokens` cannot drop them the way it drops an invented id. The decision is unchanged in kind and no longer rests on verdicts from a critic users do not get. |
   | **Retry when** | ⚠️ **INVESTIGATED 2026-08-21 (C26), per the PO's *investigate before deciding*.** Four attributed verdicts adjudicated by hand against the rule texts and quoted spans: **3 false, 1 sound**. The false ones share one shape — *the stated reason contradicts the span it cites or the rule it names* (a simile read as a factual claim; a non-sequitur; a span that obeys the rule it is flagged under). The sound one is the `flow_control` R5 verdict, which is what C25's clause 2 rests on — checked first, so C25 stands. **The decision is now informed and still owed:** accept this as the local ceiling knowing this judge is ON by default, or spend on precision. n=4 is small and self-selected (they are the verdicts already in evidence), which the PO should weigh. |
 
   ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**
@@ -11094,7 +11147,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` — **CLOSED 2026-08-23 (C29). Re-run with the book's critic (`019eb620…`), all 15 records carrying the `critic_ref` they were judged by: 1a PASSES 5/5 vs 0/5, and 1b FAILS because the DRAFTER contradicts active canon on 4 of 5 runs. Its own *To unblock* named both outcomes — *"if they do not, the failure is the product's and worth having"*. It is the product's, and it is now `D-QC5-DRAFTER-CONTRADICTS-ACTIVE-CANON` below. The **Mechanism** row was also wrong: `critic_ref` did NOT ride every verdict — the `/critique` route stamped nothing, which is how my own first re-score measured the harness critic. Fixed in the same commit.**
 
-  ### 🔻 DEFERRAL `D-QC5-DRAFTER-CONTRADICTS-ACTIVE-CANON`
+  ### ~~DEFERRAL~~ `D-QC5-DRAFTER-CONTRADICTS-ACTIVE-CANON` — **MISDIAGNOSED, retracted 2026-08-23 (C30), one commit after it was written.** Its own *To unblock* said to adjudicate the verdicts before blaming the drafter. Adjudicated: **4 of 4 false** — two invent a clause and attach it to a REAL rule id, one describes something its cited span does not contain, one states a rule-conforming fact and returns `violated: true`. The drafter is not established to have contradicted anything. The real residue is `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`, which already existed and is now carrying this evidence. Kept struck rather than deleted: a wrong attribution that was published and then corrected is the record, and C29's commit message still names the drafter.
 
   | | |
   |---|---|
