@@ -2,7 +2,7 @@
   "_note": "composition_arc_apply with a template that exists and is NAMED — the buildable half of p4-confirm's 'not measurable as written'. Recorded as a different question, not smuggled in as a re-run.",
   "scenarios": [
     {
-      "id": "composition-arc-apply-named",
+      "id": "composition-arc-apply-named-single-turn",
       "tool_under_test": "composition_arc_apply",
       "expect_tool": "composition_arc_apply",
       "intent": "write",
@@ -62,11 +62,9 @@
         "tenancy": "OWED — book-scoped, and the template library is account-scoped: another account's template must not apply."
       },
       "defects": [],
-      "follow_ups": [
-        "Yes, go ahead and do it."
-      ],
       "max_approvals": 6,
-      "_carried_from": "scenarios-batch14.json"
+      "_carried_from": "scenarios-batch14.json",
+      "follow_up_removed_why": "🔴 THE FOLLOW-UP WAS INHERITED FROM p4-confirm AND IT TAKES THE TOOL OFF THE WIRE. It read 'Yes, go ahead and do it.', added there as an attempt to get past the model's 'which template?' question, and recorded as REFUTED ('a bare affirmative cannot answer a which-one question').\n\nMeasured 2026-08-23 with R1 instrumented, the mechanism is simpler and is about the SURFACE, not the model: the MEASURED turn is the last one, an affirmative matches no tool's declared vocabulary, so R1 finds nothing, forces nothing - and the transitive supplier forcing, which seeds from the answerable set, is inert too. This run showed it exactly: composition_arc_template_list was on the wire (30 forcing lines) and composition_arc_apply was on NO pass of the measured turn. See D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL.\n\nSo the scenario is single-turn now. The prompt already NAMES the template, which is what p4-confirm said was missing, and there is no question left for an affirmative to answer."
     }
   ]
 }
