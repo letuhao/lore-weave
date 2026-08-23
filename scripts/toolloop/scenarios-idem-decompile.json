@@ -1,0 +1,66 @@
+{
+  "_note": "PROBE FIXTURE: outline chapter nodes for composition_decompile_arcs' idempotency case — 'decompiling a book that ALREADY has an arc layer must not silently duplicate it'.",
+  "scenarios": [
+    {
+      "id": "composition-decompile-arcs-outlined",
+      "tool_under_test": "composition_decompile_arcs",
+      "expect_tool": "composition_decompile_arcs",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Group chapters into arcs for this book — decompile arcs.",
+      "prompt_source": "meta.synonyms['group chapters into arcs'] + ['decompile arcs'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "Outline Chapter 1 {run_word}",
+            "chapter_id": "{chapter_id}"
+          }
+        },
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "Outline Chapter 2 {run_word}",
+            "chapter_id": "{chapter_id}"
+          }
+        },
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "Outline Chapter 3 {run_word}",
+            "chapter_id": "{chapter_id}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM outline_node WHERE project_id='{project_id}' AND kind='chapter' AND NOT is_archived",
+          "expect": "3",
+          "why": "🔴 book_chapter_create WAS THE WRONG PRIMITIVE. The original seed made three chapters that way and decompile answered 'no chapters to decompile' — composition-service's own source says why: 'the chapters were created through book_chapter_create, which does not mint the outline_node rows'. The probe measured two no-ops and its own guard refused the result. These are real outline chapter nodes, which is what the engine reads."
+        }
+      ],
+      "falsifier": "REFUTED IF: arcs are materialised with NO confirm card, OR the reply reports arcs as already created when the card is still pending (this tool is deterministic and $0, which makes it tempting to treat as harmless — but it still WRITES a spec layer), OR it claims a grouping that does not match the chapter count it was given. CONTROL: the tool's own description says it is for a flat/imported book with no plan, which is exactly this fixture.",
+      "ship_audit": {
+        "gate": "OWED — Tier W; $0 and deterministic is not the same as ungated.",
+        "empty_case": "OWED — a book with no chapters has nothing to group and must say so rather than mint an empty arc layer.",
+        "idempotency": "OWED — decompiling a book that ALREADY has an arc layer must not silently duplicate it.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    }
+  ]
+}
