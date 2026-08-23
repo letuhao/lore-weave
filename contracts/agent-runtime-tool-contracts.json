@@ -636,6 +636,10 @@
     "composition_glossary_build": {
       "model_ref": "settings_list_models"
     },
-    "_added_2026_08_23_third": "composition_glossary_build.model_ref <- settings_list_models. Verified by calling it: each row carries user_model_id, and that IS a model_ref (the harness's own model_ref 019ebb72-27a2-72f3-a42d-d2d0e0ded179 resolves in user_models.user_model_id).\n\nDQ-T35 is the same argument seen from the other side: 16 of 19 model_ref properties across the catalogue are OPTIONAL with a server-resolved default, and only three are required - composition_generate, composition_library_translate and kg_build_wiki. This declaration makes the required one REACHABLE; it does not settle whether it should have been required at all, which is the owner's call."
+    "_added_2026_08_23_third": "composition_glossary_build.model_ref <- settings_list_models. Verified by calling it: each row carries user_model_id, and that IS a model_ref (the harness's own model_ref 019ebb72-27a2-72f3-a42d-d2d0e0ded179 resolves in user_models.user_model_id).\n\nDQ-T35 is the same argument seen from the other side: 16 of 19 model_ref properties across the catalogue are OPTIONAL with a server-resolved default, and only three are required - composition_generate, composition_library_translate and kg_build_wiki. This declaration makes the required one REACHABLE; it does not settle whether it should have been required at all, which is the owner's call.",
+    "settings_provider_inventory": {
+      "provider_credential_id": "settings_list_models"
+    },
+    "_added_2026_08_23_fourth": "settings_provider_inventory.provider_credential_id <- settings_list_models. Verified by calling it: every row carries provider_credential_id (e.g. 019dc738-53b1-75ea-b5d5-6aca0eed3cd8).\n\nMeasured 2026-08-23: the model already called settings_list_models three or four times per run and therefore HELD this id, so the declaration is not what was missing - it makes the chain explicit and puts the supplier on the wire from the first pass rather than by luck."
   }
 }
