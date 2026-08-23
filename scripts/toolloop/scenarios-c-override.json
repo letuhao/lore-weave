@@ -1,0 +1,71 @@
+{
+  "_note": "composition_entity_override_edit re-run to MEASURE a fix I shipped and never measured. Its recorded cause: the model calls glossary_propose_entity_edit with entity_id='Aldric Vane' — a NAME — and is refused.\n\nThe platform now hands a dropped name back as the query to search with: 'You passed a NAME where an id is required (entity_id='Aldric Vane'). That is not missing — it is the wrong kind of value, and the name is what you search WITH.' Before, the refusal said only that the argument was MISSING, so the follow-up search went out blank.\n\nNothing about the scenario changes — same prompt, same seed. Only the platform moved.\n\nWHAT WOULD REFUTE IT: still 0/5, or the follow-up search still going out with blank arguments. Then handing the name back is not what the model needed.",
+  "scenarios": [
+    {
+      "id": "composition-entity-override-edit-namefix",
+      "tool_under_test": "composition_entity_override_edit",
+      "expect_tool": "composition_entity_override_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Override entity field — in this book Aldric Vane should be a cartographer, not a soldier.",
+      "prompt_source": "meta.synonyms['override entity field'] + ['add entity override'], verbatim, plus the entity's name so the target is unambiguous.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+          "expect": "0",
+          "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: an override lands with NO confirm card (Tier A), OR the model invents a target_entity_id rather than resolving 'Aldric Vane', OR the op chosen is not `add` when the entity has no override yet — its enum spans add|update|delete|restore, and `delete` on a request to ADD a field change would be the worst outcome. Store check: entity_override stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION"
+    }
+  ]
+}
