@@ -169,31 +169,23 @@ def _unwrap(cell: Any) -> Any:
 
 
 def _to_event(props: dict) -> Event:
-    return Event.model_validate(
-        {
-            "id": props.get("id", ""),
-            "user_id": props.get("user_id", ""),
-            "project_id": props.get("project_id"),
-            "title": props.get("title", ""),
-            "canonical_title": props.get("canonical_title", props.get("title", "")),
-            "summary": props.get("summary"),
-            "chapter_id": props.get("chapter_id"),
-            "event_order": props.get("event_order"),
-            "chronological_order": props.get("chronological_order"),
-            # ⚠️ These seven were MISSING, and the event-write skips hid it. `version` and
-            # `archived_at` are asserted by conformance rules that skipped for `age` because
-            # they need `merge_event` to create the row -- so un-skipping the writes is what
-            # surfaced them. A skip does not only hide the operation it names; it hides every
-            # assertion downstream of it.
-            "event_date_iso": props.get("event_date_iso"),
-            "time_cue": props.get("time_cue"),
-            "participants": props.get("participants") or [],
-            "source_types": props.get("source_types") or [],
-            "confidence": props.get("confidence") or 0.0,
-            "archived_at": props.get("archived_at"),
-            "version": props.get("version") or 1,
-        }
-    )
+    """Event properties -> `Event`, PASSING THROUGH.
+
+    Named 16 keys against a 33-field model. Seventeen were dropped, and the comment that used
+    to sit here recorded a PREVIOUS round of the same defect — "these seven were MISSING, and
+    the event-write skips hid it". That fix added seven names to a list; this removes the list,
+    because a hand-named mapping is the mechanism, not the seven.
+
+    Measured before switching: 13 of 13 live Event nodes validate bare. The coalesce below is
+    kept anyway because the OLD mapping had it — `canonical_title` falls back to `title`, the
+    same shape as `_to_fact`'s `canonical_content`. Live data does not need it today, and
+    dropping a fallback on that basis would be replacing a measured behaviour with an
+    unmeasured one for every row that lacks the property.
+    """
+    data = dict(props)
+    if data.get("canonical_title") is None:
+        data["canonical_title"] = data.get("title", "")
+    return Event.model_validate(data)
 
 
 def _to_entity(props: dict) -> Entity:
@@ -228,43 +220,38 @@ def _to_entity(props: dict) -> Entity:
 
 
 def _to_relation(props: dict) -> Relation:
-    return Relation.model_validate(
-        {
-            "id": props.get("id", ""),
-            "user_id": props.get("user_id", ""),
-            "subject_id": props.get("subject_id", ""),
-            "object_id": props.get("object_id", ""),
-            "predicate": props.get("predicate", ""),
-            "confidence": props.get("confidence", 0.0),
-            "source_event_ids": props.get("source_event_ids") or [],
-            "source_chapter": props.get("source_chapter"),
-            "valid_from_ordinal": props.get("valid_from_ordinal"),
-            "valid_to_ordinal": props.get("valid_to_ordinal"),
-        }
-    )
+    """Edge properties -> `Relation`, PASSING THROUGH (A21's fix, A22's scope).
+
+    Named 10 keys against a 21-field model and dropped eleven, of which five are actually
+    STORED on live edges: `valid_from`, `valid_to_ordinal_eff`, `created_at`, `updated_at`,
+    `pending_validation`. The first two are BI-TEMPORAL — `valid_to_ordinal_eff` is the
+    effective end ordinal an as-of read windows on, so a port consumer could not tell a
+    closed relation from an open one.
+
+    The other six (`subject_name`, `object_name`, `subject_kind`, `object_kind`,
+    `event_date_iso`, `valid_until`) are not stored on the edge at all; callers that need
+    them join the vertices (`neighborhood` does). Pass-through leaves them None exactly as
+    the named mapping did — measured, not assumed: 24 of 24 live edges validate.
+    """
+    return Relation.model_validate(dict(props))
 
 
 def _to_fact(props: dict) -> Fact:
-    return Fact.model_validate(
-        {
-            "id": props.get("id", ""),
-            "user_id": props.get("user_id", ""),
-            "project_id": props.get("project_id"),
-            "type": props.get("type", ""),
-            "content": props.get("content", ""),
-            "canonical_content": props.get("canonical_content", props.get("content", "")),
-            "confidence": props.get("confidence", 0.0),
-            "pending_validation": props.get("pending_validation", False),
-            "source_types": props.get("source_types") or [],
-            "source_chapter": props.get("source_chapter"),
-            "from_order": props.get("from_order"),
-            "valid_from_ordinal": props.get("valid_from_ordinal"),
-            "valid_to_ordinal": props.get("valid_to_ordinal"),
-            "event_date_iso": props.get("event_date_iso"),
-            "predicate": props.get("predicate"),
-            "object": props.get("object"),
-        }
-    )
+    """Fact properties -> `Fact`, pass-through plus ONE coalesce that is load-bearing.
+
+    Named 16 keys against a 24-field model, dropping `valid_from`, `valid_until`,
+    `valid_to_ordinal_eff`, `archived_at`, `created_at`, `updated_at`, `evidence_count`,
+    `subject_canonical`.
+
+    ⚠️ A BARE pass-through does not work here and the measurement says so: `canonical_content`
+    is required by the model and **0 of 13 live Fact nodes store it** — every one fails
+    validation without the fallback below. Rule 8 caught this; Relation and Event needed no
+    such care (24/24 and 13/13 validated bare).
+    """
+    data = dict(props)
+    if data.get("canonical_content") is None:
+        data["canonical_content"] = data.get("content", "")
+    return Fact.model_validate(data)
 
 
 #: How many events `events_page` will scan into Python before refusing. A browse that

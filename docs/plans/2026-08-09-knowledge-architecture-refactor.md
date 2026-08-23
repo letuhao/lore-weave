@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 67 of 110 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 68 of 111 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (25/35) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (26/36) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,78 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A22 2026-08-23 — **the other three mappers, and one of them dropped the BI-TEMPORAL fields**
+
+  ```
+  derived: every AGE mapper's named keys vs its model's field count
+
+    _to_entity     Entity    21 fields   14 named   (A21)
+    _to_event      Event     33 fields   16 named   17 DROPPED
+    _to_relation   Relation  21 fields   10 named   11 DROPPED
+    _to_fact       Fact      24 fields   16 named    8 DROPPED
+  ```
+
+  🔴 **`_to_relation` dropped `valid_from`, `valid_to_ordinal_eff` and `pending_validation`,
+  all of which live edges STORE.** `valid_to_ordinal_eff` is the effective end ordinal an as-of
+  read windows on — dropped, **every relation reads as still valid** through the port, so a
+  consumer cannot tell a closed relation from an open one. That is not a missing column, it is a
+  wrong answer, on the engine that is now the default. `_to_fact` dropped `archived_at` for the
+  same reason class: an archived fact reading as live.
+
+  📐 **Rule 8 killed a third of the batch, precisely.** Before rewriting anything, every model
+  was validated against **live** stored properties:
+
+  ```
+  RELATES_TO   pass-through validates 24 ok / 0 fail
+  Event        pass-through validates 13 ok / 0 fail
+  Fact         pass-through validates  0 ok / 13 fail   <- canonical_content
+  ```
+
+  So Relation and Event take a bare pass-through and **Fact cannot** — `canonical_content` is
+  required and no live Fact stores it. A uniform "just pass through" would have broken every
+  fact read, and nothing in the code says so; only the data does.
+
+  ⚠️ **And the measurement nearly missed a second fallback.** The old `_to_event` carried
+  `canonical_title → title`, the same shape as `_to_fact`'s. Live Events all store
+  `canonical_title`, so **13/13 validated bare and the loss was invisible** — I dropped it, and
+  caught it only by diffing the old mappers for cross-field fallbacks rather than trusting the
+  live pass. Restored, with a test that pins it, because *"live data does not exercise it"* is
+  exactly why removing it would go unnoticed.
+
+  🎯 **`_to_event`'s own comment recorded a PREVIOUS round of this defect** — *"these seven were
+  MISSING, and the event-write skips hid it"*. That fix added seven names to a list. The list is
+  the mechanism, not the seven, which is why this replaces it rather than extending it.
+
+  🧪 **BITE 11 — restore the 10-key relation mapping, by line number:**
+
+  ```
+  AssertionError: the effective end ordinal must survive the port
+  assert None == 900
+   +  where None = Relation(…, valid_to_ordinal_eff=None, created_at=None, updated_at=None)
+  ```
+
+  ✅ **Controls.** The Relation mappers are compared field-by-field against
+  `_edge_props_to_relation`; `subject_name`/`object_kind` and the other four the edge does not
+  store stay `None` in BOTH, so the comparison does not demand something pass-through cannot
+  give. And the `canonical_content` / `canonical_title` fallbacks each have a test that fails if
+  the coalesce is removed.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4708 passed, 716 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`, and three live relations
+  read through the mapper:
+
+  ```
+  stored valid_to_ordinal_eff=9223372036854775807  created_at=1787427399527
+  mapped valid_to_ordinal_eff=9223372036854775807  created_at=2026-08-22 19:36:39
+  ```
+
+  The sentinel end-ordinal and the epoch-millis timestamp both survive the port now.
+  **QC (c) real data:** the validation census, the property census and the three relations above
+  are all live AGE reads.
+
   ---
   ### ✅ T17 A21 2026-08-23 — **the port adapter dropped SEVEN Entity fields, including the OCC token**
 
