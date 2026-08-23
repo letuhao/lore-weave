@@ -1,0 +1,149 @@
+{
+  "measured": "2026-08-24",
+  "what": "QC-5 clause 1a, the FIRST measurement carrying its matched planted_control arm",
+  "how": "POST /v1/composition/jobs/{job}/critique on lw-iso against a REBUILT composition image; 8 real flow-produced drafts of the acceptance book (chapters 10,11,12,13); each draft measured twice, once with the canon antagonist swapped for a character who does not exist (arm=planted) and once untouched (arm=planted_control)",
+  "critic": "019eb620 qwen2.5-7b-instruct (the book's own)",
+  "verifier_role": "51ea9fd7 google/gemma-4-26b-a4b (ModelRole.CRITIC_VERIFIER, C33)",
+  "verdict": "1a UNSCORABLE — the control flags as often as the plant",
+  "post_verification": {
+    "planted_flagged": 3,
+    "planted_control_flagged": 5,
+    "n_per_arm": 8
+  },
+  "pre_verification": {
+    "planted_flagged": 8,
+    "planted_control_flagged": 7,
+    "n_per_arm": 8
+  },
+  "diagnosis": "the discrimination failure is the CRITIC's, not the verification pass's: the control already flags 7/8 before any verification runs",
+  "runs": [
+    {
+      "arm": "planted",
+      "canon": 4,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "019ffad4",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "019ffad4",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 1,
+      "rev": "01a02513",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02513",
+      "unverified": 2
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02514",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02514",
+      "unverified": 2
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 3,
+      "rev": "01a0255e",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a0255e",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 0,
+      "raw": 2,
+      "rev": "01a02d1e",
+      "unverified": 2
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d1e",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d20",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 3,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d20",
+      "unverified": 1
+    },
+    {
+      "arm": "planted",
+      "canon": 5,
+      "attributed": 1,
+      "raw": 1,
+      "rev": "01a02d21",
+      "unverified": 0
+    },
+    {
+      "arm": "planted_control",
+      "canon": 5,
+      "attributed": 0,
+      "raw": 0,
+      "rev": "01a02d21",
+      "unverified": 0
+    },
+    {
+      "arm": "planted",
+      "canon": 2,
+      "attributed": 2,
+      "raw": 3,
+      "rev": "01a02d23",
+      "unverified": 1
+    },
+    {
+      "arm": "planted_control",
+      "canon": 2,
+      "attributed": 1,
+      "raw": 2,
+      "rev": "01a02d23",
+      "unverified": 1
+    }
+  ]
+}

@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 95 of 138 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 95 of 139 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/53) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/54) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,68 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### 🔻 QC-5 C37 2026-08-24 — **1a measured WITH its matched control for the first time: UNSCORABLE, and the critic is the side that fails**
+
+  ```
+  8 real flow-produced drafts, acceptance book, chapters 10 · 11 · 12 · 13
+  each measured TWICE: antagonist swapped for a non-existent character, and untouched
+  live, on lw-iso, against a REBUILT image, through the route the studio calls
+
+                      flagged   attributed per run
+    planted            8/8      [2, 1, 2, 3, 2, 2, 1, 3]     pre-verification
+    planted_control    7/8      [2, 2, 2, 2, 2, 2, 0, 2]     pre-verification
+    planted            3/8      [0, 0, 0, 1, 0, 1, 1, 2]     post-verification
+    planted_control    5/8      [1, 0, 0, 1, 1, 1, 0, 1]     post-verification
+
+  [qc5-acceptance] 1a  UNSCORABLE  — the control flags as often as the plant
+  [qc5-acceptance] 2   PASS        — no run produced 5/5 with zero raw findings
+  ```
+
+  📐 **The GRANT said re-run, so this is the re-run — and it is the first one that CAN be
+  scored.** The gate refuses 1a without a `planted_control` arm and says why in its own words:
+  *"without them a planted arm that flags cannot be told from a draft that was going to be
+  flagged anyway (measured 2026-08-21: it was the second one)"*. C14's 3/3 was one hand-built
+  passage with no matched control. This is eight real drafts, each measured against itself.
+
+  🔴 **The verdict: `UNSCORABLE`, because the control earns the pass too.** The gate's sentence
+  is the finding — *"3/8 planted runs flagged — but so did 5/8 CONTROL runs with nothing planted.
+  The criterion is measuring the draft, not the plant."*
+
+  ⚖️ **Which side is wrong, proven FROM THE WORKLOAD rather than by analogy (rule 13).** The
+  obvious suspect is the verification pass C31–C36 added — it drops findings, so perhaps it drops
+  the plant's. Scored again on **pre-verification** attribution, before the verifier touches
+  anything: the control still flags **7 of 8**. So the critic does not discriminate a planted
+  canon violation from the untouched draft **in the first place**, and the verifier reduces both
+  arms rather than causing the failure. It is the critic's.
+
+  📌 **This does not retract C14, and saying so matters.** C14 planted a blatant, hand-built
+  contradiction of `R1` into a short passage and the critic caught it 3/3 — that measurement
+  stands. What C37 shows is that the finding does not generalise to the acceptance measurement
+  the gate actually asks for: a name swapped across a whole real chapter, against the same
+  chapter untouched. A detector validated on the case that motivated it, checked on a case it was
+  not derived from, is rule 3 — and here the second case fails.
+
+  🎯 **It is the same defect the deferral names, now measured at scale.**
+  `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE` said the judge flags prose that conforms. Seven
+  of eight untouched drafts flagged is that sentence with an n behind it, on the shipped path,
+  with every C31–C36 fix live.
+
+  ⚠️ **What is NOT measured here, stated rather than implied.** Clause **1b** is not scored — the
+  gate refuses it while 1a is unscorable, and correctly: *"'zero attributed violations' is what a
+  canon-clean drafter and a critic that attributes nothing both produce"*. 1b also needs `flow`
+  runs — full authoring runs through the drafter — and these are `/critique` calls on stored
+  drafts, which is why they are labelled `planted_control` and not `flow`. Calling them `flow`
+  would claim a drafter measurement I did not take.
+
+  **QC (a) gates:** four plan gates green; `qc5-acceptance-gate` run on the measurement and its
+  verdict pasted above.
+  **QC (b) live smoke:** this row IS the live run — 16 critiques against a rebuilt image on
+  lw-iso, through the same route the studio uses.
+  **QC (c) real data:**
+  [`docs/measurements/2026-08-24-qc5-1a-planted-vs-control.json`](../measurements/2026-08-24-qc5-1a-planted-vs-control.json)
+  — all 16 runs, both arms, pre- and post-verification counts, with the critic and verifier model
+  refs recorded on the document.
   ---
   ### ✅ QC-5 C36 2026-08-24 — **span containment: built, measured, REMOVED — and the measurement is the deliverable**
 
