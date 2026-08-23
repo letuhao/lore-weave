@@ -2795,6 +2795,46 @@ def _declares_uuid(props: dict | None, name: str) -> bool:
     return "uuid" in str(spec.get("description") or "").lower()
 
 
+def _name_like_dropped_ids(dropped: dict) -> str:
+    """A sentence naming the NAMES the model passed where ids were required — or "" .
+
+    🔴 WHY THE VALUE AND NOT JUST THE ARGUMENT NAME. Measured 2026-08-23,
+    composition_motif_link_edit over K=5: the model resolved both endpoints to names, the
+    whitespace arm of `_invented_supplier_ids` dropped them (correctly — they are not ids), and
+    the refusal reported them MISSING. The tool's own description already says "search motifs by
+    name with composition_motif_search and pass the id it returns", and the model duly called
+    that search — with blank arguments, twice, because the only thing it could have searched FOR
+    had just been deleted out of its own call. The turn then died and the failure was recorded
+    against the tool for fifteen runs.
+
+    So this returns the value, quoted, as the query to search with. ONLY for values that look
+    like a name — whitespace, not a UUID, not SCREAMING_SNAKE. A placeholder like
+    `run_12345_placeholder` or `UNKNOWN_ID_PLEASE_PROVIDE` must NOT be echoed back as something
+    to search for: that is the invention D-FJ-11 exists to refuse, and repeating it would invite
+    a better-formatted one, which is the exact failure its docstring warns about.
+    """
+    if not isinstance(dropped, dict):
+        return ""
+    named: list[str] = []
+    for nm, val in sorted(dropped.items()):
+        if not isinstance(val, str):
+            continue
+        v = val.strip()
+        if not v or _is_uuid(v) or _SCREAMING_SNAKE_RE.fullmatch(v):
+            continue
+        if not any(ch.isspace() for ch in v):
+            continue
+        named.append(f"{nm}={v!r}")
+    if not named:
+        return ""
+    return (
+        "You passed a NAME where an id is required (" + ", ".join(named) + "). That is not "
+        "missing — it is the wrong kind of value, and the name is what you search WITH: look it "
+        "up with the tool named above and pass the id it returns, using that exact name as the "
+        "query."
+    )
+
+
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
                            tool_def_props: dict | None = None) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
@@ -6207,13 +6247,31 @@ async def _stream_with_tools(
                         )
                     except Exception:
                         _invented_ids = []
+                    # 🔴 KEEP THE VALUE BEFORE DROPPING IT. Measured 2026-08-23 on
+                    # composition_motif_link_edit: the model resolved both endpoints to NAMES
+                    # ("Throwaway Loop Alpha Kutomere"), the whitespace arm correctly judged them
+                    # not-identifiers and dropped them, and the refusal then said the arguments
+                    # were MISSING. The model was never told WHICH VALUE it had passed, so its
+                    # follow-up `composition_motif_search` went out with blank arguments — twice —
+                    # and the turn died. It had the name and we deleted it before telling it
+                    # anything. See _name_like_dropped_ids for what is added back to the sentence.
+                    _invented_vals = {n: args_obj.get(n) for n in _invented_ids}
                     if _invented_ids:
                         for _nm in _invented_ids:
                             args_obj.pop(_nm, None)
+                        # 🔴 THE OLD LINE NAMED ONE ARM FOR ALL SIX. It said "the contract declares
+                        # them context/plan-supplied" no matter which arm fired — placeholder token,
+                        # SCREAMING_SNAKE, whitespace-is-a-name, declared-uuid, or the contract arm.
+                        # Today it sent me hunting a contract misdeclaration that does not exist, on
+                        # a drop the whitespace arm made. A log line that hard-codes one explanation
+                        # for a multi-arm decision is a misattributed cause with a timestamp on it.
                         logger.info(
-                            "dropped fabricated runtime-owed id(s) %s from %s (session=%s) — the "
-                            "contract declares them context/plan-supplied",
+                            "dropped non-identifier value(s) %s from %s (session=%s) — not an id "
+                            "this platform issues (name, placeholder, or runtime-owed id the model "
+                            "filled in); values=%s",
                             _invented_ids, c["name"], session_id,
+                            {k: (v if isinstance(v, str) and len(v) <= 80 else str(v)[:80])
+                             for k, v in _invented_vals.items()},
                         )
                 _missing_args = _missing_required_names(args_obj, _tool_def_for_args)
                 if _invented_ids:
@@ -6264,6 +6322,15 @@ async def _stream_with_tools(
                         ), dict) else {}
                         _ma_msg = _missing_args_message(
                             c["name"], _missing_args, _c_block, _ma_props)
+                    # ── THE THIRD STATE: YOU PASSED THE WRONG KIND OF THING ──────────────────
+                    # CP-5.4 separated "you forgot something" from "I owe you this". A dropped
+                    # NAME is neither: the model did supply a value and it was the wrong KIND, and
+                    # calling that "missing" is the one description guaranteed not to help. The
+                    # name is also the exact query string the recovery search needs, so handing it
+                    # back is what makes the refusal actionable rather than merely accurate.
+                    _named = _name_like_dropped_ids(_invented_vals)
+                    if _named:
+                        _ma_msg = (_ma_msg or "") + " " + _named
                     # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────
                     # This refusal SAYS "call world_map_list first and match it to get the id".
                     # Until now it armed nothing: `_tools_named_in_refusal` runs on the dispatch
