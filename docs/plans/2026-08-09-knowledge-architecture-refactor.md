@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 75 of 118 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 76 of 119 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (29/39) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
+**OPEN:** `T17` (30/40) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,64 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A26 2026-08-23 — **six more unconformed parameters; the double dropped one of them**
+
+  ```
+  three rules over the parameters no rule had ever passed:
+
+    merge_fact       pending_validation · source_chapter · object   fake FAILED on source_chapter
+    upsert_relation  source_event_id                                all adapters PASS
+    merge_event      chronological_order                            all adapters PASS
+  ```
+
+  📐 **Continuing A25's derivation rather than guessing.** A24 established that a method having
+  a rule is not the same as its contract having one; A25 turned that into a bug (`relations_for`
+  returning every relation with its endpoints swapped). The remaining candidates were filtered by
+  the same test A24 used — **is it observable through the port's return type** — and all six were.
+
+  🔴 **The fake dropped `source_chapter` on `merge_fact`.** Both real adapters keep it; the
+  in-memory double did not construct the field at all. That is the A24 mechanism exactly: a rule
+  asserting it would have failed the double too, **so the missing rule and the missing field
+  protected each other.** Third instance of this pairing in three cycles (A24 `provenance`/
+  `job_id`, A24 the live-handle return, this).
+
+  ⚖️ **Two of the three rules PASSED everywhere, and that is a result, not a wasted cycle.**
+  `source_event_id` and `chronological_order` were already honoured by every adapter. A
+  conformance suite that only ever adds rules where it expects failure is measuring the author's
+  intuition, not the contract — and the value of `pending_validation` being asserted is the same
+  whether it passes today or not: a fact awaiting review that reads as accepted is a canon claim
+  the author never approved.
+
+  🧪 **BITE 22 — remove the fake's fix, by line number:**
+
+  ```
+  AssertionError: the chapter a fact came from must survive the write
+  assert None == 'ch-3'
+  ```
+
+  🔴 **BITE 23's FIRST ATTEMPT WAS INVALID and is recorded as such.** Neutering one line of the
+  AGE `SET` clause produced `PostgresSyntaxError: syntax error at or near "…"` — that proves the
+  query breaks, not that the field is dropped. Same defect as A18's first attempt at bite 7.
+  Redone by replacing the whole five-line clause with a **valid** one that ignores the argument:
+
+  ```
+  AssertionError: the edge lost the event that asserted it: []. An empty list is what a
+  DROPPED value looks like — it does not raise
+  ```
+
+  That is the bite that matters here, because `source_event_ids` is a LIST: a dropped value
+  leaves `[]`, which no adapter reports as an error.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4736 passed, 724 skipped** with
+  `TEST_AGE_DSN` set; conformance **160 passed** across four adapters. The two
+  `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a rebuilt image — the changed code is the in-memory double and
+  test rules. The AGE arm of every new rule runs against the **live** AGE database, which is
+  where bite 23 was proven.
+  **QC (c) real data:** the conformance run is real on both engines; the parameter census is
+  derived by AST from the port against the suite's own text.
+
   ---
   ### ✅ T17 A25 2026-08-25 — **an always-False comparison returned every relation with its endpoints SWAPPED**
 

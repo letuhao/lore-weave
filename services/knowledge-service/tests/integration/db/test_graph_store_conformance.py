@@ -397,6 +397,75 @@ async def test_relations_for_HONOURS_direction(store):
 
 
 @pytest.mark.asyncio
+async def test_merge_fact_ROUND_TRIPS_the_fields_no_rule_ever_passed(store):
+    """T17 A26 — four of `merge_fact`'s fourteen parameters had never been passed by any rule.
+
+    A25 found what an unexercised parameter can hide: `relations_for`'s `direction` had a
+    dead comparison that returned every relation with its endpoints swapped, and the suite
+    could not see it because it only ever used the default. These are the same shape.
+
+    `pending_validation` is the one that matters most — a fact awaiting review that reads as
+    accepted is a canon claim the author never approved.
+    """
+    u, p, _ = _ids()
+    f = await store.merge_fact(
+        user_id=u, project_id=p, type="attribute", content="Kai is tall",
+        confidence=0.9, pending_validation=True, source_chapter="ch-3",
+        predicate="height", object="tall",
+    )
+    assert f.pending_validation is True, (
+        "a fact merged as PENDING came back as accepted — a canon claim the author never "
+        "approved, indistinguishable from one they did"
+    )
+    assert f.source_chapter == "ch-3", "the chapter a fact came from must survive the write"
+    assert f.object == "tall", "the object half of a predicate triple must survive the write"
+
+
+@pytest.mark.asyncio
+async def test_upsert_relation_KEEPS_the_source_event_it_was_given(store):
+    """`source_event_id` is the provenance of an edge — which event asserted it.
+
+    Never passed by a rule. An edge whose provenance is silently dropped cannot be traced
+    back to the text that produced it, and `source_event_ids` is a LIST, so a dropped value
+    leaves an empty list rather than an error.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Rin", kind="character", source_type="chapter")
+    ev = await store.merge_event(
+        user_id=u, project_id=p, title="The Duel", event_order=1)
+
+    rel = await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="knows",
+        confidence=0.9, source_event_id=ev.id)
+
+    assert ev.id in (rel.source_event_ids or []), (
+        f"the edge lost the event that asserted it: {rel.source_event_ids}. An empty list is "
+        f"what a DROPPED value looks like — it does not raise"
+    )
+
+
+@pytest.mark.asyncio
+async def test_merge_event_KEEPS_chronological_order(store):
+    """The event's position on the STORY axis, distinct from `event_order` (the reading axis).
+
+    Never passed by a rule. Conflating or dropping it makes a flashback indistinguishable
+    from the scene it interrupts — which is the whole reason the two axes exist.
+    """
+    u, p, _ = _ids()
+    ev = await store.merge_event(
+        user_id=u, project_id=p, title="A Flashback", event_order=5,
+        chronological_order=1)
+    assert ev.event_order == 5
+    assert ev.chronological_order == 1, (
+        "the story-axis position was lost; with only the reading axis a flashback and the "
+        "scene it interrupts are the same event"
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_same_name_in_two_projects_is_two_entities(store):
     u, p, _ = _ids()
     a = await store.resolve_or_merge_entity(

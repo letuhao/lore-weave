@@ -397,6 +397,11 @@ class FakeGraphStore:
                 canonical_content=content.strip().lower(),
                 confidence=confidence, pending_validation=pending_validation,
                 source_types=[source_type] if source_type else [],
+                # A26 — the fake DROPPED `source_chapter`, which both real adapters keep.
+                # A conformance rule asserting it would have failed the double too, so none
+                # was written: the missing rule and the missing field protected each other,
+                # exactly as A24 found for `provenance`/`job_id`.
+                source_chapter=source_chapter,
                 from_order=from_order,
                 valid_from_ordinal=valid_from_ordinal, event_date_iso=event_date_iso,
                 predicate=predicate, object=object,
