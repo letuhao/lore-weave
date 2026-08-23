@@ -336,6 +336,67 @@ async def test_a_returned_entity_is_a_SNAPSHOT_not_a_live_handle(store):
 
 
 @pytest.mark.asyncio
+async def test_invalidate_relation_STAMPS_the_instant_it_was_given(store):
+    """T17 A25 — `valid_until` is the bi-temporal close, and no rule had ever passed it.
+
+    The port declares `invalidate_relation(valid_until=...)` and every adapter uses the
+    argument, but the suite only ever called it with the default. "Uses it" is not "agrees
+    about it": A22 found `_to_relation` dropping `valid_until` on the way BACK, so an adapter
+    could stamp the graph correctly and still return a relation that reads as open.
+
+    A caller cannot tell a closed relation from an open one without this field, which is the
+    whole point of a soft invalidate.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Rin", kind="character", source_type="chapter")
+    rel = await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="knows", confidence=0.9)
+
+    stamp = datetime(2026, 8, 23, 12, 0, 0, tzinfo=timezone.utc)
+    closed = await store.invalidate_relation(
+        user_id=u, relation_id=rel.id, valid_until=stamp)
+
+    assert closed is not None, "invalidating an existing relation must return it"
+    assert closed.valid_until is not None, (
+        "the relation came back with no `valid_until` after being invalidated — a caller "
+        "cannot tell it from an open one, which is what a soft invalidate exists to express"
+    )
+
+
+@pytest.mark.asyncio
+async def test_relations_for_HONOURS_direction(store):
+    """`direction` is a filter, and a filter that is accepted and ignored returns MORE than
+    asked for — which reads as success.
+
+    Every adapter references the parameter; none was ever conformed against another on it.
+    Asserted in both directions from the SAME edge, so an adapter that ignores the argument
+    fails on one arm whichever way it errs.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Rin", kind="character", source_type="chapter")
+    await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="knows", confidence=0.9)
+
+    out_of_a = await store.relations_for(user_id=u, entity_id=a.id, direction="outgoing")
+    in_to_a = await store.relations_for(user_id=u, entity_id=a.id, direction="incoming")
+
+    assert [r.object_id for r in out_of_a] == [b.id], (
+        f"an edge a->b must appear in a's OUTGOING relations: {out_of_a}"
+    )
+    assert in_to_a == [], (
+        f"an edge a->b must NOT appear in a's INCOMING relations — an adapter that accepts "
+        f"`direction` and ignores it returns more than asked for, and more reads as success: "
+        f"{in_to_a}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_same_name_in_two_projects_is_two_entities(store):
     u, p, _ = _ids()
     a = await store.resolve_or_merge_entity(

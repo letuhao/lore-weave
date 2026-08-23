@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 74 of 117 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 75 of 118 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (28/38) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
+**OPEN:** `T17` (29/39) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,73 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A25 2026-08-25 — **an always-False comparison returned every relation with its endpoints SWAPPED**
+
+  ```
+  edge created a -> b     (upsert_relation returns subject=a, object=b — verified)
+  relations_for(a, "outgoing") returned   subject=b, object=a
+  ```
+
+  🔴 **`arm == "out"` was never true.** The arms are named `"outgoing"` / `"incoming"`:
+
+  ```python
+  sid = row["eid"] if arm == "out" else row["pid"]     # always the peer
+  oid = row["pid"] if arm == "out" else row["eid"]     # always the entity
+  ```
+
+  So **every** relation `relations_for` returned had subject and object reversed, on both arms.
+  A caller asking "who does Kai know" received edges saying Kai is the object.
+
+  📐 **It is the residue of a rename its OWN comment records.** The code says the values *"were
+  'out'/'in' until 2026-08-14… the rule passed because they all use `direction='both'` — the one
+  value that happened to work."* The rename reached the `arms` tuple and the filter and **missed
+  these two lines**. The direction filter was correct the whole time — `outgoing` finds the edge,
+  `incoming` does not — which is exactly why counting rows could never find this. Only comparing
+  the **endpoints** does.
+
+  🎯 **Found by generalising A24's question, not by looking for it.** A24 established that a
+  method having a conformance rule is not the same as its CONTRACT having one. Derived across
+  the whole port:
+
+  ```
+  12 called port method(s) have parameters the suite never passes, e.g.
+    events_page          4/9   axis, q, sort_dir, exclude_project_ids
+    merge_fact           4/14  pending_validation, source_chapter, provenance, object
+    invalidate_relation  1/2   valid_until          <- BI-TEMPORAL
+    relations_for        1/5   direction            <- this
+  ```
+
+  Two were conformable through the port's return type and both got rules. `invalidate_relation`
+  **passed on every adapter** — the contract was already honoured, which is a real answer and not
+  a wasted rule. `relations_for` failed on Kuzu.
+
+  ⚖️ **Rule 13 — proven from the workload, not by reading two functions.** The first debug showed
+  `upsert_relation` returning `subject == a.id`, so the store holds `a -> b`; the swap had to be
+  in the read. Re-running the read directly gave `direction=outgoing n=1 [(b, a)]` against
+  `a.id = e7a25014, b.id = 59215237`. The store is right and the mapping is wrong.
+
+  🧪 **BITE 21 — restore the dead comparison, by line number:**
+
+  ```
+  AssertionError: an edge a->b must appear in a's OUTGOING relations:
+  [Relation(subject_id='05e8d85a…', object_id='ddc18a18…')]
+  ```
+
+  ✅ **The rule asserts BOTH arms of the same edge**, so an adapter that ignores `direction`
+  fails whichever way it errs: the edge must appear in `outgoing` and must be **absent** from
+  `incoming`. A one-armed rule passes against a filter that returns everything, and "returns more
+  than asked for" reads as success.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4727 passed, 721 skipped** with
+  `TEST_AGE_DSN` set; conformance **151 passed** across four adapters. The two
+  `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a rebuilt image — Kuzu is an embedded evaluation-only adapter
+  with no service deployment. The rule runs against a **real** Kuzu database file, which is where
+  the bug was found.
+  **QC (c) real data:** the swap was reproduced against a real embedded Kuzu store before it was
+  diagnosed, and the endpoint ids printed both ways round.
+
   ---
   ### ✅ T17 A24 2026-08-23 — **why A23 survived a conformance suite: the DOUBLE had the same defect**
 

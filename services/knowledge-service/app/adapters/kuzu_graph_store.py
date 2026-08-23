@@ -351,8 +351,14 @@ class KuzuGraphStore:
                 f"MATCH (e:Entity), {pattern} WHERE {' AND '.join(where)} "
                 "RETURN r, e.id AS eid, peer.id AS pid LIMIT $lim", params)
             for row in rows:
-                sid = row["eid"] if arm == "out" else row["pid"]
-                oid = row["pid"] if arm == "out" else row["eid"]
+                # ⚠️ `arm == "outgoing"`, not `"out"`. The comment above records that these values
+                # were "out"/"in" until 2026-08-14; the rename reached the `arms` tuple and the
+                # filter and MISSED these two lines, so `arm == "out"` was always False and EVERY
+                # relation came back with its subject and object SWAPPED — on both arms. The
+                # direction filter was right the whole time, which is why counting rows could
+                # never find it; only comparing the ENDPOINTS does.
+                sid = row["eid"] if arm == "outgoing" else row["pid"]
+                oid = row["pid"] if arm == "outgoing" else row["eid"]
                 out.append(self._to_relation({**row, "sid": sid, "oid": oid}))
         return out[:limit]
 
