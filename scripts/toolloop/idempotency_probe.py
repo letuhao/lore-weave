@@ -36,6 +36,12 @@ import json
 import pathlib
 import sys
 
+#: Tables whose "delete" is a SOFT archive, so a row COUNT cannot tell replacement from duplication.
+#: Derived from the stores this loop has measured; add a table here the moment a probe reports a
+#: bare DUPLICATED for a tool whose description says it archives.
+_SOFT_ARCHIVING_TABLES = ("outline_node", "structure_node", "arc_template", "motif",
+                          "composition_work", "glossary_entities")
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
@@ -163,8 +169,27 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
                     out_.append(f"{k} {b.get('rows')}->{a2.get('rows')}")
             return out_
 
+        # 🔴 A GROWN TABLE IS NOT PROOF OF A DUPLICATE. Measured 2026-08-23 on
+        # composition_motif_bind_edit: the second bind ARCHIVED the prior scenes and wrote
+        # replacements, exactly as its description promises, and this verdict called it
+        # "NOT IDEMPOTENT — the second call DUPLICATED: outline_node 3->5". The rows grew because
+        # the archive is SOFT and deliberately preserves the author's prose. The count is the
+        # SYMPTOM; the lifecycle column is the diagnosis, and it was already sitting in the store.
+        #
+        # So a growth on a table that carries a lifecycle column is now a QUESTION rather than a
+        # verdict, and the check that would settle it is named in the output. It is deliberately
+        # NOT auto-resolved: this probe reads counts, and teaching it to read `is_archived` per
+        # table is a bigger change than the one instance justifies — but a reader must never again
+        # see a bare "DUPLICATED" for a tool that archived correctly.
         dup = _rows_changed(out["diff_second"])
-        if dup:
+        soft = [d for d in dup if any(t in d for t in _SOFT_ARCHIVING_TABLES)]
+        if dup and soft and len(soft) == len(dup):
+            out["verdict"] = (
+                f"⚠ INCONCLUSIVE — the second call GREW {', '.join(dup)}, and every one of those "
+                "tables SOFT-ARCHIVES. Growth is what an archive-and-replace looks like from a row "
+                "count. Settle it by counting ACTIVE rows only (the lifecycle column), not total: "
+                "a correct tool leaves the same number of ACTIVE rows and more archived ones.")
+        elif dup:
             out["verdict"] = f"🔴 NOT IDEMPOTENT — the second call DUPLICATED: {', '.join(dup)}"
         elif out["diff_second"]:
             out["verdict"] = ("IDEMPOTENT IN EFFECT — no row was added or removed by the second "
