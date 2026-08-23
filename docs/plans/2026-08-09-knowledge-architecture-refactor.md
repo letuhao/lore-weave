@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 85 of 128 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 86 of 129 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (8/9) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,80 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48h 2026-08-23 — **the other four `as_of` readers were RIGHT, and proving that is what bounds T48g**
+
+  ```
+  knowledge-gateway   10 suites / 118 tests   ->   11 suites / 135 tests
+  reads that can carry a window                8, derived (5 named + 3 pass-through)
+  members of the T48g defect class                    1 — `neighborhood`, and it is fixed
+  ```
+
+  📐 **Rule 3: validate a detector on cases it was NOT derived from.** T48g fixed one route; a
+  fix whose class was never enumerated is a fix whose blast radius is a guess. So every other
+  `as_of` reader was read against the same question — and all four forward the value **verbatim
+  as a string**, letting the owning service decide:
+
+  ```
+  getCanonical              const q = asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''
+  getCanonicalTranslation   if (asOf) qs.set('as_of', asOf)
+  getFacts                  if (asOf) qs.set('as_of', asOf)
+  state                     if (asOf !== undefined) qs.set('as_of', asOf)
+  neighborhood              parseInt -> DROP          <- the only one, and T48g's subject
+  ```
+
+  ⚖️ **The diagnosis, and it is what makes the count 1 rather than lucky.** `neighborhood` is the
+  only read that had to **rename** `as_of` to `as_of_chapter` for a different service. The rename
+  forced a parse; the parse chose to drop. Every route that forwards the name it received never
+  needed to look at the value, so it never had the chance to discard it. That is a property of
+  the shape, not of the author — which is why this file guards the SHAPE.
+
+  🎯 **The derivation was wrong twice, and both corrections are the finding.**
+
+  ```
+  1st  filter on /as_of|asOf/           -> 6 handlers, expected >= 8    RED
+       A PASS-THROUGH route never names `as_of` in its own source — it forwards `@Query()`
+       wholesale — so a name search is blind to exactly the routes whose discipline is
+       "touch nothing".
+  2nd  + pass-through form              -> 8 handlers, but 2 uncovered: castByIds, retrieve
+       `castByIds` carries NO window at all; it was dragged in because splitting on the
+       decorator carries the NEXT route's leading comment into this one. Same false positive
+       T25u found in the Cypher DDL guard, same cure — strip comments first.
+       `retrieve` carries a REAL one, in the BODY, forwarded wholesale. Covered, not exempted.
+  ```
+
+  🔴 **Four bites, and L is the one that matters: it plants T48g's defect on a route the fix was
+  not derived from.**
+
+  ```
+  BITE L  give `getFacts` the parseInt-and-drop `neighborhood` had
+          × forwards an UNPARSEABLE as_of downstream untouched — the owning service decides
+          1 failed, 16 passed
+  BITE M  stop stripping comments in the derivation
+          + "castByIds"                       1 failed, 16 passed   <- the strip is load-bearing
+  BITE N  break the decorator split so it finds nothing
+          Received: 1 (expected >= 8)         1 failed, 16 passed   <- the control arm
+  BITE O  make `retrieve` hand-pick body fields instead of forwarding the body
+          × retrieve forwards the caller body ... as_of included
+          1 failed, 16 passed
+  ```
+
+  N is the control arm (rule 3): every per-route assertion here is satisfied by an EMPTY list, so
+  a derivation that quietly stopped matching would leave a green file guarding nothing.
+
+  ⚠️ **A stated limit rather than an implied one.** The census sees query parameters and
+  whole-body forwards. A future route that took `as_of` as a **path segment**, or buried it in a
+  nested body object, would not be seen — `retrieve` is covered because its body is forwarded
+  whole, not because the derivation understands bodies.
+
+  **QC (a) gates:** four plan gates green; `tsc --noEmit` exit 0; `knowledge-gateway`
+  **135 passed, 11 suites**, up from 118/10. No `--selftest` owed — no gate changed.
+  **QC (b) live smoke:** N/A — no runtime code changed. `git diff --stat` on
+  `services/knowledge-gateway/src` is **empty** after bites L and O; this row is entirely a guard
+  over behaviour T48g already shipped.
+  **QC (c) real data:** N/A — produces no data. The figures are the derived handler census,
+  printed at each of its two wrong answers and its right one.
+
   ---
   ### ✅ T48g 2026-08-23 — **the spoiler window failed OPEN on a value it could not read, and `1e9` meant chapter 1**
 
