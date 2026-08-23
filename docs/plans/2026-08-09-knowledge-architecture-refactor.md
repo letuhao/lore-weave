@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 76 of 119 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 77 of 120 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (30/40) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
+**OPEN:** `T17` (31/41) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,65 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A27 2026-08-23 — **three more filters conformed; all three were already correct, and that is the finding**
+
+  ```
+  find_entities_by_name  exclude_project_ids   PASS on every adapter
+  events_page            sort_dir              PASS on every adapter
+  events_page            q                     PASS on every adapter
+  ```
+
+  📐 **"Used" proves nothing, and A25 is why this had to be measured rather than read.** Every
+  adapter references all three parameters — `exclude_project_ids` 1–3×, `q` 1–5× — and A25's
+  `direction` was referenced **three times** while returning every relation with its endpoints
+  swapped, because the reference was a dead comparison. A usage count cannot distinguish a
+  parameter that is honoured from one that is merely mentioned. Only a rule can.
+
+  🎯 **All three passed, and reporting that plainly is the point.** Seventeen cycles of this
+  method have produced eight defects; three consecutive rules finding nothing is evidence about
+  the code, not a wasted cycle. The alternative — writing rules only where a defect is expected —
+  measures the author's intuition and calls it a conformance suite.
+
+  ⚖️ **Each rule asserts BOTH arms of the same corpus**, which is what makes "no defect" a real
+  answer rather than an untested one:
+
+  ```
+  exclude_project_ids   the kept project's entity must be FOUND *and* the excluded one ABSENT
+  sort_dir              desc must be the REVERSAL of asc, not merely "desc returned something"
+  q                     the match must be found *and* the non-match absent, *and* `total` must
+                        describe the FILTERED set rather than the corpus
+  ```
+
+  A one-armed version of any of them passes against a filter that returns everything — and
+  returning more than was asked for is the failure mode that reads as success.
+
+  🧪 **Three bites, one per rule, each on a line that still parses:**
+
+  ```
+  BITE 24  excluded = set()          AssertionError: an entity from an EXCLUDED project came
+                                     back: [('caae52ac', 'p-…'), ('155356a2', 'p-…-other')]
+  BITE 25  if False: matched.reverse()
+                                     AssertionError: sort_dir did not reverse the page:
+                                     asc=['First','Second','Third'] desc=['First','Second','Third']
+  BITE 26  the q clause matches all  AssertionError: a NON-matching event came back — `q` was
+                                     accepted and ignored: ['The Duel at Dawn','A Quiet Supper']
+  ```
+
+  ⛔ **What remains unconformed, and why it is not a gap I can close.** `events_page`'s `axis`
+  and `find_entities_by_name`'s remaining filters are conformable and worth rules; `merge_fact`'s
+  `provenance` is **not** — it is one of the two parameters §9.3 records as unconformable, because
+  the port accepts what its return type cannot report. That section exists so the next person
+  reading this census does not spend a cycle discovering it again.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4745 passed, 727 skipped** with
+  `TEST_AGE_DSN` set; conformance **169 passed** across four adapters. The two
+  `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a rebuilt image — the only changed non-test code in this cycle is
+  none; the rules run against the live AGE database and a real embedded Kuzu file.
+  **QC (c) real data:** the conformance run is real on both engines; the usage census that
+  motivated the rules is derived by AST across the three adapters.
+
   ---
   ### ✅ T17 A26 2026-08-23 — **six more unconformed parameters; the double dropped one of them**
 

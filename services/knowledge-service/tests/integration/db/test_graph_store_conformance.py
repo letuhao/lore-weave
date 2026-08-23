@@ -466,6 +466,81 @@ async def test_merge_event_KEEPS_chronological_order(store):
 
 
 @pytest.mark.asyncio
+async def test_find_entities_by_name_HONOURS_exclude_project_ids(store):
+    """T17 A27 — a filter that is accepted and ignored returns entities the caller excluded.
+
+    Never passed by any rule. Every adapter references the parameter, which proves nothing:
+    A25's `direction` was referenced three times and still returned every relation with its
+    endpoints swapped, because the reference was a dead comparison.
+
+    This one is project-scoping. An entity from an excluded project coming back is not a
+    cosmetic filter miss — the caller asked not to see it.
+    """
+    u, p, _ = _ids()
+    other = f"{p}-other"
+    keep = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=other, name="Kai", kind="character", source_type="chapter")
+
+    # Both projects hold a "Kai"; excluding the other must leave exactly one.
+    got = await store.find_entities_by_name(
+        user_id=u, project_id=None, name="Kai", exclude_project_ids=[other])
+    ids = {e.id for e in got}
+    assert keep.id in ids, "the entity in a project that was NOT excluded must still be found"
+    assert all(e.project_id != other for e in got), (
+        f"an entity from an EXCLUDED project came back: "
+        f"{[(e.id[:8], e.project_id) for e in got]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_events_page_HONOURS_sort_dir(store):
+    """`sort_dir` reverses the page. Never passed by a rule, on any adapter.
+
+    Asserted as an actual REVERSAL rather than "desc returned something": an adapter that
+    ignores the argument returns the ascending page for both calls, and comparing a page
+    against itself is the shape that reads as success.
+    """
+    u, p, _ = _ids()
+    for i, title in enumerate(["First", "Second", "Third"], start=1):
+        await store.merge_event(
+            user_id=u, project_id=p, title=title, event_order=i * 1_000_000)
+
+    asc, _n1 = await store.events_page(user_id=u, project_id=p, sort_dir="asc", limit=10)
+    desc, _n2 = await store.events_page(user_id=u, project_id=p, sort_dir="desc", limit=10)
+
+    assert len(asc) == 3 and len(desc) == 3, (asc, desc)
+    assert [e.title for e in desc] == list(reversed([e.title for e in asc])), (
+        f"sort_dir did not reverse the page: asc={[e.title for e in asc]} "
+        f"desc={[e.title for e in desc]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_events_page_HONOURS_the_q_filter(store):
+    """`q` is a text filter, and an ignored filter returns MORE than asked for.
+
+    Both arms from the same corpus, so an adapter that ignores `q` fails whichever way it
+    errs — the match must be found and the non-match must be absent.
+    """
+    u, p, _ = _ids()
+    await store.merge_event(user_id=u, project_id=p, title="The Duel at Dawn",
+                            event_order=1_000_000)
+    await store.merge_event(user_id=u, project_id=p, title="A Quiet Supper",
+                            event_order=2_000_000)
+
+    hits, total = await store.events_page(user_id=u, project_id=p, q="Duel", limit=10)
+    titles = [e.title for e in hits]
+    assert "The Duel at Dawn" in titles, f"the matching event was filtered out: {titles}"
+    assert "A Quiet Supper" not in titles, (
+        f"a NON-matching event came back — `q` was accepted and ignored, and returning more "
+        f"than asked for reads as success: {titles}"
+    )
+    assert total == len(hits), f"the total must describe the FILTERED set, not the corpus: {total}"
+
+
+@pytest.mark.asyncio
 async def test_the_same_name_in_two_projects_is_two_entities(store):
     u, p, _ = _ids()
     a = await store.resolve_or_merge_entity(
