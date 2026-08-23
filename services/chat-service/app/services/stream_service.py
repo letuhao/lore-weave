@@ -862,6 +862,35 @@ def _has_leak_marker(text: str) -> bool:
     return bool(_LEAK_MARKER_ANY_RE.search(text))
 
 
+def _is_bare_toolcall_marker_only(text: str, reasoning: str) -> bool:
+    """D-SILENT-TURN-NO-CARD-NO-PROSE — is this pass's ENTIRE output one or more
+    bare tool-call control tokens and nothing else?
+
+    Every silent `finish_reason='stop'` turn in the recorded population carries
+    exactly 12 characters of reasoning, and that content is `<tool_call|>` — the
+    closing delimiter, arriving alone. The model abandoned the structured channel
+    the way D-TOOLCALL-GEMMA-TOKEN-LEAK describes, but emitted no call to salvage:
+    `_extract_leaked_tool_calls` returns [], the pass is treated as "the model
+    stopped without a tool call", and the turn ends with nothing for the author.
+
+    The two channels are read TOGETHER because which one the token lands in is not
+    a property of the failure — `_split_safe_emit` holds back only the OPENING
+    token `<|tool_call>`, so a leaked closing delimiter flushes straight through to
+    whichever channel was open.
+
+    PRECISION IS THE HALF THAT MATTERS. Firing on a pass that genuinely said
+    something would convert working turns into failures, which is a worse defect
+    than the one this names. So it requires BOTH that a marker was present and
+    that removing every marker leaves nothing but whitespace: prose carrying a
+    marker keeps its prose and is not degenerate, and a pass that is simply empty
+    never leaked anything and is a different failure that must not be counted
+    under this one."""
+    joined = "\n".join((text or "", reasoning or ""))
+    if not _LEAK_MARKER_ANY_RE.search(joined):
+        return False
+    return not _LEAK_MARKER_ANY_RE.sub("", joined).strip()
+
+
 def _degemmify_tool_args(raw: str) -> str:
     """Strip Gemma 4's native tool-call wrapper/quote tokens, and quote bare
     object keys, so the result is plausible JSON worth a `json.loads` retry.
@@ -4318,6 +4347,29 @@ async def _stream_with_tools(
             # its declaration: a claim made in an early pass must still be visible to the
             # guard that runs on the last one).
             turn_text_parts.extend(text_parts)
+
+            # D-SILENT-TURN-NO-CARD-NO-PROSE — name the pass that is about to end
+            # the turn saying nothing. `_has_leak_marker` already returns True for
+            # this string, so the platform knows it is a control token and still
+            # lets the pass fall through as an ordinary "model stopped without a
+            # tool call". Logged, NOT remedied: the remedy (retry the pass, since
+            # the model's intent was a call) is a mechanism whose benefit has not
+            # been measured, and what the author is shown when a turn says nothing
+            # is DQ-T33, which is the owner's. Naming it is what makes either
+            # decision measurable — until now this shape was only observable by
+            # waiting for it.
+            if _is_bare_toolcall_marker_only(
+                "".join(text_parts), "".join(reasoning_parts)
+            ) and not tool_frags and not leaked_calls:
+                logger.warning(
+                    "D-SILENT-TURN-NO-CARD-NO-PROSE: DEGENERATE PASS — the model's entire "
+                    "output this pass was %d character(s) of bare tool-call control token "
+                    "(%r) with no call to salvage and nothing for the author. model_ref=%s "
+                    "session=%s iteration=%s",
+                    len("".join(text_parts)) + len("".join(reasoning_parts)),
+                    ("".join(text_parts) + "".join(reasoning_parts))[:64],
+                    model_ref, session_id, iteration,
+                )
 
             if not tool_frags and not leaked_calls:
                 # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
