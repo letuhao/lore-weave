@@ -5554,6 +5554,36 @@ async def _stream_with_tools(
                     # one-sided gate would leave it out by construction. Pure argument check,
                     # no dispatch — running it twice costs nothing and forgetting it costs a
                     # whole surface.
+                    # 🔴 D-FJ-11 PARITY, and the next arm this branch was missing. The backend
+                    # dispatch drops an `*_id` the model filled with something that is not an
+                    # identifier — a NAME, a placeholder, a SCREAMING_SNAKE stub — and then hands
+                    # the NAME back as the query to search with. This branch never ran any of it.
+                    #
+                    # MEASURED 2026-08-23, composition_entity_override_edit at K=5: the model called
+                    # glossary_propose_entity_edit with entity_id="Aldric Vane" on all five runs and
+                    # got no repair, because that tool is a FRONTEND tool and returns above. The
+                    # name-repair sentence fired 0 times in the whole batch.
+                    #
+                    # This is the same divergence the comments above already record twice — the
+                    # context-id injector missed this branch, CP-5.3's resolver became unreachable
+                    # through it — so each repair gets hand-ported the run after it is found
+                    # missing. Porting this one rather than filing it again.
+                    _fe_invented = _invented_supplier_ids(
+                        _fe_args, None,
+                        ((_fe_def or {}).get("function", {}).get("parameters", {}) or {})
+                        .get("properties"),
+                    )
+                    _fe_dropped = {n: _fe_args.get(n) for n in _fe_invented}
+                    for _n in _fe_invented:
+                        _fe_args.pop(_n, None)
+                    if _fe_invented:
+                        logger.info(
+                            "dropped non-identifier value(s) %s from FRONTEND tool %s "
+                            "(session=%s); values=%s",
+                            _fe_invented, c["name"], session_id,
+                            {k: (v if isinstance(v, str) and len(v) <= 80 else str(v)[:80])
+                             for k, v in _fe_dropped.items()},
+                        )
                     from app.agentruntime.toolcontract import (
                         duplicate_identifier as _fe_dup_check,
                         duplicate_identifier_message as _fe_dup_message,
@@ -5563,6 +5593,13 @@ async def _stream_with_tools(
                         _fe_dup_message(*_fe_dupe) if _fe_dupe is not None
                         else validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
                     )
+                    if _fe_err is not None and _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
+                        # The dropped NAME is the query the recovery search needs — the same
+                        # sentence the backend appends. Without it the model is told only that the
+                        # argument is MISSING, and its follow-up search goes out blank.
+                        _fe_named = _name_like_dropped_ids(_fe_dropped)
+                        if _fe_named:
+                            _fe_err = _fe_err + " " + _fe_named
                     if _fe_err is not None:
                         # A missing-required miss feeds the SAME cross-tool blank/
                         # invalid-args streak breaker the backend feeds (mirrors the
