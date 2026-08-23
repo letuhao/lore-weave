@@ -3703,12 +3703,37 @@ class _AuthoringRunManageArgs(ForbidExtra):
     ]
     book_id: str
     run_id: str | None = None                 # start, resume, gate, revert_all (NOT create)
-    plan_run_id: str | None = None            # create (required)
+    # 🔴 THE THREE `create` REQUIREMENTS CARRIED A TITLE AND NO DESCRIPTION, so the runtime could
+    # say nothing useful when one was missing. Measured 2026-08-23: op=create was called 4 of 5
+    # runs and refused every time with "op=create requires plan_run_id, budget_usd, and
+    # pause_after_each_unit" — while the SCHEMA declares required=['op','book_id'] and all three of
+    # these optional-with-default-null, because a flat superset must be. A model that trusts the
+    # schema is refused by the handler.
+    #
+    # The refusal builder's useful branch quotes an argument's OWN declaration back ("The tool DOES
+    # declare what this is — <desc>"); with nothing to quote it falls through to "this tool does not
+    # declare which side supplies them". So the per-op requirement, which lived only in the comments
+    # you are reading, is now IN the wire schema where the model can see it.
+    #
+    # AND TWO OF THEM HAVE NO SUPPLIER BY NATURE. budget_usd and pause_after_each_unit are the
+    # AUTHOR's decisions — how much money, and whether to stop between units. No tool can provide
+    # them, the model is correctly forbidden from inventing them, and nothing told it to ASK. Saying
+    # so is not a policy change; it is what the handler already enforces, written where it is read.
+    plan_run_id: str | None = Field(default=None, description=(
+        "op=create REQUIRES this. The PLAN run this authoring run drafts from — the `run_id` "
+        "returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's "
+        "own id, which is `run_id`."))
     scope: list[str] | None = None            # create
     level: Literal[3, 4] | None = None        # create
-    budget_usd: Decimal | None = None         # create (required)
+    budget_usd: Decimal | None = Field(default=None, description=(
+        "op=create REQUIRES this. The spend ceiling for the run, in USD. No tool supplies it and it "
+        "must not be guessed — it is the author's decision. If you do not have a figure, ASK THEM "
+        "for one rather than proposing a default."))
     tool_allowlist: list[Literal[ALLOWLISTABLE_TOOLS]] | None = None  # create
-    pause_after_each_unit: bool | None = None  # create (required) / start, resume (optional)
+    pause_after_each_unit: bool | None = Field(default=None, description=(
+        "op=create REQUIRES this (optional on start/resume). Whether the run stops after each unit "
+        "for review. No tool supplies it — it is the author's choice about how much to review, so "
+        "ASK THEM if it was not stated."))
     params: dict[str, Any] | None = None      # create
 
 
