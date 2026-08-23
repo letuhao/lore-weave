@@ -61,7 +61,28 @@ export const PROPOSE_EDIT_TOOL = {
   // ASK mode, so a read-only turn can still push proposed prose at the user. That is
   // arguably right (nothing changes until they click) but it is a product call, not a
   // mechanical one — if it should be W, the tier is now the single place to change it.
-  _meta: { tier: 'R', scope: 'none' },
+  // 🔴 SYNONYMS, because without them this tool can never be PRE-FILTERED onto the wire.
+  // chat-service's answerable_tools matches a request against a tool's declared synonyms, and
+  // measured 2026-08-23 over the whole 315-tool catalogue, propose_edit and tool_load were the
+  // only two blocked tools that match NOTHING — they are the only two declaring none. The
+  // answerability sweep already recorded that ("Only two never match, and they are the same two
+  // that declare no synonyms at all"), and the cause is this line.
+  //
+  // Phrased as a PERSON types, not as the feature is named, and checked against the matcher: it
+  // needs the phrase CONTIGUOUS, so "show me the change" matches the recorded scenario prompt
+  // ("...darker — show me the change before you apply it") while "propose edit" would not.
+  _meta: {
+    tier: 'R',
+    scope: 'none',
+    synonyms: [
+      'show me the change',
+      'suggest an edit',
+      'propose an edit',
+      'rewrite this',
+      'rewrite the selection',
+      'insert at my cursor',
+    ],
+  },
 };
 
 export const PROPOSE_EDIT_NAME = PROPOSE_EDIT_TOOL.name;
