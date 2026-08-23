@@ -2224,9 +2224,9 @@
    "counts_toward_release": true
   },
   "composition_derivative_edit": {
-   "state": "blocked",
+   "state": "proven",
    "cycle": "batch-40 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/p4-derivative.json. MEASURED: surfaced 5/5, called 4/5, suspended-on-card 0/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED ON TARGET SELECTION, with the fixture cause FIXED and measured. This tool read called 0/5 for the whole loop because its scenario had an EMPTY seed and a seed_assert expecting ZERO derivatives, then asked the model to 'update the divergence spec for my derivative'. With a real derivative seeded through the confirm gate it is called 4/5 with zero errors — the pre-registered refutation did NOT fire, so the missing derivative was the block.\n\nWHAT STILL FAILS: the model passes the CANONICAL work's project_id and the tool correctly refuses 'NOT_A_DERIVATIVE — the spec exists only on a dị bản'. The store moves on 1 of 5. Its own lookup would resolve this, and the model broke that too: it called composition_list_derivatives with the fixture's NAME — 'LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed' — as a project_id and was refused. That is the same shape recorded earlier in this loop, where a LOOP-THROWAWAY name was passed as a world_id: the fixture's own name is the most plausible-looking id in the turn.\n\nSHIP: absent, tenancy and empty are exercised by direct probe; `gate` is genuinely OWED, because no run reached the confirm card — every call was refused before it. Asserting a gate from a refusal that happened before it is the mistake the ship_audit exists to prevent.",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/p4-derivative.json. MEASURED: surfaced 5/5, called 4/5, suspended-on-card 0/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry.",
    "evidence_file": "docs/eval/toolloop/2026-08-14/p4-derivative.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
@@ -3676,6 +3676,14 @@
    "buildable": "An MCP list-references tool over the REST path that already exists.",
    "measured_by": "contracts/tool-catalog-cache.json scanned for reference_id; c-ref2 K=5",
    "sweep_and_its_precision": "🔴 I SWEPT FOR MORE AND THE SWEEP IS A LEAD GENERATOR, NOT A FINDING. Across the 315-tool catalogue, 12 required *_id arguments (of 40, excluding the runtime context ids) are named by NO other tool:\n  attr_value_id, base_version_id, edited_from_version_id, fact_id, import_source_id, marker_id,\n  provider_credential_id, reference_id, region_id, source_entity_id, task_id, triage_id\n\nMOST OF THOSE HAVE A REAL SUPPLIER. The test only asks whether the ID NAME appears in another tool's schema or description, and a reader routinely returns the value under a different key: world_map_get returns markers and regions, kg_triage_list returns triage items, settings_list_providers returns credentials, jobs_list returns tasks. Reporting 12 defects would have been a precision failure of exactly the kind this loop measures before shipping a lint.\n\nONE IS VERIFIED: reference_id. There is no MCP tool that lists reference sources at all — checked by looking for a READER of the noun, not just the id name. That check is what separates a genuine orphan from a naming mismatch, and it is the check to run on the other eleven before any of them is called a defect."
+  },
+  "D-SNAPSHOT-IS-BLIND-TO-AN-IN-PLACE-EDIT-WITH-NO-UPDATED-AT": {
+   "status": "OPEN — VERIFIED two ways, 2026-08-23",
+   "what": "store_snapshot records a table's ROW COUNT and its latest mutation timestamp. loreweave_composition.divergence_spec has created_at and NO updated_at, so an in-place UPDATE moves neither: the count is unchanged and the only timestamp is the creation time. Every edit to a derivative's spec is invisible to the DATA bar.",
+   "verified_two_ways": "(1) the column list — divergence_spec: id, created_by, project_id, book_id, work_id, taxonomy, pov_anchor, canon_rule, created_at. No updated_at.\n(2) a demonstrated real change with an empty diff — taxonomy went au -> character_transform on the first call and the store diff was {}. Not an inference.",
+   "it_makes_the_probes_guard_lie": "idempotency_probe printed '⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing'. The first call changed the taxonomy. On a table with no updated_at that warning means the INSTRUMENT is blind, exactly as it does for a Neo4j-owned tool — the same warning, two different blind spots, and neither is the tool being quiet.",
+   "distinguish_from_my_retracted_claim": "I claimed this blindness for authoring_runs/plan_run today and retracted it: they DO carry book_id and the snapshot covers them. The difference is that this one is checked against information_schema AND demonstrated with a change the diff missed.",
+   "fix_direction": "The snapshot already folds in more than updated_at — its own comment records adding resolved_at for kg_triage_resolve. A table with NO mutation timestamp needs either one added in the schema, or a content hash, or the DATA bar must say it cannot see this table rather than reporting no change."
   }
  },
  "deferred_questions": {
@@ -4217,8 +4225,8 @@
   "tools_declared": 315,
   "tools_concluded": 198,
   "tools_in_cycle": 0,
-  "tools_proven": 178,
-  "tools_blocked": 20,
+  "tools_proven": 179,
+  "tools_blocked": 19,
   "defects_proven": 25,
   "defects_open": 14,
   "deferred_questions": 18,
@@ -4235,8 +4243,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 80,
-  "defects_other": 41
+  "defects_total": 81,
+  "defects_other": 42
  },
  "observations": [
   {

@@ -205,8 +205,21 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
         fx.build(scen.get("seed") or [], chapter=True)
         pre_results = []
         for p in (pre or []):
-            pre_results.append(fx.mcp.call(p["tool"], fx._substitute(p.get("args") or {})))
-        out["pre"] = [{"tool": p["tool"]} for p in (pre or [])]
+            # 🔴 A PRE-CALL GETS THE SAME RESOLUTION AS THE MAIN ARGS. It had only
+            # `_substitute` ({book_id}/{step:N:...}), not `_resolve_sql`, so a pre-call
+            # needing an id that exists only in a seeded ROW was handed the literal
+            # "{sql:...}" string and refused with 'project_id must be a UUID'. The two arg
+            # paths had drifted, and a reader would read that refusal as the pre-call being
+            # wrong rather than unresolved.
+            pre_results.append(fx.mcp.call(
+                p["tool"], _resolve_sql(fx._substitute(p.get("args") or {}), fx)))
+        # 🔴 RECORD WHAT THE PRE-CALL RETURNED, not just that it happened. A pre-call exists to
+        # establish the state BEFORE the tool runs, and storing only its name throws that away:
+        # measured 2026-08-23 on composition_derivative_edit, where the whole question was
+        # whether the first call CHANGED taxonomy or merely re-set a value already there, and
+        # the pre-read had the answer and did not keep it.
+        out["pre"] = [{"tool": p["tool"], "result": r}
+                      for p, r in zip(pre or [], pre_results)]
         args = fx._substitute(args_tpl)          # the same substitution the seeds use
         args = _resolve_sql(args, fx)            # …plus one lookup the seeds cannot provide
         args = _resolve_pre(args, pre_results, fx)
