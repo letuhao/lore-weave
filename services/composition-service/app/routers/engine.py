@@ -2067,6 +2067,15 @@ async def critique(
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )
+    # WHICH judge answered, stamped on the verdict itself. The authoring path already does
+    # this (`authoring_run_service.py`), and the studio renders both fields; this route did
+    # not, so a critique could name every dimension it scored except the critic that scored
+    # them. The gap is not cosmetic: QC-5's acceptance was once measured with a critic passed
+    # in the request body and read as a statement about the path users get — exactly what
+    # `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` names. A verdict that cannot say
+    # which judge produced it is how two critics' numbers get compared as if they were one.
+    critic = {**critic, "critic_ref": str(critic_res.ref),
+              "critic_status": critic_res.status.value}
     # Fold the deterministic derivative findings + the GATE verdict into the critic
     # contract (alongside the LLM dims/violations) so the regeneration loop sees both.
     if derivative_findings:

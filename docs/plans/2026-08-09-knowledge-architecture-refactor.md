@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 59 of 101 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 59 of 102 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/46) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -9569,6 +9569,83 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### 🔻 QC-5 C29 2026-08-23 — **the re-score, run TWICE: my first one measured the wrong critic**
+
+  ```
+  1a critic capability   PASS   5/5 planted (canon=2, attributed=1) vs 0/5 control — DISCRIMINATES
+  1b drafter compliance  FAIL   4/5 flow runs produced an attributed canon violation
+  2  no vacuous 5/5      PASS
+  QC-5 => FAIL   — on the critic users actually get
+  ```
+
+  🔴 **My first re-score repeated, exactly, the defect an OPEN deferral on this row already
+  names.** `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` says the acceptance has only
+  ever been measured with a critic supplied in the request body. My flow driver passed
+  `critic_model_ref=51ea9fd7…` in `params` — and params **override** the book setting, which is
+  the half of C28's fix I had just finished verifying. So I measured the harness critic and was
+  one commit away from reporting it as the shipped path.
+
+  📐 **The two critics do not fail the same way, which is why the distinction is not pedantry:**
+
+  ```
+                            harness 51ea9fd7…       book 019eb620…  (shipped)
+  flow canon                5,5,5,5,9               4,3,3,4,9
+  flow raw                  2,6,0,5,0               2,2,2,2,0
+  flow attributed           0,0,0,0,0               2,2,2,2,0
+  drops (raw > attributed)  3 of 5                  NONE
+  1b fails because…         findings it could NOT   the DRAFTER contradicted
+                            attribute were dropped  active canon
+  ```
+
+  **Same clause, same gate, opposite diagnosis.** On the harness critic 1b reads as the
+  unattributable-verdict defect — the judge inventing a naming-convention rule id against six
+  rules that are all character facts, dropped correctly by `map_rule_tokens`. On the shipped
+  critic **nothing is ever dropped**: `raw == attributed` on every run that answered, and both
+  violations map to real rule ids. An acceptance scored on the wrong judge does not merely lose
+  precision; it reports a different bug.
+
+  🎯 **1a now PASSES on the shipped critic, and deterministically.** Five planted runs and five
+  matched controls — the same passage, one sentence swapped so it asserts nothing about who
+  betrayed whom:
+
+  ```
+  planted          5/5   canon=2  attributed=1  raw=1     critic 019eb620 configured
+  planted_control  5/5   canon=5  attributed=0  raw=0     critic 019eb620 configured
+  ```
+
+  Zero variance across ten calls. The planted arm attributes to the real rule id with the
+  planted sentence as its span. This is the inverse of 2026-08-21, where the planted arm scored
+  5/5 **and so did its control**, because the criterion was measuring the draft.
+
+  🔧 **BUILT — the verdict now names the judge that produced it.** The route could report every
+  dimension it scored except *which critic scored them*: `engine.py` stamps `critic_ref` at three
+  sites and the critique handler was a missing fourth, so neither the response nor the persisted
+  job critic said who answered. That gap is what let a harness-critic number pass for a
+  shipped-path one — the deferral's own **Mechanism** row claims *"which critic judged is visible
+  per run"*, and on this route it was not. The stamp lands on the verdict and on the write, and
+  every record in the measurement below carries the ref it was judged by.
+
+  🔻 **What 1b's failure actually is, stated plainly:** the drafter writes prose that contradicts
+  two active canon rules, four runs out of five, and the shipped critic catches it every time and
+  attributes it correctly. That is not a measurement artefact and not a judge defect. It is the
+  product failing its own acceptance test — which is what
+  `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` said this re-run would settle either way:
+  *"if they do not, the failure is the product's and worth having."* It is the product's.
+
+  ⚠️ **And C28's optimism was not representative.** C28 read ONE flow run — `raw 0 · dropped 0`
+  — and reported the attribution fix as working in the flow. **One run is a sample, not a
+  measurement.** Five runs on that same harness critic drop on three of them.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3785 passed, 403 skipped**;
+  the new stamp test bitten by deleting the two-line statement at `engine.py:2077-2078` —
+  `KeyError: 'critic_ref'`, the field's absence and not a parse error — then restored, 13 green.
+  **QC (b) live smoke:** the subject. `composition-service` + `composition-worker` rebuilt, and
+  the stamp verified present **inside both running containers** before a single number was taken.
+  **QC (c) real data:** 25 real judge calls on the dogfood book (10 arms + 5 flow on the shipped
+  critic, 10 arms earlier on the harness one); every record's `critic_ref` read back off the
+  verdict rather than assumed from what was requested.
+
+  ---
   ### ✅ QC-5 C28 2026-08-23 — **the attribution fix was BUILT and never DEPLOYED; measured on the rebuilt stack it works**
 
   ```
@@ -11015,7 +11092,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### ~~DEFERRAL~~ `D-AUTHORING-RUN-IGNORES-THE-BOOK-CRITIC-SETTING` — **FIXED 2026-08-22 (C29). The seam resolves through `role_ref(work_settings, "critic")` when params carry none, params still override, and the Work is resolved once above the decision. Proven by re-driving the identical studio flow: `not_configured`/OK/canon-5 became `configured`/SEVERE/canon-3 with two attributed violations and a breaker pause, while the UI sent exactly the same two params. Bitten; 3646 passed.**
 
-  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC`
+  ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` — **CLOSED 2026-08-23 (C29). Re-run with the book's critic (`019eb620…`), all 15 records carrying the `critic_ref` they were judged by: 1a PASSES 5/5 vs 0/5, and 1b FAILS because the DRAFTER contradicts active canon on 4 of 5 runs. Its own *To unblock* named both outcomes — *"if they do not, the failure is the product's and worth having"*. It is the product's, and it is now `D-QC5-DRAFTER-CONTRADICTS-ACTIVE-CANON` below. The **Mechanism** row was also wrong: `critic_ref` did NOT ride every verdict — the `/critique` route stamped nothing, which is how my own first re-score measured the harness critic. Fixed in the same commit.**
+
+  ### 🔻 DEFERRAL `D-QC5-DRAFTER-CONTRADICTS-ACTIVE-CANON`
+
+  | | |
+  |---|---|
+  | **Blocker** | The drafter writes prose that violates active canon, and the shipped critic catches it. Five flow runs on the acceptance chapter, the book's own critic resolving through `role_ref(work_settings, "critic")`: **4 of 5 returned an attributed canon violation** (`canon` 4,3,3,4 · `attributed` 2,2,2,2), both violations mapping to real rule ids. The fifth was a judge failure, recorded rather than dropped. |
+  | **Evidence** | `docs/measurements/2026-08-23-qc5-acceptance-shipped-critic.json` — 15 records, every one carrying `critic_ref=019eb620…`. Scored: 1a PASS, **1b FAIL**, 2 PASS. 1a is what makes this readable: the same critic flags a planted violation 5/5 and a matched control 0/5, so *"it found 2 violations"* cannot be dismissed as a judge that flags everything. |
+  | **Why it is not the judge** | On the harness critic the same clause failed for the OPPOSITE reason — `raw > attributed`, findings discarded because the judge invented a rule id. On the shipped critic **nothing is ever dropped**: `raw == attributed` on every run that answered. The drops were the other critic's defect; these violations are the drafter's. |
+  | **Mechanism** | Every verdict now stamps `critic_ref` and `critic_status` — on the authoring path already, and on `/critique` as of C29 — so a re-measurement cannot silently swap judges again. Re-running `qc5_flow.py` with no critic in `params` reproduces it; the gate scores it. |
+  | **To unblock** | Nothing external, and it is not a decision: read the two attributed violations against the rule texts they cite (C26's method — 3 of 4 were false last time, so the verdicts must be adjudicated before the drafter is blamed), then either the drafter's canon grounding is the gap or the critic's precision is. |
+  | **Retry when** | Immediately — it is adjudication plus runs, not a wait. |
+
 
   | | |
   |---|---|

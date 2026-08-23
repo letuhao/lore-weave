@@ -642,6 +642,27 @@ def test_critique_runs_with_distinct_critic_and_fresh_canon(ctx):
     assert judge.call_args.kwargs["model_ref"] == str(CRITIC)  # distinct critic ref
 
 
+def test_critique_verdict_names_the_critic_that_produced_it(ctx):
+    """The verdict says WHICH judge scored it, in the response and in what is persisted.
+
+    Without this the route reported every dimension it scored except the critic that
+    scored them, and two different critics' numbers are indistinguishable once written
+    down. That is not hypothetical: QC-5's acceptance was measured once with a critic
+    passed in the request body and read as a statement about the path users get.
+    Asserted on the PERSISTED write as well as the response, because the response is
+    read by one caller and the stored verdict by every later one.
+    """
+    c, works, _, canon, jobs, _, _ = ctx
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert r.json()["critic"]["critic_ref"] == str(CRITIC)
+    assert r.json()["critic"]["critic_status"] == "configured"
+    persisted = [kw["critic"] for _, _, kw in jobs.updates if kw.get("critic")]
+    assert persisted and persisted[-1]["critic_ref"] == str(CRITIC)
+
+
 def test_critique_skipped_when_critic_equals_drafter(ctx):
     c, works, _, _, _, judge, _ = ctx
     works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(DRAFTER)})  # == drafter
