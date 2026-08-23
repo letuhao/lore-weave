@@ -3496,6 +3496,19 @@
       "why_it_matters": "The turn looks careful and correct — it even sounds like good manners — and nothing is staged. The platform has a real approval card for exactly this moment and it never engages, so a user who answers 'yes' is answering a question no mechanism is holding. It is invisible to an error-rate check: zero errors on all 45 runs.",
       "not_the_recorded_cause": "These tools were blocked under P4-PRECONDITION, 'the fixture cannot reach the state the tool needs'. Surfacing is 5/5 and errors are 0/5; the fixture reaches the state fine.",
       "why": "The five tools do end by asking in prose with no card. But the scenario is single-turn with no prior_turns, so nothing can answer the question and whether the model would act on turn 2 was never measured. Calling it a defect asserted the counterfactual the fixture cannot produce."
+    },
+    "D-SUPPLIER-RETURNS-COUNTS-NOT-THE-IDS-ITS-SUCCESSOR-NEEDS": {
+      "status": "OPEN — measured 2026-08-23, root cause verified in source",
+      "what": "kg_add_nodes returns {nodes_created, nodes_existing, entities_seen, skipped} and NO node ids (graph_schema_tools.py:2125). Its successor kg_propose_edge REQUIRES source_entity_id and target_entity_id. So the documented chain cannot be walked: the step that creates the endpoints does not tell the caller what they are.",
+      "what_the_model_did": "Invented one, and used the SAME value for both endpoints: source_entity_id = target_entity_id = '66966666-6666-6666-6666-666666666666'. The tool's own check caught it — 'they identify DIFFERENT things and can never be the same id' — which is a good message about the wrong problem. The model had nothing else to pass.",
+      "why_the_fabrication_guard_missed_it": "🔴 _invented_supplier_ids only drops a value that is NOT a UUID (plus SCREAMING_SNAKE, whitespace and placeholder tokens). '66966666-6666-6666-6666-666666666666' parses as a UUID, so every arm passes it through. A syntactically valid placeholder is invisible to a guard whose test is syntactic.",
+      "candidate_fix": "Return the ids. kg_add_nodes already has them — res carries created/existing — so adding them is additive. NOTE the hazard measured earlier today on settings_list_models: adding a field to a tool's output makes ai-gateway REJECT the whole response until it re-federates the schema, so this needs a restart in the same change.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/p4-approve-pilot-raw.json (K=5)"
+    },
+    "D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID": {
+      "status": "OPEN — one measured instance",
+      "what": "The fabricated-runtime-owed-id guard tests SYNTAX. A repdigit UUID like '66966666-6666-6666-6666-666666666666' passes every arm and reaches the tool.",
+      "caution": "A rule that rejects it needs its PRECISION measured before shipping. 'UUID version is not 7' would catch it and would also reject any legitimate v4 id from an external system; 'all hex digits identical' is high precision and tiny recall. Neither is obviously right, and this loop has already paid once for a blacklist that the very next run walked around."
     }
   },
   "deferred_questions": {
