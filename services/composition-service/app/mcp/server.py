@@ -2009,6 +2009,28 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
     work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one)"}
+    # 🔴 AN OVERRIDE WITH NO FIELDS OVERRIDES NOTHING, and it was being created. Measured
+    # 2026-08-23 by direct probe: overridden_fields={} returned {"success": true, "override":
+    # {..., "overridden_fields": {}}}. The row then reads as a real override to everything
+    # downstream — the derivative's context pack, the undo hint, the list — and resolves to no
+    # change at all. Refused here rather than written and puzzled over later.
+    #
+    # DELIBERATELY NOT THE OTHER TWO CASES the same probe found (a target_entity_id that does not
+    # exist, and one belonging to another BOOK). Those need an existence check against
+    # glossary-service, and its client is documented to "return [] / None on any failure and never
+    # raise" so an outage degrades rather than 500s. Turning that into a GATE is a fail-open /
+    # fail-closed decision — reject during a glossary outage, or keep accepting bad targets — and
+    # that is a product call, not a lint. See
+    # D-AN-OVERRIDE-ACCEPTS-A-TARGET-ENTITY-THAT-IS-NOT-THERE.
+    if not args.overridden_fields:
+        return {
+            "success": False,
+            "error": (
+                "EMPTY_OVERRIDE — overridden_fields is required and must name at least one field, "
+                'e.g. {"occupation": "cartographer"}. An override with no fields would change '
+                "nothing while appearing in the derivative as a real one."
+            ),
+        }
     derivatives = DerivativesRepo(get_pool())
     try:
         ov = await derivatives.add_override(

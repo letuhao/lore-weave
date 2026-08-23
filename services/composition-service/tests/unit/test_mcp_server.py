@@ -1157,13 +1157,60 @@ async def test_entity_override_add_success_and_duplicate():
             assert res["success"] is True
             assert res["override"]["overridden_fields"] == {"role": "hero"}
             # duplicate target → OVERRIDE_EXISTS
+            #
+            # `overridden_fields` is passed here for the same reason the first call passes it: an
+            # empty field-set is now refused with EMPTY_OVERRIDE before the repo is reached, so a
+            # call that omitted it would never get as far as the duplicate it is asserting. The
+            # omission was incidental to this half of the test — what it checks is that a
+            # UniqueViolation becomes OVERRIDE_EXISTS rather than a 500, and that is unchanged.
             DR.return_value.add_override = AsyncMock(
                 side_effect=_asyncpg.UniqueViolationError("dup"))
             res2 = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(
-                    project_id=str(deriv.project_id), target_entity_id=str(target)),
+                    project_id=str(deriv.project_id), target_entity_id=str(target),
+                    overridden_fields={"role": "hero"}),
             )
     assert res2["success"] is False and "OVERRIDE_EXISTS" in res2["error"]
+
+
+async def test_an_override_with_no_fields_is_refused():
+    """🔴 AN OVERRIDE THAT OVERRIDES NOTHING WAS BEING CREATED.
+
+    Measured 2026-08-23 by direct probe against a real derivative: overridden_fields={} returned
+    {"success": true, "override": {..., "overridden_fields": {}}}. The row then reads as a real
+    override everywhere downstream — the derivative's context pack, the undo hint, the list — and
+    resolves to no change at all.
+
+    Deliberately NOT the other two cases the same probe found (a target_entity_id that does not
+    exist, and one belonging to another BOOK). Those need an existence check against
+    glossary-service, whose client is documented to "return [] / None on any failure and never
+    raise"; making that a GATE is a fail-open / fail-closed decision about what happens during a
+    glossary outage, which is a product call rather than a lint.
+    """
+    import app.mcp.server as srv
+
+    deriv = _derivative()
+
+    async def get_deriv(pid):
+        return deriv
+
+    async with _patched(works_get=get_deriv) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=deriv)
+        with patch.object(srv, "DerivativesRepo") as DR:
+            DR.return_value.add_override = AsyncMock()
+            res = await srv.composition_entity_override_add(
+                _Ctx(), srv._EntityOverrideAddArgs(
+                    project_id=str(deriv.project_id),
+                    target_entity_id=str(uuid.uuid4()),
+                    overridden_fields={}),
+            )
+            assert res["success"] is False
+            assert "EMPTY_OVERRIDE" in res["error"], res
+            assert "occupation" in res["error"], (
+                "the refusal does not show the SHAPE it wants, which is the whole reason the "
+                "previous version of this argument was sent as a list"
+            )
+            DR.return_value.add_override.assert_not_awaited()
 
 
 async def test_entity_override_update_and_delete():
