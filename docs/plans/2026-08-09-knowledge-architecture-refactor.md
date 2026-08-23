@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 80 of 123 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 81 of 124 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (3/4) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (4/5) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,56 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48c 2026-08-23 — **the registry gate was scoped to the service that motivated it; composition-service had 403 dark tests**
+
+  ```
+  composition-service   403 skipped on ONE variable   ->   400 passed, 8 skipped
+  test-env-registry-gate scope   knowledge-service    ->   every services/*/tests tree
+  variables it now sees          4                    ->   7
+  ```
+
+  🔴 **A gate scoped to the case that motivated it cannot see the next one.** T48a built
+  `test-env-registry-gate` after `knowledge-service`'s 728 skips hid a real defect (T25x), and
+  scoped it to `knowledge-service`. Meanwhile **composition-service — the service that owns
+  QC-5's critic — was sitting on 403 skipped tests behind `TEST_COMPOSITION_DB_URL`**, invisible
+  to the gate built to stop exactly that.
+
+  ✅ **Run against a throwaway: `400 passed, 8 skipped` in 10m24s.** No defect — which is the
+  answer, not a disappointment. The 403 that had never run in this session all pass, in the
+  service whose critic QC-5 is still measuring.
+
+  📐 **Widened to `services/*/tests`, and the scan is deliberately narrow within that.** It walks
+  only `tests/` trees: a whole-service walk would pick up `pytest.skip` named in application code
+  or documentation and invent variables nobody can set. Seven variables across four services now
+  in scope — `campaign-service` and `lore-enrichment-service` were not on my radar at all.
+
+  ⚠️ **Two of the seven are recorded as NOT YET RUN, and the registry says so in those words.**
+  I have not started containers for `campaign-service` or `lore-enrichment-service`. Both carry
+  the same `_THROWAWAY` name guard, so the command's shape is predictable — and **a predicted
+  command written as if it were measured is precisely what this document exists to prevent.** The
+  variable is recorded so the suite is not silently dark; the recipe is owed a run.
+
+  🧪 **BITE 35 — an env-gated skip in a service the gate could not previously see:**
+
+  ```
+  [test-env-registry-gate] FAIL — 1 env-gated skip variable(s) are not documented:
+  ['TEST_A_BRAND_NEW_SERVICE_URL']        EXIT=1
+  ```
+
+  🔴 **And widening the scan broke my own selftest, which is how I learned it had been vacuous.**
+  The synthetic fixtures wrote to a bare tempdir; the new `tests/`-only filter made every case
+  scan **nothing**. Two cases went red together — had only one been affected it would have looked
+  like a real finding rather than a fixture that no longer matched the shape it models. The
+  helper now builds `…/svc/tests/test_x.py`, mirroring a real tree.
+
+  **QC (a) gates:** four plan gates green; `test-env-registry-gate --selftest` 5/5 against the
+  corrected fixtures; `gate-wiring-gate` 112 gates, all wired or exempt.
+  **QC (b) live smoke:** `composition-service`'s db tree against a throwaway `postgres:18-alpine`
+  on 7997 — 400 passed. Container removed.
+  **QC (c) real data:** the 403→400/8 figures and the seven-variable census are real runs and a
+  real AST scan, not estimates.
+
   ---
   ### ✅ T48b 2026-08-23 — **the suite is GREEN: 5469 passed, 9 skipped, 0 failed** — and the two reds were stale tests, not bugs
 

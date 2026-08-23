@@ -1,4 +1,4 @@
-# The databases the knowledge-service suite needs, and what each one un-skips
+# The databases the service suites need, and what each one un-skips
 
 A suite that skips is not a suite that passes. On 2026-08-23 the full run reported
 **4748 passed / 728 skipped** and read as green — while 24 of those skipped tests covered
@@ -49,6 +49,30 @@ export TEST_NEO4J_PASSWORD=throwaway_test
 docker run -d --name lw-know-test -e POSTGRES_PASSWORD=throwaway   -e POSTGRES_DB=loreweave_knowledge_test -p 7996:5432 loreweave/postgres-knowledge:18
 export TEST_KNOWLEDGE_DB_URL="postgresql://postgres:throwaway@localhost:7996/loreweave_knowledge_test"
 ```
+
+## The other services
+
+`test-env-registry-gate` scans **every** `services/*/tests` tree, not just `knowledge-service` —
+because it was scoped to one service at first and `composition-service` turned out to be sitting
+on **403** skipped tests behind a single variable, in the service that owns QC-5's critic.
+
+| variable | service | un-skips | status |
+|---|---|---|---|
+| `TEST_COMPOSITION_DB_URL` | composition-service | 403 (`400 passed, 8 skipped` once set) | **VERIFIED 2026-08-23** |
+| `TEST_CAMPAIGN_DB_URL` | campaign-service | its `tests/integration` tree | recorded, recipe **NOT yet run** |
+| `TEST_LORE_ENRICHMENT_DB_URL` | lore-enrichment-service | its `tests/integration` tree | recorded, recipe **NOT yet run** |
+
+```bash
+# composition-service — 403 tests. Its conftest guard refuses a DB whose name lacks a
+# throwaway marker, BEFORE any pool opens. The db tree takes ~10 min.
+docker run -d --name lw-comp-test -e POSTGRES_PASSWORD=throwaway   -e POSTGRES_DB=loreweave_composition_test -p 7997:5432 postgres:18-alpine
+export TEST_COMPOSITION_DB_URL="postgresql://postgres:throwaway@localhost:7997/loreweave_composition_test"
+```
+
+⚠️ **The last two rows say "NOT yet run" because they have not been.** Both services carry the
+same `_THROWAWAY` name guard, so the shape of the command is predictable — and a predicted
+command written as if it were measured is the thing this whole document exists to prevent. The
+variable is recorded so the suite is not silently dark; the recipe is owed a run.
 
 `TEST_AGE_DSN` needs no new container — the isolated stack already publishes one:
 

@@ -22,7 +22,11 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TESTS = os.path.join(ROOT, "services", "knowledge-service", "tests")
+#: EVERY service, not one. The first version scanned `knowledge-service` alone, and
+#: composition-service was sitting on **403** skipped tests behind
+#: `TEST_COMPOSITION_DB_URL` — in the service that owns QC-5's critic. A registry gate
+#: scoped to the service that motivated it cannot see the next one.
+SERVICES = os.path.join(ROOT, "services")
 REGISTRY = os.path.join(ROOT, "docs", "dev", "TEST_DATABASES.md")
 
 #: A `pytest.skip("… TEST_FOO …")` names its variable in the message. Derived from the message
@@ -37,10 +41,14 @@ MAX_UNDOCUMENTED_TEST_VARS = 0
 def scan(tests_root: str | None = None, registry_text: str | None = None):
     """`(vars named in skips, those the registry does not document)`."""
     if tests_root is None:
-        tests_root = TESTS
+        tests_root = SERVICES
     named: set[str] = set()
     if os.path.isdir(tests_root):
         for base, _dirs, files in os.walk(tests_root):
+            # Only test trees. Scanning a whole service would pick up `pytest.skip` mentioned
+            # in application code or docs and invent variables nobody can set.
+            if f"{os.sep}tests" not in base + os.sep:
+                continue
             for f in sorted(files):
                 if not f.endswith(".py"):
                     continue
@@ -74,10 +82,19 @@ def selftest() -> int:
     import tempfile
 
     def _mk(body: str) -> str:
-        d = tempfile.mkdtemp()
+        """A synthetic service tree, INCLUDING the `tests/` directory.
+
+        The scan only walks `tests/` trees — a whole-service walk would pick up `pytest.skip`
+        named in application code or docs and invent variables nobody can set. The first
+        version of this helper wrote to a bare tempdir, and every case silently scanned
+        NOTHING the moment that filter landed: two selftest cases went red together, which is
+        the only reason it was noticed rather than passing vacuously.
+        """
+        d = os.path.join(tempfile.mkdtemp(), "svc", "tests")
+        os.makedirs(d)
         with open(os.path.join(d, "test_x.py"), "w", encoding="utf-8") as fh:
             fh.write(body)
-        return d
+        return os.path.dirname(d)
 
     # The case the gate exists for.
     d = _mk('pytest.skip("TEST_WIDGET_URL not set — skipping")\n')
