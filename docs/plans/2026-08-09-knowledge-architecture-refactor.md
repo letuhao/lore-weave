@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 66 of 109 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 67 of 110 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (24/34) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (25/35) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,87 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A21 2026-08-23 — **the port adapter dropped SEVEN Entity fields, including the OCC token**
+
+  ```
+  the SAME live AGE entity, both paths, before:
+
+    field         repo(AGE session)          port(AgeGraphStore)
+    created_at    2026-08-22 12:01:04.349    None      <-- DIVERGES
+    updated_at    2026-08-22 12:01:04.349    None      <-- DIVERGES
+
+  after:  diverging fields across all 21 : NONE
+  ```
+
+  🔴 **`age_graph_store._to_entity` named 14 keys; `Entity` has 21.** The other seven —
+  `version`, `user_edited`, `auto_created`, `mention_count`, `evidence_count`, `created_at`,
+  `updated_at` — were dropped on **every read through the port**, which §10.1 makes the DOMAIN
+  boundary. Two diverged on today's data; the other five agreed only because that row held
+  defaults, so they were **latent, not absent**.
+
+  ⚖️ **`version` is the one that matters.** It is the OCC token, and the repo layer's mapper
+  carries a `/review-impl HIGH lock` about precisely what drifting it costs:
+
+  ```
+  "this default MUST match every Cypher `coalesce(e.version, N)` … If they drift, pre-C9
+   entities become permanently uneditable — FE reads version=1, sends If-Match=1, but Cypher
+   compares against current_version=0 → 412 forever."
+  ```
+
+  The lock was written on one mapper. The other one was not defaulting `version` — it was not
+  reading it at all.
+
+  📐 **Rule 13 — proven from the workload, not by reading two functions side by side.** The
+  first live comparison used the `Cutover Probe` vertex and reported **no divergence**, because
+  every one of those fields is at its default on that row. A criterion that cannot fail is not a
+  criterion, so I went and found a vertex where they are not — and `created_at`/`updated_at`
+  separated immediately.
+
+  🎯 **The fix is pass-through, not seven more hand-named keys.** Naming keys is what created the
+  gap; adding to the list reproduces the mechanism with a longer list. Safe because `Entity`
+  takes Pydantic's default `extra="ignore"` — measured on the live graph, vertices carry **21
+  property keys of which 5 are undeclared** (`origin`, `source_type`, `pending_validation`,
+  `original_technique`, `promoted_from_proposal_id`) and are dropped rather than raising.
+
+  ⚠️ **The two coalesces stay, and they are load-bearing.** Live AGE vertices really do hold
+  `version = NULL`, so a bare pass-through raises on a real row. They mirror `_node_to_entity`'s
+  exactly, and the test asserts them **against that mapper** rather than against the literal `1`
+  — so the two cannot drift apart silently, which is the whole defect restated.
+
+  🧪 **BITE 10 — restore the 14-key mapping, by line number:**
+
+  ```
+  AssertionError: the AGE and Neo4j Entity mappers disagree on
+    {'version': (1, 7), 'user_edited': (False, True), 'auto_created': (False, True),
+     'mention_count': (0, 12), 'evidence_count': (0, 3),
+     'created_at': (None, datetime(2026, 8, 22, …)),
+     'updated_at': (None, datetime(2026, 8, 23, …))}
+  ```
+
+  All seven, with the value each side produced.
+
+  ✅ **A control the agreement test cannot supply on its own.**
+  `test_the_two_entity_mappers_agree` is satisfiable by **both** mappers dropping the same seven
+  — agreement without correctness. `test_the_mapper_carries_the_seven_fields_it_used_to_DROP`
+  asserts the values actually arrive. Plus: undeclared properties are ignored not fatal, and an
+  entity with no identity is refused by **both**.
+
+  🔻 **This changed A20's test, and the new fact is stronger.** A20 asserted `_to_entity({})`
+  produced a well-formed blank Entity — which is what made `_props`'s refusal the only line of
+  defence. With pass-through the identity fields are no longer defaulted, so that mapping now
+  raises too. The test was rewritten to pin the stronger invariant rather than deleted, and
+  `_props`'s guard is kept: the two catch different things — a **decodable** vertex missing
+  fields, versus a row that could not be decoded at all.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4703 passed, 716 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`; the comparison above,
+  re-run on the same vertex, now reports **NONE across all 21 fields**.
+  **QC (c) real data:** both comparisons are live AGE reads of the same stored vertex through
+  two code paths, and the undeclared-key census is read off 40 live vertices.
+
   ---
   ### ✅ T17 A20 2026-08-23 — **an undecodable AGE row became a BLANK ENTITY that passed validation**
 

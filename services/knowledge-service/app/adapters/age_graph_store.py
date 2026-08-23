@@ -197,24 +197,34 @@ def _to_event(props: dict) -> Event:
 
 
 def _to_entity(props: dict) -> Entity:
-    return Entity.model_validate(
-        {
-            "id": props.get("id", ""),
-            "user_id": props.get("user_id", ""),
-            "project_id": props.get("project_id"),
-            "name": props.get("name", ""),
-            "canonical_name": props.get("canonical_name", ""),
-            "kind": props.get("kind", ""),
-            "aliases": props.get("aliases") or [],
-            "canonical_version": props.get("canonical_version", 1),
-            "source_types": props.get("source_types") or [],
-            "confidence": props.get("confidence", 0.0),
-            "glossary_entity_id": props.get("glossary_entity_id"),
-            "anchor_score": props.get("anchor_score", 0.0),
-            "archived_at": props.get("archived_at"),
-            "archive_reason": props.get("archive_reason"),
-        }
-    )
+    """agtype properties -> `Entity`, PASSING THROUGH what the vertex actually holds.
+
+    This used to name 14 keys explicitly, which silently DROPPED seven the model has —
+    `version`, `user_edited`, `auto_created`, `mention_count`, `evidence_count`,
+    `created_at`, `updated_at`. Measured on the live AGE graph, the same entity read through
+    the repo layer carried `created_at`/`updated_at` and through this adapter carried `None`;
+    the other five agreed only because that row happened to hold defaults. `version` is the
+    one that matters most — it is the OCC token, and `neo4j_repos.entities._node_to_entity`
+    carries a `/review-impl HIGH lock` about exactly what drifting it costs.
+
+    Pass-through is safe because `Entity` takes Pydantic's default `extra="ignore"`: live
+    vertices carry five properties the model does not declare (`origin`, `source_type`,
+    `pending_validation`, `original_technique`, `promoted_from_proposal_id`) and they are
+    dropped rather than raising.
+
+    ⚠️ The two coalesces below are NOT defaults of convenience — they mirror
+    `_node_to_entity`'s, and its comment says why: the value must match every Cypher
+    `coalesce(e.version, N)` in the repo layer or a pre-C9 entity becomes permanently
+    uneditable (FE reads 1, sends If-Match=1, Cypher compares 0, 412 forever). Live AGE
+    vertices really do hold `version = NULL`, so this is load-bearing, not defensive.
+    `test_the_two_entity_mappers_agree` pins the two together.
+    """
+    data = dict(props)
+    if data.get("version") is None:
+        data["version"] = 1
+    if data.get("auto_created") is None:
+        data["auto_created"] = False
+    return Entity.model_validate(data)
 
 
 def _to_relation(props: dict) -> Relation:

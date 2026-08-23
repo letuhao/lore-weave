@@ -30,15 +30,25 @@ def test_a_non_dict_agtype_raises_too():
         _props("42::vertex")
 
 
-def test_the_blank_entity_the_old_behaviour_produced_is_WELL_FORMED():
-    """This is why returning {} was dangerous rather than merely lossy.
+def test_an_INCOMPLETE_vertex_can_no_longer_become_a_blank_entity():
+    """A21 changed this test's premise, and the new fact is stronger than the old one.
 
-    If `_to_entity({})` had raised, the empty dict would have been loud on its own and the
-    guard would be belt-and-braces. It does not raise — so the ONLY thing standing between an
-    undecodable row and a blank entity in a result set is the refusal above.
+    A20 asserted that `_to_entity({})` produced a WELL-FORMED blank `Entity` — every field
+    defaulted, `model_validate` satisfied — which is what made `_props`'s refusal the only
+    thing between an undecodable row and a blank row in a result set.
+
+    A21 replaced `_to_entity`'s 14 hand-named keys with a pass-through, so the identity
+    fields are no longer defaulted and an incomplete mapping raises here too. `_props`'s
+    refusal is now belt-and-braces rather than load-bearing — kept, because the two catch
+    different things: this fires on a DECODABLE vertex missing fields, `_props` on a row that
+    could not be decoded at all.
     """
-    blank = _to_entity({})
-    assert blank.id == "" and blank.name == "" and blank.confidence == 0.0
+    with pytest.raises(Exception) as exc:
+        _to_entity({})
+    assert "id" in str(exc.value), (
+        "the mapper must object to the MISSING IDENTITY specifically — an entity with no id "
+        "is the thing that used to flow downstream looking real"
+    )
 
 
 def test_a_MISSING_column_is_still_an_absence_not_an_error():
