@@ -2991,6 +2991,41 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         ):
             out.append(name)
             continue
+        # 🔴 THE CONTEXT ID, WORN AS A DOMAIN ID. Every arm above tests for a value that looks
+        # WRONG — not a UUID, SCREAMING_SNAKE, whitespace, a placeholder word. This one tests for a
+        # value that is perfectly RIGHT and belongs to something else: the turn's ambient book_id,
+        # passed as an entity_id / chapter_id / run_id.
+        #
+        # PROVEN BY IDENTITY, not inference. kg_propose_edge, 2026-08-23, three of three inspected
+        # runs: the run's own book_id EQUALS the value the tool refused, passed as BOTH
+        # source_entity_id and target_entity_id ("they identify DIFFERENT things and can never be
+        # the same id"). It is the most plausible-looking wrong answer available — a real, current,
+        # valid UUIDv7 that the runtime itself injected — which is exactly why the model reaches
+        # for it when it needs an id it does not have, and exactly why no syntactic arm can see it.
+        #
+        # PRECISION MEASURED BEFORE SHIPPING, over 16,080 recorded calls: this fires 180 times
+        # across 15 tools, and every shape is a wrong argument — glossary_get_entity.entity_id=71,
+        # book_chapter_save_draft.chapter_id=38, book_chapter_delete.chapter_id=15 (destructive),
+        # composition_authoring_run_review.run_id=13. The one candidate false positive,
+        # composition_create_work.project_id, is not one: knowledge_projects has ZERO rows where
+        # project_id equals book_id, and composition's own declaration says so in as many words —
+        # "book_id = the book. They are DIFFERENT". No legitimate case was found.
+        #
+        # Scoped to the SAME CALL's own arguments, so it compares a value the model itself paired
+        # with that book_id — never a context value fetched from elsewhere.
+        if (
+            name.endswith("_id")
+            and name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and any(
+                isinstance(args_obj.get(ctx), str)
+                and args_obj[ctx].strip() == value.strip()
+                for ctx in _RUNTIME_CONTEXT_IDS
+            )
+        ):
+            out.append(name)
+            continue
         if (
             name.endswith("_id")  # `*_ref` is deliberately NOT here — see the loop head:
                                   # image_ref is a MinIO object key, not an identifier this
