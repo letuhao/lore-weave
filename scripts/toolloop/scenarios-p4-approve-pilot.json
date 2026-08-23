@@ -1,0 +1,67 @@
+{
+  "_note": "PILOT for P4's single-turn finding. One tool, one changed field (approve), so the measurement attributes cleanly. If it works, the other ten get the same treatment.",
+  "scenarios": [
+    {
+      "id": "kg-propose-edge-approve",
+      "tool_under_test": "kg_propose_edge",
+      "expect_tool": "kg_propose_edge",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+      "prompt_source": "_meta.synonyms['record that they know each other'] + ['link two characters'], grounded on the two seeded entities so the model has real names to resolve.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO named entities, because the hard step is resolving NAMES to entity ids. With one entity the model cannot get the pair wrong and the scenario proves nothing about resolution."
+        }
+      ],
+      "falsifier": "REFUTED IF: the edge is written to the graph rather than parked in the triage inbox (the tool's own contract says it is NEVER written directly), OR the model invents entity ids instead of resolving the seeded names, OR source and target are the same id. NOTE: kg entities live in NEO4J, so there is no SQL seed_assert for the graph side — the glossary assert above pins the NAMES the model must resolve, and the store snapshot covers the Neo4j side.",
+      "ship_audit": {
+        "gate": "OWED — Tier A: the proposal must mint a review item, never a direct write.",
+        "absent_case": "OWED — an entity name that does not exist must be refused, not silently resolved to the nearest match.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "_why_this_fixture": "🔴 THE ONLY CHANGE IS approve. Measured 2026-08-23: the model reads context, calls kg_add_nodes — the nodes an edge NEEDS — and the run ends there, because every scenario for this tool is approve=None and single-turn. So 'called 0/5' was a fact about the harness, not about the model: kg_propose_edge is UNREACHABLE until the prerequisite card is approved.\n\nApproving it is inside the owner's spend policy (2026-08-22): a card MAY be approved when the target was created by the run's OWN throwaway fixture and is torn down after. The nodes land in LOOP-THROWAWAY-kg-propose-edge-*, this run's own project, never the dogfood book. fe_runner's max_approvals=3 lets the turn continue past the card, so the SAME turn can go on to the edge — no follow-up prompt is added, because a follow-up that restates the request would be measuring whether the model obeys a second instruction, not whether it completes the first.\n\nWHAT WOULD REFUTE THE HYPOTHESIS: kg_propose_edge still called 0/5 after the prerequisite is approved. Then the block is not the approval gate and the P4 reading is wrong for this tool."
+    }
+  ]
+}
