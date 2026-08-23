@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 77 of 120 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 78 of 121 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (31/41) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A28 2026-08-23 — **the census CLOSES: 4 of 94 parameters unconformed, and every one is structurally unassertable**
+
+  ```
+  [port-adoption-gate] port conformance 21/21 methods have a rule   (ceiling 0)
+  [port-adoption-gate] port parameters   4/94 unconformed           (ceiling 4)  NEW
+  ```
+
+  📐 **The method count could never see this, and A24–A27 are the proof.** `21/21 methods have
+  a rule` was true while `resolve_or_merge_entity`'s rules asserted id-stability,
+  `source_types` and isolation and nothing else — so four of its parameters were unconformed
+  against **every** adapter, and the AGE writer had been discarding three of them (A23). A25
+  turned the same gap into a real bug: `relations_for(direction)` had a dead comparison that
+  returned every relation with its **endpoints swapped**, invisible because no rule ever passed
+  the argument. This counts what the method number cannot.
+
+  🎯 **The four that remain are not a backlog — each is structurally unassertable, with a
+  distinct reason:**
+
+  ```
+  resolve_or_merge_entity.provenance   accumulates into e.provenances — not an Entity field
+  merge_fact.provenance                same: written to the graph, absent from the Fact model
+  add_evidence.quote                   EvidenceWriteResult carries only created/evidence_count/
+                                       mention_count
+  status_at_order.min_evidence         filters status TRANSITIONS, and the port has NO status
+                                       writer — a rule cannot create the precondition it
+                                       filters on (`set_status` is a fake-only helper)
+  ```
+
+  ⚠️ **A ceiling of zero would have been unsatisfiable, and that is why it is 4.** A gate nobody
+  can satisfy gets "fixed" by deleting the check. The ceiling is the count of *explained*
+  exceptions, and **an unexplained one fails immediately** — as does a stale explanation, because
+  a recorded excuse for something already fixed reads as a live limitation.
+
+  🔍 **`events_page(axis)` conformed on the way**, the last high-value parameter in the census.
+  The corpus deliberately **reverses** the two orders — a flashback, read second and happening
+  first — because if they agreed every adapter would pass whatever it did. All three honour it.
+
+  🧪 **Three bites, one per arm of the new check:**
+
+  ```
+  BITE 27  kuzu picks "event_order" regardless of axis
+    AssertionError: the story axis must walk chronological_order, and this corpus REVERSES
+    the two — got ['Present', 'Flashback'], which is the reading axis's answer
+
+  BITE 28  a NEW port parameter with no rule and no reason
+    FAIL — 1 port parameter(s) no conformance rule passes, and no reason recorded:
+    ['relations_for.newly_added_knob']
+
+  BITE 29  an excuse naming a parameter that IS conformed
+    FAIL — 1 `_UNCONFORMABLE` entr(y/ies) name a parameter that IS now conformed:
+    ['merge_event.title_that_is_conformed']
+  ```
+
+  ⚠️ **BITE 27's first attempt did not apply**: my replacement produced `self."event_order"` and
+  the `ast.parse` guard refused to write the file. Recorded because the guard is the only reason
+  a malformed bite did not become a "passing" one — a mutation that never lands looks exactly
+  like a mutation the test survived.
+
+  ✅ **Five selftest cases on synthetic ports, none of them this repo's:** a partially-exercised
+  method is reported · a fully-exercised one is not (without this the check is satisfiable by
+  reporting everything, which is the same defect as reporting nothing) · an UNCALLED method
+  belongs to the method ratchet and is not double-counted here · `user_id`/`project_id` are never
+  counted · and every recorded excuse must still describe something the census reports.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` green with five new
+  cases and the ratchet at `4/94`; `knowledge-service` **4748 passed, 728 skipped**;
+  conformance **172 passed** across four adapters. The two `test_coaching_gate1.py` failures are
+  the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a rebuilt image — a gate and a test rule. The axis rule's AGE arm
+  runs against the live AGE database.
+  **QC (c) real data:** the 4/94 census is derived by AST from the port against the suite's own
+  text, and each exception was verified against the domain model or the port's own surface
+  before its reason was written.
+
   ---
   ### ✅ T17 A27 2026-08-23 — **three more filters conformed; all three were already correct, and that is the finding**
 

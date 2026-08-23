@@ -1437,6 +1437,14 @@ in-memory double does the same today. The fake's own comment had already spotted
 is written by the Cypher but is NOT a field on the Entity model, so it never crosses this
 boundary. Mirroring it here would be inventing state the real store's RETURN cannot produce."*
 
+⚠️ **AMENDED 2026-08-23 (A28) — the census found FOUR, not two, and the fourth has a different
+reason.** `add_evidence.quote` is unassertable because `EvidenceWriteResult` carries only
+`created`/`evidence_count`/`mention_count`; `status_at_order.min_evidence` is unassertable
+because it filters status TRANSITIONS and **the port has no status writer** — a rule cannot
+create the precondition it filters on (`set_status` is a fake-only helper). All four are now
+enforced by `port-adoption-gate`'s `port parameters N/94` ratchet, which fails on an
+unexplained parameter AND on a stale explanation.
+
 **Decided: they stay write-only side effects, verified PER ADAPTER against the store, not through
 the port.** `A23` does this for AGE — it reads `provenances` and `created_job_id` back out of the
 graph with a direct query after the write, in a throwaway graph.

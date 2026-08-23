@@ -541,6 +541,40 @@ async def test_events_page_HONOURS_the_q_filter(store):
 
 
 @pytest.mark.asyncio
+async def test_events_page_ORDERS_by_the_axis_it_was_given(store):
+    """T17 A28 — `axis` selects which of the two orders a browse walks, and no rule had ever
+    passed it.
+
+    The reading axis (`event_order`) and the story axis (`chronological_order`) exist BECAUSE
+    they disagree: a flashback is late in the reading and early in the story. An adapter that
+    accepts `axis` and orders by `event_order` regardless returns a plausible page in the
+    wrong order — no error, no empty result, just the other axis's answer.
+
+    The corpus is built so the two orders are REVERSED, which is the only shape that can tell
+    the axes apart. If they agreed, every adapter would pass whatever it did.
+    """
+    u, p, _ = _ids()
+    # read 1st, happens 2nd  |  read 2nd, happens 1st  -> a flashback
+    await store.merge_event(user_id=u, project_id=p, title="Present",
+                            event_order=1_000_000, chronological_order=2_000_000)
+    await store.merge_event(user_id=u, project_id=p, title="Flashback",
+                            event_order=2_000_000, chronological_order=1_000_000)
+
+    narrative, _n = await store.events_page(
+        user_id=u, project_id=p, axis="narrative", sort_dir="asc", limit=10)
+    chrono, _c = await store.events_page(
+        user_id=u, project_id=p, axis="chronological", sort_dir="asc", limit=10)
+
+    assert [e.title for e in narrative] == ["Present", "Flashback"], (
+        f"the reading axis must walk event_order: {[e.title for e in narrative]}"
+    )
+    assert [e.title for e in chrono] == ["Flashback", "Present"], (
+        f"the story axis must walk chronological_order, and this corpus REVERSES the two — "
+        f"got {[e.title for e in chrono]}, which is the reading axis's answer"
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_same_name_in_two_projects_is_two_entities(store):
     u, p, _ = _ids()
     a = await store.resolve_or_merge_entity(

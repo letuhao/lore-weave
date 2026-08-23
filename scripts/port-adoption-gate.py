@@ -380,6 +380,45 @@ def selftest() -> int:
               "declaration")
         ok = False
 
+    # ── A28 — the PARAMETER census, on cases it was not derived from (rule 3) ──
+    _port = (chr(10).join([
+        "class GraphStore(Protocol):",
+        "    async def widget(self, *, user_id: str, colour: str, size: int = 1) -> None: ...",
+    ]) + chr(10))
+
+    # The method is CALLED and one parameter is never passed -> reported.
+    suite_partial = 'await store.widget(user_id=u, colour="red")' + chr(10)
+    total, missing = scan_port_params(_port, suite_partial)
+    if (total, missing) != (2, ["widget.size"]):
+        print(f"  FAIL — the param census misread a partially-exercised method: "
+              f"{(total, missing)}")
+        ok = False
+
+    # Both passed -> nothing reported. Without this the check is satisfiable by reporting
+    # everything, which is the same defect as reporting nothing.
+    suite_full = 'await store.widget(user_id=u, colour="red", size=2)' + chr(10)
+    if scan_port_params(_port, suite_full)[1]:
+        print("  FAIL — a fully-exercised method was still reported")
+        ok = False
+
+    # A method the suite never CALLS belongs to the method ratchet, not this one — counting
+    # it here would double-report every uncalled method and drown the parameters that matter.
+    if scan_port_params(_port, "nothing here" + chr(10)) != (0, []):
+        print("  FAIL — an UNCALLED method was counted by the parameter census")
+        ok = False
+
+    # `user_id`/`project_id` ride every call and must never be counted.
+    if scan_port_params(_port, suite_full)[0] != 2:
+        print("  FAIL — the ubiquitous identity parameters were counted")
+        ok = False
+
+    # Every recorded excuse must still describe something the census reports.
+    _t, _m = scan_port_params()
+    _stale = [q for q in _UNCONFORMABLE if q not in _m]
+    if _stale:
+        print(f"  FAIL — `_UNCONFORMABLE` names conformed parameter(s): {_stale}")
+        ok = False
+
     # The MAX_CLASS_A ratchet, proven in CI rather than by hand. A hand-bite shows the check
     # can go red once; this shows it goes red for the reason claimed -- a module importing a
     # domain constant THROUGH the repo layer, which is the only way to re-enter class (a).
@@ -1126,6 +1165,84 @@ def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
     return bad
 
 
+# ── A28: the port's PARAMETERS, not just its methods ─────────────────────────────────────
+#
+# `port conformance 21/21 methods have a rule` counts METHODS. A24 established the gap that
+# hides behind that number: the rules for `resolve_or_merge_entity` asserted id-stability,
+# `source_types` accumulation and isolation, and stopped — so `version`, `auto_created`,
+# `provenance` and `job_id` were unconformed against EVERY adapter, and the AGE writer had
+# been discarding three of them. A25 turned the same question into a real bug on
+# `relations_for(direction)`: a dead comparison returned every relation with its endpoints
+# swapped, invisible because no rule ever passed the argument.
+#
+# So this counts what the METHOD count cannot: parameters no rule has ever passed.
+
+_PORT_FILE = os.path.join(SCAN_ROOT, "ports", "graph_store.py")
+_CONFORMANCE = os.path.join(
+    SCAN_ROOT, "..", "tests", "integration", "db", "test_graph_store_conformance.py")
+
+#: Never counted: the identity every call carries.
+_UBIQUITOUS = {"self", "user_id", "project_id"}
+
+#: Parameters the port ACCEPTS and cannot REPORT, each with the reason. §9.3 records the
+#: decision; this is the enforceable half. They are not a backlog — no rule can ever assert
+#: them through the port, so a ceiling that demanded zero would be unsatisfiable and the next
+#: person would "fix" it by deleting the check.
+_UNCONFORMABLE: dict[str, str] = {
+    "resolve_or_merge_entity.provenance":
+        "accumulates into `e.provenances`, which is NOT a field on the Entity model",
+    "merge_fact.provenance":
+        "same: written to the graph, absent from the Fact model",
+    "add_evidence.quote":
+        "`EvidenceWriteResult` carries only created/evidence_count/mention_count",
+    "status_at_order.min_evidence":
+        "filters status TRANSITIONS, and the port has no status WRITER — a rule cannot "
+        "create the precondition it filters on (`set_status` is a fake-only helper)",
+}
+
+MAX_UNCONFORMED_PORT_PARAMS = 4
+
+
+def scan_port_params(port_src: str | None = None, suite_src: str | None = None):
+    """`(total, [qualified names never passed by a rule])` — both derived.
+
+    A parameter counts as exercised when the suite writes `name=` anywhere. That is coarse on
+    purpose: a stricter reading (the argument must appear in a call to THAT method) would make
+    the number depend on how the suite factors its helpers, and a census whose value depends on
+    test style is one nobody trusts.
+    """
+    if port_src is None:
+        try:
+            port_src = open(_PORT_FILE, encoding="utf-8", errors="replace").read()
+        except OSError:
+            return 0, []
+    if suite_src is None:
+        try:
+            suite_src = open(_CONFORMANCE, encoding="utf-8", errors="replace").read()
+        except OSError:
+            return 0, []
+    total, missing = 0, []
+    try:
+        tree = ast.parse(port_src)
+    except SyntaxError:
+        return 0, []
+    for cls in tree.body:
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        for m in cls.body:
+            if not isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if f"store.{m.name}(" not in suite_src:
+                continue          # an uncalled method is the METHOD ratchet's business
+            params = [a.arg for a in list(m.args.args) + list(m.args.kwonlyargs)
+                      if a.arg not in _UBIQUITOUS]
+            total += len(params)
+            for p in params:
+                if not re.search(r"\b" + re.escape(p) + r"\s*=", suite_src):
+                    missing.append(f"{m.name}.{p}")
+    return total, sorted(missing)
+
+
 def scan_procedures(sources=None) -> dict:
     """`{module: {family: count}}` for Neo4j server-side procedures and admin commands.
 
@@ -1718,6 +1835,36 @@ def main() -> int:
     else:
         print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
               f"the repo layer — §10.1's second path to class (d) zero")
+    # ── A28: the port's PARAMETERS, not just its methods ───────────────────────────────
+    n_params, unconformed = scan_port_params()
+    unexplained = [q for q in unconformed if q not in _UNCONFORMABLE]
+    if unexplained:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(unexplained)} port parameter(s) no "
+              f"conformance rule passes, and no reason recorded: {unexplained}{chr(10)}")
+        print("  A parameter no rule exercises is unconformed against EVERY adapter. A24 found")
+        print("  three discarded by the AGE writer that way; A25 found a dead comparison that")
+        print("  returned every relation with its endpoints SWAPPED. Add a rule, or add the")
+        print("  parameter to `_UNCONFORMABLE` with the reason it cannot be asserted.")
+        return 1
+    stale_reasons = [q for q in _UNCONFORMABLE if q not in unconformed]
+    if stale_reasons:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(stale_reasons)} `_UNCONFORMABLE` "
+              f"entr(y/ies) name a parameter that IS now conformed: {stale_reasons}{chr(10)}")
+        print("  Remove the entry. A recorded excuse for something already fixed reads as a")
+        print("  live limitation and is how a settled question comes back.")
+        return 1
+    if len(unconformed) > MAX_UNCONFORMED_PORT_PARAMS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — unconformed port parameters ROSE to "
+              f"{len(unconformed)} (ceiling {MAX_UNCONFORMED_PORT_PARAMS}){chr(10)}")
+        return 1
+    if len(unconformed) < MAX_UNCONFORMED_PORT_PARAMS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — unconformed port parameters IMPROVED to "
+              f"{len(unconformed)}; lower the ceiling in the same commit (rule 5){chr(10)}")
+        return 1
+    print(f"[port-adoption-gate] port parameters {len(unconformed)}/{n_params} unconformed "
+          f"(ceiling {MAX_UNCONFORMED_PORT_PARAMS}) — every one is STRUCTURALLY unassertable "
+          f"through the port and carries its reason (§9.3); the method count cannot see this")
+
     # ── T25 residue: §9.2's DDL-exit condition, as a number ────────────────────────────
     non_age = scan_backend_declarations()
     if len(non_age) > MAX_NON_AGE_BACKEND_DECLARATIONS:
