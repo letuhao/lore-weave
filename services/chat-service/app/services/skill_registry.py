@@ -435,7 +435,21 @@ _WORLD_SETUP_MARKERS: tuple[str, ...] = (
     "ontolog",          # ontology / ontological
     "entity kind", "entity-kind", "entity kinds",
     "glossary",
-    "codex",
+    # 🔴 "codex" REMOVED 2026-08-23. It is a proper noun as often as a concept, and measured over
+    # 186 distinct corpus prompts it fired TWICE — both times on a chapter TITLE, never on a setup
+    # request:
+    #     'Write chapter — ... draft the prose for "Chapter I — The Ember Codex"'
+    #     'Rename the chapter called The Ember Codex in my outline to ...'
+    # Recall contribution 0, false-positive rate 2 of 2. And the false positives are the exact
+    # over-reach this gate EXISTS to stop: tool_discovery records that keeping these tools
+    # advertised "made the co-writer rebuild a newcomer's ontology on a plain write-a-chapter turn",
+    # and a chapter merely NAMED a codex was opening it.
+    #
+    # Removing a marker can only make the gate STRICTER, never looser, so it cannot reintroduce the
+    # over-reach. The recall risk — a real author who writes "build my codex" — is carried by the
+    # other path this gate has: the intent ROUTER matches the message against glossary_shaping's
+    # description, and the skill can be pinned. This list is the deterministic FALLBACK, and a
+    # fallback that fires on fiction is worse than one word shorter.
     "taxonomy",
     "worldbuild", "world-build", "world build",  # worldbuilding / world-building
     "adopt standard", "adopt the standard", "system kinds", "seed the core entit",
