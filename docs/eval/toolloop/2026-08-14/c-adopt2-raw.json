@@ -1,0 +1,2797 @@
+[
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379170092",
+        "toolCallName": "composition_motif_search",
+        "parentMessageId": "b742fbe5-3f7c-48c9-aba2-73ee79581747"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379170092",
+        "delta": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379170092"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "b742fbe5-3f7c-48c9-aba2-73ee79581747",
+        "toolCallId": "call_3336168379170092",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Curated",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_motif_adopt",
+          "composition_motif_search",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 12050
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_motif_search",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      }
+    ],
+    "run_id": "4c42c68c-3c18-430e-9141-fad4a0361624",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 6,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+    "_args": {
+      "call_3336168379170092": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [
+      {
+        "id": "call_3336168379170092",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+    "session_id": "01a02e16-4c99-792f-bbe2-94f52d90c4fd",
+    "scenario": "composition-motif-adopt-named",
+    "rep": 0,
+    "book_id": "01a02e16-1466-7a90-b0b8-75942635d8e0",
+    "project_id": "01a02e16-15d7-7e61-ac8a-0b46514fed2e",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.46297+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.454197+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.244293+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.46297+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:06:34.454197+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379170093",
+        "toolCallName": "composition_motif_search",
+        "parentMessageId": "b7c8bf76-8e36-450d-8c0d-375f14191575"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379170093",
+        "delta": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379170093"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "b7c8bf76-8e36-450d-8c0d-375f14191575",
+        "toolCallId": "call_3336168379170093",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Curated",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_motif_adopt",
+          "composition_motif_search",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 12050
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_motif_search",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      }
+    ],
+    "run_id": "38ff5daf-7de5-4da2-a38a-5cf65f57d4e9",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 6,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+    "_args": {
+      "call_3336168379170093": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [
+      {
+        "id": "call_3336168379170093",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+    "session_id": "01a02e16-cd25-78bc-80e9-ec9de700175e",
+    "scenario": "composition-motif-adopt-named",
+    "rep": 1,
+    "book_id": "01a02e16-941c-78a6-a91c-56eec4e04a9f",
+    "project_id": "01a02e16-95a3-7a37-8ff1-fd99c25137d5",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:07.178227+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:07.171055+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:06.963066+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:07.178227+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:07.171055+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379170094",
+        "toolCallName": "composition_motif_search",
+        "parentMessageId": "5a108360-e99d-4271-96e0-359890fa94eb"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379170094",
+        "delta": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379170094"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "5a108360-e99d-4271-96e0-359890fa94eb",
+        "toolCallId": "call_3336168379170094",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_motif_adopt",
+          "composition_motif_search",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 12050
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_motif_search",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      }
+    ],
+    "run_id": "1467c00c-7d01-4282-a252-83e84358b35d",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379170094": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379170094",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+    "session_id": "01a02e17-76ea-7017-a99f-f80eb3e64fb6",
+    "scenario": "composition-motif-adopt-named",
+    "rep": 2,
+    "book_id": "01a02e17-480a-7b3d-ba2a-eff3e4d08263",
+    "project_id": "01a02e17-496f-7ba9-9f63-44c341c074ff",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.206053+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.198906+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.004159+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.206053+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:07:53.198906+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379170095",
+        "toolCallName": "composition_motif_search",
+        "parentMessageId": "4c2611b0-a7fc-4581-91db-bd76cde8c424"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379170095",
+        "delta": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379170095"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "4c2611b0-a7fc-4581-91db-bd76cde8c424",
+        "toolCallId": "call_3336168379170095",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Curated",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_motif_adopt",
+          "composition_motif_search",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 12050
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_motif_search",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      }
+    ],
+    "run_id": "042d0a65-89d0-4193-9836-d1e0a2fa9dd4",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 6,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+    "_args": {
+      "call_3336168379170095": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [
+      {
+        "id": "call_3336168379170095",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+    "session_id": "01a02e18-3192-7442-9979-ca7213387b1c",
+    "scenario": "composition-motif-adopt-named",
+    "rep": 3,
+    "book_id": "01a02e17-f95a-7288-b111-55926554006c",
+    "project_id": "01a02e17-fb0d-75e7-aa1d-72a1324d3ba4",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.684818+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.668486+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.435365+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.684818+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:08:38.668486+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379170096",
+        "toolCallName": "composition_motif_search",
+        "parentMessageId": "2639479f-73e6-4edb-b70f-fd6b448ee167"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379170096",
+        "delta": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379170096"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "2639479f-73e6-4edb-b70f-fd6b448ee167",
+        "toolCallId": "call_3336168379170096",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Curated",
+      "pinned_count": 0,
+      "hot_seed_count": 32,
+      "activated_count": 1,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_motif_adopt",
+          "composition_motif_search",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 12050
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_motif_search",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 32,
+        "activated_count": 1,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_motif_adopt",
+            "composition_motif_search",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 12050
+        }
+      }
+    ],
+    "run_id": "80747a47-3758-4a04-b8eb-941b8a9cc478",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 6,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': 'upstream sent \"error\" with no error message (response id \"\", status \"\") — the provider reported a failure without saying why', 'code': 'STREAM_ERROR'}",
+    "_args": {
+      "call_3336168379170096": "{\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [
+      {
+        "id": "call_3336168379170096",
+        "content": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on the mocker before witnesses.\", \"genre_tags\": [\"cultivation\", \"xianxia\", \"tu-tien\", \"reversal\"], \"visibility\": \"unlisted\", \"status\": \"active\", \"version\": 1}], \"count\": 1, \"detail\": \"summary\", \"total\": 1, \"returned\": 1, \"truncated\": 0}}"
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+    "session_id": "01a02e18-d1a4-7504-ad99-a9a131adbc38",
+    "scenario": "composition-motif-adopt-named",
+    "rep": 4,
+    "book_id": "01a02e18-97cf-7f93-ace0-44e186af0f71",
+    "project_id": "01a02e18-9974-7e32-9dca-bec81b64b28c",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:19.226887+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:19.220241+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:18.99988+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:19.226887+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-23 10:09:19.220241+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 392,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]
