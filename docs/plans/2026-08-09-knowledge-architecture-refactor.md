@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 65 of 108 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 66 of 109 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (23/33) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (24/34) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,75 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A20 2026-08-23 — **an undecodable AGE row became a BLANK ENTITY that passed validation**
+
+  ```
+  _props(<undecodable agtype>)  ->  {}          ->  _to_entity({})  ->  Entity(
+      id="", user_id="", name="", canonical_name="", kind="", confidence=0.0, …)
+  and that object does NOT raise. It passes model_validate and joins the result set.
+  ```
+
+  🔴 **This is the "never empty" half of rule 9, and it was the quieter half.** A16–A19 chased
+  operations that could not run on AGE. This is the opposite failure: a read that DID run, on an
+  engine that answered, whose answer the adapter could not parse — and which it converted into a
+  well-formed domain object with every field defaulted. A decode failure that reads as a
+  successful lookup.
+
+  📐 **Two silent paths, not one.** The `except json.JSONDecodeError` was visible; the second
+  was not:
+
+  ```python
+  return parsed.get("properties", parsed) if isinstance(parsed, dict) else {}
+  #                                                                        ^^ a scalar or list
+  #                                                                           silently -> {}
+  ```
+
+  A value that parsed perfectly well and simply was not a node took the same exit.
+
+  ⚖️ **Measured the blast radius before touching it (rule 8):** 23 call sites, all feeding
+  `_to_entity` / `_to_relation`. **No test referenced `_props`**, so nothing depended on the
+  empty-dict behaviour. And the one risk worth checking — that a `::path` column parses to a
+  LIST and would newly raise — is not reachable: the adapter returns only `::vertex`/`::edge`
+  columns, and the scalar columns (`status`, `from_order`, `c`) never reach `_props`.
+
+  🎯 **`row is None` stays an absence.** An absent column is not an unintelligible one, and every
+  caller already guards it (`… if rows else None`). A guard that refused this too would break
+  every optional read — which is why it has its own test.
+
+  🧪 **BITE 9 — put the silent empty back, by line number:**
+
+  ```
+  Failed: DID NOT RAISE <class 'ValueError'>
+  ```
+
+  ✅ **Two control arms, and one of them is unusual.**
+  `test_a_REAL_vertex_still_decodes` is the ordinary one. The other,
+  `test_the_blank_entity_the_old_behaviour_produced_is_WELL_FORMED`, asserts the *danger* rather
+  than the cure: it pins that `_to_entity({})` does **not** raise. If it did, the empty dict
+  would be loud on its own and this guard would be belt-and-braces. It does not — so the refusal
+  is the only thing standing between an undecodable row and a blank entity in a result set. That
+  assertion is what stops someone deleting the guard on the reasoning that "validation would
+  catch it".
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4698 passed, 716 skipped** with
+  `TEST_AGE_DSN` set — the 8 live-AGE repo tests pass under the STRICTER decode, which is itself
+  evidence that real vertex/edge rows were never taking the `{}` exit. The two
+  `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`. The first attempt proved
+  nothing and is recorded as such — `find_entities_by_name` returned **0 rows**, and a query
+  with no rows never calls `_props`. Re-run against a real vertex found in the graph:
+
+  ```
+  rows decoded through _props: 1
+     id=033199f8-152 name='Cutover Probe' kind='character' conf=0.0
+  ```
+
+  Populated fields, not the defaulted blank — and `_props('{broken::vertex')` refuses in the
+  same container.
+  **QC (c) real data:** the row above is a live AGE vertex read through the adapter, not a
+  fixture.
+
   ---
   ### ✅ T17 A19 2026-08-23 — **three leaks found BY HAND is three found by LUCK — the census is now derived**
 

@@ -127,11 +127,31 @@ def _props(row: Any) -> dict:
         if text.endswith(suffix):
             text = text[: -len(suffix)]
             break
+    # ⚠️ RAISE, do not return `{}` (rule 9 — never empty, never half-written). Both paths
+    # below mean "the database returned something this adapter does not understand", which is
+    # not the same as "there is nothing there". `_to_entity({})` does NOT fail: it builds a
+    # well-formed Entity with `id=""`, `name=""`, `kind=""`, `confidence=0.0` — every field
+    # defaulted — and that blank object passes `model_validate` and flows downstream looking
+    # exactly like a real row. A decode failure that reads as a successful lookup is the
+    # defect class this whole migration keeps finding.
+    #
+    # `row is None` above is different and stays: an absent column is an absence, and every
+    # caller guards it (`… if rows else None`).
     try:
         parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return {}
-    return parsed.get("properties", parsed) if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"AgeGraphStore._props — asyncpg returned an agtype value this adapter cannot "
+            f"decode: {text[:120]!r}. §10.1 puts the agtype→domain mapping here, so an "
+            f"unreadable row is an adapter bug or a new agtype shape, never an empty node."
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ValueError(
+            f"AgeGraphStore._props — expected a vertex/edge object, got "
+            f"{type(parsed).__name__}: {text[:120]!r}. Only `::vertex` and `::edge` columns "
+            f"reach here (§10.1); a scalar or list means the query's RETURN shape changed."
+        )
+    return parsed.get("properties", parsed)
 
 
 def _unwrap(cell: Any) -> Any:
