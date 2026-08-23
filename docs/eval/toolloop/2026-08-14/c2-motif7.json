@@ -505,7 +505,8 @@
       "surfaced_count": 5,
       "called_count": 3,
       "wrote_count": 0,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, AND ITS ~49% WAS TWO DIFFERENT FAILURES ADDED TOGETHER. That is why thirteen hypotheses were refuted for it.\n\nIts 35 measured runs, split by whether the turn emitted a tool call and by error type:\n    upstream error AFTER calls   17    — all 17 had called composition_motif_search\n    ReadTimeout, ZERO calls      13\n    upstream error, ZERO calls    2\n    clean                         3\n\nPopulation A (15 runs) is a turn that produces NOTHING — no call, no text — and raising the turn budget 180s -> 480s did not change it. Population B (17 runs) is the provider failing MID-turn after a search result. A hypothesis that explains one is refuted by the other, and every one of the thirteen was tested against the sum.\n\nTHE 100% IS PARTLY BY CONSTRUCTION and is stated as such: this scenario's first call is refused for its two ids, the refusal arms composition_motif_search, so ANY turn that gets past the first refusal calls the search. The correlation is real across the corpus (73% vs 6%, with a 0% control for motif tools that never call it) but this tool cannot be the evidence for it.\n\nWHAT IS ALREADY REFUTED for both populations, measured from the corpus rather than guessed: payload size (4,898 bytes), the blank-args parser defect (ZERO overlap in 141 runs), surface size (errored 32.1 vs clean 33.8), context growth (errored 968 bytes vs clean 2,512), turn length (errored median 0 calls vs clean 2). See D-THE-TRANSPORT-STALL-IS-THREE-DIFFERENT-FAILURES.\n\nThe two fixture causes found earlier remain fixed and are not these: the archived-motif fixture, and a refusal that deleted the name its own recovery search needed."
     }
   ]
 }
