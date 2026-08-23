@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 97 of 143 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 98 of 144 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (31/58) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/59) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,66 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C42 2026-08-24 — **the canon rules were never windowed: `from_order`/`until_order` had NO READER**
+
+  ```
+  CLEAN arm, 8 real drafts, rule citations
+    all six rules      flagged 7/8    {R1: 7, R5: 5, R3: 2}
+    R1 removed         flagged 4/8    {R2: 3, R3: 4, R6: 1}
+  live after the fix   active_rule_count = 6, UNCHANGED — every rule is un-windowed
+  composition 3816 -> 3818 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **The hypothesis, and it is the sharpest of the five.** `canon_rule.from_order` and
+  `until_order` are NULL on all six of the acceptance book's rules, so every rule is presented as
+  true from chapter 1 — including **R1, which states a REVEAL** (who the betrayer is). On a
+  chapter before that reveal, prose showing the character loyal is not contradicting canon; the
+  rule is simply ahead of the story. A critic told the rule holds everywhere will flag every
+  pre-reveal chapter.
+
+  🎯 **Measured, with the citations recorded so "it flagged less" could not pass for a
+  diagnosis.** R1 is cited on **7 of 8** clean drafts. Remove it and the clean arm falls from
+  **7/8 to 4/8** — and the surviving citations move to R2/R3/R6, which is the honest caveat: the
+  judge still finds something on half the drafts, so R1 is the largest contributor, not the only
+  one.
+
+  🔴 **The code gap: `list_active(project_id)` took no position at all.** The window columns have
+  been on the table throughout and the critic's read ignored them — a bi-temporal column with no
+  reader, the same class as C40's unread anchor and C41's unread roster name. Fixed at the repo
+  so every caller can window, with the route passing the chapter's own `as_of` (which C40 made
+  available). `None` keeps every existing caller's behaviour, and a NULL bound stays open.
+
+  ⚠️ **And it is INERT on this book's data, which the live run says out loud: `active_rule_count`
+  is still 6.** All six rules are un-windowed, so the filter changes nothing today. The fix makes
+  the window *usable*; **authoring the windows is a content act, not a code one**, and the
+  measurement above is what it would buy — 7/8 → 4/8 on the clean arm from R1 alone. Claiming
+  otherwise would be reporting a mechanism as a result.
+
+  🧪 **Bites, and a test-double drift caught on the way.**
+
+  ```
+  BITE V  stop passing the position          × ..._WINDOWS_the_canon_rules_to_the_chapters_position
+  BITE W  window on a GUESS when no anchor   × ..._with_NO_anchor_reads_the_rules_unwindowed
+  ```
+
+  W is the control arm: a job with no chapter has no honest position, and windowing on a guess
+  would hide rules from the critic — worse than not windowing. `StubCanon.list_active` did not
+  accept `as_of` and 8 tests went red on the signature; it now RECORDS the position, because a
+  double that accepted the argument and ignored it would hide exactly the reader-less column
+  this row fixed.
+
+  📌 **Where the five candidates now stand**, each eliminated by measurement rather than
+  argument: model tier (C38), the verification pass (C37), an undefined "contradiction" (C39),
+  characters missing from the bible (C41), and now un-windowed rules — the only one that moved
+  the number, and it needs data that does not exist yet.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3818 passed, 403 skipped, 0
+  failed**.
+  **QC (b) live smoke:** rebuilt image on lw-iso; `active_rule_count = 6` unchanged (the honest
+  inert result) and the anchor still resolving.
+  **QC (c) real data:** the citation census above — 8 drafts × 2 rule sets, every finding's cited
+  rule recorded.
   ---
   ### ✅ QC-5 C41 2026-08-24 — **the block headed "CHARACTER CANON" contained no characters**
 

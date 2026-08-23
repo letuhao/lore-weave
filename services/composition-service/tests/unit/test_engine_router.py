@@ -56,8 +56,16 @@ class StubOutline:
 
 
 class StubCanon:
-    def __init__(self, rules=None): self.rules = rules or []
-    async def list_active(self, p): return self.rules
+    def __init__(self, rules=None):
+        self.rules = rules or []
+        #: the story position the caller windowed on — recorded so a test can assert the
+        #: critique route actually passes it (C42). A double that quietly accepted `as_of`
+        #: and ignored it would hide exactly the reader-less column this fixed.
+        self.as_of_seen: list = []
+
+    async def list_active(self, p, *, as_of=None):
+        self.as_of_seen.append(as_of)
+        return self.rules
 
 
 class StubJobs:
@@ -1153,10 +1161,13 @@ def test_a_configured_critique_does_NOT_carry_a_skip_status(ctx):
 # ── QC-5 C40: the bi-temporal anchor the critique route always had and never read ─────────
 
 
-def _ground(monkeypatch, facts, raises=False):
+def _ground(monkeypatch, facts, raises=False, as_of=None):
     """Patch the canon bible the route builds. `canon_for_chapter` is imported INSIDE the
     handler, so the patch lands on its module."""
     class _Bible:
+        def __init__(self):
+            self.as_of = as_of
+
         def as_present_facts(self):
             return list(facts)
 
@@ -1218,4 +1229,39 @@ def test_a_canon_read_FAILURE_does_not_fail_the_critique(ctx, monkeypatch):
     r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
     assert r.status_code == 200
     assert judge.call_args.kwargs["present_facts"] == []
+
+async def test_critique_WINDOWS_the_canon_rules_to_the_chapters_position(ctx, monkeypatch):
+    """🔴 QC-5 C42: `canon_rule.from_order` / `until_order` had NO READER.
+
+    Every active rule was handed to the critic as true from chapter 1 — including one stating a
+    REVEAL. Measured on the acceptance book: the betrayal rule is cited on **7 of 8** clean
+    drafts, and dropping it takes the clean arm from 7/8 to 4/8. Prose in a chapter before the
+    reveal is not contradicting canon; the rule is ahead of the story.
+
+    Asserted on the POSITION the route passes, because that is the thing that was missing — the
+    filter itself is the repo's and has its own test.
+    """
+    c, works, _, canon, jobs, _, _ = ctx
+    ch = uuid.uuid4()
+    jobs.job = _job(input={"model_ref": str(DRAFTER), "chapter_id": str(ch)})
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    _ground(monkeypatch, ["a fact"], as_of=11)
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert canon.as_of_seen == [11], (
+        "the rules must be read AT the chapter's story position, not for the whole book"
+    )
+
+
+async def test_critique_with_NO_anchor_reads_the_rules_unwindowed(ctx, monkeypatch):
+    """The control arm. A job with no chapter has no honest position, and windowing on a guess
+    would silently hide rules from the critic — worse than not windowing at all."""
+    c, works, _, canon, jobs, _, _ = ctx
+    jobs.job = _job(input={"model_ref": str(DRAFTER)})
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert canon.as_of_seen == [None], "no position resolved ⇒ the whole enforceable set"
 

@@ -2059,9 +2059,6 @@ async def critique(
 
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
-    rules = await canon.list_active(job.project_id)
-    active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
-
     # ── QC-5 C40: the bi-temporal ANCHOR this route has always had and never used ────────
     #
     # 🔴 The comment below used to read "no chapter anchor, so no spoiler-safe `as of` cast
@@ -2080,6 +2077,7 @@ async def critique(
     # `canon_for_chapter` is degrade-safe by construction: any read failure yields an `empty`
     # bible rather than raising, which is why an advisory critique can depend on it.
     present_facts: list[str] = []
+    _as_of: int | None = None
     _anchor = (job.input or {}).get("chapter_id")
     if _anchor and job.book_id:
         from app.clients.kal_client import get_kal_client
@@ -2091,8 +2089,18 @@ async def critique(
                 source_language=str(settings_dict.get("source_language") or "auto"),
             )
             present_facts = _bible.as_present_facts()
+            _as_of = _bible.as_of
         except Exception:  # noqa: BLE001 — advisory; a critique must not fail over a canon read
             logger.debug("critique canon bible unavailable — grounding empty", exc_info=True)
+
+    # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule is never
+    # enforced — and WINDOW it to the chapter's story position (C42). `canon_rule.from_order`
+    # / `until_order` had no reader, so a rule stating a REVEAL was handed to the critic as
+    # true from chapter 1: measured, the betrayal rule is cited on 7 of 8 clean drafts and
+    # dropping it takes the clean arm from 7/8 to 4/8. `_bible.as_of` is None when no position
+    # resolved, and `list_active` then behaves exactly as before.
+    rules = await canon.list_active(job.project_id, as_of=_as_of)
+    active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
     # QC-5 C34 — the verifier role, resolved HERE too. C33 wired it into the authoring
     # path only, and the live smoke caught the gap: this route is what the studio and the
