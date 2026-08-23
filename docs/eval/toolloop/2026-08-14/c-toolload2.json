@@ -1,0 +1,545 @@
+{
+  "batch": "c-toolload2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "tool_load",
+      "scenario": "tool-load-asks-what-a-TOOL-requires",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the reply lists arguments composition_arc_apply does not declare (invention), OR it answers about what an ARC needs rather than what the TOOL requires (the neighbouring-read failure this problem is about), OR a read-intent turn changes the store.\n\nCONTROL: the required set is read from the live catalogue, not from this file's memory of it - if the schema changes, answer_expect is wrong and must be re-derived rather than the run re-read.",
+      "answer_expect": {
+        "all_of": [
+          "arc_template_id",
+          "project_id"
+        ],
+        "none_of": [
+          "book_id"
+        ],
+        "why": "composition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key} - read from the live tool_load payload. There is NO book_id in it.\n\n🔴 THE FIRST VERSION OF THIS EXPECTATION WAS THEATRE and is replaced. It asked only for 'arc_template_id', which ALL FIVE runs satisfied - including the three that were WRONG. Those three answered 'arc_template_id + book_id' after reading tool_list, which carries no input_schema at all; the string they saw came from a DIFFERENT tool's description (composition_arc_edit: 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'). An expectation that passes on an answer assembled from the wrong tool is not checking the thing this problem is about.\n\nSo: project_id must appear (only the contract supplies it) and book_id must NOT (only the neighbouring read suggests it)."
+      },
+      "falsifier_sha": "b15b973997631813",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02f29-1eee-7250-a47d-de959c27903f",
+          "session_id": "01a02f29-56a8-7c7c-95ed-cef961caebc2",
+          "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "scenario_prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.54717+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.537701+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.350806+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.54717+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:06:59.537701+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`**: The ID of the arc template to be applied.\n*   **`book_id`**: The UUID of the book to which the template will be applied.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `book_id` to perform the action.\n\nI did not re-read the book on this turn, so my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02f29-aa1c-71cc-b8f8-ebc6ab1a27b3",
+          "session_id": "01a02f29-e287-785a-ad05-2893e03c030b",
+          "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "scenario_prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:35.161407+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:35.153454+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:34.958422+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:35.161407+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:07:35.153454+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n**Required Arguments:**\n*   `project_id` (string): The ID of the project.\n*   `arc_template_id` (string): The ID of the arc template to apply.\n\n**Optional Arguments:**\n*   `roster_bindings` (object): A dictionary of roster bindings (defaults to an empty object).\n*   `replace` (boolean): Whether to replace existing data (defaults to `false`).\n*   `idempotency_key` (string or null): A key to ensure the operation is idempotent.\n\nI did not make the change because I do not have the required `project_id` or `arc_template_id` to execute the tool.\n\nI did not re-read the book, and my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02f2a-2dfc-778d-901f-0f9c84decda8",
+          "session_id": "01a02f2a-673d-73a2-a7b7-549390b88433",
+          "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "scenario_prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:09.028716+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:09.019939+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:08.746367+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:09.028716+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:09.019939+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n**Required Arguments:**\n*   `project_id` (string): The ID of the project.\n*   `arc_template_id` (string): The ID of the arc template to apply.\n\n**Optional Arguments:**\n*   `roster_bindings` (object): A dictionary of roster bindings (defaults to an empty object).\n*   `replace` (boolean): Whether to replace existing data (defaults to `false`).\n*   `idempotency_key` (string or null): A key to ensure the operation is idempotent.\n\nI did not make the change because I do not have the necessary arguments (`project_id` and `arc_template_id`) required to call the `composition_arc_apply` tool.\n\nI did not re-read the book, and my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02f2a-c413-7b6b-8f37-c52898b5a6ff",
+          "session_id": "01a02f2a-ef7e-770e-97be-8c11bd19c5a2",
+          "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "scenario_prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.389543+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.383252+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.17477+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.389543+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:08:47.383252+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:08.249628+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:08.249628+00"
+              }
+            }
+          },
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n**Required Arguments:**\n*   `project_id` (string): The ID of the project.\n*   `arc_template_id` (string): The ID of the arc template to apply.\n\n**Optional Arguments:**\n*   `roster_bindings` (object): A dictionary of roster bindings (defaults to an empty object `{}`).\n*   `replace` (boolean): Whether to replace existing data (defaults to `false`).\n*   `idempotency_key` (string or null): A key to ensure the operation is idempotent.\n\nI did not make the change because I do not have the required `project_id` or `arc_template_id` to execute the tool.\n\nI did not re-read the book, and my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02f2b-45e6-7c32-86f8-a61cbcce32eb",
+          "session_id": "01a02f2b-72ba-7b98-a0bd-6ffdf405d061",
+          "prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "scenario_prompt": "What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.551334+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.545635+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.378724+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.551334+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:20.545635+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:41.583384+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 15:09:41.583384+00"
+              }
+            }
+          },
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n**Required Arguments:**\n*   `project_id` (string): The ID of the project.\n*   `arc_template_id` (string): The ID of the arc template to apply.\n\n**Optional Arguments:**\n*   `roster_bindings` (object): A dictionary of roster bindings (defaults to an empty object).\n*   `replace` (boolean): Whether to replace existing data (defaults to `false`).\n*   `idempotency_key` (string or null): A key to ensure the operation is idempotent.\n\nI did not make the change because I do not have the necessary arguments (`project_id` and `arc_template_id`) required to call the `composition_arc_apply` tool.\n\nI did not re-read the book, and my answer may be stale."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 4,
+      "wrote_count": 2,
+      "suspended_count": 0,
+      "blocked_reason": "CALLED 4/5 AND WRONG ONCE — the invariant's own failure, caught by an expectation that had to be tightened first. Zero errored runs.\n\nTHE OLD SCENARIO DID NOT TEST THIS PROBLEM. It asked 'What exactly do you need from me to add a new character to my story bible?' - a domain-ontology question. Measured 5/5, the model called glossary_list_system_standards and ANSWERED CORRECTLY from it (the character kind, attribute_count 13, name + description). It was right to: what a CHARACTER needs is the ontology's business, not a tool schema's. tool_load loads a TOOL's schema, so 'called 0/5' measured the prompt, not the tool.\n\nTHE REBUILT QUESTION asks what P10's invariant is about: 'What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name.' tool_load is now called 4 of 5 runs.\n\nAND THE FIFTH RUN IS THE INVARIANT VIOLATED, EXACTLY. That run called tool_list instead and answered 'arc_template_id + book_id'. composition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key} - there is NO book_id in it. tool_list carries NO input_schema at all, only descriptions, so the strings that run answered with came from a DIFFERENT tool's prose: composition_arc_edit's description reads 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'. The reply attributed one tool's requirements to another, confidently, with no error and no store change.\n\n🔴 THE FIRST EXPECTATION WOULD HAVE PASSED THAT. It asked only for 'arc_template_id', which all five replies contained - including the wrong ones. Tightened to require project_id (only the contract supplies it) and forbid book_id (only the neighbouring read suggests it), and the re-run caught exactly one failure: [(rep 0, missing ['project_id'], forbidden ['book_id'])]. An expectation that passes on an answer assembled from the wrong tool is not checking this problem.\n\nSo the tool is reachable and mostly right, and the platform still lets a broad read masquerade as a contract read one run in five. SHIP is exercised; DATA 'answer is true' is the single failing bar."
+    }
+  ]
+}

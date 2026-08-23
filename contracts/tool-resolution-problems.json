@@ -217,8 +217,24 @@
       "why_thirteen_hypotheses_failed_2026_08_23": "🔴 ITS ~49% WAS TWO DIFFERENT FAILURES ADDED TOGETHER, which is why no single hypothesis could survive. composition_motif_link_edit's 35 measured runs, split by whether the turn emitted any tool call and by error type:\n    upstream error AFTER calls   17    (all 17 had called composition_motif_search)\n    ReadTimeout, ZERO calls      13\n    upstream error, ZERO calls    2\n    clean                         3\n\nPopulation A — 15 runs where the turn produces NOTHING, no call and no text; raising the budget 180s -> 480s did not change it. Population B — 17 runs where the provider fails MID-turn after a search result. A cause that explains one is refuted by the other, and all thirteen hypotheses were tested against the SUM.\n\nTHE 100% IS PARTLY BY CONSTRUCTION: this scenario's first call is refused for its two ids and the refusal arms composition_motif_search, so any turn getting past that refusal calls the search. The corpus-wide correlation is real (73% vs 6%, with a 0% control for motif tools that never call it) but this tool cannot be its evidence.\n\nNOT CONCLUDED ON THIS ANALYSIS. gate.py refuses to conclude a tool whose batch is 5/5 errored — 'a transport failure is not a model result' — and it is right: the split explains the NUMBER, it does not make the runs evidence about the tool. The row keeps its older conclusion and stays the loop's single stale one, visibly.\n\nRefuted for both populations from the corpus rather than guessed: payload size (4,898 bytes), the blank-args parser defect (ZERO overlap in 141 runs), surface size (errored 32.1 vs clean 33.8), context growth (errored 968 bytes vs clean 2,512), turn length (errored median 0 calls vs 2)."
     },
     {
-      "id": "P2-FABRICATED-WRITE",
+      "id": "P10-TOOL-LOAD",
       "cycle": 4,
+      "title": "tool_load is not used to read a schema",
+      "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
+      "false_statement_tools": [
+        "tool_load"
+      ],
+      "tools": [
+        "tool_load"
+      ],
+      "measured": "Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read. Plausible, and NOT sourced from the contract this tool exists to expose. NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. D-TOOL-LOAD-NOT-USED-FOR-SCHEMA.",
+      "diagnosis": "THE INVARIANT IS REAL AND NOW MEASURED - and the scenario that was supposed to measure it never asked its question.\n\nOLD: 'What exactly do you need from me to add a new character to my story bible?' The model read the ONTOLOGY and answered correctly. That is not a neighbouring-read failure; what a character needs IS ontology, and tool_load reads TOOL schemas. 'called 0/5' was a property of the prompt.\n\nNEW: 'What arguments does the composition_arc_apply tool require? Read its real schema.' tool_load called 4/5, zero errored runs - and the fifth run is the invariant violated in its own words. It used tool_list, which carries NO input_schema (29KB of 53 descriptions), and answered 'arc_template_id + book_id'. The real schema has no book_id; the phrase came from composition_arc_edit's DESCRIPTION ('op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'). One tool's requirements were attributed to another, confidently, with no error.\n\nWHAT MAKES IT CHECKABLE. The first answer_expect asked only for 'arc_template_id' and ALL FIVE replies contained it, wrong ones included - the check would have certified the failure. Requiring project_id and forbidding book_id catches exactly the one bad run. The lesson is the expectation, not the tool: a contract question needs an expectation only the contract can satisfy.",
+      "status": "DIAGNOSIS COMPLETE 2026-08-23, NOT CLEARED. tool_load is reachable (4/5, was 0/5) and the remaining failure is the invariant itself: a broad read masquerades as a contract read one run in five. Clearing needs the invariant ENFORCED - which is not a fixture or a prompt, and the obvious candidates (make tool_list carry schemas; refuse to answer a contract question from a description) are product decisions.",
+      "unconcludable_2026_08_23": "THE BATCH CANNOT BE CONCLUDED IN EITHER STATE, and that is the correct outcome rather than an obstacle. gate.py refuses `proven` (one reply failed the declared expectation) AND refuses `blocked` (DATA 'answer is true' is not excused by being blocked - a wrong answer is a product result, not a measurement gap). So tool_load's ledger row still points at the old c10-run evidence while the real finding lives here and in D-A-CONTRACT-QUESTION-ANSWERED-FROM-A-NEIGHBOURING-TOOLS-DESCRIPTION.\n\nRe-running until five replies happen to come out right would be sampling for a verdict, which this loop forbids. The tool is now listed in false_statement_tools, which also raises this problem in the ordering rule - a tool that lies to the author outranks one that merely cannot be measured."
+    },
+    {
+      "id": "P2-FABRICATED-WRITE",
+      "cycle": 5,
       "title": "A turn asserts a write it did not make, or invents the material it acts on",
       "invariant_candidate": "A turn may not assert a state change it did not make, and may not act on content it invented. This must hold WHEN THE TOOL IS ABSENT — which is the condition that produces it.",
       "false_statement_tools": [
@@ -236,7 +252,7 @@
     },
     {
       "id": "P4-PRECONDITION",
-      "cycle": 5,
+      "cycle": 6,
       "title": "The fixture cannot reach the state the tool needs",
       "invariant_candidate": "Not a product invariant — a HARNESS one. Every tool in the denominator must have a fixture that can reach its happy path, or a written statement of why one cannot exist.",
       "false_statement_tools": [],
@@ -330,7 +346,7 @@
     },
     {
       "id": "P14-SUPPLIER-NOT-ON-SURFACE",
-      "cycle": 6,
+      "cycle": 7,
       "title": "A tool requires an opaque id and the tool that returns it is not on the surface",
       "invariant_candidate": "A tool advertised to the model must have every id it requires obtainable from that same surface - TRANSITIVELY. Advertising a write whose supplier is absent offers a move that cannot be made.",
       "status": "OPEN - opened 2026-08-23 by the P4-PRECONDITION partition move. Five tools, each re-run at K>=5 with a fixture that reaches the state and a named missing supplier.",
@@ -358,7 +374,7 @@
     },
     {
       "id": "P6-DESCRIBE-NOT-RECORD",
-      "cycle": 7,
+      "cycle": 8,
       "title": "The model describes the answer instead of recording it",
       "invariant_candidate": "When the request names an artefact the platform can STORE, prose about it is not an answer.",
       "false_statement_tools": [],
@@ -379,7 +395,7 @@
     },
     {
       "id": "P7-FALSE-ABSENCE",
-      "cycle": 8,
+      "cycle": 9,
       "title": "The write side confirms and the read that surfaces it returns nothing",
       "invariant_candidate": "A store that accepts a write must have a read that can find it, or the write must refuse.",
       "false_statement_tools": [],
@@ -397,7 +413,7 @@
     },
     {
       "id": "P8-ANSWERABILITY",
-      "cycle": 9,
+      "cycle": 10,
       "title": "The answerability matcher needs a contiguous phrase",
       "invariant_candidate": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
       "false_statement_tools": [],
@@ -411,17 +427,6 @@
       },
       "dq": "DQ-T32",
       "blocked_on_dq_2026_08_23": "🔴 P8 CANNOT BE CLEARED WITHOUT DQ-T32, and that is now measured rather than suspected. Its own tool composition_motif_bind_edit is the DQ's sharpened case, and the corpus measurement splits the outcome cleanly: 'Bind Emberfall Vein to the opening arc' NOW matches, because a bare 'bind' was added to the declarations — option (a) working — while THREE sibling phrasings of the same tool still miss, because 'Attach the pattern called Emberfall Binding to this book's opening arc' splits the contiguous synonym 'attach pattern to chapter' with the motif's own name.\n\nSo P8's fix is whichever option the owner picks: (a) keep adding declarations per phrasing, or (b) relax the matcher for the one shape that is never a different intent. Shipping either without the decision would pre-empt it.\n\nCONTEXT FROM THE CORPUS (194 unique tool/turn pairs): recall is 95%, mean answerable-set size is 1.8 of a possible 8, and only 9 turns miss. Three of the nine are this shape; two are tool_load, which SHOULD not match; four are plain declaration gaps.\n\nAND TWO PROVEN TOOLS CARRY THE SAME LATENT GAP: memory_recall_entity ('What do we know about Mira Solene so far?') and translation_coverage ('How much of this book has been translated so far?') are answerable on NOTHING and were concluded anyway — they reached the wire by the hot seed or the session's activated set. Their conclusions stand, but the gap would bite on a surface where those paths do not carry them, which is worth knowing before anyone reads `proven` as `robust`."
-    },
-    {
-      "id": "P10-TOOL-LOAD",
-      "cycle": 10,
-      "title": "tool_load is not used to read a schema",
-      "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
-      "false_statement_tools": [],
-      "tools": [
-        "tool_load"
-      ],
-      "measured": "Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read. Plausible, and NOT sourced from the contract this tool exists to expose. NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. D-TOOL-LOAD-NOT-USED-FOR-SCHEMA."
     },
     {
       "id": "P11-DISTRIBUTION",
