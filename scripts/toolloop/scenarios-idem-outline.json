@@ -45,7 +45,8 @@
             "op": "create",
             "project_id": "{project_id}",
             "kind": "chapter",
-            "title": "Outline Chapter {run_word}"
+            "title": "Outline Chapter {run_word}",
+            "chapter_id": "{chapter_id}"
           }
         }
       ],
@@ -70,7 +71,8 @@
         "idempotency": "OWED — the same binding twice must not create two applications.",
         "tenancy": "OWED — the node is book-scoped and the motif ACCOUNT-scoped."
       },
-      "defects": []
+      "defects": [],
+      "_control_2026_08_23": "🔴 THE OUTLINE NODE NOW CARRIES A chapter_id, and that is the CONTROL for my own duplication finding. motif_select._motif_swap archives prior scenes via `_scene_ids_for_chapter(conn, project_id, target.chapter_id, ...)`. My first fixture created the outline chapter node with NO chapter_id, so that lookup could find nothing BY CONSTRUCTION — archived_ids would be empty whether the tool is correct or not. If the duplication disappears with a linked chapter node, the defect was my fixture and the claim must be retracted."
     }
   ]
 }

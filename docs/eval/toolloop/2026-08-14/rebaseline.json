@@ -22165,7 +22165,7 @@
       "ship_audit": {
         "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/rebaseline.json): called 5/5 through the chat path with the OWNING STORE unchanged on every run — the only movement recorded is the async outbox and the global neo4j Fact count, neither of which is this tool's store.",
         "absent_case": "EXERCISED by TARGETED probe (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt); the generic sweep could not reach it (only `op` is required). op=bind with an absent id: refused, 'not found or not accessible'.",
-        "idempotency": "OWED — NOT EXERCISED — blocked on a PRECONDITION (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): binding a motif needs a real project, outline node and motif together, and the fixture builds none of that trio. Same shape as P4's four idempotency gaps.",
+        "idempotency": "EXERCISED AND IT HOLDS — but only after a control refuted my first reading (docs/eval/toolloop/2026-08-14/idem-motifbind-control.json).\n\nWith a properly linked outline chapter node, the second identical bind ARCHIVES the prior scenes (archived_scene_ids populated) and motif_application stays at 2 — it does not double. outline_node grows 3 -> 5 because the archive is SOFT and deliberately preserves the prose ('the prior scenes (now archived — prose preserved)'). Growth is the archive, not a duplicate.\n\nMY FIRST PROBE SAID THE OPPOSITE and was wrong: I created the outline chapter node without a chapter_id, and _motif_swap finds prior scenes via _scene_ids_for_chapter(..., target.chapter_id, ...), so nothing could be found BY CONSTRUCTION. A fixture's missing link read as the tool's missing archive. See D-REBIND-DUPLICATES-INSTEAD-OF-ARCHIVING-THE-PRIOR-SCENES__RETRACTED.",
         "tenancy": "EXERCISED by targeted probe (docs/eval/toolloop/2026-08-14/c7c8-ship-probe.txt): a foreign id refuses IDENTICALLY."
       },
       "defects": [],
@@ -22727,7 +22727,7 @@
       "called_count": 5,
       "wrote_count": 2,
       "suspended_count": 0,
-      "blocked_reason": "BLOCKED on a PRECONDITION at the SHIP bar, with LIVE sound. Re-measured K=5: SURFACED 5/5 and CALLED 5/5 with zero errors — its recorded 'surfaced 0/5' is refuted, and DQ-T32's sharpened case ('Bind Emberfall Vein to the opening arc' splitting the contiguous synonym) no longer reproduces, because a bare 'bind' was added to its declarations.\n\nBoundary EXERCISED by targeted probe (the generic sweep could not reach it — only `op` is required): absent and foreign ids refuse IDENTICALLY, empty NAMES all three missing fields. The owning store is unchanged on every run.\n\nIDEMPOTENCY cannot be exercised: binding a motif needs a real project, an outline NODE and a motif together, and the fixture builds none of that trio — the same shape as P4's four idempotency gaps. Note this tool ALSO still carries DQ-T32's live half: three sibling phrasings ('Attach the pattern called X to...') still miss answerability, so P8 cannot clear without the owner's decision on that question."
+      "blocked_reason": "BLOCKED ON P8-ANSWERABILITY, its own problem — NOT on idempotency, which is now exercised and HOLDS. Its declared synonym is contiguous and the request's words are separated and reordered, which is DQ-T32's territory and the reason P8 cannot clear without an owner decision. The idempotency case that sat OWED all loop is closed: two identical binds archive-and-replace rather than duplicating, verified against a control."
     },
     {
       "tool": "jobs_get",

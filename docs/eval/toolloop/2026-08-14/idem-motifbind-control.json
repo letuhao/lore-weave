@@ -1,0 +1,155 @@
+[
+ {
+  "tool": "composition_motif_bind_edit",
+  "pre": [],
+  "args": {
+   "op": "bind",
+   "project_id": "01a02d0e-532b-77dc-82b2-c57d226affeb",
+   "node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+   "motif_id": "01a02d0e-53bd-74c8-9887-f73ee03619bf"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+    "archived_scene_ids": [],
+    "new_scene_ids": [
+     "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+     "01a02d0e-9545-7c78-bc71-48dc90008136"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d0e-53bd-74c8-9887-f73ee03619bf",
+    "undo_token": {
+     "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+     "archived_scene_ids": [],
+     "new_scene_ids": [
+      "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+      "01a02d0e-9545-7c78-bc71-48dc90008136"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d0e-532b-77dc-82b2-c57d226affeb",
+       "node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+       "undo_token": {
+        "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+        "archived_scene_ids": [],
+        "new_scene_ids": [
+         "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+         "01a02d0e-9545-7c78-bc71-48dc90008136"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+    "archived_scene_ids": [
+     "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+     "01a02d0e-9545-7c78-bc71-48dc90008136"
+    ],
+    "new_scene_ids": [
+     "01a02d0e-d987-78a8-a884-e97e5ad6beb5",
+     "01a02d0e-d98b-7d27-8c03-7e14887de06d"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d0e-53bd-74c8-9887-f73ee03619bf",
+    "undo_token": {
+     "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+     "archived_scene_ids": [
+      "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+      "01a02d0e-9545-7c78-bc71-48dc90008136"
+     ],
+     "new_scene_ids": [
+      "01a02d0e-d987-78a8-a884-e97e5ad6beb5",
+      "01a02d0e-d98b-7d27-8c03-7e14887de06d"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d0e-532b-77dc-82b2-c57d226affeb",
+       "node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+       "undo_token": {
+        "chapter_node_id": "01a02d0e-545f-7310-a1d2-cdc58cbd9481",
+        "archived_scene_ids": [
+         "01a02d0e-9541-75e0-9f14-66b2c9026c6a",
+         "01a02d0e-9545-7c78-bc71-48dc90008136"
+        ],
+        "new_scene_ids": [
+         "01a02d0e-d987-78a8-a884-e97e5ad6beb5",
+         "01a02d0e-d98b-7d27-8c03-7e14887de06d"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_composition.motif_application": {
+    "before": null,
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-23 05:18:45.565211+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-23 05:18:28.958437+00"
+    },
+    "after": {
+     "rows": 3,
+     "latest": "2026-08-23 05:18:45.565211+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_composition.motif_application": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-23 05:18:45.565211+00"
+    },
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-23 05:19:03.036175+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 3,
+     "latest": "2026-08-23 05:18:45.565211+00"
+    },
+    "after": {
+     "rows": 5,
+     "latest": "2026-08-23 05:19:03.036175+00"
+    }
+   }
+  },
+  "verdict": "🔴 NOT IDEMPOTENT — the second call DUPLICATED: loreweave_composition.outline_node 3->5",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [
+    "01a02d0e-53bd-74c8-9887-f73ee03619bf"
+   ],
+   "book_id": "01a02d0e-5186-733a-b178-98af5e174147",
+   "title": "LOOP-THROWAWAY-idem-composition_motif_bind_edit-c2b3f1c2",
+   "tables": {
+    "composition(project)": "01a02d0e-532b-77dc-82b2-c57d226affeb"
+   }
+  }
+ }
+]
