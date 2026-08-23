@@ -416,12 +416,29 @@ class PgVectorStore:
                     "pass one or the other, not both"
                 )
             self._search_gucs: dict[str, int] = {}
+        elif query_rescore is not None or query_search_list_size is not None:
+            # ⚠️ RAISE rather than accept-and-ignore (rule 9). These are StreamingDiskANN
+            # GUCs, and QC-3's sign-off (PO 2026-08-21) REPLACED diskann with halfvec HNSW —
+            # `ensure_vector_schema` creates `USING hnsw` and DROPs the `_emb` diskann index
+            # in the same breath. Setting `diskann.query_rescore` against an HNSW index is a
+            # no-op the server does not complain about, so a caller asking for recall would
+            # have got the default and no signal.
+            #
+            # No HNSW replacement knob is programmed, and that is the evidence talking rather
+            # than an omission: the effort GUCs existed because diskann's defaults recalled
+            # 0.715-0.836 on the real corpus. §QC-3 measured **halfvec_hnsw at 1.000** — the
+            # setting they were correcting for is not there to correct.
+            raise NotImplementedError(
+                "PgVectorStore(query_rescore=…/query_search_list_size=…) — these program "
+                "StreamingDiskANN, which QC-3 retired in favour of halfvec HNSW (see §9.4). "
+                "They would be accepted and silently do nothing on an `hnsw` index. Recall at "
+                "the HNSW defaults measured 1.000 on the real corpus, so there is nothing to "
+                "raise; if that changes, program `hnsw.ef_search` and say so here."
+            )
         else:
-            self._search_gucs = {
-                "diskann.query_search_list_size":
-                    query_search_list_size or self.DEFAULT_SEARCH_LIST_SIZE,
-                "diskann.query_rescore": query_rescore or self.DEFAULT_QUERY_RESCORE,
-            }
+            # Nothing to program. The two `SET LOCAL diskann.*` statements that used to run in
+            # EVERY search transaction were dead the moment the index type changed.
+            self._search_gucs = {}
 
     def setter_sql(self) -> str:
         """The one statement that applies this store's search effort. Public so a test can

@@ -7083,6 +7083,80 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ### ✅ T25x 2026-08-23 — **24 pgvector tests had been SKIPPING, and three of them encoded the design QC-3 retired**
+
+  ```
+  before   TEST_VECTOR_DB_URL unset  ->  24 skipped, every run
+  after    a throwaway pgvector      ->  21 passed, 3 FAILED
+  now                                    24 passed
+  suite    4748 -> 4775 passing, 728 -> 701 skipped
+  ```
+
+  🔴 **The three failures were one defect, and it is on the production read path.** QC-3's
+  sign-off (PO 2026-08-21) replaced StreamingDiskANN with halfvec HNSW —
+  `ensure_vector_schema` creates `USING hnsw` and **DROPs** the `_emb` diskann index in the same
+  breath. The adapter went on emitting, in **every search transaction**:
+
+  ```
+  SET LOCAL diskann.query_search_list_size = 100; SET LOCAL diskann.query_rescore = 50
+  ```
+
+  Those GUCs belong to an extension whose index is no longer there. Postgres accepts them and
+  does nothing. The test that caught it said so in its own words — *"a deliberately starved
+  search returned exactly what a generous one did — the effort setting is not reaching the
+  query"* — and **it had been skipping**, so the adoption landed against a test asserting the
+  superseded design and neither half was visible.
+
+  ⚖️ **No HNSW replacement knob is programmed, and that is the MEASUREMENT rather than an
+  omission.** The effort GUCs existed because diskann recalled **0.715–0.836** on the real
+  corpus; §QC-3 measured **halfvec_hnsw at 1.000** at ~41 % of the table bytes. The setting they
+  were correcting for is not there to correct. Asking for effort now **RAISES** (rule 9) rather
+  than being accepted and silently doing nothing, and the message says what to do if that
+  changes: program `hnsw.ef_search` and say so there.
+
+  📐 **The other two tests were stale in the same direction**, and both are now *stronger*:
+
+  ```
+  list_indexes   asserts `_emb_hv`, the index the store OWNS, not the dropped `_emb`
+  index usable   EXPLAINs `(embedding::halfvec(dim)) <=> $1::halfvec(dim)` — the INDEX
+                 EXPRESSION. A plain `vector` comparison cannot use a halfvec index, so the
+                 old query was measuring a different question and would have stayed red
+                 whatever the adapter did.
+  ```
+
+  🧪 **BITE 30 — put the dead GUCs back, by line number:**
+
+  ```
+  AssertionError: the store still programs search GUCs: 'SET LOCAL diskann.query_rescore = 50;
+  SET LOCAL diskann.query_search_list_size = 100' -- these ran in every search transaction and
+  target an index type that no longer exists
+  ```
+
+  ✅ **The default path must stay SILENT, and that is its own assertion.** A refusal that fired
+  on ordinary construction would take the store out entirely, so the rule asserts both: the
+  retired knobs raise, and `PgVectorStore(pool)` programs nothing.
+
+  ⚠️ **How the skip was found, and why it is the reusable part.** `env-gated tests skip and the
+  green suite lies` is a known class here; this is an instance with a measurable cost. The fixture
+  documents its own throwaway (`_guard_throwaway(dsn)` refuses a real DB **before** any DROP), so
+  running them needs one command:
+
+  ```
+  docker run -d --name lw-vec-test -e POSTGRES_PASSWORD=… \
+    -e POSTGRES_DB=loreweave_vectors_test -p 7995:5432 loreweave/postgres-knowledge:18
+  export TEST_VECTOR_DB_URL=postgresql://postgres:…@localhost:7995/loreweave_vectors_test
+  ```
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4775 passed, 701 skipped** with
+  both `TEST_AGE_DSN` and `TEST_VECTOR_DB_URL` set — **27 fewer skips than any earlier run this
+  session.** The two `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD`
+  in A15.
+  **QC (b) live smoke:** the 24 tests ARE the live smoke — they run against a real pgvector
+  Postgres on `loreweave/postgres-knowledge:18`, the same image the deployment uses.
+  **QC (c) real data:** the `EXPLAIN` output showing the planner choosing `passage_vectors_384_emb_hv`
+  is from that live database, on a seeded corpus.
+
+  ---
   ### ✅ T25w 2026-08-23 — **T25n's cure does NOT transfer to the entity family, and the test that demanded the DDL would have BLOCKED the removal**
 
   ```

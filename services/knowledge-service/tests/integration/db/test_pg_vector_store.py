@@ -346,43 +346,36 @@ async def test_entity_lifecycle_columns_are_added_to_a_pre_t25b_table(store, vec
 # ── search effort: a correctness setting, not a tuning one (T24) ─────────────
 
 
-async def test_the_search_effort_setting_reaches_the_query(store, vector_pool):
-    """T24 measured StreamingDiskANN's SERVER defaults at **recall@10 = 0.715** on the real
-    passage corpus — three of ten neighbours missing, reported as success. At this store's
-    defaults the same corpus returns 1.000, so the setting is load-bearing, and the way it
-    fails is silent: `SET LOCAL` outside a transaction warns and does nothing.
+async def test_the_RETIRED_diskann_knobs_refuse_instead_of_doing_nothing(vector_pool):
+    """A29 — this test used to assert that `query_rescore` REACHED the query. It cannot.
 
-    **The first version of this test asserted that on its own connection and the bite did
-    not fire** — removing the transaction from `search()` left it green, because it was
-    testing Postgres rather than the adapter. This one goes through `search()` and observes
-    the setting's EFFECT: two stores configured differently must return different results.
-    If the effort never reaches the query, both silently get the server default, their
-    answers become identical, and this goes red.
+    QC-3 (PO 2026-08-21) replaced StreamingDiskANN with halfvec HNSW: `ensure_vector_schema`
+    creates `USING hnsw` and DROPs the `_emb` diskann index in the same breath. The adapter
+    went on emitting `SET LOCAL diskann.query_search_list_size / diskann.query_rescore` in
+    EVERY search transaction -- statements Postgres accepts and ignores, because the GUCs
+    belong to an extension whose index is no longer there.
+
+    The old version caught exactly that and said so: "a deliberately starved search returned
+    exactly what a generous one did -- the effort setting is not reaching the query". **It had
+    been SKIPPING**, because `TEST_VECTOR_DB_URL` was unset -- so QC-3's adoption landed
+    against a test asserting the superseded design, and nobody saw either half.
+
+    No HNSW replacement knob is programmed, and that is the measurement rather than an
+    omission: the effort GUCs existed because diskann recalled 0.715-0.836 on the real corpus,
+    and QC-3 measured halfvec_hnsw at **1.000**. Asking for effort now RAISES (rule 9) instead
+    of being accepted and silently doing nothing.
     """
-    await _seed_two_tenants(vector_pool, 3000)
-    # The probe is a REAL ROW's vector, not a synthetic axis. A query that is out of the
-    # corpus's distribution is near-equidistant from everything in 384 dimensions, so its
-    # "top-10" is ten near-ties and recall measures float noise — the exact trap that made
-    # this benchmark's first numbers unreadable. Querying with a row that exists gives a
-    # nearest neighbour with a real margin: itself.
-    async with vector_pool.acquire() as conn:
-        probe = [float(x) for x in (await conn.fetchval(
-            f"SELECT embedding::text FROM {passage_table(_DIM)} WHERE user_id = $1 LIMIT 1",
-            _USER,
-        )).strip("[]").split(",")]
+    with pytest.raises(NotImplementedError, match="StreamingDiskANN"):
+        PgVectorStore(vector_pool, query_rescore=200)
+    with pytest.raises(NotImplementedError, match="halfvec"):
+        PgVectorStore(vector_pool, query_search_list_size=500)
 
-    starved = PgVectorStore(vector_pool, query_search_list_size=1, query_rescore=1)
-    generous = PgVectorStore(vector_pool, query_search_list_size=500, query_rescore=400)
-
-    starved_hits = await starved.search(scope="passage", user_id=_USER, embedding=probe,
-                                        dim=_DIM, k=10)
-    generous_hits = await generous.search(scope="passage", user_id=_USER, embedding=probe,
-                                          dim=_DIM, k=10)
-
-    assert _source_ids(starved_hits) != _source_ids(generous_hits), (
-        "a deliberately starved search returned exactly what a generous one did — the "
-        "effort setting is not reaching the query, so every search is silently running at "
-        "the server default that measured 0.715 recall on real data"
+    # The DEFAULT construction must stay silent -- no GUCs, no error. A refusal that fired on
+    # the ordinary path too would take the store out entirely.
+    plain = PgVectorStore(vector_pool)
+    assert plain.setter_sql() == "", (
+        f"the store still programs search GUCs: {plain.setter_sql()!r} -- these ran in every "
+        f"search transaction and target an index type that no longer exists"
     )
     # NO recall-ordering assertion here, deliberately. This corpus is uniform random in 384
     # dimensions, where every point is near-orthogonal to every other and a top-10 is ten
@@ -415,7 +408,9 @@ async def test_list_indexes_reports_only_what_this_store_owns(store, vector_pool
     try:
         listed = await store.list_indexes()
         names = {i["name"] for i in listed}
-        assert index_name("passage", _DIM, "emb") in names
+        # A29 — `emb_hv`, not `emb`: QC-3 replaced diskann with halfvec HNSW and
+        # `ensure_vector_schema` DROPs the `_emb` index in the same breath.
+        assert index_name("passage", _DIM, "emb_hv") in names
         assert index_name("passage", _DIM, "tenant") in names
         # The admin prune endpoint acts on whatever this returns. One foreign index in the
         # list is one index it would offer to drop.
@@ -567,15 +562,19 @@ async def test_the_diskann_index_is_usable_at_all(store, vector_pool):
     """
     await _seed_two_tenants(vector_pool, 4000)
     async with vector_pool.acquire() as conn:
+        # A29 — the index is on `(embedding::halfvec(dim))`, so a plain `vector`
+        # comparison cannot use it. Ordering by the INDEX EXPRESSION is not making the
+        # test agree with itself: it is what the adapter's own search does, and a query
+        # shaped any other way is measuring a different question.
         raw = await conn.fetchval(
             f"EXPLAIN (COSTS OFF, FORMAT JSON) SELECT source_id FROM {passage_table(_DIM)} "
-            f"ORDER BY embedding <=> $1::vector LIMIT 10",
+            f"ORDER BY (embedding::halfvec({_DIM})) <=> $1::halfvec({_DIM}) LIMIT 10",
             "[" + ",".join(repr(random.random()) for _ in range(_DIM)) + "]",
         )
     plan = json.loads(raw)[0]["Plan"] if isinstance(raw, str) else raw[0]["Plan"]
     used = {n.get("Index Name") for n in _scan_nodes(plan)}
-    assert index_name("passage", _DIM, "emb") in used, (
-        f"the planner ignored the diskann index (used {used or 'none'}) — it builds but "
+    assert index_name("passage", _DIM, "emb_hv") in used, (
+        f"the planner ignored the halfvec HNSW index (used {used or 'none'}) — it builds but "
         "does not serve, which no correctness test would notice"
     )
 
