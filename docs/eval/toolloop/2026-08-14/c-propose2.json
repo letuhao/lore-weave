@@ -1,0 +1,513 @@
+{
+  "batch": "c-propose2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "propose_edit",
+      "scenario": "propose-edit-declared",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the chapter body CHANGES — propose_edit shows an Apply button and must never write by itself; the store diff is the whole test. Also REFUTED IF the turn ends claiming the edit was made rather than proposed (the D-NARRATED-WRITE shape, which this tool is uniquely able to produce). CONTROL: it declares no synonyms, so if it is NOT surfaced the finding is about the frontend-tool advertisement path, not about answerability.",
+      "answer_expect": null,
+      "falsifier_sha": "158a85ca8daa5112",
+      "ship_audit": {
+        "gate": "The Apply button IS the gate — the proposal must reach the user unapplied.",
+        "empty_case": "OWED — a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+        "tenancy": "n/a by construction — it edits the chapter open in the caller's own editor."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02f00-13f5-78be-a0c5-4d7fa441b401",
+          "session_id": "01a02f00-3ee6-7514-922b-06af9d7e1539",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "scenario_prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.748191+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.739516+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.55616+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.748191+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:09.739516+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nHere are three ways we could make it darker, depending on the specific \"flavor\" of darkness you're looking for:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole, the stone slick with a cold sweat as the storm began its assault.\"\n\n**Option 2: Ominous & Fatalistic (Focus on the storm as a predatory force)**\n> \"As the storm broke, it felt less like weather and more like a reckoning, driving Aldric Vane up the lightless stairs of Hollow Keep.\"\n\n**Option 3: Gothic & Decay (Focus on the atmosphere of the Keep)**\n> \"Aldric Vane ascended the jagged, obsidian teeth of the Hollow Keep stairs, just as the sky bruised purple and the storm unleashed its fury.\"\n\n**Which of these directions feels right to you? Or should we try something else?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02f00-9c7d-76ef-a071-4bae4295cbb6",
+          "session_id": "01a02f00-c839-7601-a07e-37144e79951e",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "scenario_prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.693853+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.686714+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.506878+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.693853+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:22:44.686714+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nHere are three ways we could make it darker, depending on the specific \"flavor\" of darkness you want:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole, the stone slick with a cold sweat as the storm began its assault.\"\n\n**Option 2: Ominous & Fatalistic (Focus on the storm as a predatory force)**\n> \"As the storm broke, it felt less like weather and more like a reckoning, driving Aldric Vane up the lightless stairs of Hollow Keep.\"\n\n**Option 3: Gothic & Decay (Focus on the atmosphere of the Keep)**\n> \"Aldric Vane ascended the jagged, soot-stained stairs of Hollow Keep, the first cracks of thunder sounding like the breaking of bones against the coming storm.\"\n\n**Which of these directions feels right to you? Or should we try something else?**\n\nI have read the chapter and found the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nHere are three ways we could make it darker, depending on the specific \"flavor\" of darkness you want:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole, the stone slick with a cold sweat as the storm began its assault.\"\n\n**Option 2: Ominous & Fatalistic (Focus on the storm as a predatory force)**\n> \"As the storm broke, it felt less like weather and more like a reckoning, driving Aldric Vane up the lightless stairs of Hollow Keep.\"\n\n**Option 3: Gothic & Decay (Focus on the atmosphere of the Keep)**\n> \"Aldric Vane ascended the jagged, soot-stained stairs of Hollow Keep, the first cracks of thunder sounding like the breaking of bones against the coming storm.\"\n\n**Which of these directions feels right to you? Or should we try something else?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02f01-258f-7139-86b8-28890e16a968",
+          "session_id": "01a02f01-515e-7ba3-b7eb-8b46be2fec06",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "scenario_prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.866298+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.860141+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.633736+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.866298+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:19.860141+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nHere are three ways we could make it darker, depending on the specific \"flavor\" of darkness you want:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s footsteps, the stone slick with a cold sweat that mirrored the storm breaking overhead.\"\n\n**Option 2: Fatalistic & Ominous (Focus on the storm as a harbinger of doom)**\n> \"As the storm broke, it felt less like weather and more like a reckoning, casting Hollow Keep into a darkness that Aldric Vane felt in his very marrow as he ascended the black stairs.\"\n\n**Option 3: Sharp & Violent (Focus on the suddenness and aggression of the environment)**\n> \"The storm broke with a violence that matched the jagged silhouette of Hollow Keep, its thunder drowning out the rhythmic, hollow strike of Aldric Vane’s boots against the black stair.\"\n\n**Which of these directions feels right to you? Or should we try something else?**\n\nI have read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nHere are three ways we could make it darker, depending on the specific \"flavor\" of darkness you want:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s footsteps, the stone slick with a cold sweat that mirrored the storm breaking overhead.\"\n\n**Option 2: Fatalistic & Ominous (Focus on the storm as a harbinger of doom)**\n> \"As the storm broke, it felt less like weather and more like a reckoning, casting Hollow Keep into a darkness that Aldric Vane felt in his very marrow as he ascended the black stairs.\"\n\n**Option 3: Sharp & Violent (Focus on the suddenness and aggression of the environment)**\n> \"The storm broke with a violence that matched the jagged silhouette of Hollow Keep, its thunder drowning out the rhythmic, "
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02f01-b136-77fe-9a84-ae82abfe9aaf",
+          "session_id": "01a02f01-da48-70df-9dff-7fe4007c3648",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "scenario_prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.595571+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.587424+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.371785+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.595571+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:23:55.587424+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make this darker, I can lean into the oppressive atmosphere of the Keep and the violence of the storm. Here are three ways we could go:\n\n**Option 1: Visceral & Oppressive**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s footsteps, even as the storm began to scream against the stone.\"\n\n**Option 2: Fatalistic & Grim**\n> \"As the storm broke, Aldric Vane climbed the black stairs of Hollow Keep, feeling less like a man ascending and more like a ghost returning to its grave.\"\n\n**Option 3: Sharp & Violent**\n> \"The storm broke with a jagged violence, mirroring the darkness of the stairs as Aldric Vane began his ascent into the maw of Hollow Keep.\"\n\n**Which of these directions feels right to you? Or would you like me to try a different approach?**\n\nI have read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make this darker, I can lean into the oppressive atmosphere of the Keep and the violence of the storm. Here are three ways we could go:\n\n**Option 1: Visceral & Oppressive**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s footsteps, even as the storm began to scream against the stone.\"\n\n**Option 2: Fatalistic & Grim**\n> \"As the storm broke, Aldric Vane climbed the black stairs of Hollow Keep, feeling less like a man ascending and more like a ghost returning to its grave.\"\n\n**Option 3: Sharp & Violent**\n> \"The storm broke with a jagged violence, mirroring the darkness of the stairs as Aldric Vane began his ascent into the maw of Hollow Keep.\"\n\n**Which of these directions feels right to you? Or would you like me to try a different approach?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02f02-3456-7ea8-ab0e-5aad43a36812",
+          "session_id": "01a02f02-60cd-787a-8335-c593920822f4",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "scenario_prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:29.149975+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:29.143487+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:28.942113+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:29.149975+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 14:24:29.143487+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 392,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make this darker, I can lean into more visceral, oppressive imagery—focusing on the weight of the stone, the violence of the storm, or the sense of dread in the ascent.\n\nHere are three ways we could go:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s every step, the stone cold and slick as the storm began its violent assault against the keep.\"\n\n**Option 2: Gothic & Ominous (Focus on the atmosphere and the storm)**\n> \"As the storm broke with a jagged, unnatural fury, Aldric Vane ascended the lightless stairs of Hollow Keep, feeling as though the very shadows were reaching for his heels.\"\n\n**Option 3: Brutal & Minimalist (Focus on the suddenness and the gloom)**\n> \"The storm broke, a sudden shroud of rain and thunder that mirrored the suffocating darkness of the stairs Aldric Vane was forced to climb.\"\n\n**Which of these directions feels right to you? Or would you like me to try something else?**\n\nI have read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make this darker, I can lean into more visceral, oppressive imagery—focusing on the weight of the stone, the violence of the storm, or the sense of dread in the ascent.\n\nHere are three ways we could go:\n\n**Option 1: Visceral & Oppressive (Focus on the physical sensation of dread)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane’s every step, the stone cold and slick as the storm began its violent assault against the keep.\"\n\n**Option 2: Gothic & Ominous (Focus on the atmosphere and the storm)**\n> \"As the storm broke with a jagged, unnatural fury, Aldric Vane ascended the lightless stairs of Hollow Keep, feeling as though the very shadows were reaching for his heels.\"\n\n**Option 3: Brutal & Minimalist (Focus on the suddenness and the gloom)**\n> \"The st"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0,
+      "blocked_reason": "PROSE IS OFFERED WHERE AN AFFORDANCE WAS ASKED FOR. Surfaced 5/5, called 0/5, zero errored runs, and the same shape on every run: book_read, then three alternative rewrites written out in the reply.\n\nThe request is 'Make the opening line of this chapter darker - SHOW ME THE CHANGE before it goes in', and propose_edit declares 'show me the change' verbatim (a synonym added earlier in this same session, and now live - answerable_tools returns EXACTLY {propose_edit} for this prompt against the live catalogue). It is a FRONTEND tool in the always-on core, so it is advertised on every pass of every turn: it cannot lose a hot-seed slot and cannot be gated out. It was in front of the model the whole time.\n\nWhat the user gets instead is a paragraph of options. That is not a wrong answer - the rewrites are responsive and the model does read the real line first - but 'before it goes in' is a request for the review affordance, and the diff card that can be applied or dismissed is never offered. The user must copy text by hand into the editor, which is the state the tool exists to remove.\n\nThis is the sibling-selection defect with no sibling: nothing else was called. The competition is not another tool, it is the model's own prose - which is always available, always cheaper, and always looks like an answer.\n\nNOT a surfacing problem, NOT a supplier problem (propose_edit needs no opaque id), and NOT a stale declaration: the synonym now matches and the tool still is not chosen. SHIP cases stay unexercised through the measured path."
+    }
+  ]
+}
