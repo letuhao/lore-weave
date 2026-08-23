@@ -404,7 +404,10 @@
     "criticSameAsDrafter": "Este é o mesmo modelo que escreve a prosa, portanto, ele estaria avaliando o próprio trabalho — o servidor recusará a ação e pulará a crítica. Escolha um modelo diferente.",
     "noCritic": "Sem crítica — rascunhos não recebem notas independentes",
     "criticEnabled": "Avaliar cada rascunho com base no cânone",
-    "criticEnabledHint": "Ativado por padrão. O crítico pode pausar uma execução ao emitir um veredito severo. Um modelo de crítica pequeno pode relatar contradições inexistentes; desative esta opção se as notas forem ruído — os rascunhos não são afetados de qualquer maneira."
+    "criticEnabledHint": "Ativado por padrão. O crítico pode pausar uma execução ao emitir um veredito severo. Um modelo de crítica pequeno pode relatar contradições inexistentes; desative esta opção se as notas forem ruído — os rascunhos não são afetados de qualquer maneira.",
+    "criticVerifier": "Modelo verificador (valida o crítico)",
+    "criticVerifierHint": "Antes que uma violação de cânone chegue até você, ela é reavaliada com base na regra citada e descartada se a prosa não a contradizer de fato. Deixe vazio para reavaliar com o próprio crítico; um modelo mais robusto aqui reduz o número de falsos positivos.",
+    "noCriticVerifier": "Usar o modelo crítico para reavaliar suas próprias conclusões"
   },
   "loadingStats": "Carregando estatísticas...",
   "statsUnavailable": "Estatísticas de qualidade indisponíveis.",

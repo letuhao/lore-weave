@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 91 of 134 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 92 of 135 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (25/49) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (26/50) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,72 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C33 2026-08-24 — **the seventh ModelRole, and the PO's reading of C31's numbers**
+
+  ```
+  ModelRole              6 -> 7   chat · composer · planner · embedding · rerank · critic
+                                  + critic_verifier
+  homes that declare it        2  the enum + the FE union (the ACCOUNT panel lists neither
+                                  `critic` nor this — both are book-tier)
+  composition 3799 -> 3801 · chat-service 1966 · frontend 1068 -> 1108 (160 files)
+  ```
+
+  📐 **Two PO decisions, and the first one re-reads C31.** *"Keep it on — this project targets
+  mid size and above model, 7b model is weak model i never use in real life."* So the acceptance
+  book's `qwen2.5-7b-instruct` critic is a **fixture artifact, not the product's target**, and
+  C31's *"the shipped critic keeps 0/3"* row should be read as *what a below-target model does*
+  rather than as the default experience. The default stays **ON**; C32's control stays for the
+  author who wants it off. Nothing in C31 is retracted — the measurement stands, its
+  representativeness is what changed.
+
+  🎯 **Second decision: add the role.** C31 measured the two jobs apart — a model kept **4/4**
+  planted violations while keeping **0/3** false ones when auditing its OWN output — so breadth
+  and precision are separable, and a book may want a cheap critic for the first and a strong one
+  for the second. `ModelRole` is *"the one canonical closed set … shared as the key vocabulary
+  across all three model stores"*, so this is a contract change and was made as one.
+
+  ⚖️ **Named `critic_verifier`, not `verifier`, and the measurement is why.** `campaigns/types.ts`
+  already declares a DIFFERENT `ModelRole` — its Model-Matrix vocabulary — whose members include
+  **`verifier`** meaning something else entirely. Two closed sets sharing a token that means two
+  things is precisely the mis-spelled-key failure this set exists to prevent, and it is only
+  visible if you look for the other vocabulary rather than the obvious name.
+
+  🔴 **The batch was smaller than "three model stores" implies, and that was measured, not
+  assumed.** Grepping the role vocabulary found **two** declarations to change — the enum and the
+  FE union. `ChatAiSettingsPanel` lists five roles and **does not include `critic`**, so the
+  account tier never carried this family; `composition/model_roles.py` has no closed set at all
+  (it reads whatever role it is asked for), so `role_ref(settings, "critic_verifier")` worked
+  with no change. A batch estimated from a docstring would have been three times the size.
+
+  🧪 **Bites, and the second is the compatibility guarantee.**
+
+  ```
+  BITE H  route the audit to the critic regardless of the verifier refs
+          × test_the_VERIFIER_ROLE_routes_the_audit_to_its_own_model      1 failed, 9 passed
+  BITE I  require a verifier before auditing at all (`and verifier_ref`)
+          × test_judge_prose_ACTUALLY_CALLS_the_verifier
+          × test_no_verifier_configured_FALLS_BACK_to_the_critic          2 failed, 8 passed
+  ```
+
+  I is the one that matters: **every book that never sets a verifier must keep auditing with its
+  critic**, exactly as C31 shipped it. A routing change that only worked when configured would
+  have silently switched the audit off for every existing book while every other test stayed
+  green.
+
+  ⚠️ **Still owed, and not by this row.** The end-to-end studio re-run against a rebuilt
+  composition image is what closes QC-5 itself — C31 named it and it is unchanged. This row adds
+  a lever, not a verdict.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3801 passed, 403 skipped, 0
+  failed**; `chat-service` **1966 passed**; `frontend` (composition + chat-ai-settings)
+  **1108 passed, 160 files**; `tsc --noEmit` exit 0; `i18n_translate --ns composition` 17
+  namespaces, +3 keys, **0 failures**, and `i18n-completeness-gate` at full `en` parity.
+  **QC (b) live smoke:** N/A — no seam crossed. The routing is in-process and is asserted on the
+  REAL `judge_prose`, by which model each of its two calls goes to, rather than by a mock at the
+  chokepoint.
+  **QC (c) real data:** N/A — produces no data. The figures that drove it are C31's, re-read
+  under the PO's model-tier decision above.
   ---
   ### ✅ QC-5 C32 2026-08-24 — **the critic's OFF switch existed and no author could reach it**
 

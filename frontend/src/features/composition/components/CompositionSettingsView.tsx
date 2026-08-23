@@ -42,6 +42,7 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
   // value as on. `!== false` rather than `?? true` because a book saved before this control
   // existed has no key at all, and those two must read the same.
   const criticEnabled = settings.critic_enabled !== false;
+  const criticVerifier = roleRef(settings, 'critic_verifier');
   const patch = (p: Record<string, unknown>) =>
     setSettings.mutate({ projectId, currentSettings: settings, patch: p });
 
@@ -97,6 +98,30 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
             {t('workSettings.criticSameAsDrafter', { defaultValue: 'This is the same model that writes the prose, so it would be grading its own work — the server will refuse it and skip the critique. Pick a different model.' })}
           </span>
         )}
+      </label>
+
+      {/* critic VERIFIER model — QC-5 C33, `ModelRole.CRITIC_VERIFIER`. A seventh role rather
+          than reuse of the critic, because C31 measured the two jobs apart: one model kept 4/4
+          planted violations and 0/3 false ones when auditing its OWN output, so breadth and
+          precision can want different models. Empty = audit with the critic itself, which is
+          what every book did before this control existed. */}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">{t('workSettings.criticVerifier', { defaultValue: 'Verifier model (checks the critic)' })}</span>
+        <span className="text-xs text-neutral-500">
+          {t('workSettings.criticVerifierHint', { defaultValue: 'Before a canon violation reaches you it is re-checked against the rule it cites, and dropped if the prose does not actually contradict it. Leave empty to re-check with the critic itself; a stronger model here removes more false alarms.' })}
+        </span>
+        <select
+          data-testid="composition-settings-critic-verifier"
+          className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
+          value={criticVerifier}
+          disabled={setSettings.isPending}
+          onChange={(e) => patch(patchForRole(settings, 'critic_verifier', e.target.value))}
+        >
+          <option value="">{t('workSettings.noCriticVerifier', { defaultValue: 'Use the critic model to re-check its own findings' })}</option>
+          {models.map((m) => (
+            <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
+          ))}
+        </select>
       </label>
 
       {/* critic ON/OFF — QC-5 C32. The toggle EXISTED and no user could reach it:

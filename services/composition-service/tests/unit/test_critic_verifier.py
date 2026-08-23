@@ -181,3 +181,38 @@ async def test_no_violations_costs_no_verifier_call():
         "stamped even at zero, like `violations_dropped` beside it — a key that appears only "
         "when non-zero makes a missing field and a clean result the same observation"
     )
+
+@pytest.mark.asyncio
+async def test_the_VERIFIER_ROLE_routes_the_audit_to_its_own_model():
+    """QC-5 C33 — `ModelRole.CRITIC_VERIFIER`, and that it actually changes who audits.
+
+    C31 measured the two jobs apart: one model kept 4/4 planted violations and 0/3 false ones
+    when auditing its OWN output. A book can therefore want breadth from one model and precision
+    from another, which is what the seventh role is for. This asserts the routing rather than the
+    setting: the critique goes to the critic, the audit goes to the verifier.
+    """
+    judge = ScriptedJudge(_critique_with_one_violation(), _reply(False, "agrees with the rule"))
+    await critic.judge_prose(
+        judge, user_id="u", model_source="s", model_ref="critic-model", passage="a passage",
+        active_rules=RULES, present_facts=[], profile=NEUTRAL,
+        verifier_source="vs", verifier_ref="verifier-model",
+    )
+    assert judge.calls[0]["model_ref"] == "critic-model"
+    assert judge.calls[1]["model_ref"] == "verifier-model", "the audit must go to the verifier"
+    assert judge.calls[1]["model_source"] == "vs"
+
+
+@pytest.mark.asyncio
+async def test_no_verifier_configured_FALLS_BACK_to_the_critic():
+    """The control arm, and the compatibility guarantee: every book that never sets a verifier
+    keeps exactly today's behaviour. A routing change that only worked when configured would
+    silently stop auditing for every existing book."""
+    judge = ScriptedJudge(_critique_with_one_violation(), _reply(False, "agrees with the rule"))
+    await critic.judge_prose(
+        judge, user_id="u", model_source="s", model_ref="critic-model", passage="a passage",
+        active_rules=RULES, present_facts=[], profile=NEUTRAL,
+    )
+    assert len(judge.calls) == 2, "the audit must still happen"
+    assert judge.calls[1]["model_ref"] == "critic-model"
+    assert judge.calls[1]["model_source"] == "s"
+

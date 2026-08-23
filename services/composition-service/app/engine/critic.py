@@ -347,6 +347,7 @@ async def judge_prose(
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
     profile: BookProfile, max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    verifier_source: str | None = None, verifier_ref: str | None = None,
 ) -> dict[str, Any]:
     """Run the advisory critique. Returns the generation_job.critic dict. CC4:
     any LLM/timeout/parse failure degrades to an empty critique with an `error`
@@ -445,8 +446,15 @@ async def judge_prose(
     # a missing field and a clean result become the same observation.
     crit["violations_unverified"] = 0
     if crit["violations"]:
+        # The verifier is its OWN role (`ModelRole.CRITIC_VERIFIER`), falling back to the
+        # critic when a book has not chosen one. C31 measured why the two are separable:
+        # a model kept 4/4 planted violations and 0/3 false ones when auditing itself, so
+        # breadth and precision can want different models. The fallback keeps every book
+        # that never configures a verifier on exactly today's behaviour.
         verified, unverified = await verify_violations(
-            judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            judge, user_id=user_id,
+            model_source=verifier_source or model_source,
+            model_ref=verifier_ref or model_ref,
             passage=passage, violations=crit["violations"], active_rules=active_rules,
             trace_id=trace_id, cancel_check=cancel_check,
         )

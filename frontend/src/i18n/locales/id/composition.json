@@ -404,7 +404,10 @@
     "criticSameAsDrafter": "Ini adalah model yang sama dengan penulis prosa, sehingga ia akan menilai karyanya sendiri — server akan menolaknya dan melewati kritik. Pilih model yang berbeda.",
     "noCritic": "Tanpa kritikus — draf tidak dinilai secara mandiri",
     "criticEnabled": "Nilai setiap draf berdasarkan kanon",
-    "criticEnabledHint": "Aktif secara default. Kritikus dapat menghentikan proses jika memberikan vonis yang berat. Model kritikus kecil mungkin melaporkan kontradiksi yang sebenarnya tidak ada, jadi matikan fitur ini jika catatan yang diberikan hanya berupa gangguan — draf tidak akan terpengaruh dalam kondisi apa pun."
+    "criticEnabledHint": "Aktif secara default. Kritikus dapat menghentikan proses jika memberikan vonis yang berat. Model kritikus kecil mungkin melaporkan kontradiksi yang sebenarnya tidak ada, jadi matikan fitur ini jika catatan yang diberikan hanya berupa gangguan — draf tidak akan terpengaruh dalam kondisi apa pun.",
+    "criticVerifier": "Model verifikator (memeriksa kritikus)",
+    "criticVerifierHint": "Sebelum pelanggaran kanon sampai kepada Anda, teks akan diperiksa ulang terhadap aturan yang dikutip, dan dibatalkan jika prosa tersebut sebenarnya tidak bertentangan. Biarkan kosong untuk memeriksa ulang dengan kritikus itu sendiri; model yang lebih kuat di sini akan mengurangi lebih banyak alarm palsu.",
+    "noCriticVerifier": "Gunakan model kritikus untuk memeriksa ulang temuannya sendiri"
   },
   "loadingStats": "Memuat statistik kualitas...",
   "statsUnavailable": "Statistik kualitas tidak tersedia.",

@@ -404,7 +404,10 @@
     "criticSameAsDrafter": "Đây là cùng một mô hình đã viết văn bản, vì vậy nó sẽ tự chấm điểm chính mình — máy chủ sẽ từ chối yêu cầu này và bỏ qua phần phê bình. Vui lòng chọn một mô hình khác.",
     "noCritic": "Không có phê bình — bản thảo không được chấm điểm độc lập",
     "criticEnabled": "Đánh giá từng bản thảo dựa trên nguyên tác",
-    "criticEnabledHint": "Mặc định ở chế độ Bật. Trình phê bình có thể tạm dừng quá trình chạy nếu đưa ra phán quyết nghiêm trọng. Một mô hình phê bình nhỏ có thể báo cáo các mâu thuẫn không có thực, vì vậy hãy tắt tùy chọn này nếu các ghi chú là nhiễu — bản thảo sẽ không bị ảnh hưởng dù bạn chọn thế nào."
+    "criticEnabledHint": "Mặc định ở chế độ Bật. Trình phê bình có thể tạm dừng quá trình chạy nếu đưa ra phán quyết nghiêm trọng. Một mô hình phê bình nhỏ có thể báo cáo các mâu thuẫn không có thực, vì vậy hãy tắt tùy chọn này nếu các ghi chú là nhiễu — bản thảo sẽ không bị ảnh hưởng dù bạn chọn thế nào.",
+    "criticVerifier": "Mô hình kiểm chứng (kiểm tra lại người phê bình)",
+    "criticVerifierHint": "Trước khi một lỗi vi phạm nguyên tác được gửi đến bạn, nó sẽ được đối chiếu lại với quy tắc được trích dẫn; nếu văn phong thực tế không mâu thuẫn với quy tắc đó, lỗi sẽ bị loại bỏ. Để trống nếu muốn kiểm tra lại bằng chính mô hình phê bình; sử dụng mô hình mạnh hơn tại đây sẽ giúp loại bỏ nhiều cảnh báo giả hơn.",
+    "noCriticVerifier": "Sử dụng mô hình phê bình để tự kiểm tra lại các phát hiện của chính nó"
   },
   "loadingStats": "Đang tải chất lượng…",
   "statsUnavailable": "Không có thống kê chất lượng.",

@@ -736,6 +736,10 @@ class EngineCriticSeam:
                 summary="critic unavailable (params.model_ref required)",
             )
         model_source = str(_crit_src or params.get("model_source") or "user_model")
+        # The verifier's OWN role (C33). `role_ref` is the same reader the critic uses, so a
+        # book that never sets one resolves (None, None) and `judge_prose` falls back to the
+        # critic — today's behaviour, unchanged, for every existing book.
+        _ver_src, _ver_ref = role_ref(work_settings, "critic_verifier")
 
         bearer = mint_service_bearer(created_by, settings.jwt_secret)
         draft = await get_book_client().get_draft(book_id, chapter_id, bearer)
@@ -798,6 +802,7 @@ class EngineCriticSeam:
             passage=text, active_rules=active_rules,
             present_facts=bible.as_present_facts(),
             profile=profile,
+            verifier_source=_ver_src, verifier_ref=_ver_ref,
         )
         # The grounding rides the verdict. A `canon_consistency` scored against an `untimed`
         # or `empty` bible is a weaker number than one scored `as_of`, and nothing downstream

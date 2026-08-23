@@ -404,7 +404,10 @@
     "criticSameAsDrafter": "Dies ist dasselbe Modell, das den Text schreibt; es würde also seine eigene Arbeit bewerten – der Server wird dies ablehnen und die Kritik überspringen. Wählen Sie ein anderes Modell.",
     "noCritic": "Keine Kritik – Entwürfe werden nicht separat bewertet",
     "criticEnabled": "Jeden Entwurf am Kanon messen",
-    "criticEnabledHint": "Standardmäßig aktiviert. Der Kritiker kann einen Durchlauf bei einem schwerwiegenden Urteil unterbrechen. Ein kleines Kritiker-Modell meldet unter Umständen Widersprüche, die nicht existieren; schalten Sie dies aus, wenn die Anmerkungen nur Rauschen sind – die Entwürfe bleiben in jedem Fall unbeeinflusst."
+    "criticEnabledHint": "Standardmäßig aktiviert. Der Kritiker kann einen Durchlauf bei einem schwerwiegenden Urteil unterbrechen. Ein kleines Kritiker-Modell meldet unter Umständen Widersprüche, die nicht existieren; schalten Sie dies aus, wenn die Anmerkungen nur Rauschen sind – die Entwürfe bleiben in jedem Fall unbeeinflusst.",
+    "criticVerifier": "Verifier-Modell (prüft den Kritiker)",
+    "criticVerifierHint": "Bevor ein Verstoß gegen den Kanon an Sie weitergeleitet wird, wird er gegen die zitierte Regel erneut geprüft und verworfen, falls der Text der Regel nicht tatsächlich widerspricht. Lassen Sie das Feld leer, um die Prüfung durch den Kritiker selbst durchzuführen; ein stärkeres Modell reduziert hier die Anzahl der Fehlalarme.",
+    "noCriticVerifier": "Das Kritiker-Modell zur Überprüfung seiner eigenen Ergebnisse verwenden"
   },
   "loadingStats": "Qualitätsstatistiken werden geladen…",
   "statsUnavailable": "Qualitätsstatistiken nicht verfügbar.",
