@@ -241,8 +241,34 @@
       "cleared_note": "WHAT THIS DOES NOT COVER.\n\n1. It cannot stop a model reading a DESCRIPTION as a schema - nothing in a payload can. It removes the platform's half of the confusion, which was being silent about what the listing is. The measured failure was assembled from composition_arc_edit's prose ('op=create mints a saga/arc (needs book_id...)'), and that prose is still there and still says that.\n\n2. It is ONE tool's payload. Any other listing that returns names and descriptions - a domain search, a category browse - has the same silence and was not swept.\n\n3. The tool is proven at K=5 on ONE question about ONE tool. A contract question about an op-dispatch tool, whose per-op requirements live only in prose and whose arguments carry a title and no description, is a harder case and is untested here. See D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE's denominator note: 15 catalogue tools declare only `op` as required.\n\n4. tool_load stays in false_statement_tools for the RECORD of 2026-08-23, because it did make one. The list is a history, not a current-state flag."
     },
     {
-      "id": "P2-FABRICATED-WRITE",
+      "id": "P16-PROSE-CONFIRMATION",
       "cycle": 5,
+      "title": "The turn holds what it needs, and ends by asking in prose instead of acting",
+      "invariant_candidate": "When the user's request IS the instruction and the turn already holds every argument the tool requires, asking again in prose is not a confirmation - it is a turn that did not happen. A Tier-A write has a card for consent; prose is not that card.",
+      "status": "NOT CLEARED, THOUGH ITS ONLY TOOL NOW READS PROVEN. 2026-08-24. Conditions (1) and (3) hold; (2) does not, and saying so is the point of this entry.\n\nWHAT WAS ACTUALLY ESTABLISHED. plan_bootstrap_apply passed all eleven gate bars: surfaced 0/5 -> 5/5 and called 0/5 -> 3/5 after ONE change to the follow-up wording, plus a four-case ship probe in which the Tier-A gate holds, absent and tenancy are both refused in identical words, and a twice-redeemed confirm token creates nothing twice.\n\n🔴 BUT THE PROBLEM'S INVARIANT WAS NEVER ENFORCED - THE TOOL WAS MADE REACHABLE INSTEAD. 'The turn holds what it needs, and ends by asking in prose instead of acting' is still true of this platform; what the measurement showed is that THIS tool was not an instance of it. The turn did not hold what it needed: the tool had left the wire, because R1 answerability keys on the current turn and 'Yes, please create them.' matches nothing. That is a SURFACE cause with its own defect entry, and the fix for it is an owner decision about how a turn that names no capability should inherit the previous one's.\n\nSO THIS IS THE SAME SHAPE AS P6 AND P11: a problem emptied by re-attribution rather than by enforcement. Its tool count will read CLEARED and the definition check will flag it, and both are correct.",
+      "retired_hypotheses": [],
+      "false_statement_tools": [
+        "plan_bootstrap_apply"
+      ],
+      "cross_refs": [
+        "D-R1-STOPPED-AT-DEPTH-1",
+        "P6-DESCRIBE-NOT-RECORD",
+        "DQ-T33"
+      ],
+      "dq": [],
+      "diagnosis": "ONE TOOL SO FAR, AND IT ARRIVED HERE BY ELIMINATION RATHER THAN BY GUESS - which is what makes it worth its own problem. plan_bootstrap_apply was blocked as a PRECONDITION failure (P4), then as a SUPPLIER failure (P14), and each diagnosis was true when it was made and stopped being true when the layer beneath it was fixed. With the supplier on the wire and the run compiled, the remaining cause is that the model asks.\n\nMeasured K=5, zero errored runs, identical on every run: composition_package_tree -> plan_bootstrap_propose x2 -> composition_list_outline, a real proposal_id in hand, and a reply ending 'Would you like me to go ahead and create these chapters so we can start writing?'\n\nIT IS NOT OBVIOUSLY WRONG, AND THAT IS THE PROBLEM'S DIFFICULTY. Creating four chapters is a Tier-A write and pausing before one is defensible. But the request WAS 'Create the chapters - make the plan real for this book', the platform HAS a consent mechanism for exactly this (the approval card), and prose asks for consent in a channel that records nothing and gates nothing. The author answers a question they already answered, and no card ever appears.\n\nRELATED BUT DISTINCT: P6-DESCRIBE-NOT-RECORD is prose offered INSTEAD of a storable artefact (propose_edit writing rewrites rather than proposing them). This is prose offered instead of an ACTION the turn is already equipped to take. DQ-T33 is the same surface seen from the other end - what the author is told when a turn produces nothing.",
+      "moved_out": {},
+      "cleared_note": "WHAT THE WORK ON THIS PROBLEM DOES NOT COVER.\n\n1. THE INVARIANT IS UNENFORCED. Nothing was built that detects a turn holding what it needs and answering in prose. If another tool exhibits it, this problem catches nothing.\n\n2. THE ONE TOOL IS PROVEN ON BARS THAT DO NOT ALL MEAN WHAT THEY LOOK LIKE. 'LIVE clean' counts errored RUNS, not failed CALLS: of three live calls, one succeeded and two were refused for a proposal_id the model was holding. And no chapter was ever created through a chat turn - the one successful call minted its card, correctly, and this scenario never redeems it. Chapters moved only in the probe.\n\n3. THE CONFIRMATION-TURN CAUSE IS OPEN. plan_bootstrap_apply was reached by rewording the user's confirmation to name the capability. A person types 'Yes, please create them.', and on that wording the tool is still off the wire and every one of the five replies was false - one claimed the write, four promised work that continues after the turn ends. Those are D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL and D-A-TURN-PROMISES-WORK-THAT-CONTINUES-AFTER-IT-ENDS, both OPEN, and neither is fixed by this tool reading proven.",
+      "worst_measured": "plan_bootstrap_apply - the turn holds proposal_id, names the four chapters it would create, and asks. The whole chain compile -> propose -> apply is satisfied except its last call.",
+      "tools": [
+        "plan_bootstrap_apply"
+      ],
+      "the_confirmation_turn_cannot_reach_the_tool": "MEASURED 2026-08-23, and it makes this problem harder than 'the model should just act'.\n\nThe obvious next step was to answer the model's own question, and it was run: follow-up 'Yes, please create them.', K=5, zero errored runs. Result - surfaced 0/5, called 0/5. On the confirmation turn R1 logs no match at all (the affirmative matches no tool's vocabulary) and the wire log carries NEITHER plan_bootstrap_apply NOR its supplier.\n\nSo on this journey the tool is reachable only on the turn where the user ASKS, and the model uses that turn to ask back. By the time the user answers, the tool is gone. Whatever fixes this problem has to make the confirmation turn able to reach the tool, or make the first turn act - and the first is D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL, which is an owner decision about how far back a turn may look for its request.",
+      "false_statement_why_2026_08_24": "Batch c-planapply3, K=5, zero errored runs, chapters 1 -> 1 on every run. One reply asserts the write outright ('Your book now has a formal manuscript spine'); the other four promise work that continues after the turn ends. This list was EMPTY until now - the surfacing was recorded and what the author was told was not."
+    },
+    {
+      "id": "P2-FABRICATED-WRITE",
+      "cycle": 6,
       "title": "A turn asserts a write it did not make, or invents the material it acts on",
       "invariant_candidate": "A turn may not assert a state change it did not make, and may not act on content it invented. This must hold WHEN THE TOOL IS ABSENT — which is the condition that produces it.",
       "false_statement_tools": [
@@ -261,7 +287,7 @@
     },
     {
       "id": "P4-PRECONDITION",
-      "cycle": 6,
+      "cycle": 7,
       "title": "The fixture cannot reach the state the tool needs",
       "invariant_candidate": "Not a product invariant — a HARNESS one. Every tool in the denominator must have a fixture that can reach its happy path, or a written statement of why one cannot exist.",
       "false_statement_tools": [],
@@ -357,7 +383,7 @@
     },
     {
       "id": "P14-SUPPLIER-NOT-ON-SURFACE",
-      "cycle": 7,
+      "cycle": 8,
       "title": "A tool requires an opaque id and the tool that returns it is not on the surface",
       "invariant_candidate": "A tool advertised to the model must have every id it requires obtainable from that same surface - TRANSITIVELY. Advertising a write whose supplier is absent offers a move that cannot be made.",
       "status": "DIAGNOSIS COMPLETE 2026-08-23 (opened the same day by the P4-PRECONDITION partition move). 0 of 5 proven. The invariant is named and the mechanism is measured; the fix - make the answerability guarantee transitive over required opaque ids - is a product decision about what the platform puts on the wire, and it is the single change that would move the most blocked tools in this denominator.",
@@ -387,7 +413,7 @@
     },
     {
       "id": "P6-DESCRIBE-NOT-RECORD",
-      "cycle": 8,
+      "cycle": 9,
       "title": "The model describes the answer instead of recording it",
       "invariant_candidate": "When the request names an artefact the platform can STORE, prose about it is not an answer.",
       "false_statement_tools": [],
@@ -410,7 +436,7 @@
     },
     {
       "id": "P13-SILENT-TURN",
-      "cycle": 9,
+      "cycle": 10,
       "title": "The turn produces no user-visible text, with no card and no error",
       "invariant_candidate": "A pass whose ENTIRE output is a bare tool-call control token is a DEGENERATE pass, not a completed one. The model abandoned the structured channel and emitted no call to salvage; ending the turn on it hands the author nothing and records a success.",
       "status": "MECHANISM ESTABLISHED 2026-08-24, DETECTION SHIPPED, NOT CLEARED - and the headline still reads CLEARED for the wrong reason.\n\n🔴 THE TOOL COUNT SAYS CLEARED BECAUSE ITS ONE ORIGINAL TOOL (memory_timeline) READS PROVEN. It now holds two tools and the second, settings_provider_inventory, is blocked on exactly this symptom: 4 of 5 runs call the tool and answer, the fifth ends RUN_FINISHED with reasoning events, ZERO TEXT_MESSAGE_* events, no card and no error.\n\nWHAT CHANGED TODAY: the invariant is now NAMED and DECIDABLE, which it was not. Condition (1) of the clearing definition is met. Condition (2) is half-met - the predicate is enforced at one chokepoint with a falsifier proven RED, but it LOGS rather than enforces, so no turn behaves differently yet. Condition (3) fails: settings_provider_inventory is still blocked. Condition (4) is unwritten.\n\nWHAT CLEARING NEEDS, and neither half is mine: a decision on the remedy (retry the degenerate pass, since the model's intent was a call) and DQ-T33 on what the author sees. The evidence for the retry is now as strong as it can get without shipping it.",
@@ -430,7 +456,7 @@
     },
     {
       "id": "P7-FALSE-ABSENCE",
-      "cycle": 10,
+      "cycle": 11,
       "title": "The write side confirms and the read that surfaces it returns nothing",
       "invariant_candidate": "A store that accepts a write must have a read that can find it, or the write must refuse.",
       "false_statement_tools": [],
@@ -451,7 +477,7 @@
     },
     {
       "id": "P8-ANSWERABILITY",
-      "cycle": 11,
+      "cycle": 12,
       "title": "The answerability matcher needs a contiguous phrase",
       "invariant_candidate": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
       "false_statement_tools": [],
@@ -469,7 +495,7 @@
     },
     {
       "id": "P12-RAIL-PINNED-TURN",
-      "cycle": 12,
+      "cycle": 13,
       "title": "A rail-pinned turn never emits an assistant message",
       "invariant_candidate": "A turn must emit an assistant message. A rail that drives itself to exhaustion is still a turn the author is waiting on.",
       "status": "DIAGNOSED, FIX GATED ON DQ-T33 (established 2026-08-23). Its single tool reads proven, so the headline calls it CLEARED; its own status has said since 2026-08-22 that the fix is not written, and the reason is now named: writing it means deciding what a silent turn tells the author, which is an owner question this loop has already filed.",
@@ -485,7 +511,7 @@
     },
     {
       "id": "P15-TRANSPORT-STALL",
-      "cycle": 13,
+      "cycle": 14,
       "title": "The provider fails mid-generation on the pass after a tool result",
       "invariant_candidate": "A tool cannot be adjudicated on a turn the transport killed. Either the stall is fixed, or its tools are stated as unmeasurable and why.",
       "status": "OPEN and BLOCKED ON EXTERNAL VISIBILITY - opened 2026-08-23 by the P4-PRECONDITION partition move. The provider is LM Studio at host.docker.internal:1234 and its server logs have not been written since 2026-08-04, so the only place the reason exists is not being recorded.",
@@ -509,29 +535,6 @@
       "tools": [
         "composition_motif_adopt"
       ]
-    },
-    {
-      "id": "P16-PROSE-CONFIRMATION",
-      "cycle": 14,
-      "title": "The turn holds what it needs, and ends by asking in prose instead of acting",
-      "invariant_candidate": "When the user's request IS the instruction and the turn already holds every argument the tool requires, asking again in prose is not a confirmation - it is a turn that did not happen. A Tier-A write has a card for consent; prose is not that card.",
-      "status": "OPEN - opened 2026-08-23 when plan_bootstrap_apply arrived here after its supplier and its precondition were both fixed. One tool.",
-      "retired_hypotheses": [],
-      "false_statement_tools": [],
-      "cross_refs": [
-        "D-R1-STOPPED-AT-DEPTH-1",
-        "P6-DESCRIBE-NOT-RECORD",
-        "DQ-T33"
-      ],
-      "dq": [],
-      "diagnosis": "ONE TOOL SO FAR, AND IT ARRIVED HERE BY ELIMINATION RATHER THAN BY GUESS - which is what makes it worth its own problem. plan_bootstrap_apply was blocked as a PRECONDITION failure (P4), then as a SUPPLIER failure (P14), and each diagnosis was true when it was made and stopped being true when the layer beneath it was fixed. With the supplier on the wire and the run compiled, the remaining cause is that the model asks.\n\nMeasured K=5, zero errored runs, identical on every run: composition_package_tree -> plan_bootstrap_propose x2 -> composition_list_outline, a real proposal_id in hand, and a reply ending 'Would you like me to go ahead and create these chapters so we can start writing?'\n\nIT IS NOT OBVIOUSLY WRONG, AND THAT IS THE PROBLEM'S DIFFICULTY. Creating four chapters is a Tier-A write and pausing before one is defensible. But the request WAS 'Create the chapters - make the plan real for this book', the platform HAS a consent mechanism for exactly this (the approval card), and prose asks for consent in a channel that records nothing and gates nothing. The author answers a question they already answered, and no card ever appears.\n\nRELATED BUT DISTINCT: P6-DESCRIBE-NOT-RECORD is prose offered INSTEAD of a storable artefact (propose_edit writing rewrites rather than proposing them). This is prose offered instead of an ACTION the turn is already equipped to take. DQ-T33 is the same surface seen from the other end - what the author is told when a turn produces nothing.",
-      "moved_out": {},
-      "cleared_note": null,
-      "worst_measured": "plan_bootstrap_apply - the turn holds proposal_id, names the four chapters it would create, and asks. The whole chain compile -> propose -> apply is satisfied except its last call.",
-      "tools": [
-        "plan_bootstrap_apply"
-      ],
-      "the_confirmation_turn_cannot_reach_the_tool": "MEASURED 2026-08-23, and it makes this problem harder than 'the model should just act'.\n\nThe obvious next step was to answer the model's own question, and it was run: follow-up 'Yes, please create them.', K=5, zero errored runs. Result - surfaced 0/5, called 0/5. On the confirmation turn R1 logs no match at all (the affirmative matches no tool's vocabulary) and the wire log carries NEITHER plan_bootstrap_apply NOR its supplier.\n\nSo on this journey the tool is reachable only on the turn where the user ASKS, and the model uses that turn to ask back. By the time the user answers, the tool is gone. Whatever fixes this problem has to make the confirmation turn able to reach the tool, or make the first turn act - and the first is D-R1-IS-KEYED-ON-THIS-TURN-SO-A-CONFIRMATION-TURN-LOSES-THE-TOOL, which is an owner decision about how far back a turn may look for its request."
     },
     {
       "id": "P9-INTENT-GATE",
