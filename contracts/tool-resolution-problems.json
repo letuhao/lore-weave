@@ -437,7 +437,8 @@
         "memory_timeline"
       ],
       "measured": "memory_timeline surfaced 5/5 and was CALLED 5/5 — the tool worked — and 2 of the 5 turns produced `<EMPTY REPLY, no card>`. The author asked what happened first in their book and got nothing back, twice in five tries, with no error to see.",
-      "history": "D-SILENT-TURN-NO-CARD-NO-PROSE was measured across 21 runs and 8 tools in the predecessor loop. Only the RECORDING is fixed (outcome=failed rather than completed); the author still sees a blank reply."
+      "history": "D-SILENT-TURN-NO-CARD-NO-PROSE was measured across 21 runs and 8 tools in the predecessor loop. Only the RECORDING is fixed (outcome=failed rather than completed); the author still sees a blank reply.",
+      "recurrence_2026_08_23": "MEASURED AGAIN, on a tool outside this problem's list. composition_motif_link_edit, batch c-motiflink2, rep0 - the one run of five the transport stall did not kill: TOOL_CALL_START/ARGS/END/RESULT once each, a REASONING block, RUN_FINISHED, status=success, and ZERO TEXT_MESSAGE_* events. No card, no error, nothing said to the author. The tool had been refused for missing ids and its supplier armed.\n\nThis problem is reported CLEARED by problem_remaining.py because its single tool (memory_timeline) reads proven, while its own status says the cause is not fixed. See D-THE-LOOPS-OWN-PROGRESS-METRIC-CLEARS-A-PROBLEM-THE-DEFINITION-DOES-NOT."
     }
   ],
   "deferred_questions_backlog": {

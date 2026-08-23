@@ -96,7 +96,31 @@ def main() -> int:
         done = sum(1 for s in states if s == "proven")
         rows.append((i, p, states, done))
 
+    # 🔴 "CLEARED" MEANT "EVERY TOOL READS PROVEN" AND NOTHING ELSE, WHILE THIS SCRIPT PRINTED A
+    # FOUR-PART DEFINITION AT THE BOTTOM THAT IT DID NOT CHECK. Measured 2026-08-23: of the five
+    # problems the headline called CLEARED, P12-RAIL-PINNED-TURN's own status field read
+    # "DIAGNOSED — the mechanism is named and proven by a control; the FIX is not written", and
+    # P13-SILENT-TURN's read "OPEN — recording fixed, ROOT CAUSE IDENTIFIED, cause not fixed".
+    # Four of the five carried no `cleared_note` at all, which is condition (4).
+    #
+    # The tool-completion count is still the right SIGNAL — it is what the denominator rule is
+    # written in — so it is kept and shown unchanged. What is added is the second half: whether the
+    # problem ALSO satisfies the definition this script has been printing. Where the two disagree
+    # the row is flagged, because a problem whose fix was never written is not one to stop on, and
+    # the loop's own progress line was the last place that would have said so.
     cleared = [r for r in rows if r[3] == len(r[1]["tools"])]
+
+    def _definition_complete(p: dict) -> tuple[bool, str]:
+        """Does the problem meet the CLEARED definition, beyond its tools reading proven?"""
+        own = (p.get("status") or "").strip()
+        if own and not own.upper().startswith(("CLEARED", "FIXED")):
+            return False, f"its own status says: {own.splitlines()[0][:70]}"
+        if not (p.get("cleared_note") or "").strip():
+            return False, "no cleared_note — condition (4), what the fix does NOT cover, is unwritten"
+        return True, ""
+
+    unsound = [(r, _definition_complete(r[1])[1]) for r in cleared
+               if not _definition_complete(r[1])[0]]
     blocked_tools = sum(len(p["tools"]) for p in probs["problems"])
     proven_tools = sum(r[3] for r in rows)
 
@@ -105,6 +129,11 @@ def main() -> int:
         f"tools_in_denominator={blocked_tools} proven={proven_tools} "
         f"still_blocked={blocked_tools - proven_tools}"
     )
+    if unsound:
+        print(f"⚠ {len(unsound)} of {len(cleared)} 'CLEARED' problem(s) do NOT meet the "
+              f"definition printed below — every tool reads proven, but:")
+        for (i, p, _s, _d), why in unsound:
+            print(f"    {p['id']:<24} {why}")
     print()
 
     for i, p, states, done in rows:
@@ -112,7 +141,9 @@ def main() -> int:
         mark = "CLEARED" if done == n else f"{done}/{n}"
         fs = len(p["false_statement_tools"])
         fs_note = f"  [{fs} tool(s) made a FALSE STATEMENT to the author]" if fs else ""
-        print(f"  C{i:<3} {p['id']:<24} {mark:>8}  {p['title']}{fs_note}")
+        gap = "" if done < n else ("" if _definition_complete(p)[0]
+                                   else "  ⚠ TOOLS PROVEN, DEFINITION NOT MET")
+        print(f"  C{i:<3} {p['id']:<24} {mark:>8}  {p['title']}{fs_note}{gap}")
         if a.verbose:
             for t, s in sorted(zip(p["tools"], states)):
                 print(f"          {s:<9} {t}")
