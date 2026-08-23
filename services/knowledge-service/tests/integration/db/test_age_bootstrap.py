@@ -234,7 +234,7 @@ async def test_a_value_containing_the_dollar_quote_tag_cannot_escape_the_sql(age
         "$CY$",
         "$CYX$ and $CYXX$ too",   # the widening must survive being anticipated
         'a" OR 1=1 //',
-        "back\slash",
+        "back\\slash",   # explicit: an unknown escape is a SyntaxWarning now, an error later
         "line1\nline2",
     ]
     for payload in payloads:

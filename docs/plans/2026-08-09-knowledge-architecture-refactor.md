@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 88 of 131 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 89 of 132 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22472,6 +22472,67 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48i 2026-08-24 — **the RECANON grant verified on the LIVE graph, not cited; and the one invalid escape in the repo**
+
+  ```
+  recanon dry-run, dev 7688   scanned=5155 clean=5149 rekeyed=0 merged=0 conflicted=6 actions=0
+  the GRANT's stated end-state  "dry (1819/1/6) -> apply -> dry (0)"          ->  MATCHED
+  invalid escape sequences, whole repo                                    1  ->  0
+  ```
+
+  📐 **A grant recorded as discharged is not a grant verified as discharged.** T46d says
+  *"`recanon --apply` ran (1819 re-keyed, 1 merged, `actions=0` on the re-run)"*, and the standing
+  GRANT names the same end-state. That is a citation. Re-run against the live dev graph today it
+  is still `actions=0`, and `conflicted=6` — the same six the T35e anchor guard has always
+  refused, which is the number the grant itself predicted. **Read-only: a dry run mutates
+  nothing, so rule 6 permits it on dev.**
+
+  ⚖️ **The zero carries a control, because a zero from a blind detector looks identical.**
+
+  ```
+  CONTROL  same planner, one synthetic stranded row  ->  rekeyed=1 actions=1 ['rekey']
+  LIVE     dev graph                                 ->  clean=5149 actions=0
+  ```
+
+  Same code, drifted input, action produced — so the live `0` means "nothing left to
+  reconcile", not "the planner stopped seeing". `test_recanon_honorifics.py` **13 passed**
+  alongside it.
+
+  🔴 **My own grep lied, and the correction belongs here.** I read `grep … conflicted … | head -12`
+  as *"`conflicted` appears only in app/, never in tests"* and started writing a test for an
+  unguarded safety branch. The `head -12` had truncated the output: `tests/unit/
+  test_recanon_honorifics.py:142` asserts `plan.conflicted == 2`, and the guard carries **both**
+  control arms already (`test_the_SAME_anchor_still_merges_normally`,
+  `test_an_UNANCHORED_node_does_not_block_a_merge`) plus a wiring test. **No finding; the area is
+  sound.** A truncated list read as a complete one is the same failure this plan keeps finding in
+  code, and it is worth one paragraph that it happened to the person looking for it.
+
+  🧪 **The escape.** `port-adoption-gate` emitted `<unknown>:237: SyntaxWarning: invalid escape
+  sequence '\s'` on a cold compile — `<unknown>` is `ast.parse`'s filename, so the offender was a
+  file the gate PARSES, not the gate. It is `test_age_bootstrap.py:237`, in an
+  **injection-safety** test, in its list of hostile payloads:
+
+  ```python
+  "back\slash",     ->     "back\slash",
+  ```
+
+  Python preserves an unknown escape, so the VALUE was already right and no assertion could have
+  caught it; what it was, was a `SyntaxWarning` today and a `SyntaxError` on a future Python — in
+  a test whose subject is backslash handling.
+
+  ⚠️ **Measured, and the measurement refused the gate.** One occurrence in the **whole repo**
+  (223 service files plus every script, excluding generated `build/lib`). A 113th gate for a
+  population of one is the inventory-not-demand shape §10.1 refuses; the fix is the fix. Recorded
+  so the next person who sees the warning knows it was counted rather than ignored.
+
+  **QC (a) gates:** four plan gates green; `test_recanon_honorifics.py` 13 passed; repo-wide
+  invalid-escape census 1 → 0.
+  **QC (b) live smoke:** N/A — no service seam crossed and no runtime code changed. The live half
+  is QC (c), which is the point of this row.
+  **QC (c) real data:** the dry-run line above, taken against **dev Neo4j on 7688** (rule 1), with
+  its synthetic control beside it.
+
   ---
   ### ✅ T48h 2026-08-23 — **the other four `as_of` readers were RIGHT, and proving that is what bounds T48g**
 
