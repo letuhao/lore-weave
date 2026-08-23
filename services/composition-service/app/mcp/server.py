@@ -1786,7 +1786,7 @@ async def composition_archive_derivative(ctx: MCPContext, args: _DerivativeArchi
         raise uniform_not_accessible()
     # DERIVATIVE-only: archiving the canonical Work here would orphan the book — reject.
     if work.source_work_id is None:
-        return {"success": False, "error": "NOT_A_DERIVATIVE — archive applies only to a dị bản, not the canonical Work"}
+        return {"success": False, "error": "NOT_A_DERIVATIVE — archive applies only to a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one), not the canonical Work"}
     try:
         updated = await works.update(pid, {"status": "archived"}, created_by=tc.user_id, expected_version=args.expected_version)
     except VersionMismatchError as exc:
@@ -1951,7 +1951,7 @@ async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceS
     works = WorksRepo(get_pool())
     work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
-        return {"success": False, "error": "NOT_A_DERIVATIVE — the spec exists only on a dị bản"}
+        return {"success": False, "error": "NOT_A_DERIVATIVE — the spec exists only on a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one)"}
     fs = args.model_fields_set
     kwargs: dict[str, Any] = {}
     if "taxonomy" in fs and args.taxonomy is not None:
@@ -2008,7 +2008,7 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
     works = WorksRepo(get_pool())
     work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
-        return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản"}
+        return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one)"}
     derivatives = DerivativesRepo(get_pool())
     try:
         ov = await derivatives.add_override(
@@ -8333,9 +8333,20 @@ class _EntityOverrideEditArgs(ForbidExtra):
         )),
     ]
     project_id: str | None = None        # all
-    target_entity_id: str | None = None  # add
+    # 🔴 THESE CARRIED A TITLE AND NO DESCRIPTION, and the model paid for it. Measured 2026-08-23,
+    # K=5: the tool was called on 5 of 5 runs and FOUR of them failed with
+    # "`args.overridden_fields`: Input should be a valid dictionary (you sent a list of 107 ...)".
+    # The schema said `object` and nothing said WHAT object — so the model sent the entity's fields
+    # as a list. A flat-superset tool declares everything optional, which means the per-op
+    # requirement and the SHAPE both have to live in the descriptions or they live nowhere.
+    target_entity_id: str | None = Field(default=None, description=(
+        "op=add REQUIRES this. The glossary entity to override, by its entity_id — get it from "
+        "glossary_search or glossary_get_entity. Not the override's own id, which is override_id."))
     override_id: str | None = None       # update, delete
-    overridden_fields: dict[str, Any] | None = None  # add, update
+    overridden_fields: dict[str, Any] | None = Field(default=None, description=(
+        "op=add and op=update REQUIRE this. A MAPPING of field name to its new value for this Work "
+        'only — e.g. {"occupation": "cartographer"}. Not a list, and not the whole entity: send only '
+        "the fields you are changing."))
 
 
 @mcp_server.tool(

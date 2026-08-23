@@ -2,17 +2,17 @@
   "_note": "composition_entity_override_edit re-run to MEASURE a fix I shipped and never measured. Its recorded cause: the model calls glossary_propose_entity_edit with entity_id='Aldric Vane' — a NAME — and is refused.\n\nThe platform now hands a dropped name back as the query to search with: 'You passed a NAME where an id is required (entity_id='Aldric Vane'). That is not missing — it is the wrong kind of value, and the name is what you search WITH.' Before, the refusal said only that the argument was MISSING, so the follow-up search went out blank.\n\nNothing about the scenario changes — same prompt, same seed. Only the platform moved.\n\nWHAT WOULD REFUTE IT: still 0/5, or the follow-up search still going out with blank arguments. Then handing the name back is not what the model needed.",
   "scenarios": [
     {
-      "id": "composition-entity-override-edit-namefix",
+      "id": "composition-entity-override-edit-work-scoped",
       "tool_under_test": "composition_entity_override_edit",
       "expect_tool": "composition_entity_override_edit",
       "intent": "write",
       "tier": "A",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "Override entity field — in this book Aldric Vane should be a cartographer, not a soldier.",
-      "prompt_source": "meta.synonyms['override entity field'] + ['add entity override'], verbatim, plus the entity's name so the target is unambiguous.",
+      "prompt": "Override entity field — in this WORK only, Aldric Vane should be a cartographer, not a soldier. Leave the book's glossary entry as it is.",
+      "prompt_source": "The tool's declared synonym ('override entity field') plus the SCOPE the tool actually operates at, which the old prompt named wrongly.\n\n🔴 THE OLD PROMPT ASKED FOR THE SIBLING'S JOB, and the model was right to use it. It read 'in THIS BOOK Aldric Vane should be a cartographer', and 'in this book' is BOOK scope - which is exactly what glossary_entity_set_attributes does. Measured 5/5, the model called that tool and the store moved; I recorded it as a SIBLING-WINS failure and as the model 'writing the SHARED entity rather than a book-scoped override'. Both readings were wrong.\n\nThe store settles it. glossary_entities carries book_id - 7,523 entities across 563 books - so an entity belongs to ONE book and nothing 'shared' was touched. composition_entity_override_edit's row keys on work_id (entity_override: project_id, book_id, work_id, target_entity_id), and a book can hold several Works - measured maximum 4. So the tool's scope is ONE WORK inside a book, and the sibling's is the whole book.\n\nThis prompt asks for the narrower scope in the words the tool's own description uses ('per-Work entity override'), and says explicitly that the glossary entry should be left alone - so choosing the sibling is now visibly the wrong answer rather than a defensible one.",
       "needs_target": false,
-      "approve": null,
+      "approve": "approved_once",
       "seed": [
         {
           "rest": {
@@ -56,7 +56,7 @@
           "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
         }
       ],
-      "falsifier": "REFUTED IF: an override lands with NO confirm card (Tier A), OR the model invents a target_entity_id rather than resolving 'Aldric Vane', OR the op chosen is not `add` when the entity has no override yet — its enum spans add|update|delete|restore, and `delete` on a request to ADD a field change would be the worst outcome. Store check: entity_override stays 0.",
+      "falsifier": "REFUTED IF: the BOOK-level glossary entity changes (glossary_entities / entity_revisions move) - that is the sibling's write and the prompt explicitly forbids it - OR an override lands with no confirm card (Tier A).\n\nCONTROL: the override's own table is loreweave_composition.entity_override, keyed on work_id. A run that moves THAT and leaves the glossary alone is the tool doing its job; a run that moves the glossary is the sibling winning, which is the thing being measured.",
       "ship_audit": {
         "gate": "OWED — Tier A.",
         "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
@@ -65,7 +65,8 @@
       },
       "defects": [],
       "_carried_from": "scenarios-rebaseline.json",
-      "_problem": "P4-PRECONDITION"
+      "_problem": "P4-PRECONDITION",
+      "approve_why": "Tier A. The target is this run's OWN throwaway book and the entity its own seed created, torn down after."
     }
   ]
 }
