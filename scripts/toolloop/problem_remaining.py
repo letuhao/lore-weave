@@ -110,6 +110,18 @@ def main() -> int:
     # the loop's own progress line was the last place that would have said so.
     cleared = [r for r in rows if r[3] == len(r[1]["tools"])]
 
+    def _is_empty(p: dict) -> bool:
+        """No tools left — every one moved out on a named cause.
+
+        🔴 0 of 0 SATISFIES `done == n` AND READS AS "CLEARED". P11-DISTRIBUTION emptied on
+        2026-08-23 when its last tool moved to P5 on measured cause, and the headline promoted it
+        to cleared without a single tool having been proven under it. Emptying a problem is a
+        statement about where its tools BELONG, not about whether its invariant holds — P11's own
+        open defect (a low-rate tool cannot be proven without sampling for a verdict) outlived the
+        tool that surfaced it.
+        """
+        return not (p.get("tools") or [])
+
     def _definition_complete(p: dict) -> tuple[bool, str]:
         """Does the problem meet the CLEARED definition, beyond its tools reading proven?
 
@@ -124,6 +136,9 @@ def main() -> int:
             if "CANNOT BE CLEARED" in val.upper():
                 return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
         own = (p.get("status") or "").strip()
+        if _is_empty(p):
+            return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
+                           "under it and its invariant is untouched")
         if own and not own.upper().startswith(("CLEARED", "FIXED")):
             return False, f"its own status says: {own.splitlines()[0][:70]}"
         if not (p.get("cleared_note") or "").strip():
@@ -149,7 +164,7 @@ def main() -> int:
 
     for i, p, states, done in rows:
         n = len(p["tools"])
-        mark = "CLEARED" if done == n else f"{done}/{n}"
+        mark = ("EMPTY" if _is_empty(p) else "CLEARED") if done == n else f"{done}/{n}"
         fs = len(p["false_statement_tools"])
         fs_note = f"  [{fs} tool(s) made a FALSE STATEMENT to the author]" if fs else ""
         gap = "" if done < n else ("" if _definition_complete(p)[0]
