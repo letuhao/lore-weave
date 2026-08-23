@@ -111,7 +111,18 @@ def main() -> int:
     cleared = [r for r in rows if r[3] == len(r[1]["tools"])]
 
     def _definition_complete(p: dict) -> tuple[bool, str]:
-        """Does the problem meet the CLEARED definition, beyond its tools reading proven?"""
+        """Does the problem meet the CLEARED definition, beyond its tools reading proven?
+
+        Reads the problem's OWN words first. P8-ANSWERABILITY carries
+        `blocked_on_dq_2026_08_23` beginning "P8 CANNOT BE CLEARED WITHOUT DQ-T32" in a field
+        that is not `status`, and the headline still called it CLEARED — so scanning only
+        `status` would have missed the plainest possible statement that it is not.
+        """
+        for key, val in p.items():
+            if key in ("tools", "cycle") or not isinstance(val, str):
+                continue
+            if "CANNOT BE CLEARED" in val.upper():
+                return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
         own = (p.get("status") or "").strip()
         if own and not own.upper().startswith(("CLEARED", "FIXED")):
             return False, f"its own status says: {own.splitlines()[0][:70]}"
