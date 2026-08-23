@@ -1,0 +1,35 @@
+{
+  "_fixture": {
+    "a_derivative": "01a02fec-43ee-70d8-91cf-bb0d61196290",
+    "b_derivative": "01a02fec-482c-77a2-90ac-257c768a74d4"
+  },
+  "absent": {
+    "verdict": "SUCCEEDED",
+    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-4890-7801-aa61-56c5766e2694\", \"target_entity_id\": \"35cc7a35-6163-424e-86ea-b5f5913cdf87\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": ",
+    "asked": "an entity that does not exist"
+  },
+  "tenancy": {
+    "verdict": "SUCCEEDED",
+    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-4937-756d-b9b8-3d8fe4268e6a\", \"target_entity_id\": \"01a02fec-467d-7e1d-aa9a-d3bf75001a81\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": ",
+    "asked": "book B's entity offered to book A's derivative"
+  },
+  "empty": {
+    "verdict": "SUCCEEDED",
+    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-49d1-7f98-88a5-add3bb2d1380\", \"target_entity_id\": \"01a02fec-4253-74e5-8761-df30fde01dcc\", \"overridden_fields\": {}}, \"_meta\": {\"undo_hint\": {\"tool\": \"comp",
+    "asked": "overridden_fields present but EMPTY"
+  },
+  "canonical": {
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"NOT_A_DERIVATIVE — overrides exist only on a dị bản (a DERIVATIVE Work — create one with composition_create_",
+    "asked": "the CANONICAL project instead of the derivative"
+  },
+  "idem_first": {
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"OVERRIDE_EXISTS — an override for this entity already exists; update it instead\"}"
+  },
+  "idem_repeat": {
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"OVERRIDE_EXISTS — an override for this entity already exists; update it instead\"}",
+    "asked": "the same add, twice"
+  }
+}

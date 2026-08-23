@@ -8332,7 +8332,17 @@ class _EntityOverrideEditArgs(ForbidExtra):
             "Picking the wrong op is the whole failure mode — it is not a hint, it selects the code path."
         )),
     ]
-    project_id: str | None = None        # all
+    # 🔴 THE AMBIENT project_id IS THE WRONG ONE FOR THIS TOOL, and nothing said so. A book's
+    # ambient project is its CANONICAL Work; an override exists only on a DERIVATIVE, which is a
+    # DIFFERENT Work with its own project_id. Measured 2026-08-23, K=5 with a derivative seeded: the
+    # model sent the canonical project_id every run and got NOT_A_DERIVATIVE, then called
+    # composition_list_derivatives afterwards — it had the right instinct in the wrong order,
+    # because nothing told it the id it already held was the wrong Work.
+    project_id: str | None = Field(default=None, description=(
+        "The DERIVATIVE Work's project_id — NOT the book's canonical/ambient project. An override "
+        "exists only on a derivative (dị bản), which is a separate Work with its own project_id: "
+        "get it from composition_list_derivatives, whose entry has is_canonical=false. Passing the "
+        "ambient project is the common mistake and is refused with NOT_A_DERIVATIVE."))
     # 🔴 THESE CARRIED A TITLE AND NO DESCRIPTION, and the model paid for it. Measured 2026-08-23,
     # K=5: the tool was called on 5 of 5 runs and FOUR of them failed with
     # "`args.overridden_fields`: Input should be a valid dictionary (you sent a list of 107 ...)".

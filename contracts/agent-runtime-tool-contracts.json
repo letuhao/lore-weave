@@ -629,6 +629,9 @@
     "composition_authoring_run_manage": {
       "plan_run_id": "plan_propose_spec"
     },
-    "_added_2026_08_23_second": "composition_authoring_run_manage.plan_run_id <- plan_propose_spec. Verified: plan_propose_spec returns {'run_id': ...} and the authoring run stores it as plan_run_id (server.py line ~3014 emits \"plan_run_id\": str(run.plan_run_id)). It is the same id plan_compile takes as run_id.\n\n🔴 THIS ONE ALONE CANNOT UNBLOCK THE TOOL, and that is worth saying beside the entry. op=create also requires budget_usd and pause_after_each_unit, and those have NO supplier by nature - they are the author's decisions. The declaration removes one of three obstacles; the other two are answered by the argument DESCRIPTIONS added the same day, which tell the model to ask rather than guess."
+    "_added_2026_08_23_second": "composition_authoring_run_manage.plan_run_id <- plan_propose_spec. Verified: plan_propose_spec returns {'run_id': ...} and the authoring run stores it as plan_run_id (server.py line ~3014 emits \"plan_run_id\": str(run.plan_run_id)). It is the same id plan_compile takes as run_id.\n\n🔴 THIS ONE ALONE CANNOT UNBLOCK THE TOOL, and that is worth saying beside the entry. op=create also requires budget_usd and pause_after_each_unit, and those have NO supplier by nature - they are the author's decisions. The declaration removes one of three obstacles; the other two are answered by the argument DESCRIPTIONS added the same day, which tell the model to ask rather than guess.",
+    "composition_entity_override_edit": {
+      "project_id": "composition_list_derivatives"
+    }
   }
 }
