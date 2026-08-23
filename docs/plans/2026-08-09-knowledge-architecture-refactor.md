@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 95 of 140 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 95 of 141 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/55) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/56) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,86 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### 🔻 QC-5 C39 2026-08-24 — **what the critic is actually MISSING: it is asked a bi-temporal question with no bi-temporal context**
+
+  ```
+  what the /critique route puts in front of the judge, dumped verbatim:
+      ACTIVE CANON RULES      6 one-line facts
+      ESTABLISHED FACTS       (none)          <- present_facts=[] on this route
+      PASSAGE                 one chapter, no position, no story-so-far
+
+                          planted   clean      separation
+    control                 8/8      7/8        none
+    + define contradiction  7/8      7/8        none
+    + narrative position    6/6      4/6        FIRST movement
+  ```
+
+  📐 **PO direction, 2026-08-24: *"we shouldn't blind work … all problem with LLM usually cause
+  by lack of context, so if we found what is lack, we can solve it."*** So this row diagnoses
+  instead of patching. C31–C38 improved precision and never moved discrimination; that is the
+  signature of fixing symptoms.
+
+  🎯 **The 11 adjudicated false positives, classified by the piece that was missing:**
+
+  ```
+  A  invents a requirement the rule text does not state        5
+     "…and no one can drain his spiritual energy"   R5 says only: X controls the L-Field
+     "…should have signs of linh nang on his person" R6 says only: linh nang is the power system
+  B  treats ABSENCE or an ADDITION as contradiction            3
+     "no information shows she would appear here"    absence of permission read as prohibition
+  C  restates the rule AS the reason                           2
+  D  non-sequitur                                              1
+  ```
+
+  A and B are 8 of 11 and are one hole: **the prompt asks *"does it contradict any active canon
+  rule"* and never defines contradiction**, so the model supplies its own — a rule becomes a
+  requirement the passage must satisfy, and failing to demonstrate one becomes contradicting it.
+
+  🔴 **Experiment 1 — define it. Counts fell; discrimination did NOT move (7/8 vs 7/8).** A
+  negative result, and the control arm reproduced the live measurement exactly (8/8 vs 7/8),
+  which is what says the harness is sound rather than the finding weak. Recorded because the
+  obvious fix being wrong is the useful half.
+
+  ⚖️ **What survived says what is really missing.** The clean-draft verdict, verbatim:
+
+  <!-- doc-language-gate: ok -- the judge's own reasoning IS the diagnosis -->
+  ```
+  R1  "Lâm Trạch đã bị mô tả là kẻ phản bội … nhưng ở đây, ông ta xuất hiện như một người
+       anh em họ trung thực và khiêm tốn."
+      = "he was described as the betrayer … but HERE he appears as an honest, humble cousin"
+  ```
+  <!-- doc-language-gate: end -->
+
+  The critic reads *a scene in which the betrayer acts humble* as contradicting *"he is the
+  betrayer"*. **R1 is a fact about the whole story; the passage is one moment inside it.** Without
+  knowing where that moment sits, concealment is indistinguishable from contradiction — and a
+  traitor acting loyal is what a betrayal plot IS.
+
+  🎯 **Experiment 2 — supply narrative position. The arms separate for the first time: 6/6 planted
+  vs 4/6 clean.** Counted on the runs that PARSED; three replies came back unparsable and are
+  excluded rather than scored as clean, which would have flattered the result.
+
+  📌 **And this is the plan's own subject.** `as_of`, the reading axis, the spoiler window, the
+  canon bible — the bi-temporal layer this whole refactor is about exists to answer *"what is
+  true as of chapter N"*. The AUTHORING path hands the critic `bible.as_present_facts()`; the
+  `/critique` route hands it `present_facts=[]` and no anchor. **The critic is asked a
+  bi-temporal question by the one caller that withholds the bi-temporal answer.** The route's own
+  comment calls that omission *"DEFENSIBLE"* because there is no chapter anchor on that path —
+  defensible for the FACTS, but it also silently changes what `canon_consistency` means.
+
+  ⚠️ **Not solved, and not claimed to be.** n is 8 drafts, single runs, one model, and the parse
+  failures are still polluting the signal. What is established: the missing piece is **narrative
+  position**, not model tier (C38), not the verifier (C37), not the definition of contradiction
+  (Experiment 1). The next unit is to give the critic the anchor the architecture already
+  computes, and re-run the acceptance measurement against it.
+
+  **QC (a) gates:** four plan gates green.
+  **QC (b) live smoke:** N/A for the experiments — they are prompt A/Bs against the same LM Studio
+  models, using production's own `build_critique_prompt` as the control arm so the baseline cannot
+  drift from what ships. The measurement they are compared against (C37/C38) IS live.
+  **QC (c) real data:** the dumped prompt above, the 11 classified verdicts, and three arms x 8
+  drafts x 2 passages of A/B output.
   ---
   ### 🔻 QC-5 C38 2026-08-24 — **1a re-measured at the PO's TARGET tier: unchanged. The model is not the cause; the noise floor is**
 
