@@ -2127,9 +2127,22 @@ async def _handle_kg_project_entities_to_nodes(
         "nodes_existing": res.existing,
         "entities_seen": res.seen,
         "skipped": res.skipped,
+        # 🔴 THE IDS THE NEXT STEP NEEDS. This tool is the documented prerequisite of
+        # `kg_propose_edge`, which REQUIRES source_entity_id and target_entity_id. Returning only
+        # counts left the caller with "nodes_created: 2" and no way to name either node: measured
+        # 2026-08-23 at K=5, the model invented a UUID and passed it for BOTH endpoints. A supplier
+        # that cannot supply its successor's required arguments is not a chain.
+        "nodes": [dict(n) for n in res.nodes],
     }
+    if res.nodes_truncated:
+        out["nodes_truncated"] = True
     # Never report a PARTIAL projection as a complete one.
     notes: list[str] = []
+    if res.nodes_truncated:
+        notes.append(
+            f"more than {len(out['nodes'])} nodes were projected; `nodes` lists the first of "
+            "them — name the entity_ids you need explicitly to get the rest"
+        )
     if res.truncated:
         out["truncated"] = True
         notes.append(

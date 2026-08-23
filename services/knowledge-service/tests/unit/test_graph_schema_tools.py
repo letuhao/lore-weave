@@ -703,8 +703,13 @@ async def test_project_entities_to_nodes_returns_counts(monkeypatch):
     ctx = _ctx()  # caller == owner, project_meta → (_OWNER, _BOOK)
     res = await execute_tool(ctx, "kg_project_entities_to_nodes", {})
     assert res.success
+    # `nodes` carries the ids the SUCCESSOR needs — kg_propose_edge REQUIRES
+    # source_entity_id/target_entity_id, and returning only counts left the model with nothing to
+    # pass (measured K=5, 2026-08-23: it invented one UUID and used it for BOTH endpoints). Empty
+    # here because this test stubs the projection itself, so ProjectionResult keeps its default.
     assert res.result == {
         "nodes_created": 3, "nodes_existing": 1, "entities_seen": 4, "skipped": 0,
+        "nodes": [],
     }
     kw = proj.await_args.kwargs
     assert kw["user_id"] == str(_OWNER)
