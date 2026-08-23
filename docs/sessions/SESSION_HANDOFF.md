@@ -14,16 +14,45 @@ Read the state from the commands, not from here — `python scripts/plan-final-v
 for the row census and `sed -n 46p` on the plan for the progress block. What this section is
 for is the part no command prints: **why** the open rows are open.
 
+🔴 **UPDATED 2026-08-23 — the list below said "four things" and THREE had already closed.**
+
+| listed as owed | actual state |
+|---|---|
+| `T25` ③ — a write grant to drop the Neo4j vector indexes | **③ LANDED 2026-08-22** (T25o): dev cut over, passage DDL deleted |
+| `D-QC5-ROLE-JUDGE-PRECISION` — a spend call | **CLOSED 2026-08-21**, adjudicated SUPERSEDED |
+| `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call | **CLOSED**, and the plan records it was closed **twice** |
+| `T48` cannot be worked at all | **still true** |
+
+⚠️ The third row is the warning worth keeping. The plan's own note on that duplicate: *"it is the
+mechanism that made a settled question read as open for eight days and stopped a run on a decision
+nobody owed."* A stale blocker list does not merely age — it sends the next session at work that
+does not exist. Regenerate this list; do not append to it.
+
+**What is genuinely owed: ONE call.**
+
+- **`D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`** — accept prose-judge false positives as the
+  local-model ceiling, knowing this judge is **ON by default and reaches authors**, or spend on
+  precision. §7.2 accepted exactly this for the *role* judge, and the reason it was affordable —
+  that judge is **off** by default — does not transfer. Evidence: C26 adjudicated 3-of-4 false on
+  a critic users do not get; **C30 adjudicated 4-of-4 false on the critic they do**.
+
+**And one row that is a re-run, not a task.** `T48`'s first criterion is *"every task fully
+implemented"*, and `plan-final-verification` refuses a QC row that certifies open work. `T49` is
+⛔ and depends on it — `T49`'s remaining half is `/aif-archive`; the handoff half is this section.
+
+⛔ **The superseded 2026-08-21 list, kept because the retraction is the point:**
+
 **Four things need a person, and none of them is more effort:**
 
-1. **`T25` ③ — a write grant.** Dropping the Neo4j vector indexes is a destructive write to the
+1. ~~**`T25` ③ — a write grant.**~~ **LANDED 2026-08-22 (T25o).** Dropping the Neo4j vector indexes is a destructive write to the
    dev graph that the 2026-08-21 GRANTS do not cover. Same shape as the recanon grant.
    Before granting it, note the soak has **disarmed itself twice** (T25c-2, T25f) and the dev
    `passage` scope has never landed a write — the content-hash skip-gate refuses to re-embed
    unchanged text, so it needs new chapter content, not another backfill run.
-2. **`D-QC5-ROLE-JUDGE-PRECISION` — a spend call.** Two experiments and a mechanism say the
+2. ~~**`D-QC5-ROLE-JUDGE-PRECISION` — a spend call.**~~ **CLOSED 2026-08-21, SUPERSEDED.** Two experiments and a mechanism say the
    judge model is the limit. It costs a stronger model or it stays `[~]`.
-3. **`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call** on the rule source, plus bounded
+3. ~~**`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call**~~ **CLOSED — and the plan records
+   this id was closed TWICE, which is what made it read as open for eight days.** on the rule source, plus bounded
    nondeterminism.
 4. **`T48` cannot be worked at all.** Its first criterion is *"every task fully implemented"*
    and `plan-final-verification` refuses a QC row that certifies open work. It is a **re-run**
@@ -31,7 +60,13 @@ for is the part no command prints: **why** the open rows are open.
 
 **What the live runs proved**, each with its evidence block in the plan: identity holds across
 rename → re-kind → real re-extraction with zero forks (QC-6b); the vector soak reaches SOAKING
-on both scopes with primary/secondary parity (T25d, T25g); the canon loop closes on a chapter
+on both scopes with primary/secondary parity **on `lw-iso`** (T25d, T25g) — measured
+2026-08-23, iso holds **552** `passage_vectors_1024` rows and the REAL stack holds **0**
+against 1051 embedded passages in Neo4j, which is the state §9.1 sent to the PO and the PO
+accepted. A soak claim that does not name its stack reads as a claim about the deployment;
+`soak-armed-gate --primary-rows N` now folds the durable count into the verdict, because the
+write counter is PROCESS-LOCAL and `ARMED_IDLE` alone cannot tell 'no writes yet' from 'the
+process restarted'; the canon loop closes on a chapter
 that did **not** motivate the criterion (QC-5 C17); the causal partial order writes non-zero and
 acyclic (T33c); `bitemporal-parity-gate` is at **0** asymmetries after pin-aware supersession
 landed (T46f).

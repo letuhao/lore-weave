@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 73 of 116 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 74 of 117 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (28/38) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (28/38) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22088,6 +22088,75 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Do not** restate numbers a register or command already prints — that is how a second source of
   truth starts, and the generation-SSOT run recorded that exact mistake as its own debt row.
   (depends on T48)
+
+  ---
+  ### ✅ T49a 2026-08-23 — **the handoff's "whole remaining list" was three-quarters STALE, and nothing was checking it**
+
+  ```
+  listed 2026-08-21 as needing a person        actual state
+    T25 ③ — a write grant                      LANDED 2026-08-22 (T25o)
+    D-QC5-ROLE-JUDGE-PRECISION — spend call     CLOSED 2026-08-21, SUPERSEDED
+    D-QC5-ATTRIBUTION-CHANNEL-UNWIRED — design  CLOSED (twice, per the plan)
+    T48 cannot be worked at all                 still true
+  ```
+
+  🔴 **I had been asserting T49's contents without reading the row.** Same error T33c caught. Read:
+  T49 is *"Update `SESSION_HANDOFF.md` and archive the plan"* — the ▶ NEXT SESSION block, the
+  Deferred Items table, the standards that moved, then `/aif-archive`. The archive half waits on
+  T48; **the handoff half does not**, and it was stale.
+
+  📐 **The plan already records what this class costs, in its own words:** the duplicate
+  `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` heading *"is the mechanism that made a settled question read
+  as open for eight days and stopped a run on a decision nobody owed."* The handoff had two closed
+  ids presented as owed, and `deferral-gate` reported this very file as **"13 ids, ungoverned"** —
+  it knew the handoff names deferrals and did not check them.
+
+  🔴 **A claim in it was true of the WRONG STACK, which rule 1 makes material.** It read *"the
+  vector soak reaches SOAKING on both scopes with primary/secondary parity (T25d, T25g)"*,
+  unqualified:
+
+  ```
+  iso   passage_vectors_1024  552     <- where T25d/T25g ran; SOAKING is TRUE there
+  real  passage_vectors_1024    0     <- has never carried a passage
+  real  Neo4j :Passage w/ emb 1051
+  ```
+
+  Not a regression — the real stack's 1051-against-0 is the state §9.1 sent to the PO and the PO
+  accepted. But a soak claim that does not name its stack reads as a claim about the deployment.
+  Qualified in place.
+
+  ⚠️ **I nearly destroyed the file fixing it.** The first edit replaced everything under the `## ⏸`
+  heading — which turned out to span **265 lines**, the entire running narrative (Phase 0/1
+  landings, T9–T22, QC-2's fake-drift finding). `git diff --numstat` read `58 / 256`. Reverted and
+  redone surgically: **35 added, 1 replaced, nothing deleted.** The stale list is kept *in place*
+  and struck, because a retraction that deletes what it retracts leaves no retraction.
+
+  🧪 **`handoff-staleness-gate` — new, and it found a REAL one on its first run.** After my
+  correction it still failed at `SESSION_HANDOFF.md:54`: a retained historical item whose own
+  context did not say it was closed. Fixed by marking the retained items rather than by loosening
+  the gate — and the neighbouring item had passed only because the word *"landed"* appeared in
+  unrelated prose two lines above, which is a false pass I would not have seen without it.
+
+  ```
+  BITE 20  re-present a CLOSED id as owed, by line number
+    [handoff-staleness-gate] FAIL — the handoff names CLOSED deferral(s) without saying
+    they are closed:
+        SESSION_HANDOFF.md:33  D-QC5-ROLE-JUDGE-PRECISION
+    EXIT=1
+  ```
+
+  ✅ **The rule is CONTEXTUAL, and that is the design, not a weakening.** "A closed id must not
+  appear" would be satisfiable only by deleting the retraction — so a closed id may be named
+  provided the text around it says it is closed. Five selftest cases pin both directions,
+  including the one that matters: **a retraction may name the id it retracts**, and the closure
+  marker must be NEAR the mention or any file containing the word "closed" would pass.
+
+  **QC (a) gates:** four plan gates green; `handoff-staleness-gate --selftest` 5/5;
+  `gate-wiring-gate` discovers it and reports it GREEN (111 gates, all wired or exempt).
+  **QC (b) live smoke:** N/A — documentation and a new offline gate; no service seam.
+  **QC (c) real data:** the `552 / 0 / 1051` row counts are live reads of the iso and real
+  knowledge-pg and the real Neo4j, and the staleness table was verified against the plan's own
+  struck headings rather than from memory.
 
 <!-- Commit checkpoint: T47–T49 -->
 
