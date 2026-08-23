@@ -1,0 +1,1001 @@
+{
+  "batch": "p4-kind",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "kg_propose_edge",
+      "scenario": "kg-propose-edge-approve",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the edge is written to the graph rather than parked in the triage inbox (the tool's own contract says it is NEVER written directly), OR the model invents entity ids instead of resolving the seeded names, OR source and target are the same id. NOTE: kg entities live in NEO4J, so there is no SQL seed_assert for the graph side — the glossary assert above pins the NAMES the model must resolve, and the store snapshot covers the Neo4j side.",
+      "answer_expect": null,
+      "falsifier_sha": "51aa439927ec31f2",
+      "ship_audit": {
+        "gate": "OWED — Tier A: the proposal must mint a review item, never a direct write.",
+        "absent_case": "OWED — an entity name that does not exist must be refused, not silently resolved to the nearest match.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02c87-2405-7f62-9673-034e72475d8a",
+          "session_id": "01a02c87-51b9-7cb8-b0fb-c01172cbacad",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_propose_edge"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.561076+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:50:49.761449+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.554216+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.371904+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.561076+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:50:49.656182+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:50:49.761449+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:08.039107+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:01.000435+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:13.623305+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:01.000435+00"
+              }
+            },
+            "loreweave_knowledge.kg_triage_items": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:13.623305+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-23 02:50:49.554216+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:08.039107+00"
+              }
+            }
+          },
+          "answer": "I've recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval.\n\nI have recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02c87-bfcf-7a78-9e59-7a7ad6751e0b",
+          "session_id": "01a02c87-ec78-7a58-9d81-0a36fc7d0e82",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_propose_edge"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.524866+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:29.712738+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.51858+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.289597+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.524866+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:29.590823+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:29.712738+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:48.904708+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:40.635904+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:52.45262+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-23 02:51:40.635904+00"
+              }
+            },
+            "loreweave_knowledge.kg_triage_items": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:52.45262+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:29.51858+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:51:48.904708+00"
+              }
+            }
+          },
+          "answer": "I've recorded that Aldric Vane and Mira Solene know each other. I've added this relationship to your story's connection map, and it is now waiting in your review inbox for approval.\n\nI have recorded that Aldric Vane and Mira Solene know each other. I've added this relationship to your story's connection map, and it is now waiting in your review inbox for approval."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02c88-5512-79a5-89ee-48b169fbb17f",
+          "session_id": "01a02c88-8b93-7a69-bc9b-87c80a963bea",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_propose_edge"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.696033+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:07.907385+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.690083+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.49195+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.696033+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:07.759958+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:07.907385+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:27.664967+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:21.353657+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:31.18674+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:21.353657+00"
+              }
+            },
+            "loreweave_knowledge.kg_triage_items": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:31.18674+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:07.690083+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:27.664967+00"
+              }
+            }
+          },
+          "answer": "I've recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval.\n\nI have recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a02c88-eae7-7c6e-90b6-a50f901d73cb",
+          "session_id": "01a02c89-1f7d-74ca-88e8-1df0242c69ee",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_propose_edge"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.081995+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:46.281737+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.073696+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:45.866592+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.081995+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:46.15476+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:46.281737+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:05.354863+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:59.229246+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:08.883433+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-23 02:52:59.229246+00"
+              }
+            },
+            "loreweave_knowledge.kg_triage_items": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:08.883433+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-23 02:52:46.073696+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:05.354863+00"
+              }
+            }
+          },
+          "answer": "I've recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval.\n\nI have recorded that Aldric Vane and Mira Solene know each other. This relationship is now in your review inbox for approval."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a02c89-8739-72fe-998a-d2c948886b96",
+          "session_id": "01a02c89-b402-7b07-a80f-c024fb9fd23a",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "glossary_search",
+            "kg_add_nodes",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_schema_read",
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_propose_edge",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.075069+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:53:26.255558+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.068405+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:25.86572+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.075069+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-23 02:53:26.13991+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-23 02:53:26.255558+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-23 02:57:15.968645+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-23 02:56:42.362062+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 380,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-23 02:56:42.362062+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-23 02:53:26.068405+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-23 02:57:15.968645+00"
+              }
+            }
+          },
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 5,
+      "suspended_count": 1
+    }
+  ]
+}
