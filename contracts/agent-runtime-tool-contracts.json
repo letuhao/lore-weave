@@ -618,6 +618,13 @@
     },
     "book_read": {
       "chapter_id": "book_list"
-    }
+    },
+    "glossary_create_evidence": {
+      "attr_value_id": "glossary_get_entity"
+    },
+    "composition_arc_apply": {
+      "arc_template_id": "composition_arc_template_list"
+    },
+    "_added_2026_08_23": "TWO DECLARATIONS ADDED, EACH A VERIFIED FACT ABOUT THE CODE rather than a routing preference. R1 answerability was made transitive over this map the same day, so a missing entry here is now the difference between a tool the model can complete and one it cannot.\n\n  glossary_create_evidence.attr_value_id <- glossary_get_entity\n      Verified in services/glossary-service/internal/api/entity_handler.go, which returns `AttrValueID string \\`json:\"attr_value_id\"\\`` (lines 59 and 77). It is the ONLY tool in the 315-tool catalogue that returns one, and it was advertised in 0 of 130 surface snapshots while create_evidence was advertised 5/5 and failed 4/4 on exactly this argument. get_entity requires only entity_id, which the model demonstrably already holds - it passed a correct one.\n\n  composition_arc_apply.arc_template_id <- composition_arc_template_list\n      Verified by calling it: it returns arc_templates: [{id: ...}]. It requires NO arguments, so forcing it onto the wire costs the model nothing to use. Measured 2026-08-23: arc_apply was on the wire and the list was on no pass, and the model passed a NAME where arc_id was required and then guessed composition_arc_suggest.\n\nBoth were read from the code or the live tool before being written down. A declaration that is merely plausible would put the wrong tool on every matching turn's wire, which is worse than the gap it fills."
   }
 }
