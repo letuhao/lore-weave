@@ -1,5 +1,53 @@
 import asyncpg
 
+# 🔴 THIS BACKFILL CRASH-LOOPED THE SERVICE FOR A DAY, AND ITS OWN COMMENT SAID IT COULD NOT.
+#
+# It read: "Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at)." ROW_NUMBER is
+# deterministic only under a TOTAL ordering, and `created_at` is not one here: measured 2026-08-23,
+# 13 (chapter_id, target_language) groups in loreweave_translation hold rows whose created_at match
+# to the microsecond, because they are written in the same statement. On a tie ROW_NUMBER breaks
+# arbitrarily, so a re-run can hand row B the number row A already holds.
+#
+# It does not fail cleanly. The DDL runs in lifespan startup, so:
+#     asyncpg.exceptions.UniqueViolationError: duplicate key value violates unique constraint
+#     "idx_ct_version"  DETAIL: Key (chapter_id, target_language, version_num)=(01a0291e-…, vi, 1)
+#     already exists.
+#     ERROR: Application startup failed. Exiting.
+# -> translation-service restart-loops -> ai-gateway federates 300 tools instead of ~315 with
+# `provider 'translation' list-tools failed → PARTIAL` -> every translation tool is off the wire.
+# That is how a tool under test came to be unmeasurable: not a tool defect, a migration that cannot
+# run twice.
+#
+# TWO CHANGES, AND BOTH ARE NEEDED.
+#
+# (1) ORDER BY created_at, id — a total order, so the assignment is the SAME on every run and a
+#     second run is genuinely a no-op. The tiebreak alone is not enough, because:
+# (2) the renumber is done in two phases through the negative space. A single UPDATE that PERMUTES
+#     version numbers (A:1->2, B:2->1) violates the unique index mid-statement whatever the
+#     ordering, since a plain unique index is checked per row and cannot be deferred. Moving every
+#     row to -version_num first empties the positive space, so phase 2 can never collide. The
+#     originals are unique per group, so the negatives are too.
+#
+# Both statements live in one DDL string executed by a single conn.execute, which asyncpg runs in
+# an implicit transaction — so a failure in phase 2 rolls phase 1 back and cannot strand rows
+# negative.
+VERSION_BACKFILL_SQL = """
+UPDATE chapter_translations SET version_num = -version_num WHERE version_num > 0;
+
+UPDATE chapter_translations ct
+SET version_num = sub.rn
+FROM (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY chapter_id, target_language
+           ORDER BY created_at, id
+         ) AS rn
+  FROM chapter_translations
+) sub
+WHERE ct.id = sub.id;
+"""
+
+
 DDL = """
 CREATE TABLE IF NOT EXISTS user_translation_preferences (
   user_id         UUID PRIMARY KEY,
@@ -153,20 +201,9 @@ ALTER TABLE chapter_translations
 CREATE INDEX IF NOT EXISTS idx_ct_resume_sweep
   ON chapter_translations(updated_at) WHERE resume_state IS NOT NULL;
 
--- Backfill: assign sequential version_num per (chapter_id, target_language)
--- ordered by created_at so existing rows don't violate the unique index.
--- Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at).
-UPDATE chapter_translations ct
-SET version_num = sub.rn
-FROM (
-  SELECT id,
-         ROW_NUMBER() OVER (
-           PARTITION BY chapter_id, target_language
-           ORDER BY created_at
-         ) AS rn
-  FROM chapter_translations
-) sub
-WHERE ct.id = sub.id;
+
+-- Backfill: see VERSION_BACKFILL_SQL below.
+""" + VERSION_BACKFILL_SQL + """
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ct_version
   ON chapter_translations(chapter_id, target_language, version_num);
