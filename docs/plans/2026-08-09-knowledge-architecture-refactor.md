@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 58 of 100 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 59 of 101 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (22/45) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/46) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -9568,6 +9568,79 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
+  ---
+  ### ✅ QC-5 C28 2026-08-23 — **the attribution fix was BUILT and never DEPLOYED; measured on the rebuilt stack it works**
+
+  ```
+  PO 2026-08-23: "fix attribution first"
+  the fix was already in the tree, 6 commits AFTER the measurement that failed on it
+  ```
+
+  🔴 **QC-5's "DOES NOT PASS" was measured against a build that lacks its own fix.** Verified
+  four ways rather than argued:
+
+  ```
+  git merge-base --is-ancestor C7 <channel fix>      YES — C7 predates it
+  git rev-list --count C7..<channel fix>             6 commits
+  the clause at C7's tree                            ABSENT
+  the clause in HEAD                                 present
+  the clause in the RUNNING containers               ABSENT — 35h and 2d old
+  ```
+
+  **The containers had been stale for two days**, so every re-measurement in between would have
+  reproduced the same failure. This is `green-suite-proves-the-working-tree-not-the-commit`
+  inverted: a RED that proved a tree which no longer exists.
+
+  🎯 **Rebuilt `composition-service` + `composition-worker`, verified the clause is deployed, and
+  re-ran one authoring run on the acceptance book — same chapter, same models, same $0.06 as
+  C7:**
+
+  ```
+                        C7 (pre-fix)          C28 (rebuilt)
+  violations_raw_count  3 / 5 / 1             0
+  attributed            0 / 0 / 0             — nothing to attribute
+  violations_dropped    everything            0
+  craft_notes           0                     1, WITH a span
+  active_rule_count     6                     6
+  ```
+
+  The note is a real observation the judge could see and previously had nowhere to put:
+  sci-fi terminology — the judge's note names "subatomic particles" — in xianxia prose,
+  anchored to its span in the drafted chapter.
+
+  ⚖️ **This is the clause's measured behaviour reproducing in the flow**, not a new claim. When
+  it shipped it was measured 3 runs per arm on a replayed request:
+
+  ```
+  control (no clause)         invented [2, 6, 6]   notes [0, 0, 0]
+  "do not invent a rule"      invented [0, 0, 0]   notes [0, 0, 0]
+  THIS clause (a channel)     invented [0, 0, 0]   notes [2, 2, 2]
+  ```
+
+  Telling a judge not to report something it can see does not stop it seeing it — it makes it
+  discard it. The channel keeps the finding.
+
+  📐 **So "fix attribution" resolved to a DEPLOYMENT, not a code change** — and the diagnosis
+  that got there was already written (`4884609be`): the judge invented `QUY UOC XUNG HO`, a
+  naming-convention id, against six rules that are all character facts; `map_rule_tokens`
+  dropped it and **dropping was correct**. The tempting repair — match on the label — would have
+  attached a fabricated rule to a real one, which is the defect `D-QC5-PROSE-JUDGE-VERDICT-NOT-
+  PER-RULE` already fixed. Rule 8 killed that batch before it was built.
+
+  ⛔ **What this does NOT do.** One run is not the 3-run re-score §2.1 requires, and one run
+  cannot show clause 1a (that needs a PLANTED violation). It answers the attribution question —
+  the judge no longer invents and no longer drops — and leaves the acceptance re-score as the
+  next unit, now unblocked and cheap ($0.06/run).
+
+  **QC (a) gates:** four plan gates green; no code changed by this row — the change was
+  deploying code that already existed.
+  **QC (b) live smoke:** the subject. `composition-service` and `composition-worker` REBUILT on
+  `lw-iso`, the clause verified present in both containers before the run.
+  **QC (c) real data:** one authoring run through `POST /v1/composition/authoring-runs` →
+  gate → start, `spent_usd 0.0600`, `status report_ready`, the verdict read from the run's own
+  report endpoint.
+
+
   ---
   ### ✅ QC-5 C15 2026-08-21 — **the canon loop closes end-to-end.** Add a rule, the prose obeys it, the critic confirms.
 
