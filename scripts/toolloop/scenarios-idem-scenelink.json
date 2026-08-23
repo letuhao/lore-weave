@@ -1,0 +1,68 @@
+{
+  "_note": "PROBE FIXTURE: two live SCENE nodes for composition_scene_link_edit's idempotency case — 'the same edge twice must not create two rows'. Built on the outline_node primitive the whole SHIP-only group was missing.",
+  "scenarios": [
+    {
+      "id": "composition-scene-link-edit-outlined",
+      "tool_under_test": "composition_scene_link_edit",
+      "expect_tool": "composition_scene_link_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Link scenes — mark the opening scene as the setup and the finale as its payoff.",
+      "prompt_source": "meta.synonyms['link scenes'] + ['set setup payoff'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "Outline Chapter {run_word}",
+            "chapter_id": "{chapter_id}"
+          }
+        },
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "scene",
+            "parent_id": "{step:0:id}",
+            "chapter_id": "{chapter_id}",
+            "title": "Setup {run_word}"
+          }
+        },
+        {
+          "tool": "composition_outline_node_edit",
+          "args": {
+            "op": "create",
+            "project_id": "{project_id}",
+            "kind": "scene",
+            "parent_id": "{step:0:id}",
+            "chapter_id": "{chapter_id}",
+            "title": "Payoff {run_word}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM outline_node WHERE project_id='{project_id}' AND kind='scene' AND NOT is_archived",
+          "expect": "2",
+          "why": "TWO scene nodes, because op=create needs from_node_id AND to_node_id — with one node the edge cannot be built and the probe would measure a refusal instead of the boundary. NOT is_archived because the tool reads live nodes, the lesson the archived-motif fixture cost fifteen runs. A scene requires chapter_id (composition outline rule), so it is supplied."
+        }
+      ],
+      "falsifier": "REFUTED IF: a link lands with NO confirm card (Tier A), OR the model invents from_node_id/to_node_id for scenes that do not exist (the D-DECLARED-UUID class, guarded at the argument chokepoint — a fabricated-but-valid UUID here is a NEW instance), OR the op chosen is not `create` when the user asked to mark a setup/payoff (its enum spans create|delete|restore, and `delete` on a create request would be the worst outcome). Store check: scene_link stays at its pre-run count for this book.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "This scenario IS the absent case — there are no scene nodes to link.",
+        "idempotency": "OWED — the same edge twice must not create two rows.",
+        "tenancy": "OWED — book-scoped via project_id."
+      },
+      "defects": []
+    }
+  ]
+}
