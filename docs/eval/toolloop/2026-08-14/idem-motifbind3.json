@@ -1,0 +1,146 @@
+[
+ {
+  "tool": "composition_motif_bind_edit",
+  "pre": [],
+  "args": {
+   "op": "bind",
+   "project_id": "01a02d09-58d6-7c4d-b16c-67f5592409df",
+   "node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+   "motif_id": "01a02d09-599a-7086-aaa0-faa57cd431e3"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+    "archived_scene_ids": [],
+    "new_scene_ids": [
+     "01a02d09-c1c9-7532-a350-a5dee5b2cc00",
+     "01a02d09-c1d9-75ba-af3c-3a46dc722f93"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d09-599a-7086-aaa0-faa57cd431e3",
+    "undo_token": {
+     "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+     "archived_scene_ids": [],
+     "new_scene_ids": [
+      "01a02d09-c1c9-7532-a350-a5dee5b2cc00",
+      "01a02d09-c1d9-75ba-af3c-3a46dc722f93"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d09-58d6-7c4d-b16c-67f5592409df",
+       "node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+       "undo_token": {
+        "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+        "archived_scene_ids": [],
+        "new_scene_ids": [
+         "01a02d09-c1c9-7532-a350-a5dee5b2cc00",
+         "01a02d09-c1d9-75ba-af3c-3a46dc722f93"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+    "archived_scene_ids": [],
+    "new_scene_ids": [
+     "01a02d0a-2a18-79a4-9011-4f8d22eb3825",
+     "01a02d0a-2a1c-7885-a557-5411668596ca"
+    ],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d09-599a-7086-aaa0-faa57cd431e3",
+    "undo_token": {
+     "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+     "archived_scene_ids": [],
+     "new_scene_ids": [
+      "01a02d0a-2a18-79a4-9011-4f8d22eb3825",
+      "01a02d0a-2a1c-7885-a557-5411668596ca"
+     ]
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d09-58d6-7c4d-b16c-67f5592409df",
+       "node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+       "undo_token": {
+        "chapter_node_id": "01a02d09-5dcd-736d-a3ee-a27959f6e66e",
+        "archived_scene_ids": [],
+        "new_scene_ids": [
+         "01a02d0a-2a18-79a4-9011-4f8d22eb3825",
+         "01a02d0a-2a1c-7885-a557-5411668596ca"
+        ]
+       }
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_composition.motif_application": {
+    "before": null,
+    "after": {
+     "rows": 2,
+     "latest": "2026-08-23 05:13:29.286494+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-23 05:13:03.692682+00"
+    },
+    "after": {
+     "rows": 3,
+     "latest": "2026-08-23 05:13:29.286494+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_composition.motif_application": {
+    "before": {
+     "rows": 2,
+     "latest": "2026-08-23 05:13:29.286494+00"
+    },
+    "after": {
+     "rows": 4,
+     "latest": "2026-08-23 05:13:55.989807+00"
+    }
+   },
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 3,
+     "latest": "2026-08-23 05:13:29.286494+00"
+    },
+    "after": {
+     "rows": 5,
+     "latest": "2026-08-23 05:13:55.989807+00"
+    }
+   }
+  },
+  "verdict": "🔴 NOT IDEMPOTENT — the second call DUPLICATED: loreweave_composition.motif_application 2->4, loreweave_composition.outline_node 3->5",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [
+    "01a02d09-599a-7086-aaa0-faa57cd431e3"
+   ],
+   "book_id": "01a02d09-56f6-7af6-9a07-9fa632b5b628",
+   "title": "LOOP-THROWAWAY-idem-composition_motif_bind_edit-52fc91f4",
+   "tables": {
+    "composition(project)": "01a02d09-58d6-7c4d-b16c-67f5592409df"
+   }
+  }
+ }
+]

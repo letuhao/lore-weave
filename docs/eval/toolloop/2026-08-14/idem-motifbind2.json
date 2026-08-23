@@ -1,0 +1,89 @@
+[
+ {
+  "tool": "composition_motif_bind_edit",
+  "pre": [],
+  "args": {
+   "op": "bind",
+   "project_id": "01a02d05-d8a1-7bbf-9c02-0422589073a8",
+   "node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+   "motif_id": "01a02d05-d96f-7507-8177-689f910189c8"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+    "archived_scene_ids": [],
+    "new_scene_ids": [],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d05-d96f-7507-8177-689f910189c8",
+    "undo_token": {
+     "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+     "archived_scene_ids": [],
+     "new_scene_ids": []
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d05-d8a1-7bbf-9c02-0422589073a8",
+       "node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+       "undo_token": {
+        "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+        "archived_scene_ids": [],
+        "new_scene_ids": []
+       }
+      }
+     }
+    }
+   }
+  ],
+  "second": [
+   "ok",
+   {
+    "success": true,
+    "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+    "archived_scene_ids": [],
+    "new_scene_ids": [],
+    "orphaned_thread_ids": [],
+    "new_motif_id": "01a02d05-d96f-7507-8177-689f910189c8",
+    "undo_token": {
+     "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+     "archived_scene_ids": [],
+     "new_scene_ids": []
+    },
+    "_meta": {
+     "undo_hint": {
+      "tool": "composition_motif_unbind",
+      "args": {
+       "project_id": "01a02d05-d8a1-7bbf-9c02-0422589073a8",
+       "node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+       "undo_token": {
+        "chapter_node_id": "01a02d05-da2b-71d1-8f58-bab7c10707e0",
+        "archived_scene_ids": [],
+        "new_scene_ids": []
+       }
+      }
+     }
+    }
+   }
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [
+    "01a02d05-d96f-7507-8177-689f910189c8"
+   ],
+   "book_id": "01a02d05-d6b6-7ad5-a83f-36440a55293c",
+   "title": "LOOP-THROWAWAY-idem-composition_motif_bind_edit-ffced4b5",
+   "tables": {
+    "composition(project)": "01a02d05-d8a1-7bbf-9c02-0422589073a8"
+   }
+  }
+ }
+]

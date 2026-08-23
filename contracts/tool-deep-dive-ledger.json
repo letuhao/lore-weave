@@ -3560,6 +3560,13 @@
         "kg_ontology_propose": "'adopting the same template twice must not duplicate the ontology' — the seed is EMPTY.",
         "translation_patch_block": "'patching the same block to the same text twice must not create two human versions' — seed is two SQL steps; the probe needs the block id they create."
       }
+    },
+    "D-REBIND-DUPLICATES-INSTEAD-OF-ARCHIVING-THE-PRIOR-SCENES": {
+      "status": "OPEN — PROVEN by store diff, 2026-08-23",
+      "what": "composition_motif_bind_edit op=bind, called TWICE with identical arguments, DUPLICATES instead of replacing:\n    loreweave_composition.motif_application   2 -> 4\n    loreweave_composition.outline_node        3 -> 5\nBoth calls returned success:true, and the SECOND returned archived_scene_ids: [] while minting a fresh new_scene_ids pair. The chapter now carries two complete instantiations of the same motif.",
+      "it_contradicts_its_own_declaration": "The tool's description states 'op=bind instantiates the motif's beats as scene nodes ... re-binding archives the prior scenes, reversible'. Re-binding archived nothing: archived_scene_ids was EMPTY on the second call. The promise and the behaviour disagree, and the declaration is the half an author reads.",
+      "why_it_was_never_seen": "Its idempotency ship case sat OWED for the whole loop because the probe could not reach the tool at all: node_id is an OUTLINE node and every seed built ARCS or used book_chapter_create, which composition-service's own source says does not mint outline_node rows. Once the fixture minted a real outline node the bind SUCCEEDED and still wrote nothing — new_scene_ids: [] — because the seeded motif had no BEATS, and 'instantiates the motif's beats' means a beatless motif is a no-op. Only with BOTH an outline node and a motif carrying beats does the tool do enough work for a second call to be able to duplicate it.\n\nThree fixture layers deep, and the probe's own guard refused to call either earlier attempt a pass: 'STRICTLY IDEMPOTENT ... BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing.' Without that line this would have been recorded as idempotent, twice, on empty store diffs.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/idem-motifbind3.json"
     }
   },
   "deferred_questions": {
