@@ -196,9 +196,9 @@
       "seed_assert": [
         {
           "db": "loreweave_composition",
-          "query": "SELECT count(*)::text FROM motif WHERE owner_user_id IS NULL",
+          "query": "SELECT count(*)::text FROM motif WHERE status='active' AND owner_user_id IS NULL",
           "expect": "84",
-          "why": "EIGHTY-FOUR system/unlisted motifs already exist, so there is genuinely something to adopt and the model must FIND one — composition_motif_book_list / a motif search is the supplier. Read from the store rather than assumed. NOTE the deliberate asymmetry with batch 15's arc templates: the system arc-template library is EMPTY, so this is the first tool in the loop whose cross-tenancy source actually has rows."
+          "why": "EIGHTY-FOUR system/unlisted motifs already exist, so there is genuinely something to adopt and the model must FIND one — composition_motif_book_list / a motif search is the supplier. Read from the store rather than assumed. NOTE the deliberate asymmetry with batch 15's arc templates: the system arc-template library is EMPTY, so this is the first tool in the loop whose cross-tenancy source actually has rows.\n\n🔴 status='active' ADDED 2026-08-23 by the lifecycle-predicate gate. The tool reads active rows only (get_by_codes filters status='active'), so without this the assertion could pass over rows the tool is structurally unable to see — which is exactly what happened to composition_motif_link_edit for fifteen runs. Verified NOT to change the seeded value: all 84 system motifs are active today, so this tightens the assertion without moving its number."
         },
         {
           "db": "loreweave_composition",

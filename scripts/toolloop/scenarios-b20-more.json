@@ -28,9 +28,9 @@
       "seed_assert": [
         {
           "db": "loreweave_composition",
-          "query": "SELECT count(*)::text FROM motif WHERE code='emberfall-reversal-b20-{run_id}'",
+          "query": "SELECT count(*)::text FROM motif WHERE status='active' AND code='emberfall-reversal-b20-{run_id}'",
           "expect": "1",
-          "why": "EXACTLY ONE motif with this name, and the name is unique across the whole library — so an exact-name hit is unambiguous. This is the scenario that proves the `q` declaration shipped on 2026-08-21: before it, the model invented {\"name\": [...]} and got 'Extra fields not permitted' on 10 of 10 runs across two scenarios, and the retry loop ended in a stream error."
+          "why": "EXACTLY ONE motif with this name, and the name is unique across the whole library — so an exact-name hit is unambiguous. This is the scenario that proves the `q` declaration shipped on 2026-08-21: before it, the model invented {\"name\": [...]} and got 'Extra fields not permitted' on 10 of 10 runs across two scenarios, and the retry loop ended in a stream error.\n\n🔴 status='active' ADDED 2026-08-23 by the lifecycle-predicate gate. The tool reads active rows only (get_by_codes filters status='active'), so without this the assertion could pass over rows the tool is structurally unable to see — which is exactly what happened to composition_motif_link_edit for fifteen runs. Verified NOT to change the seeded value: all 84 system motifs are active today, so this tightens the assertion without moving its number."
         }
       ],
       "answer_expect": {
