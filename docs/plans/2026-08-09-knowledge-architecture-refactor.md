@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 78 of 121 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 79 of 122 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (2/3) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,79 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48a 2026-08-23 — **409 more tests RUN, and the Neo4j reference implementation honours every rule A24–A28 added**
+
+  ```
+  suite      4748 passed / 728 skipped   ->   5157 passed / 319 skipped
+  the skips that were hiding it:
+      351  TEST_NEO4J_URI not set — skipping live Neo4j test
+      282  no real TEST_KNOWLEDGE_DB_URL set
+       57  TEST_NEO4J_URI not set — the real adapter is not being conformed
+       27  TEST_VECTOR_DB_URL not set — skipping live pgvector test
+        1  "QC-2 PARITY DID NOT RUN — FakeGraphStore was compared against nothing.
+            The fakes' only check is this file."
+  ```
+
+  🎯 **T48's first criterion is *every task fully implemented*, and it is a RE-RUN, not a task.**
+  What it re-runs is the suite — so a suite that reports green while 728 tests sit dark is the
+  thing standing between T48 and a meaningful answer. T25x proved the cost with a real defect;
+  this measures the rest.
+
+  ✅ **The conformance suite's `neo4j` arm ran for the first time this session: 57 passed.** That
+  includes every rule A24–A28 added — `version` advances, `auto_created` falls on a real claim, a
+  returned entity is a snapshot, `direction`, `valid_until`, `source_event_id`,
+  `chronological_order`, `exclude_project_ids`, `sort_dir`, `q`, `axis`, and `merge_fact`'s
+  round-trip. **The reference implementation satisfies rules derived from the port contract**,
+  which is the check those rules themselves needed: they were found on the fake, AGE and Kuzu,
+  and a rule that only its discoverers pass is fitted to them.
+
+  ⚠️ **And QC-2's parity file ran — 10 passed.** Its skip message is the sharpest line in the
+  census: *"FakeGraphStore was compared against nothing. The fakes' only check is this file."*
+  A20–A26 found four defects in that double; its one comparison against a real engine had been
+  dark the whole time.
+
+  🔧 **BUILT: `test-env-registry-gate`, because the census must not be a thing I ran once.**
+  Every `TEST_*` variable named in a `pytest.skip(...)` must appear in
+  `docs/dev/TEST_DATABASES.md` with the command that satisfies it. **It does NOT fail on skips** —
+  a developer without the containers must still run the suite, and a gate that punished that
+  would be switched off within a day. It refuses a skip whose variable is *undocumented*: a suite
+  that can go dark with no instruction anywhere for turning it back on.
+
+  🧪 **Two bites, and the second failed twice before it bit — both failures worth keeping.**
+
+  ```
+  BITE 31  a new env-gated suite that forgets the registry
+    FAIL — 1 env-gated skip variable(s) are not documented: ['TEST_BRAND_NEW_URL']   EXIT=1
+
+  BITE 32  (1st) rename the registry entry -> STILL GREEN
+    `v not in registry_text` matched a SUBSTRING: `TEST_VECTOR_DB_URL` is inside
+    `TEST_VECTOR_DB_URL_RENAMED`. That is the SAME defect `conftest` records for T42a —
+    a guard matching ":7688" as a substring sailed past "localhost:27688".
+
+  BITE 32  (2nd) the word-boundary fix reported ALL FOUR as undocumented
+    `\b` had become `\x08`, a literal BACKSPACE — the heredoc collapse
+    `port-adoption-gate`'s own selftest exists to catch. Rebuilt with `chr(92)`.
+
+  BITE 32  (3rd) FAIL — not documented: ['TEST_VECTOR_DB_URL']
+  ```
+
+  A selftest case now pins the substring trap directly, so the fix cannot be undone quietly.
+
+  ⛔ **What this does NOT do.** T48 still cannot close — `plan-final-verification` refuses a QC
+  row that certifies open work, and rows remain open. This removes one reason its eventual re-run
+  would have been worth less than it looked: the suite it re-runs now covers 409 more tests, and
+  the four databases that unlock them are written down and checked.
+
+  **QC (a) gates:** four plan gates green; `test-env-registry-gate --selftest` 5/5;
+  `gate-wiring-gate` discovers it — **112 gates**, all wired or exempt.
+  **QC (b) live smoke:** the 409 tests ARE the live smoke — a throwaway
+  `neo4j:2026.03-community` on 7690 (the fixture REFUSES 7687/7688/27687/27688 because these
+  tests `DETACH DELETE`) and a throwaway `loreweave/postgres-knowledge:18` on 7995. Both removed
+  afterwards.
+  **QC (c) real data:** the skip census is `pytest -rs` output totalled by reason, and the
+  5157/319 figure is a real run with both databases present.
+
   ---
   ⛔ **STILL OWED: T48 cannot close while any row is open.** Its first criterion is *every
   task fully implemented*. The figures quoted below are QC-1's evidence and this gate's own
