@@ -2357,9 +2357,9 @@
   },
   "composition_reference_update": {
    "state": "blocked",
-   "cycle": "batch-41 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/stale.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 1/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on an under-specified request, and the model is RIGHT. FRESH evidence replacing a stale batch21-v3 conclusion: SURFACED 5/5, CALLED 5/5, ZERO errors, owning store unchanged on every run. On each run it called the tool, was refused for the ids it lacks, and asked the author 'which reference you're referring to and what the new title should be'. The prompt names no reference, so declining to guess is the behaviour this loop wants. Boundary EXERCISED: absent and foreign refuse IDENTICALLY, empty names the field.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/stale.json",
+   "cycle": "batch-40 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-ref2.json. MEASURED: surfaced 5/5, called 4/5, suspended-on-card 0/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED ON A REQUIRED ID NO TOOL CAN SUPPLY — measured across the whole catalogue, not inferred.\n\nWith the reference SEEDED and the prompt NAMING it (and phrased so the answerability matcher actually surfaces the tool — 'fix reference title' contiguously), it is called 4/5 with zero errors and the owning store moves 1/5. The refusal is always the same: reference_id is missing 'and this tool does not declare which side supplies them'.\n\nIt declares none because none exists. composition_reference_update is the ONLY tool of the 315 that mentions reference_id anywhere; nothing returns one. The model then reaches for composition_find_references — the nearest-sounding tool, and about ENTITY references rather than reference sources — and correctly tells the author it cannot find the reference.\n\nSo the earlier conclusion ('under-specified request, and the model is RIGHT') was right for a deeper reason than it stated. See D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY. BUILDABLE: an MCP list-references tool over the REST path that already exists (GET /v1/composition/works/{project_id}/references).",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-ref2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3666,6 +3666,15 @@
    "what": "idempotency_probe compares store_snapshot before/after, and store_snapshot reads POSTGRES. For a tool whose owning store is Neo4j it therefore compares two empty pictures and reports 'STRICTLY IDEMPOTENT — the second call touched nothing at all'.",
    "measured_consequence": "It printed exactly that for memory_forget, which re-stamps valid_until on every call. The verdict was not merely unproven — it was the OPPOSITE of the truth, and only a direct Neo4j read found it. The probe's own '⚠ the first call changed nothing either' guard fired, which is the signal that saved it: on a Neo4j-owned tool that warning means the instrument is blind, not that the tool is quiet.",
    "fix_direction": "Either extend store_snapshot with a Neo4j axis, or have the probe REFUSE a verdict for tools whose owning store it cannot read — a named refusal beats a confident wrong answer, which is the rule the whole gate is built on."
+  },
+  "D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY": {
+   "status": "OPEN — PROVEN across the whole catalogue, 2026-08-23",
+   "what": "composition_reference_update REQUIRES reference_id, and it is the ONLY tool of the 315 that mentions reference_id anywhere in its schema or description. Nothing can produce one. The tool is unsatisfiable through MCP by construction.\n\nA REST read exists — GET /v1/composition/works/{project_id}/references — so the data is there; it simply has no MCP surface.",
+   "the_platform_says_so_itself": "Its refusal reads: \"'composition_reference_update' is missing required argument(s): ['reference_id'], and this tool does not declare which side supplies them — so do NOT guess a value.\" That message is CORRECT and complete. There is no side that supplies them.",
+   "why_this_is_the_strongest_form": "This loop has fixed the supplier-chain defect twice as a DECLARATION gap — an id whose declaration named no supplier (065954af0), and a chain whose middle link was named but not its first. This one is a missing TOOL: no declaration can point at a supplier that does not exist, so no amount of wording fixes it.",
+   "it_also_explains_the_model": "The row's own conclusion — 'blocked on an under-specified request, and the model is RIGHT' — is righter than it looked. Asked to fix a reference title the model called the tool, was refused for the id, reached for composition_find_references (the nearest thing, and about ENTITY references not reference sources), and told the author it could not find the reference. Every step of that is correct behaviour against a broken surface.",
+   "buildable": "An MCP list-references tool over the REST path that already exists.",
+   "measured_by": "contracts/tool-catalog-cache.json scanned for reference_id; c-ref2 K=5"
   }
  },
  "deferred_questions": {
@@ -4225,8 +4234,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 79,
-  "defects_other": 40
+  "defects_total": 80,
+  "defects_other": 41
  },
  "observations": [
   {
