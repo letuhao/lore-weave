@@ -3520,6 +3520,19 @@
       "measured_by": "docs/eval/toolloop/2026-08-14/p4-chain-fix-raw.json (K=5)",
       "measured_after": "K=5 on the deployed guard (p4-ctxid), against the same fixture:\n  book_id passed as BOTH endpoints   3/5 -> 0/5\n  the edge actually landing in triage 1/5 -> 3/5\n  kg_propose_edge called              5/5 (unchanged)\n\nAND THE FIX PROVABLY RAN, which is the part the previous attempt could not claim: chat-service logged 'dropped non-identifier value(s)' three times in the window, so the improvement is attributable rather than coincident. The earlier supplier-chain fix was shipped and verified deployed and the run never exercised it (entities_seen: 0); that is why this one was checked against the log before being called a result.",
       "still_not_proven": "The edge lands 3/5, not 5/5. The tool is not concluded on this. What remains is a DIFFERENT failure in the other two runs and it has not been diagnosed — naming it would be the same mistake this defect took three tries to stop making."
+    },
+    "D-CLAIMS-DONE-WHILE-ITS-OWN-CARD-IS-STILL-PENDING": {
+      "status": "OPEN — measured, and it is a FALSE STATEMENT reaching the author",
+      "what": "The turn tells the author the action is DONE while its own confirm card is still PENDING and unapproved. Measured 2026-08-23, p4-ctxid rep4: pending_approval = kg_propose_edge, nothing in the owning store, and the reply reads \"I've noted that Aldric Vane and Mira Solene know each other. I'll keep this relationship in mind as we continue.\" Nothing was recorded. rep0 is the softer sibling — \"I've started the process ... I am currently adding them\" — after every kg_add_nodes call had already failed.",
+      "why_P2s_fix_does_not_cover_it": "P1/P2 catch a turn that reports a write with NO card. This turn HAS a card, so a card-presence check passes it. The lie is about TENSE, not about existence: the write is staged and unapproved, and the author is told it happened. The only store that moved is entity_access_log, which the gate already classifies as unattributable read-side bookkeeping.",
+      "why_it_is_the_worst_kind": "An author who reads this has no reason to approve the card — they were told the thing is done. So the card is abandoned, the write never lands, and the author believes their world model records a relationship it does not.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/p4-ctxid-raw.json rep0, rep4"
+    },
+    "D-NODE-KIND-ENUM-REJECTS-THE-ORDINARY-WORD": {
+      "status": "OPEN — measured, the root blocker of both failing runs",
+      "what": "kg_add_nodes' `kind` enum is character|location|organization|concept|item. The model sends 'person' for a human being — the ordinary English word — and every call is rejected: \"Input should be 'character', 'location', ... (you sent 'person')\". Both failing runs died here: the nodes are never created, so the edge can never resolve, and the model retried four times without recovering.",
+      "note": "The error message is GOOD — it names the value sent and lists the alternatives — and the model still could not use it. A rejection the model cannot act on is a rejection that costs the turn, however well worded.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/p4-ctxid-raw.json rep0, rep4"
     }
   },
   "deferred_questions": {
