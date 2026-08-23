@@ -1,0 +1,53 @@
+{
+  "_note": "composition_glossary_build with the ontology it needs and the source text its op=start requires.",
+  "scenarios": [
+    {
+      "id": "composition-glossary-build-with-an-ontology",
+      "tool_under_test": "composition_glossary_build",
+      "expect_tool": "composition_glossary_build",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+      "prompt_source": "The tool's declared synonyms ('build the knowledge graph', 'extract the cast from my story') verbatim, PLUS the source text its op=start requires.\n\n🔴 THE OLD PROMPT WITHHELD AN INPUT THE CONTRACT DEMANDS. op=start 'needs source_text + model_ref', and the old prompt gave neither a story nor a pointer to one on a book whose single chapter is one sentence. A scenario that withholds a required input measures the prompt. model_ref is now reachable by declaration (settings_list_models emits it); source_text is prose, which only the author can provide.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 THE BOOK HAD NO ONTOLOGY, so the model set one up instead of building. Measured 5/5 (batch c-r1-recheck): every run ran glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input and never the tool under test. I filed that as a SIBLING-WINS failure; it is a PRECONDITION - a glossary cannot be built onto a book with no kinds, and adopting first is the correct move.\n\nThis is the same fix that took kg_triage_schema_write from blocked to proven: seed the state the tool needs, and the turn stops spending itself on setup."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT (count(*) > 0)::text FROM book_kinds WHERE book_id = '{book_id}' AND code = 'character'",
+          "expect": "true",
+          "why": "The `character` kind must be adopted BY CODE, or the model spends the turn adopting and the run measures the fixture. Keyed on the code rather than on a count of kinds: a book with some other kind adopted would pass a bare count and still leave the cast unbuildable."
+        }
+      ],
+      "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+        "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "approve_why": "Tier A and it spends a model call. The target is this run's OWN throwaway book, torn down after, against the LOCAL model."
+    }
+  ]
+}

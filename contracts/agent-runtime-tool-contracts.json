@@ -632,6 +632,10 @@
     "_added_2026_08_23_second": "composition_authoring_run_manage.plan_run_id <- plan_propose_spec. Verified: plan_propose_spec returns {'run_id': ...} and the authoring run stores it as plan_run_id (server.py line ~3014 emits \"plan_run_id\": str(run.plan_run_id)). It is the same id plan_compile takes as run_id.\n\n🔴 THIS ONE ALONE CANNOT UNBLOCK THE TOOL, and that is worth saying beside the entry. op=create also requires budget_usd and pause_after_each_unit, and those have NO supplier by nature - they are the author's decisions. The declaration removes one of three obstacles; the other two are answered by the argument DESCRIPTIONS added the same day, which tell the model to ask rather than guess.",
     "composition_entity_override_edit": {
       "project_id": "composition_list_derivatives"
-    }
+    },
+    "composition_glossary_build": {
+      "model_ref": "settings_list_models"
+    },
+    "_added_2026_08_23_third": "composition_glossary_build.model_ref <- settings_list_models. Verified by calling it: each row carries user_model_id, and that IS a model_ref (the harness's own model_ref 019ebb72-27a2-72f3-a42d-d2d0e0ded179 resolves in user_models.user_model_id).\n\nDQ-T35 is the same argument seen from the other side: 16 of 19 model_ref properties across the catalogue are OPTIONAL with a server-resolved default, and only three are required - composition_generate, composition_library_translate and kg_build_wiki. This declaration makes the required one REACHABLE; it does not settle whether it should have been required at all, which is the owner's call."
   }
 }
