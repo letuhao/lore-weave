@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.models import Project
-from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+from app.db.graph_repos.passages import Passage, PassageSearchHit
 from app.search.retriever import (
     RetrievalResult,
     _visible_within_window,

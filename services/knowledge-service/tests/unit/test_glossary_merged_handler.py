@@ -15,10 +15,10 @@ import pytest
 
 import app.config as config_mod
 import app.db.neo4j as neo4j_mod
-import app.db.neo4j_repos.canonical as canon_mod
-import app.db.neo4j_repos.entities as entities_mod
+import app.db.graph_repos.canonical as canon_mod
+import app.db.graph_repos.entities as entities_mod
 import app.db.repositories.entity_alias_map as alias_mod
-from app.db.neo4j_repos.entities import MergeEntitiesError
+from app.db.graph_repos.entities import MergeEntitiesError
 from app.events.handlers import handle_glossary_entity_merged
 
 BOOK = uuid4()

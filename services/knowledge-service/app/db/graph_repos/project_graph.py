@@ -19,7 +19,7 @@ defect (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`) this function exists to close
 from __future__ import annotations
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.vector_indexes import (
     drop_summary_index,
     list_summary_vector_indexes,
 )

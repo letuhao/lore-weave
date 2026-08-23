@@ -53,7 +53,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import maintenance
+from app.db.graph_repos import maintenance
 from app.metrics import evidence_count_drift_fixed_total
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ async def _reconcile_label(
     limit: int | None,
 ) -> int:
     """Fix one label's drifted counters. The query moved to
-    `neo4j_repos/maintenance.py` (plan T17); what stays here is the per-run ORCHESTRATION
+    `graph_repos/maintenance.py` (plan T17); what stays here is the per-run ORCHESTRATION
     — which labels, in what order, with what cap — because that is scheduling policy.
 
     The metric increment stays here for the same reason: how much drift a sweeper repaired

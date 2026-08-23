@@ -1512,6 +1512,30 @@ traffic. **A bounded, measured translation beats 85 unmeasured port methods.**
 `port-adoption-gate` already prints class (d) every run; the second path needs its own ratchet,
 and building that ratchet is the next unit rather than another decision.
 
+⚠️ **DISCHARGED 2026-08-24 (T17 A29/A30) — both named binders are gone, and both are now
+MEASURED.** This section named exactly two things binding the layer to Neo4j — *"the Cypher
+dialect and the session type"* — and added that the ceiling *"counts modules bound to a
+Neo4j-named package, and that count must still fall as the layer is renamed"*. State now:
+
+```
+Cypher dialect          0/0   ratchet, since T63/T67
+session type            0     `neo4j_session` -> `graph_session`, 647 sites (A29)
+Neo4j-named package     0     `app/db/neo4j_repos` -> `app/db/graph_repos`, 614 sites (A30)
+engine-named binders    0/0   ratchet, NEW — nothing measured this before A30
+```
+
+**The ceiling of 54 does NOT move, and saying so first is the point.** It still counts modules
+binding the repo layer directly, which is still real port-adoption debt; renaming the package
+does not migrate a single module. What the rename discharges is a *different* criterion this
+section wrote down and no gate ever read — and an unmeasured criterion is one that comes back
+silently, which is precisely what the pinned-session ratchet caught in A29 when it refused to
+credit a counter that had fallen to zero. `MAX_ENGINE_NAMED_REPO_BINDERS = 0` is that missing
+instrument, with five `--selftest` cases including the substring trap (`age` inside `storage`).
+
+**What this does NOT claim.** Class (d) is still 34, the ceiling is still 54, and the layer is
+still reached by 54 modules that a port would reach for them. This closes the NAMING half of
+path 2, which this section listed and which was the only half never instrumented.
+
 **Retry/registration:** supersedes the *To unblock* row of
 `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`, which named only path 1.
 

@@ -4,7 +4,7 @@
 port, T20 the fake, T42 built a second real adapter on Apache AGE — and
 `scripts/port-adoption-gate.py` then measured the thing none of that revealed:
 
-    71 module(s) bind `neo4j_repos` directly (ceiling 71); 0 import GraphStore
+    71 module(s) bind `graph_repos` directly (ceiling 71); 0 import GraphStore
 
 **Three conforming adapters, zero call sites.** Exactly the shape T25a found for vectors,
 where ~1200 lines of tested code executed only in tests. A port with no callers is not a

@@ -1,6 +1,6 @@
 """Neo4j implementation of the `GraphStore` port (plan T18).
 
-Delegates to `neo4j_repos`, like the vector and ontology adapters, for the same reason:
+Delegates to `graph_repos`, like the vector and ontology adapters, for the same reason:
 the repos hold the `run_read`/`run_write` tenancy guards, and a second copy of a tenant
 filter is how the two drift.
 
@@ -23,8 +23,8 @@ import logging
 import time
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.provenance import EvidenceWriteResult, add_evidence
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.provenance import EvidenceWriteResult, add_evidence
+from app.db.graph_repos.entities import (
     Entity,
     EntityDetail,
     archive_entity,
@@ -33,13 +33,13 @@ from app.db.neo4j_repos.entities import (
     merge_entity,
     restore_entity,
 )
-from app.db.neo4j_repos.entity_status import status_at_order
-from app.db.neo4j_repos import maintenance as _maintenance
-from app.db.neo4j_repos.events import Event, list_events_filtered, list_events_in_order
-from app.db.neo4j_repos import facts as _facts_repo
-from app.db.neo4j_repos import events as _event_repo
-from app.db.neo4j_repos import relations as _rel_repo
-from app.db.neo4j_repos.relations import Relation, create_relation, find_relations_for_entity
+from app.db.graph_repos.entity_status import status_at_order
+from app.db.graph_repos import maintenance as _maintenance
+from app.db.graph_repos.events import Event, list_events_filtered, list_events_in_order
+from app.db.graph_repos import facts as _facts_repo
+from app.db.graph_repos import events as _event_repo
+from app.db.graph_repos import relations as _rel_repo
+from app.db.graph_repos.relations import Relation, create_relation, find_relations_for_entity
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection

@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos import temporal as tm
+from app.db.graph_repos import temporal as tm
 from app.extraction.pass2_writer import write_pass2_extraction
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
@@ -34,14 +34,14 @@ async def test_writer_drives_maintain_chain_on_relations_and_facts():
     """The extraction writeback opts into the ordinal-aware close: create_relation
     + merge_fact both get maintain_chain=True and valid_from_ordinal=chapter_base
     (= chapter_index × stride)."""
-    from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+    from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 
     rel_calls: list[dict] = []
     fact_calls: list[dict] = []
 
     async def _fake_create_relation(session, **kwargs):
         rel_calls.append(kwargs)
-        from app.db.neo4j_repos.relations import Relation
+        from app.db.graph_repos.relations import Relation
         return Relation(
             id="r1", user_id=_USER, subject_id=kwargs["subject_id"],
             object_id=kwargs["object_id"], predicate=kwargs["predicate"],
@@ -49,7 +49,7 @@ async def test_writer_drives_maintain_chain_on_relations_and_facts():
 
     async def _fake_merge_fact(session, **kwargs):
         fact_calls.append(kwargs)
-        from app.db.neo4j_repos.facts import Fact
+        from app.db.graph_repos.facts import Fact
         return Fact(
             id="f1", user_id=_USER, type=kwargs["type"],
             content=kwargs["content"], canonical_content=kwargs["content"],
@@ -58,7 +58,7 @@ async def test_writer_drives_maintain_chain_on_relations_and_facts():
     # Resolve both endpoints + the fact subject to the same merged entity so the
     # relation/fact actually get written (not cascade-skipped).
     async def _fake_resolve(session, anchor_index, **kwargs):
-        from app.db.neo4j_repos.entities import Entity
+        from app.db.graph_repos.entities import Entity
         # deterministic id per name so subject/object differ
         eid = "ent-" + kwargs["name"].lower()
         return Entity(
@@ -70,7 +70,7 @@ async def test_writer_drives_maintain_chain_on_relations_and_facts():
         return None
 
     async def _fake_source(session, **kwargs):
-        from app.db.neo4j_repos.provenance import ExtractionSource
+        from app.db.graph_repos.provenance import ExtractionSource
         return ExtractionSource(
             id="src1", user_id=_USER, source_type="chapter", source_id="ch1",
         )
@@ -143,7 +143,7 @@ async def test_restitch_returns_total_facts_plus_relations():
     fact_res.single = AsyncMock(return_value={"restitched": 3})
     rel_res = AsyncMock()
     rel_res.single = AsyncMock(return_value={"restitched": 2})
-    with patch("app.db.neo4j_repos.temporal.run_write",
+    with patch("app.db.graph_repos.temporal.run_write",
                new_callable=AsyncMock) as mock_run:
         mock_run.side_effect = [fact_res, rel_res]
         total = await tm.restitch_chains_after_retract(

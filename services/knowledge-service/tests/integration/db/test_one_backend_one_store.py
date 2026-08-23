@@ -2,7 +2,7 @@
 
 🔴 **This is the measurement that stopped T54, inverted into a test.** Flipping
 `KNOWLEDGE_GRAPH_BACKEND=age` on dev put the 19 `GraphStore` adopters on AGE and the 54
-`neo4j_repos` binders on Neo4j — one conceptual graph, two stores, one of them empty, inside a
+`graph_repos` binders on Neo4j — one conceptual graph, two stores, one of them empty, inside a
 single service:
 
     18:39:50  K11.3: Neo4j schema applied successfully   <- Neo4j, 4926 entities
@@ -107,7 +107,7 @@ async def test_the_repo_layer_and_the_PORT_read_the_SAME_store(age_backend):
     """
     from app.adapters.graph_store_provider import get_graph_store
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos import entities as en
+    from app.db.graph_repos import entities as en
 
     uid = f"u-{uuid.uuid4().hex[:8]}"
     proj = f"p-{uuid.uuid4().hex[:8]}"

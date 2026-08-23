@@ -1,6 +1,6 @@
 """Engine-neutral Cypher tokens — spec §10.2.
 
-`neo4j_repos` is Neo4j-shaped in its **dialect**, not in its semantics: its functions are
+`graph_repos` is Neo4j-shaped in its **dialect**, not in its semantics: its functions are
 already domain-shaped (`find_entities_by_name`, `status_at_order`), which the sealed plan
 observed on day one. §10.1 decided the layer becomes engine-agnostic rather than being
 absorbed into a 106-method port. This module is the smallest piece of that: the places where
@@ -31,7 +31,7 @@ Write `{NOW}` in the template and render it once, at the call site that knows th
     _CHAIN = "MATCH (f:Fact) SET f.updated_at = {NOW} RETURN f"
     await run_write(session, render(_CHAIN, "neo4j"), ...)
 
-⚠️ This module lives OUTSIDE `neo4j_repos` on purpose. `port-adoption-gate`'s dialect ratchet
+⚠️ This module lives OUTSIDE `graph_repos` on purpose. `port-adoption-gate`'s dialect ratchet
 counts Neo4j-only constructs in that package's code strings; defining `"datetime()"` inside it
 would make the gate count its own cure.
 """

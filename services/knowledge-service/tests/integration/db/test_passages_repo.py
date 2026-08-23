@@ -17,11 +17,11 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.vector_indexes import (
     ensure_passage_vector_index,
     passage_index_name,
 )
-from app.db.neo4j_repos.passages import (
+from app.db.graph_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     delete_passages_for_source,
     find_passages_by_fulltext,

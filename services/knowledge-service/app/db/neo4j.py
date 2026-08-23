@@ -159,7 +159,7 @@ def graph_session(*, engine: str | None = None, **kwargs: Any) -> Any:
 
     🔴 **THIS FUNCTION IS T54's BLOCKER, AND WAS ITS CAUSE.** Flipping the backend
     to AGE split one conceptual graph across two stores: the 19 `GraphStore`
-    adopters read AGE while the 54 `neo4j_repos` binders read Neo4j, inside a
+    adopters read AGE while the 54 `graph_repos` binders read Neo4j, inside a
     single service, with AGE empty. T54b measured it live on dev — `Neo4j schema
     applied` and `AGE pool ready` one second apart — and reverted the pin.
 

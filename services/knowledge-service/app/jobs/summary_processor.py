@@ -33,8 +33,8 @@ from uuid import UUID
 import asyncpg
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import hierarchy as hierarchy_repo
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos import hierarchy as hierarchy_repo
+from app.db.graph_repos.vector_indexes import (
     ensure_summary_indexes,
     summary_index_name,
 )
@@ -413,7 +413,7 @@ async def _reenqueue_with_backoff(
     await enqueue(new_msg)
 
 
-# ── Neo4j helpers (stubs — wired to neo4j_repos in worker-ai task setup) ──
+# ── Neo4j helpers (stubs — wired to graph_repos in worker-ai task setup) ──
 
 
 async def _load_scene_leaf_texts(book_id: UUID, chapter_id: UUID) -> list[str]:

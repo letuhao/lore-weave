@@ -26,7 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     Entity,
     _MERGE_ENTITY_CYPHER,
     _node_to_entity,
@@ -78,7 +78,7 @@ def _make_result(record: dict | None):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.entities.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.entities.run_write", new_callable=AsyncMock)
 async def test_merge_entity_auto_created_true_passes_kwarg_to_run_write(mock_run):
     """auto_created=True flows through to the Cypher $auto_created param."""
     mock_run.return_value = _make_result({"e": _entity_node(auto_created=True)})
@@ -103,7 +103,7 @@ async def test_merge_entity_auto_created_true_passes_kwarg_to_run_write(mock_run
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.entities.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.entities.run_write", new_callable=AsyncMock)
 async def test_merge_entity_default_passes_auto_created_false_to_run_write(mock_run):
     """Caller omits `auto_created` → default False propagates.
 

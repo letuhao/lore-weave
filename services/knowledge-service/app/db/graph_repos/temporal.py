@@ -58,7 +58,7 @@ from __future__ import annotations
 # private name is deliberate: events.py is the single source of truth for it
 # (its docstring explains why INT64_MAX over INT32_MAX), and F3 must not mint a
 # second, drifting copy.
-from app.db.neo4j_repos.events import _NULL_ORDER_SENTINEL
+from app.db.graph_repos.events import _NULL_ORDER_SENTINEL
 from app.db.neo4j_helpers import CypherSession, run_write
 
 __all__ = [

@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.clients.book_client import BookServiceUnavailable, WorldNotFound
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.events import Event
 
 _TEST_USER = uuid4()
 _WORLD = uuid4()

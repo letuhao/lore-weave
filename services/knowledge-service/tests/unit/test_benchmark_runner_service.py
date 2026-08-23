@@ -45,7 +45,7 @@ from app.benchmark.runner import (
     run_project_benchmark,
 )
 from app.db.models import Project
-from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES
+from app.db.graph_repos.passages import KNOWN_SOURCE_TYPES
 from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE
 
 
@@ -461,7 +461,7 @@ def test_known_source_types_cover_every_real_upsert_passage_callsite():
     assert not unknown, (
         f"passage_ingester writes source_type values not in "
         f"KNOWN_SOURCE_TYPES: {unknown}. Extend KNOWN_SOURCE_TYPES in "
-        f"app/db/neo4j_repos/passages.py so the empty-project guard in "
+        f"app/db/graph_repos/passages.py so the empty-project guard in "
         f"app/benchmark/runner.py catches them."
     )
 
@@ -475,11 +475,11 @@ def test_real_passage_count_cypher_has_safety_clauses():
     the guard a no-op. Pin the three clauses that matter: tenant
     filter, project scope, and the source-type IN list.
     """
-    # The query moved to `neo4j_repos/passages.py` (plan T17) and its parameter was renamed
+    # The query moved to `graph_repos/passages.py` (plan T17) and its parameter was renamed
     # `$real_types` -> `$source_types` to match the repo's vocabulary. The GUARD follows the
     # query rather than being deleted with it: the `IN` vs `=` typo it protects against is
     # just as silent in the new home, and this is still the only test that reads the literal.
-    from app.db.neo4j_repos.passages import _COUNT_BY_SOURCE_TYPES_CYPHER as cypher
+    from app.db.graph_repos.passages import _COUNT_BY_SOURCE_TYPES_CYPHER as cypher
 
     assert "p.user_id = $user_id" in cypher, "tenant filter missing"
     assert "p.project_id = $project_id" in cypher, "project scope missing"
@@ -501,7 +501,7 @@ def test_alias_collision_precheck_excludes_the_two_merge_participants():
     Added in T17 after a bite showed the clause had NO test at all — the query was only
     ever exercised against a live graph.
     """
-    from app.db.neo4j_repos.entities import _ALIAS_COLLISION_CYPHER as cypher
+    from app.db.graph_repos.entities import _ALIAS_COLLISION_CYPHER as cypher
 
     assert "e.id <> $source_id" in cypher, "the merge SOURCE is not excluded"
     assert "e.id <> $target_id" in cypher, "the merge TARGET is not excluded"

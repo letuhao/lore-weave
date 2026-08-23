@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_resolver import (
     build_anchor_index,

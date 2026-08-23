@@ -39,7 +39,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
-# ⚠️ These come from `app.domain`, NOT from `db/neo4j_repos/` (T17). A port that imports its
+# ⚠️ These come from `app.domain`, NOT from `db/graph_repos/` (T17). A port that imports its
 # own implementation is not a boundary: every signature here was typed in one engine's
 # vocabulary, `port-adoption-gate` counted this file among the modules bound to the concrete
 # layer (correctly — an import is an import), and a second adapter returned Neo4j's models by
@@ -269,7 +269,7 @@ class GraphStore(Protocol):
         `T17: the port owns everything`) does not overrule the reasoning — it adds the browse
         the reasoning was pointing at.** The adapter was right that a count belongs to a
         paginated browse; there simply was not one, so the count was being dropped on the
-        floor and every caller that needed it stayed bound to `neo4j_repos`.
+        floor and every caller that needed it stayed bound to `graph_repos`.
 
         ── Why a tuple and not a page object ─────────────────────────────────────────────
         `(rows, total)` mirrors the concrete `list_events_filtered` exactly. A richer wrapper
@@ -457,7 +457,7 @@ class GraphStore(Protocol):
         3 modules — `pass2_writer`, `pattern_writer`, `backfill_status`. That is the rule the
         port's own header states, and the measured tail behind it is why the rule matters:
         106 distinct repo functions are still called, **64 % of them exactly once**. A port
-        that absorbed all of those would be `neo4j_repos` with an interface in front.
+        that absorbed all of those would be `graph_repos` with an interface in front.
 
         ⚠️ **The atomic counter increment is the whole point.** Writing the edge directly
         would let `evidence_count`/`mention_count` drift, and the K11.9 reconciler is only the

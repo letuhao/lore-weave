@@ -48,8 +48,8 @@ import logging
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read
-from app.db.neo4j_repos.entity_status import status_at_order
-from app.db.neo4j_repos.relations import find_relations_for_entity
+from app.db.graph_repos.entity_status import status_at_order
+from app.db.graph_repos.relations import find_relations_for_entity
 
 logger = logging.getLogger(__name__)
 

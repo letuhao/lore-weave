@@ -16,7 +16,7 @@ import pytest
 from app.adapters.age_graph_store import AgeGraphStore
 from app.adapters.fake_graph_store import FakeGraphStore
 from app.adapters.neo4j_graph_store import Neo4jGraphStore
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.events import Event
 from app.ports.graph_store import GraphStore
 
 _U = "user-1"

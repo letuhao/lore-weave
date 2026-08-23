@@ -59,7 +59,7 @@ async def test_an_entity_is_found_by_an_ALIAS_that_is_not_its_canonical_name(
     their arms; a predicate lost from one and kept in the other is precisely what that shape
     hid.
     """
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph_repos.entities import (
         find_entities_by_name,
         merge_entity,
         update_entity_fields,
@@ -111,7 +111,7 @@ async def test_an_entity_matching_BOTH_arms_resolves_to_ONE_row(neo4j_driver, te
     A `merge_entity`-created node has its own name as canonical name AND as its first alias, so
     both halves of the `OR` match it. `UNION` deduplicated that; the collapsed form must too.
     """
-    from app.db.neo4j_repos.entities import find_entities_by_name, merge_entity
+    from app.db.graph_repos.entities import find_entities_by_name, merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     name = f"Kai{uuid.uuid4().hex[:6]}"
@@ -141,7 +141,7 @@ async def test_dedup_does_not_COLLAPSE_two_genuinely_different_entities(
     """The other direction, on a case the dedup was not derived from: two nodes resolving from
     the same string is the real, intended output of this query — it is what the
     anchored-above-discovered ranking in the `ORDER BY` exists to sort."""
-    from app.db.neo4j_repos.entities import find_entities_by_name, merge_entity
+    from app.db.graph_repos.entities import find_entities_by_name, merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     name = f"Rin{uuid.uuid4().hex[:6]}"
@@ -176,7 +176,7 @@ async def test_a_VARIANT_spelling_resolves_through_the_CANONICAL_half(neo4j_driv
     canonical name across two glossary anchors, and every one of them is CJK (T35). Without the
     canonical arm a reader searching the traditional spelling of a character finds nothing.
     """
-    from app.db.neo4j_repos.entities import find_entities_by_name, merge_entity
+    from app.db.graph_repos.entities import find_entities_by_name, merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     stored, variant = "张济", "張濟"

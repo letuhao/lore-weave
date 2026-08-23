@@ -14,7 +14,7 @@ from app.coaching import (
     OverdueCommitment, THREAD_OPEN, THREAD_RESOLVED,
     find_overdue_commitments, validate_thread_status,
 )
-from app.db.neo4j_repos.facts import FACT_TYPES, FactType
+from app.db.graph_repos.facts import FACT_TYPES, FactType
 from app.db.models import FactType as ModelFactType
 from typing import get_args
 
@@ -87,14 +87,14 @@ def test_merge_fact_defaults_maintain_chain_false_for_new_writers():
     # SAFE DEFAULT (maintain_chain=False). Flipping it True would collapse the (subject,
     # fact_type) chain (every 'commitment' about a subject into one) — this guards the default.
     import inspect
-    from app.db.neo4j_repos.facts import merge_fact
+    from app.db.graph_repos.facts import merge_fact
     assert inspect.signature(merge_fact).parameters["maintain_chain"].default is False
 
 
 def test_kg_propose_fact_enum_derives_from_sot_no_drift():
     # cold-review MED-1 — the advertised kg_propose_fact enum must equal the SoT (it had drifted
     # to a stale 4-type tuple missing 'statement' + 'commitment').
-    from app.db.neo4j_repos.facts import MEMORY_FACT_TYPES, STORY_FACT_TYPES
+    from app.db.graph_repos.facts import MEMORY_FACT_TYPES, STORY_FACT_TYPES
     from app.tools.graph_schema_tools import _PROPOSE_FACT_TYPES
 
     # T48b — this asserted `== set(FACT_TYPES)` and went stale on 2026-08-11, when `:Fact`

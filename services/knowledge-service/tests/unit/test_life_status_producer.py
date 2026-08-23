@@ -17,7 +17,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 from app.extraction.pass2_writer import Pass2WriteResult, StatusTransition
 
 

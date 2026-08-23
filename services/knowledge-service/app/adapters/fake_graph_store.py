@@ -25,9 +25,9 @@ import logging
 from datetime import datetime, timezone
 
 from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
-from app.db.neo4j_repos.entities import Entity, EntityDetail
-from app.db.neo4j_repos.events import Event
-from app.db.neo4j_repos.relations import Relation
+from app.db.graph_repos.entities import Entity, EntityDetail
+from app.db.graph_repos.events import Event
+from app.db.graph_repos.relations import Relation
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection
@@ -675,7 +675,7 @@ class FakeGraphStore:
         if not 0.0 <= confidence <= 1.0:
             raise ValueError(f"confidence must be in [0,1], got {confidence}")
 
-        from app.db.neo4j_repos.provenance import EvidenceWriteResult
+        from app.db.graph_repos.provenance import EvidenceWriteResult
 
         ent = self._entities.get(target_id)
         if ent is None or ent.user_id != user_id:

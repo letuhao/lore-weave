@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.relations import Relation, recreate_relation
+from app.db.graph_repos.relations import Relation, recreate_relation
 
 _TEST_USER = uuid4()
 _SUBJ = "ent-subj-1"
@@ -51,7 +51,7 @@ def test_recreate_cypher_resurrects_valid_until():
     """F5 regression-lock: the recreate Cypher MUST clear valid_until on ON
     MATCH (resurrect), and it MUST be a DIFFERENT query than create_relation
     (whose ON MATCH never touches valid_until — so extraction can't resurrect)."""
-    from app.db.neo4j_repos import relations as m
+    from app.db.graph_repos import relations as m
     import re as _re
     # whitespace-insensitive: the merged SET aligns its `=` signs (T71), and pinning that
     # alignment would make a cosmetic reformat look like a broken invariant.
@@ -67,7 +67,7 @@ def test_recreate_cypher_resurrects_valid_until():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_recreate_relation_builds_edge(mock_run):
     mock_run.return_value = _make_result({
         "rel": {"id": "rel-1", "user_id": str(_TEST_USER), "subject_id": _SUBJ,
@@ -85,7 +85,7 @@ async def test_recreate_relation_builds_edge(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_recreate_relation_none_when_endpoint_missing(mock_run):
     mock_run.return_value = _make_result(None)
     rel = await recreate_relation(

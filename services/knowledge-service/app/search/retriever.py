@@ -30,7 +30,7 @@ from app.ports.vector_store import VectorFilter, VectorHit
 from app.db.models import Project
 from app.db.neo4j import graph_session
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
-from app.db.neo4j_repos.passages import PassageSearchHit, find_passages_by_fulltext
+from app.db.graph_repos.passages import PassageSearchHit, find_passages_by_fulltext
 from app.search.hybrid_fusion import (
     BLOCK_CHAPTER_CAP,
     apply_language_preference,

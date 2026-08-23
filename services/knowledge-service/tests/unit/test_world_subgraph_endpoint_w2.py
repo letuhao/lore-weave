@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.clients.book_client import BookServiceUnavailable, WorldNotFound
-from app.db.neo4j_repos.relations import SUBGRAPH_MAX_NODE_CAP, Subgraph, SubgraphNode
+from app.db.graph_repos.relations import SUBGRAPH_MAX_NODE_CAP, Subgraph, SubgraphNode
 
 _TEST_USER = uuid4()
 _OTHER_USER = uuid4()

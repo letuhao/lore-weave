@@ -138,7 +138,7 @@ async def test_the_quarantine_sweep_is_guarded_even_though_it_BYPASSES_run_write
     function whose `user_id` is legitimately `None`, so it cannot use `run_write`. That also
     puts it outside the chokepoint these tests pin, which is exactly the kind of exception a
     guard quietly fails to cover."""
-    import app.db.neo4j_repos.maintenance as m
+    import app.db.graph_repos.maintenance as m
 
     assert "assert_rendered(cypher)" in _source(m.invalidate_stale_quarantined_facts), (
         "the one repo call that bypasses run_write lost its explicit assert_rendered; a token "

@@ -27,7 +27,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()

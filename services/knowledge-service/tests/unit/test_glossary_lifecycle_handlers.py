@@ -99,9 +99,9 @@ async def test_status_leaving_active_archives_with_that_reason(pool, status):
     """
     entity = MagicMock(id="kg-node-1")
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive, \
+         patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive, \
          patch("app.adapters.graph_store_provider.Neo4jGraphStore.archive_entity",
                new_callable=AsyncMock) as hard_archive:
         await handle_glossary_entity_status_changed(
@@ -127,9 +127,9 @@ async def test_status_returning_to_active_restores_only_status_archives(pool):
     deleted entity into every RAG answer.
     """
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True, return_value=MagicMock(id="kg-node-1")) as restore, \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive:
+         patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status="active", prior_status="rejected")),
@@ -148,8 +148,8 @@ async def test_status_missing_from_payload_touches_nothing(pool):
     resurrect them. Neither is a safe silent choice, so the handler does nothing and warns.
     """
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive, \
-         patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive, \
+         patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True) as restore:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed", _payload(prior_status="active")),
@@ -164,7 +164,7 @@ async def test_status_change_on_a_book_with_no_kg_project_is_a_no_op(pool):
     """The cold-start answer for most books, and it must be silent rather than an error."""
     pool.fetchrow = AsyncMock(return_value=None)
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive:
+         patch("app.db.graph_repos.entities.user_archive_entity", autospec=True) as archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status="rejected", prior_status="active")),
@@ -180,7 +180,7 @@ async def test_status_change_on_a_book_with_no_kg_project_is_a_no_op(pool):
 async def test_delete_archives_with_the_glossary_deleted_reason(pool):
     entity = MagicMock(id="kg-node-1")
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
          patch("app.adapters.graph_store_provider.Neo4jGraphStore.archive_entity",
                new_callable=AsyncMock) as archive:
@@ -200,7 +200,7 @@ async def test_recycle_bin_restore_does_not_undo_a_status_retirement(pool):
     `glossary_deleted` prefix is what keeps a still-`rejected` entity archived.
     """
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.restore_entity_by_glossary_id",
                autospec=True, return_value=None) as restore:
         await handle_glossary_entity_restored(
             _event("glossary.entity_restored", _payload(op="restored")), pool=pool,
@@ -214,7 +214,7 @@ async def test_purge_hard_deletes_the_node(pool):
     """A Postgres purge does not cascade to Neo4j, so without this the node outlives the
     entity that justified it and keeps answering queries about something permanently gone."""
     with patch("app.db.neo4j.graph_session", _session), \
-         patch("app.db.neo4j_repos.entities.purge_entity_by_glossary_id",
+         patch("app.db.graph_repos.entities.purge_entity_by_glossary_id",
                autospec=True, return_value=1) as purge:
         await handle_glossary_entity_purged(
             _event("glossary.entity_purged", _payload(op="purged")), pool=pool,
@@ -229,7 +229,7 @@ def test_restore_cypher_scopes_on_the_archive_reason():
     The handlers above prove the right `reason_prefix` reaches the repo. That is worthless if
     the Cypher ignores it — a mocked repo cannot tell you the query honours its own argument.
     """
-    from app.db.neo4j_repos.entities import _RESTORE_BY_GLOSSARY_ID_CYPHER as cypher
+    from app.db.graph_repos.entities import _RESTORE_BY_GLOSSARY_ID_CYPHER as cypher
 
     assert "$reason_prefix" in cypher, "the restore must consume the prefix it is handed"
     assert "archive_reason" in cypher and "STARTS WITH" in cypher
@@ -247,7 +247,7 @@ def test_both_archive_cyphers_let_the_first_reason_win():
     mentions status. `coalesce` makes the first archiver own the un-archive; every restore path
     clears the reason, so ownership lasts exactly as long as the archive.
     """
-    from app.db.neo4j_repos import entities as repo
+    from app.db.graph_repos import entities as repo
 
     for name in ("_ARCHIVE_CYPHER", "_USER_ARCHIVE_CYPHER"):
         cypher = getattr(repo, name)

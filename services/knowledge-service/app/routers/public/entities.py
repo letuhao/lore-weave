@@ -30,15 +30,15 @@ from app.db.neo4j import graph_session
 from app.db.neo4j_helpers import run_read
 from loreweave_extraction.canonical import canonicalize_entity_name
 from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
-from app.db.neo4j_repos.entities import AUTHORABLE_KINDS, ENTITIES_MAX_LIMIT, ENTITY_SORT_KEYS, ENTITY_STATUSES, Entity, EntityDetail, MergeEntitiesError, find_alias_collision, find_gap_candidates, get_entities_by_ids, get_entity, get_entity_with_relations, link_to_glossary, list_entities_filtered, list_user_entities, merge_entities, merge_entity, unlock_entity_user_edited, update_entity_fields, user_archive_entity
-from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.facts import (
+from app.db.graph_repos.entities import AUTHORABLE_KINDS, ENTITIES_MAX_LIMIT, ENTITY_SORT_KEYS, ENTITY_STATUSES, Entity, EntityDetail, MergeEntitiesError, find_alias_collision, find_gap_candidates, get_entities_by_ids, get_entity, get_entity_with_relations, link_to_glossary, list_entities_filtered, list_user_entities, merge_entities, merge_entity, unlock_entity_user_edited, update_entity_fields, user_archive_entity
+from app.db.graph_repos.entity_status import statuses_detail_at_order
+from app.db.graph_repos.facts import (
     Fact,
     FactType,
     list_facts_for_entity,
     merge_fact,
 )
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
     Subgraph,
@@ -65,7 +65,7 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
-from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING
+from app.db.graph_repos.temporal import ORDINAL_OPEN_CEILING
 from app.spoiler_window import REVEAL_ALL, parse_reveal_at, resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
@@ -1283,7 +1283,7 @@ class EntityUpdate(BaseModel):
 # ── T2.5 World Map — manual entity authoring ──────────────────────────
 
 # S7-1 — the human create path gates ``kind`` to ``AUTHORABLE_KINDS`` (the
-# ONE home, defined in neo4j_repos/entities.py). The old local set used the
+# ONE home, defined in graph_repos/entities.py). The old local set used the
 # ``faction`` misnomer and omitted ``organization``/``item`` — a create form
 # built to the 7-value browse filter silently 422'd 4 of them. The set is now
 # shared with the agent gate (KgCreateNodeArgs) so create == agent (INV-parity).
@@ -1774,7 +1774,7 @@ async def merge_entity_into(
             if source.canonical_name and source.canonical_name not in candidate_canonicals:
                 candidate_canonicals.append(source.canonical_name)
             if candidate_canonicals:
-                # The query moved to `neo4j_repos/entities.py` (plan T17); the 409 and its
+                # The query moved to `graph_repos/entities.py` (plan T17); the 409 and its
                 # message stay here, because "what the API says when a merge is ambiguous"
                 # is a routing decision, not a storage one.
                 collision_row = await find_alias_collision(

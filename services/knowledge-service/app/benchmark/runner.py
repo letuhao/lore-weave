@@ -151,7 +151,7 @@ async def _has_real_passages(user_id: str, project_id: str) -> bool:
     is in ``KNOWN_SOURCE_TYPES``. ``benchmark_entity`` is excluded so
     re-runs don't self-block.
     """
-    from app.db.neo4j_repos.passages import count_passages_by_source_types
+    from app.db.graph_repos.passages import count_passages_by_source_types
 
     async with graph_session(engine="neo4j") as session:
         n = await count_passages_by_source_types(

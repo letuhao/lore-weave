@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos import maintenance
-from app.db.neo4j_repos.passages import _RECENT_PASSAGE_TEXTS_CYPHER
+from app.db.graph_repos import maintenance
+from app.db.graph_repos.passages import _RECENT_PASSAGE_TEXTS_CYPHER
 
 
 class _FakeResult:
@@ -130,7 +130,7 @@ def test_passage_is_not_a_project_delete_label():
 async def test_summary_write_rejects_a_level_outside_the_closed_set():
     """`write_summary_to_node` interpolates the node LABEL from the level. Same barrier,
     same reason it needed its own test."""
-    from app.db.neo4j_repos import hierarchy
+    from app.db.graph_repos import hierarchy
 
     with pytest.raises(ValueError):
         await hierarchy.write_summary_to_node(

@@ -19,12 +19,12 @@ from app.db.cypher_dialect import render
 
 import pytest
 
-from app.db.neo4j_repos import facts as fm
-from app.db.neo4j_repos import relations as rm
-from app.db.neo4j_repos import temporal as tm
-from app.db.neo4j_repos.events import _NULL_ORDER_SENTINEL
-from app.db.neo4j_repos.facts import merge_fact
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos import facts as fm
+from app.db.graph_repos import relations as rm
+from app.db.graph_repos import temporal as tm
+from app.db.graph_repos.events import _NULL_ORDER_SENTINEL
+from app.db.graph_repos.facts import merge_fact
+from app.db.graph_repos.relations import create_relation
 
 _USER = uuid4()
 _SUBJ = "ent-subj-1"
@@ -91,7 +91,7 @@ def test_maintain_chain_cypher_is_ordinal_aware_not_wallclock():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_defaults_valid_from_ordinal_to_from_order(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -107,7 +107,7 @@ async def test_merge_fact_defaults_valid_from_ordinal_to_from_order(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_explicit_ordinal_wins_over_from_order(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -121,7 +121,7 @@ async def test_merge_fact_explicit_ordinal_wins_over_from_order(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_maintain_chain_fires_after_merge_with_subject(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -141,7 +141,7 @@ async def test_merge_fact_maintain_chain_fires_after_merge_with_subject(mock_run
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_no_chain_without_ordinal(mock_run):
     """maintain_chain requested but the fact is positionless → no close (it has
     no place on the story axis)."""
@@ -175,7 +175,7 @@ def _rel_record():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_passes_ordinal_and_ceiling(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -188,7 +188,7 @@ async def test_create_relation_passes_ordinal_and_ceiling(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_maintain_chain_fires_after_create(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -202,7 +202,7 @@ async def test_create_relation_maintain_chain_fires_after_create(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_legacy_path_unchanged(mock_run):
     """No ordinal + no maintain_chain ⇒ exactly one write (the create), byte-
     identical legacy behaviour."""
@@ -216,7 +216,7 @@ async def test_create_relation_legacy_path_unchanged(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_single_active_and_maintain_chain_are_distinct(mock_run):
     """single_active (wall-clock close) and maintain_chain (ordinal close) are
     independent — both can be requested; they fire different queries."""
@@ -322,7 +322,7 @@ def test_extraction_BACKFILLS_a_story_position_but_never_MOVES_one():
     """
     import re
 
-    from app.db.neo4j_repos import relations as rm
+    from app.db.graph_repos import relations as rm
 
     assert re.search(
         r"r\.valid_from_ordinal\s*=\s*coalesce\(\s*r\.valid_from_ordinal\s*,",

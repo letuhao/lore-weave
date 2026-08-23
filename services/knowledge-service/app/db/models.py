@@ -15,8 +15,8 @@ ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]
 # K21-C (design D5): mirrors the MEMORY half of the Neo4j fact vocabulary
-# (`MemoryFactType` in app/db/neo4j_repos/facts.py). Kept as a local Literal (same pattern
-# as ProjectType / ScopeType) so app.db.models stays free of any neo4j_repos import.
+# (`MemoryFactType` in app/db/graph_repos/facts.py). Kept as a local Literal (same pattern
+# as ProjectType / ScopeType) so app.db.models stays free of any graph_repos import.
 #
 # MEMORY ONLY, and that is the whole domain — not a subset that drifted. `knowledge_pending_facts`
 # is the confirm queue for the chat-memory path, and it has exactly two writers:

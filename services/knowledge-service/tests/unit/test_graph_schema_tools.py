@@ -553,7 +553,7 @@ def _patch_endpoints_present(monkeypatch, present=("a", "b")):
         "app.tools.graph_schema_tools.graph_session", _fake_session,
     )
     monkeypatch.setattr(
-        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        "app.db.graph_repos.entities.existing_entity_node_ids",
         AsyncMock(return_value=set(present)),
     )
 
@@ -653,7 +653,7 @@ async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
     )
     # only "a" exists as a node; "b" is missing.
     monkeypatch.setattr(
-        "app.db.neo4j_repos.entities.existing_entity_node_ids",
+        "app.db.graph_repos.entities.existing_entity_node_ids",
         AsyncMock(return_value={"a"}),
     )
     monkeypatch.setattr(
@@ -1269,7 +1269,7 @@ async def test_kg_world_query_unions_partitions_and_reports_unreadable(monkeypat
             model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
         )
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1314,7 +1314,7 @@ async def test_kg_world_query_surfaces_node_cap_hit_as_meta_truncated(monkeypatc
             "edges": [], "node_cap_hit": True,
         })
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1394,7 +1394,7 @@ def _patch_subgraph(monkeypatch, seen: dict):
             model_dump=lambda mode="json": {"nodes": [{"id": "n1"}], "edges": []}
         )
 
-    monkeypatch.setattr("app.db.neo4j_repos.relations.get_world_subgraph", _fake_subgraph)
+    monkeypatch.setattr("app.db.graph_repos.relations.get_world_subgraph", _fake_subgraph)
 
     class _CM:
         async def __aenter__(self):
@@ -1761,7 +1761,7 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
 
     seen = {}
 
-    # The read moved to `neo4j_repos/graph_views.py` (plan T17), and the seam collapsed
+    # The read moved to `graph_repos/graph_views.py` (plan T17), and the seam collapsed
     # with it: one repo call RETURNS the rows, where before it was run_read + _records.
     # Patching run_read here would patch nothing, and the over-fetch assertion — the whole
     # point of this test — would silently stop being checked.
@@ -1829,7 +1829,7 @@ async def test_kg_entity_edge_timeline_overfetches_and_signals_truncation(monkey
 
     seen = {}
 
-    # The read moved to `neo4j_repos/graph_views.py` (plan T17), and the seam collapsed
+    # The read moved to `graph_repos/graph_views.py` (plan T17), and the seam collapsed
     # with it: one repo call RETURNS the rows, where before it was run_read + _records.
     # Patching run_read here would patch nothing, and the over-fetch assertion — the whole
     # point of this test — would silently stop being checked.

@@ -18,11 +18,11 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import get_entity, merge_entity
-from app.db.neo4j_repos.entity_status import merge_entity_status, status_at_order
-from app.db.neo4j_repos.events import get_event, merge_event
-from app.db.neo4j_repos.facts import get_fact, merge_fact
-from app.db.neo4j_repos.provenance import (
+from app.db.graph_repos.entities import get_entity, merge_entity
+from app.db.graph_repos.entity_status import merge_entity_status, status_at_order
+from app.db.graph_repos.events import get_event, merge_event
+from app.db.graph_repos.facts import get_fact, merge_fact
+from app.db.graph_repos.provenance import (
     SOURCE_TYPES,
     TARGET_LABELS,
     add_evidence,

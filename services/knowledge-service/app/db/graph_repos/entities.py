@@ -38,11 +38,11 @@ from app.db.neo4j_helpers import (
     run_write,
 )
 from app.db.repositories import VersionMismatchError
-from app.db.neo4j_repos.canonical import (
+from app.db.graph_repos.canonical import (
     canonicalize_entity_name,
     entity_canonical_id,
 )
-from app.db.neo4j_repos.relations import Relation, relation_id
+from app.db.graph_repos.relations import Relation, relation_id
 
 logger = logging.getLogger(__name__)
 
@@ -1742,7 +1742,7 @@ async def find_entities_by_vector(
 # The read counterpart (find_entities_by_vector, above) expects every
 # anchored :Entity to carry `embedding_{dim}` + `embedding_model`. K17 is the
 # producer that stamps them. Mirrors the passage embedding write
-# (app/db/neo4j_repos/passages.py upsert_passage): dim-validated f-string into
+# (app/db/graph_repos/passages.py upsert_passage): dim-validated f-string into
 # the property name (closed-set, no injection), only the dim-matching property
 # written so mixed-model tenants coexist. Unlike passages (chapter-scoped,
 # MERGE-on-ingest), an entity already exists — we MATCH and SET in place.
@@ -2133,7 +2133,7 @@ async def unlink_from_glossary(
 # glossary reset, e.g. from a maintenance shell:
 #
 #     from app.db.neo4j_helpers import get_session
-#     from app.db.neo4j_repos.entities import reset_glossary_anchors
+#     from app.db.graph_repos.entities import reset_glossary_anchors
 #     async with get_session() as session:
 #         n = await reset_glossary_anchors(session, user_id=None)
 #         print(f"cleared {n} glossary anchors")

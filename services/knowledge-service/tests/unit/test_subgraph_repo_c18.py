@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
     get_project_subgraph,

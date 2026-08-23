@@ -1033,7 +1033,7 @@ async def test_memory_search_projectless_never_searches_across_projects(monkeypa
 # yet silently reopen the diary→novel leak (the mocked-client-hides-server-filters bug class).
 
 def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
-    from app.db.neo4j_repos import entities as em
+    from app.db.graph_repos import entities as em
     for cypher in (em._FIND_BY_NAME_CYPHER_ACTIVE, em._FIND_BY_NAME_CYPHER_ALL):
         assert "exclude_project_ids" in cypher
         # T81 collapsed `CALL { … UNION … }` into one MATCH with an OR, so the predicate reads
@@ -1046,6 +1046,6 @@ def test_find_entities_cypher_carries_the_diary_exclusion_predicate():
 def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
     # audit HIGH-1 regression: memory_timeline reads through _LIST_EVENTS_FILTER_WHERE — it MUST carry the
     # same exclusion, or a projectless timeline leaks diary events even though entity-resolution is guarded.
-    from app.db.neo4j_repos import events as ev
+    from app.db.graph_repos import events as ev
     assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
     assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE

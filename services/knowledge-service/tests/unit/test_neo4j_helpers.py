@@ -22,7 +22,7 @@ from app.db.neo4j_helpers import (
 # purge_project moved to the project-graph repo (plan T13): neo4j_helpers is the
 # multi-tenant Cypher GUARD and now holds no Cypher of its own. Its tests stay here
 # because they are about the purge's contract, not about where the import lives.
-from app.db.neo4j_repos.project_graph import purge_project
+from app.db.graph_repos.project_graph import purge_project
 
 
 # ── assert_user_id_param ──────────────────────────────────────────────
@@ -349,7 +349,7 @@ async def test_run_read_any_owner_rejects_an_empty_cypher():
 @pytest.mark.asyncio
 async def test_get_entity_by_id_any_owner_no_longer_raises_typeerror():
     """The end-to-end regression for kg_entity_edge_timeline's dependency."""
-    from app.db.neo4j_repos import entities as entities_repo
+    from app.db.graph_repos import entities as entities_repo
 
     class _Result:
         async def single(self):
@@ -373,7 +373,7 @@ def test_neo4j_helpers_contains_no_cypher():
     """`neo4j_helpers` is the multi-tenant Cypher GUARD — `assert_user_id_param`,
     `run_read`, `run_write`. Index DDL and the project purge used to live here too, which
     made the one module whose job is to police queries also the one place a query was
-    expected. They moved to `neo4j_repos/vector_indexes.py` and `neo4j_repos/project_graph.py`
+    expected. They moved to `graph_repos/vector_indexes.py` and `graph_repos/project_graph.py`
     (plan T13); this keeps them from drifting back.
 
     The check reads STRING CONSTANTS ONLY, with docstrings excluded, because this module's
@@ -412,7 +412,7 @@ def test_neo4j_helpers_contains_no_cypher():
     ]
     assert not offenders, (
         "neo4j_helpers.py has Cypher back in it: "
-        f"{offenders}. Put it in a neo4j_repos module — the guard module must not be "
+        f"{offenders}. Put it in a graph_repos module — the guard module must not be "
         "the place queries live, or the rule it enforces reads as optional."
     )
 

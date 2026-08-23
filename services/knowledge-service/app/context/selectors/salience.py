@@ -15,7 +15,7 @@ the P1 explicit-query eval showed REGRESSION at w_access=0.3 (spec §8b), so the
 flip gate for either weight is an ambiguous-query eval showing lift.
 
 This module holds SCORING ONLY. The graph read it depends on lives in
-`app.db.neo4j_repos.entities` — a selector that speaks Cypher cannot be put behind a
+`app.db.graph_repos.entities` — a selector that speaks Cypher cannot be put behind a
 storage port, which is what the rest of this phase is for (plan T11). `PromotionSignals`
 and `load_promotion_signals` are re-exported here because that is where callers and tests
 already reach for them.
@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from app.config import settings
-from app.db.neo4j_repos.entities import PromotionSignals, load_promotion_signals
+from app.db.graph_repos.entities import PromotionSignals, load_promotion_signals
 from app.db.repositories.entity_access import EntitySalience
 
 logger = logging.getLogger(__name__)

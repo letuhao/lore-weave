@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.neo4j_repos.project_graph import purge_project
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.project_graph import purge_project
+from app.db.graph_repos.vector_indexes import (
     drop_summary_index,
     list_summary_vector_indexes,
 )
@@ -126,7 +126,7 @@ async def test_fulltext_search_refuses_by_name_on_a_non_neo4j_session():
     a default deployment it ran and raised `PostgresSyntaxError: syntax error at or near "."`,
     measured on iso.
     """
-    from app.db.neo4j_repos.passages import find_passages_by_fulltext
+    from app.db.graph_repos.passages import find_passages_by_fulltext
 
     with pytest.raises(NotImplementedError) as exc:
         await find_passages_by_fulltext(
@@ -142,7 +142,7 @@ async def test_fulltext_search_refuses_by_name_on_a_non_neo4j_session():
 @pytest.mark.asyncio
 async def test_fulltext_search_is_NOT_refused_on_neo4j():
     """Control arm — a guard that refuses everything would silently kill CJK search on Neo4j."""
-    from app.db.neo4j_repos.passages import find_passages_by_fulltext
+    from app.db.graph_repos.passages import find_passages_by_fulltext
 
     session = _Session("neo4j")
     try:
@@ -169,7 +169,7 @@ async def test_summary_index_search_refuses_by_name_on_a_non_neo4j_session():
     swallowed by `except Exception` into a WARNING with a stack trace reading
     *"summary_blend failed — degrading"*, on every Mode 3 request.
     """
-    from app.db.neo4j_repos.vector_indexes import query_summary_index
+    from app.db.graph_repos.vector_indexes import query_summary_index
 
     with pytest.raises(NotImplementedError) as exc:
         await query_summary_index(
@@ -184,7 +184,7 @@ async def test_summary_index_search_refuses_by_name_on_a_non_neo4j_session():
 @pytest.mark.asyncio
 async def test_summary_index_search_is_NOT_refused_on_neo4j():
     """Control arm — the summary blend must still run on the engine that has the indexes."""
-    from app.db.neo4j_repos.vector_indexes import query_summary_index
+    from app.db.graph_repos.vector_indexes import query_summary_index
 
     session = _Session("neo4j")
     try:

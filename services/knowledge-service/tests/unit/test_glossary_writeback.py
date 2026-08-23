@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 from app.extraction import glossary_writeback as gw
 
 USER_ID = str(uuid4())

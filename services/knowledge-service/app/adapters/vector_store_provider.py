@@ -147,7 +147,7 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
         embeddings and cannot see a delete that happened between embedding and write. This
         is the composition root precisely because it is the only layer that can see both.
         """
-        from app.db.neo4j_repos.entities import get_entity
+        from app.db.graph_repos.entities import get_entity
 
         # `get_entity` is the user-scoped lookup, NOT `get_entity_by_id_any_owner`. The
         # oracle decides whether to write a vector for this caller's entity, so an

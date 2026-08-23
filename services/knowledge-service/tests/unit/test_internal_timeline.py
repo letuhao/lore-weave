@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.routers import internal_timeline as mod
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 
 _TOKEN = "default_test_token"  # conftest INTERNAL_SERVICE_TOKEN default
 _BOOK = str(uuid4())

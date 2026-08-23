@@ -150,7 +150,7 @@ def engine_of(session: Any) -> Engine:
     """Which dialect `session` speaks.
 
     ⚠️ **This function exists because "the dialect backlog is zero" did not mean "the layer is
-    engine-agnostic".** T77-T82 took every Neo4j-only construct out of `neo4j_repos`, and the
+    engine-agnostic".** T77-T82 took every Neo4j-only construct out of `graph_repos`, and the
     ratchet duly read 0 — while **51 call sites across 11 modules still said
     `render(TEMPLATE, "neo4j")`**, naming the engine in a string literal the dialect scan
     cannot see. Running a real repo function against AGE failed on `function datetime does not

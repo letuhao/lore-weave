@@ -614,7 +614,7 @@ import pytest as _pytest  # noqa: E402  (kept local to this section)
 from fastapi import HTTPException  # noqa: E402
 
 from app.clients.grant_client import GrantLevel as _GL  # noqa: E402
-from app.db.neo4j_repos.entities import Entity as _Entity  # noqa: E402
+from app.db.graph_repos.entities import Entity as _Entity  # noqa: E402
 
 
 _PROJ_UUID = "22222222-2222-2222-2222-222222222222"
@@ -654,7 +654,7 @@ class _ProjectsRepoFixed:
 def _patch_entity(monkeypatch, ent):
     """Patch the any-owner Neo4j lookup the gate imports lazily, plus the
     session ctx-manager, so the gate runs driver-free."""
-    import app.db.neo4j_repos.entities as ent_mod
+    import app.db.graph_repos.entities as ent_mod
 
     async def _fake_lookup(session, canonical_id):
         return ent

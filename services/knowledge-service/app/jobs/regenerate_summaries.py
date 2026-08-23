@@ -57,7 +57,7 @@ from loreweave_llm.models import Job
 from app.context.formatters.token_counter import estimate_tokens
 from app.db.models import Summary
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import passages as passages_repo
+from app.db.graph_repos import passages as passages_repo
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
@@ -230,7 +230,7 @@ async def _fetch_recent_passages(
     (global-scope passages only). When set: filter to the given
     project_id. KSA §7.6 rule 5 — L0 vs L1 must not cross-contaminate.
     """
-    # The query moved to `neo4j_repos/passages.py` (plan T17), and the two scope branches
+    # The query moved to `graph_repos/passages.py` (plan T17), and the two scope branches
     # collapsed into one there — they differed only in the project predicate, and only one
     # of them was updated when the source-type filter was added.
     return await passages_repo.recent_passage_texts(

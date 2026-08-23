@@ -34,10 +34,10 @@ from app.clients.glossary_client import (
 )
 from app.clients.grant_client import GrantLevel
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.entities import resolve_kg_entity_id_by_glossary_id
-from app.db.neo4j_repos.entity_status import statuses_detail_at_order
-from app.db.neo4j_repos.events import list_events_filtered
-from app.db.neo4j_repos.facts import list_facts_for_entity
+from app.db.graph_repos.entities import resolve_kg_entity_id_by_glossary_id
+from app.db.graph_repos.entity_status import statuses_detail_at_order
+from app.db.graph_repos.events import list_events_filtered
+from app.db.graph_repos.facts import list_facts_for_entity
 from app.search.retriever import run_hybrid_search
 from app.spoiler_window import resolve_before_order, resolve_before_sort_order
 from app.tools.argbase import ProjectScopedArgs

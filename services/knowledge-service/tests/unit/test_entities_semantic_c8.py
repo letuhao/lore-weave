@@ -22,7 +22,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 from app.ports.vector_store import VectorHit
 
 

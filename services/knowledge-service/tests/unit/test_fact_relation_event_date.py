@@ -28,10 +28,10 @@ from app.db.cypher_dialect import render
 
 import pytest
 
-from app.db.neo4j_repos import facts as fm
-from app.db.neo4j_repos import relations as rm
-from app.db.neo4j_repos.facts import Fact, merge_fact
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos import facts as fm
+from app.db.graph_repos import relations as rm
+from app.db.graph_repos.facts import Fact, merge_fact
+from app.db.graph_repos.relations import (
     _edge_props_to_relation,
     create_relation,
 )
@@ -158,7 +158,7 @@ def test_event_date_is_additive_not_the_ordinal_axis():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_passes_event_date_iso(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -173,7 +173,7 @@ async def test_merge_fact_passes_event_date_iso(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_empty_event_date_normalizes_to_none(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -187,7 +187,7 @@ async def test_merge_fact_empty_event_date_normalizes_to_none(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_absent_date_is_null_safe_with_ordinal_chain(mock_run):
     """No event_date (the dominant case) must NOT disturb the ordinal axis: the
     valid_from_ordinal still flows and maintain_chain still fires."""
@@ -225,7 +225,7 @@ def _rel_record():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_passes_event_date_iso(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -236,7 +236,7 @@ async def test_create_relation_passes_event_date_iso(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_empty_event_date_normalizes_to_none(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -247,7 +247,7 @@ async def test_create_relation_empty_event_date_normalizes_to_none(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_legacy_path_unaffected_by_date(mock_run):
     """No date + no ordinal + no maintain_chain ⇒ still exactly one write; the
     new param defaults to None and never adds a query."""
@@ -283,7 +283,7 @@ def test_list_facts_order_event_date_is_secondary_not_primary():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_read", new_callable=AsyncMock)
 async def test_list_facts_for_entity_selects_order_fragment(mock_read):
     """order_by_event_date=True interpolates the event-date ORDER BY; the default
     interpolates the ordinal one. The fragment is from a CLOSED pair (never user

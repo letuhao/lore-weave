@@ -35,12 +35,12 @@ async def test_user(neo4j_driver):
 
 @pytest.mark.asyncio
 async def test_merge_MOVES_the_losers_evidence_and_keeps_the_winners_own(neo4j_driver, test_user):
-    from app.db.neo4j_repos.entities import merge_entities, merge_entity
-    from app.db.neo4j_repos.provenance import (
+    from app.db.graph_repos.entities import merge_entities, merge_entity
+    from app.db.graph_repos.provenance import (
         list_evidence_for_target,
         upsert_extraction_source,
     )
-    from app.db.neo4j_repos.provenance import add_evidence
+    from app.db.graph_repos.provenance import add_evidence
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:

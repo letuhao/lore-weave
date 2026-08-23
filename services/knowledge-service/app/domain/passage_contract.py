@@ -1,6 +1,6 @@
 """Passage facts that belong to the CORPUS, not to whichever store holds it (T17 A5/A6).
 
-Both constants below lived in `db/neo4j_repos/passages.py`, and both were being read by code
+Both constants below lived in `db/graph_repos/passages.py`, and both were being read by code
 that has nothing to do with Neo4j — which made twelve modules count as bound to the concrete
 layer for the sake of a tuple of integers.
 
@@ -19,7 +19,7 @@ Two engines, opposite query languages, one closed set. A constant that both a Cy
 and a SQL store must agree on is a fact about the PLATFORM; leaving it in one engine's
 package made the other engine's adapter import its rival to learn what dimensions exist.
 
-They are re-exported from `db/neo4j_repos/passages.py`, so every existing importer keeps
+They are re-exported from `db/graph_repos/passages.py`, so every existing importer keeps
 working and there is still exactly ONE definition. A second literal is the drift both
 comments below warn about.
 """
@@ -54,6 +54,6 @@ SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
 # So a second literal here is not duplication that merely drifts, it is a latent bug with a
 # direction: a dim in the entity set but NOT in the passage set validates at the embedder and
 # then has no `entity_vectors_{dim}` table to be written to. It lived in
-# `db/neo4j_repos/entities.py` as its own tuple, which is exactly the split that makes that
+# `db/graph_repos/entities.py` as its own tuple, which is exactly the split that makes that
 # reachable. One name, one object, one place to add a dim.
 SUPPORTED_VECTOR_DIMS: tuple[int, ...] = SUPPORTED_PASSAGE_DIMS

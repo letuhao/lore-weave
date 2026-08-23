@@ -15,8 +15,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity, EntityDetail, MergeEntitiesError
-from app.db.neo4j_repos.relations import Relation
+from app.db.graph_repos.entities import Entity, EntityDetail, MergeEntitiesError
+from app.db.graph_repos.relations import Relation
 
 
 _TEST_USER = uuid4()
@@ -128,7 +128,7 @@ def test_list_entities_cypher_templates_are_format_safe():
     spoiler window → str.format() read it as a replacement field → KeyError → 500 on the
     non-empty unwindowed path). The mock-only router tests could not see this (they patch the
     repo). Assert BOTH sort keys format cleanly AND the window predicate is present."""
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph_repos.entities import (
         _LIST_ENTITIES_PAGE_CYPHER_TEMPLATE,
         _LIST_ENTITIES_COUNT_CYPHER,
         ENTITY_SORT_KEYS,

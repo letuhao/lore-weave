@@ -766,7 +766,7 @@ def test_canonical_id_distinct_per_language():
     """M2 (DD1): vi and zh chunks of the SAME chapter (same source_id) get
     DISTINCT ids so dual-indexing never overwrites the source passages; an
     empty/'unknown' lang keeps the pre-M2 id byte-identical (back-compat)."""
-    from app.db.neo4j_repos.passages import passage_canonical_id
+    from app.db.graph_repos.passages import passage_canonical_id
 
     base = dict(user_id="u", project_id="p", source_type="chapter",
                 source_id="ch1", chunk_index=0)

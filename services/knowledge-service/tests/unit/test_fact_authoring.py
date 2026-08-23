@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.facts import Fact
+from app.db.graph_repos.facts import Fact
 
 _TEST_USER = uuid4()
 _ENTITY_ID = "ent-aria-1"

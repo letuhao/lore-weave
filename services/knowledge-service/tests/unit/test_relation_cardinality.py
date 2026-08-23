@@ -16,8 +16,8 @@ from app.db.cypher_dialect import render
 
 import pytest
 
-from app.db.neo4j_repos import relations as m
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos import relations as m
+from app.db.graph_repos.relations import create_relation
 
 _TEST_USER = uuid4()
 _SUBJ = "ent-subj-1"
@@ -68,7 +68,7 @@ def test_close_cypher_is_user_scoped_and_open_only():
 # ── single_active fires the close before the create ─────────────────
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_single_active_closes_prior_then_creates(mock_run):
     # first call = close (returns count result), second = the MERGE create
     mock_run.side_effect = [
@@ -91,7 +91,7 @@ async def test_single_active_closes_prior_then_creates(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_multi_active_does_not_close(mock_run):
     mock_run.return_value = _make_result(_created_record(predicate="pursues"))
     rel = await create_relation(
@@ -106,7 +106,7 @@ async def test_multi_active_does_not_close(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_none_cardinality_is_legacy_no_close(mock_run):
     """Default (cardinality=None) is byte-identical to the legacy path — exactly
     one query, the create."""

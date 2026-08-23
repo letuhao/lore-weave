@@ -97,7 +97,7 @@ class TestEnrichmentCypherInvariants:
     half. The half that decides whether enrichment can corrupt canon was only ever
     exercised against a live graph, which meant it was exercised almost never.
 
-    These read the statements in `neo4j_repos/enrichment.py`. They are cheap, they need no
+    These read the statements in `graph_repos/enrichment.py`. They are cheap, they need no
     database, and each one names a way canon could be damaged.
     """
 
@@ -105,7 +105,7 @@ class TestEnrichmentCypherInvariants:
         """H0/FIX-2: a pre-existing canon anchor must stay EXACTLY as it is. If ON MATCH
         set `source_type`, `confidence` or `origin`, an enrichment write-back would relabel
         a genuine canon node as enriched — and the marker is what the reviewer trusts."""
-        from app.db.neo4j_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
 
         # ⚠️ RESTATED 2026-08-22 (T70), because §10.1 merged the two branches: AGE has no
         # ON MATCH SET, so the query is now ONE unconditional SET whose expressions
@@ -132,7 +132,7 @@ class TestEnrichmentCypherInvariants:
         """The complement: when enrichment CREATES the anchor, the node must be born
         marked, so it is never indistinguishable from canon. A genuine glossary sync clears
         these on match, which is what promotion to canon actually means."""
-        from app.db.neo4j_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
 
         # Same restatement as above: the create-side markers are now `coalesce(field, X)`,
         # which sets X exactly when the node is new and leaves it alone otherwise.
@@ -157,7 +157,7 @@ class TestEnrichmentCypherInvariants:
         """
         import re
 
-        from app.db.neo4j_repos.enrichment import _UPSERT_ENRICHED_FACT_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _UPSERT_ENRICHED_FACT_CYPHER as cypher
 
         for replaced in ("f.content", "f.confidence", "f.origin", "f.source_type"):
             assert re.search(rf"{re.escape(replaced)}\s*=\s*coalesce\(", cypher) is None, (
@@ -173,7 +173,7 @@ class TestEnrichmentCypherInvariants:
         """Null-before-claim. Without `stale.id <> $canon_id` the statement would strip the
         glossary anchor off the very node about to claim it — and the MERGE would then
         create a second one."""
-        from app.db.neo4j_repos.enrichment import _FREE_STALE_GLOSSARY_ANCHOR_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _FREE_STALE_GLOSSARY_ANCHOR_CYPHER as cypher
 
         assert "stale.id <> $canon_id" in cypher
         assert "stale.glossary_entity_id = NULL" in cypher
@@ -181,7 +181,7 @@ class TestEnrichmentCypherInvariants:
     def test_retract_is_soft_and_scoped_to_one_proposal(self):
         """A hard delete here would be unrecoverable, and an unscoped one would take canon
         with it. Both properties are in the Cypher and nowhere else."""
-        from app.db.neo4j_repos.enrichment import _RETRACT_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _RETRACT_CYPHER as cypher
 
         assert "DELETE" not in cypher.upper(), "retract must be SOFT — set valid_until"
         assert "f.valid_until = datetime()" in render(cypher, "neo4j")
@@ -192,7 +192,7 @@ class TestEnrichmentCypherInvariants:
         """Promotion makes a fact canon but must NOT erase how it got there — `origin`,
         `promoted_from_proposal_id` and `original_technique` stay so the provenance of an
         AI-suggested fact survives its approval."""
-        from app.db.neo4j_repos.enrichment import _PROMOTE_CYPHER as cypher
+        from app.db.graph_repos.enrichment import _PROMOTE_CYPHER as cypher
 
         for erased in ("f.origin = null", "f.origin = NULL",
                        "f.promoted_from_proposal_id = null"):
@@ -204,7 +204,7 @@ class TestEnrichmentCypherInvariants:
         """None of these go through `run_write` — the anchor MERGE keys on `id`, so
         `$user_id` is a property rather than a filter and `assert_user_id_param` would pass
         for the wrong reason. The tenant scoping is therefore asserted here instead."""
-        from app.db.neo4j_repos import enrichment as mod
+        from app.db.graph_repos import enrichment as mod
 
         for name in ("_FREE_STALE_GLOSSARY_ANCHOR_CYPHER", "_UPSERT_ANCHOR_CYPHER",
                      "_UPSERT_ENRICHED_FACT_CYPHER", "_PROMOTE_CYPHER", "_RETRACT_CYPHER"):

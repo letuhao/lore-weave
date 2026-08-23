@@ -1,6 +1,6 @@
 """The graph's LABEL vocabularies — facts about the corpus, not about the engine (T17 A10).
 
-Both tuples below lived in `db/neo4j_repos/maintenance.py`, and both are read by code that
+Both tuples below lived in `db/graph_repos/maintenance.py`, and both are read by code that
 has nothing to do with Neo4j: a stats reconciler that writes Postgres columns, and an
 extraction router that decides which parts of a project a rebuild is allowed to clear.
 
@@ -9,7 +9,7 @@ see spec §1.2, which decided this class explicitly:
 
     "Constants → `app/domain/`. `COUNTABLE_LABELS`, `PROJECT_GRAPH_LABELS`. Same class as
      `EVENT_ORDER_CHAPTER_STRIDE` and `SUPPORTED_PASSAGE_DIMS`: facts about the corpus, not
-     the engine, and leaving them in `neo4j_repos` makes their importers look bound when
+     the engine, and leaving them in `graph_repos` makes their importers look bound when
      they are not."
 
 ⚠️ **Both are INJECTION BARRIERS and that survives the move.** Cypher cannot parameterise a
@@ -19,7 +19,7 @@ name for the same reason. Moving a constant out of the engine package does not m
 decorative — the validation belongs wherever the interpolation happens, and every one of
 those sites still checks membership before formatting.
 
-They are re-exported from `db/neo4j_repos/maintenance.py`, so every existing importer keeps
+They are re-exported from `db/graph_repos/maintenance.py`, so every existing importer keeps
 working and there is still exactly ONE definition.
 """
 from __future__ import annotations

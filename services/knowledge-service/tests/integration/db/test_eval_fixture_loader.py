@@ -10,7 +10,7 @@ import pytest
 from app.benchmark.core import GoldenSet
 from app.benchmark.fixture_loader import BENCHMARK_SOURCE_TYPE, load_golden_set_as_passages
 from app.clients.embedding_client import EmbeddingResult
-from app.db.neo4j_repos.passages import find_passages_by_vector
+from app.db.graph_repos.passages import find_passages_by_vector
 
 
 DIM = 1024

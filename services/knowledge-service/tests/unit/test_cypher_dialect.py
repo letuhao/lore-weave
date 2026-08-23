@@ -82,7 +82,7 @@ def test_NO_repo_call_site_NAMES_an_engine():
     """
     import pathlib
 
-    from app.db.neo4j_repos import facts
+    from app.db.graph_repos import facts
 
     root = pathlib.Path(facts.__file__).resolve().parent
     offenders = []

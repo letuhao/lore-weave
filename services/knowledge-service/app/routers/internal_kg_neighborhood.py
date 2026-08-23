@@ -142,7 +142,7 @@ async def get_kg_neighborhood(
         logger.debug("kg/neighborhood: NEO4J_URI unset — answering empty for book %s", book_id)
         return NeighborhoodResponse(temporal_capability=caps)
 
-    # T17 — through the GraphStore PORT, not `neo4j_repos`. This endpoint asks a pure
+    # T17 — through the GraphStore PORT, not `graph_repos`. This endpoint asks a pure
     # domain question ("one entity plus its capped one-hop neighbourhood") that the port
     # already answers, so binding it to the Neo4j repository layer bought nothing and cost
     # substitutability: T43 chooses the engine on measurement, and an operation reachable

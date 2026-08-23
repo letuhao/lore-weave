@@ -55,7 +55,7 @@ from loreweave_extraction.schema_projection import ExtractionSchema
 from app.clients.book_client import get_book_client
 from app.clients.llm_client import LLMClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entity_status import list_gone_entities
+from app.db.graph_repos.entity_status import list_gone_entities
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.extraction_leaves import ExtractionLeavesRepo
 from app.db.repositories.job_logs import JobLogsRepo

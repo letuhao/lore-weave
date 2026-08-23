@@ -1,7 +1,7 @@
 """`TruthStore` over knowledge-service's own graph facts (plan T19).
 
 Project- and global-scoped truth: the `:Fact` nodes this service owns. Delegates to
-`neo4j_repos/facts.py`, like every other adapter in this package.
+`graph_repos/facts.py`, like every other adapter in this package.
 
 The interesting work here is NARROWING, not delegating. `Fact` carries store-specific
 fields — `canonical_content`, `pending_validation`, `source_types` — and `TruthFact`
@@ -21,7 +21,7 @@ import logging
 from datetime import datetime
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.facts import Fact, list_facts_for_entity, recall_facts
+from app.db.graph_repos.facts import Fact, list_facts_for_entity, recall_facts
 from app.ports.truth_store import check_axis, TruthFact, TruthScope
 
 logger = logging.getLogger(__name__)

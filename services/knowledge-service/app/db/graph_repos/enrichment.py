@@ -33,7 +33,7 @@ clearing it, and it can never remove canon because it filters on this proposal's
 
 from __future__ import annotations
 
-from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL
+from app.db.graph_repos.entities import GLOBAL_PROJECT_SENTINEL
 
 from loreweave_extraction.canonical import entity_canonical_id
 

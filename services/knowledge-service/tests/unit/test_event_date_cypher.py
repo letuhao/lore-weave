@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from app.db.neo4j_repos.events import _MERGE_EVENT_CYPHER
+from app.db.graph_repos.events import _MERGE_EVENT_CYPHER
 
 
 def test_merge_event_cypher_sets_event_date_iso_on_create():

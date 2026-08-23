@@ -19,7 +19,7 @@ import pytest
 
 from app.clients.glossary_client import GlossaryEntityForContext
 from app.db.models import Project
-from app.db.neo4j_repos.relations import Relation
+from app.db.graph_repos.relations import Relation
 from app.search.retriever import RetrievalResult
 from app.wiki.context import gather_entity_context
 

@@ -1,7 +1,7 @@
 """Postgres implementation of the `OntologyStore` port (plan T15).
 
 Delegates to `GraphSchemasRepo`, for the same reason the Neo4j vector adapter delegates to
-`neo4j_repos`: the repo holds the scope-visibility rules, and a second copy of a tenancy
+`graph_repos`: the repo holds the scope-visibility rules, and a second copy of a tenancy
 filter is how the two drift and one of them starts leaking another user's templates.
 
 The adapter is thin to the point of looking pointless, and that is the shape a correct one

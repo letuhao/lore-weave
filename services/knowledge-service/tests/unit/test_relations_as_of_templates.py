@@ -21,7 +21,7 @@ import re
 
 import pytest
 
-_SRC = pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "neo4j_repos" / "relations.py"
+_SRC = pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "graph_repos" / "relations.py"
 _MARKER = "$as_of_ordinal IS NULL"
 
 

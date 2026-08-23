@@ -615,13 +615,13 @@ async def test_chapter_unpublished_does_not_retract_the_knowledge_graph(monkeypa
         set_canon_mock = AsyncMock(return_value=5)
         monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.set_canon_for_source", set_canon_mock,
+            "app.db.graph_repos.passages.set_canon_for_source", set_canon_mock,
         )
 
         await handle_chapter_unpublished(_unpublished_event(), pool=pool)
@@ -663,7 +663,7 @@ async def test_chapter_unpublished_demotion_failure_is_non_fatal(monkeypatch):
 
         monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.set_canon_for_source",
+            "app.db.graph_repos.passages.set_canon_for_source",
             AsyncMock(side_effect=RuntimeError("neo4j transient")),
         )
 
@@ -699,16 +699,16 @@ async def test_chapter_kg_excluded_retracts_graph_and_passages(monkeypatch):
         # Retract by NATURAL KEY (the helper hashes the ExtractionSource id) — a raw-id
         # call matches a hashed-id MATCH and removes ZERO edges.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         # NO orphan sweep here: this handler runs OUTSIDE the one-active-job-per-project
         # extraction lock, so cleanup could race a concurrent extraction and delete an
         # in-flight node. The offline reconciler GCs them safely.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", cleanup_mock,
+            "app.db.graph_repos.provenance.cleanup_zero_evidence_nodes", cleanup_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
 
         await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
@@ -764,10 +764,10 @@ async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
         delete_mock = AsyncMock(return_value=7)
         monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
 
         # (2) A partially-failed RETRACTION must NOT be acked.
@@ -796,11 +796,11 @@ async def test_chapter_kg_excluded_success_does_not_raise(monkeypatch):
 
         monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key",
             AsyncMock(return_value=3),
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source",
+            "app.db.graph_repos.passages.delete_passages_for_source",
             AsyncMock(return_value=7),
         )
 
@@ -1151,7 +1151,7 @@ async def test_chapter_deleted_decrements_evidence_instead_of_bare_detach_delete
 
     cascade = AsyncMock(return_value=3)
     monkeypatch.setattr(
-        "app.db.neo4j_repos.provenance.delete_source_cascade", cascade
+        "app.db.graph_repos.provenance.delete_source_cascade", cascade
     )
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_chapter_passages",

@@ -53,7 +53,7 @@ from __future__ import annotations
 import logging
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import maintenance
+from app.db.graph_repos import maintenance
 from app.metrics import quarantine_auto_invalidated_total
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ async def run_quarantine_cleanup(
     if limit is not None and limit <= 0:
         raise ValueError(f"limit must be positive when set, got {limit}")
 
-    # The query moved to `neo4j_repos/maintenance.py` (plan T17), including its deliberate
+    # The query moved to `graph_repos/maintenance.py` (plan T17), including its deliberate
     # `run_write` bypass: this is the one caller that legitimately passes user_id=None
     # (the admin global sweep), which run_write cannot type.
     invalidated = await maintenance.invalidate_stale_quarantined_facts(

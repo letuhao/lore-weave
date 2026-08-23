@@ -41,12 +41,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
-from app.db.neo4j_repos.entities import delete_entities_with_zero_evidence
-from app.db.neo4j_repos.entity_status import (
+from app.db.graph_repos.entities import delete_entities_with_zero_evidence
+from app.db.graph_repos.entity_status import (
     delete_entity_status_with_zero_evidence,
 )
-from app.db.neo4j_repos.events import delete_events_with_zero_evidence
-from app.db.neo4j_repos.facts import delete_facts_with_zero_evidence
+from app.db.graph_repos.events import delete_events_with_zero_evidence
+from app.db.graph_repos.facts import delete_facts_with_zero_evidence
 
 logger = logging.getLogger(__name__)
 

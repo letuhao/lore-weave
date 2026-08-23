@@ -13,8 +13,8 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import merge_entity, upsert_glossary_anchor
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.entities import merge_entity, upsert_glossary_anchor
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 from app.extraction.pass2_writer import write_pass2_extraction
 from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
 from loreweave_extraction.extractors.entity import LLMEntityCandidate

@@ -26,7 +26,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     SUBGRAPH_MAX_HOPS,
     SUBGRAPH_MAX_NODE_CAP,
     Subgraph,

@@ -12,7 +12,7 @@ category error: the "Go" implementation is not Go at all.
                `internal/migrate/fact_close_pin.go` (SQL in a Go migration string)
                called from Go as `SELECT maintain_chain($1, $2)`
     Neo4j      MAINTAIN_FACT_CHAIN_CYPHER / MAINTAIN_RELATION_CHAIN_CYPHER
-               `app/db/neo4j_repos/temporal.py` (Cypher in a Python constant)
+               `app/db/graph_repos/temporal.py` (Cypher in a Python constant)
 
 There is nothing to "port to Python": both are query-language, and each lives with the store it
 maintains. The real task is choosing the merged store's substrate and moving BOTH onto it — at
@@ -55,7 +55,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PG_SRC = os.path.join(ROOT, "services", "glossary-service", "internal", "migrate",
                       "fact_close_pin.go")
-KG_SRC = os.path.join(ROOT, "services", "knowledge-service", "app", "db", "neo4j_repos",
+KG_SRC = os.path.join(ROOT, "services", "knowledge-service", "app", "db", "graph_repos",
                       "temporal.py")
 
 #: Each capability, and where it is expected to be present. `True` = the implementation has it.

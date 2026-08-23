@@ -35,8 +35,8 @@ from app.context.intent.classifier import Intent, IntentResult
 from app.context.selectors.glossary import extract_candidates
 from app.db.neo4j_helpers import CypherSession
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j_repos.facts import list_facts_by_type
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.facts import list_facts_by_type
+from app.db.graph_repos.relations import (
     Relation,
     RelationHop,
     find_relations_2hop,

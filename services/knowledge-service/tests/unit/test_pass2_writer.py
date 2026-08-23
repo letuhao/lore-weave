@@ -85,7 +85,7 @@ def _fact(
     # |'negation'). Was 'description' — never a valid type; it only survived
     # because merge_fact is mocked here, but pass2_writer now (correctly) filters
     # off-taxonomy facts BEFORE merge_fact, so the invalid default produced 0
-    # merges. See app/db/neo4j_repos/facts.py:FACT_TYPES.
+    # merges. See app/db/graph_repos/facts.py:FACT_TYPES.
     content: str, type: str = "milestone",
     subject: str | None = None, subject_id: str | None = None,
     confidence: float = 0.9,

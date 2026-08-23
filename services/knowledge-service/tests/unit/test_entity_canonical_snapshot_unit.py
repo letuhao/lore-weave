@@ -6,7 +6,7 @@ the content-hash key + the Neo4j coverage-staleness-key cypher shape.
 
 from __future__ import annotations
 
-from app.db.neo4j_repos import facts as fm
+from app.db.graph_repos import facts as fm
 from app.db.repositories.entity_canonical_snapshots import (
     MAX_FOLD_ATTEMPTS,
     snapshot_content_hash,

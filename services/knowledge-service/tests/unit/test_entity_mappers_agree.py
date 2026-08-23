@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.adapters.age_graph_store import _to_entity as age_map
-from app.db.neo4j_repos.entities import _node_to_entity as neo_map
+from app.db.graph_repos.entities import _node_to_entity as neo_map
 
 
 def _row(**over) -> dict:
@@ -126,7 +126,7 @@ def test_the_relation_mapper_carries_the_BITEMPORAL_fields():
 
 def test_the_relation_mappers_agree():
     from app.adapters.age_graph_store import _to_relation
-    from app.db.neo4j_repos.relations import _edge_props_to_relation
+    from app.db.graph_repos.relations import _edge_props_to_relation
 
     row = _rel_row()
     a = _to_relation(dict(row))

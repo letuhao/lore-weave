@@ -52,7 +52,7 @@ async def test_user(neo4j_driver):
 
 async def _edit(driver, user_id, entity_id, name, barrier):
     """One editor, released with the other by the barrier. Returns 'applied' or 'rejected'."""
-    from app.db.neo4j_repos.entities import update_entity_fields
+    from app.db.graph_repos.entities import update_entity_fields
 
     async with driver.session() as session:
         await barrier.wait()
@@ -72,7 +72,7 @@ async def test_two_concurrent_edits_at_the_same_version_cannot_BOTH_apply(
 ):
     """Exactly one editor wins; the loser gets `VersionMismatchError`, which the router turns
     into a 412 with a refreshed baseline. Both winning is silent data loss."""
-    from app.db.neo4j_repos.entities import merge_entity
+    from app.db.graph_repos.entities import merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     both_applied = 0
@@ -125,7 +125,7 @@ async def test_a_SEQUENTIAL_pair_still_behaves_as_before(neo4j_driver, test_user
     """Non-vacuity in the other direction, on the ordinary path the concurrency fix must not
     have changed: a correct `expected_version` applies and bumps, and re-sending the stale one
     is refused with the CURRENT entity attached for the 412 body."""
-    from app.db.neo4j_repos.entities import merge_entity, update_entity_fields
+    from app.db.graph_repos.entities import merge_entity, update_entity_fields
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
@@ -169,7 +169,7 @@ async def test_erasing_an_entity_with_NO_facts_still_deletes_it(neo4j_driver, te
     — `UNWIND facts AS x` — is wrong in the empty case: zero rows out, so the `DETACH DELETE e`
     after it never runs. A forget would silently do nothing for exactly the entities that are
     easiest to forget, and report success."""
-    from app.db.neo4j_repos.entities import erase_entity_subgraph, get_entity, merge_entity
+    from app.db.graph_repos.entities import erase_entity_subgraph, get_entity, merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
@@ -191,7 +191,7 @@ async def test_erasing_an_entity_with_NO_facts_still_deletes_it(neo4j_driver, te
 
 
 async def _edit_event(driver, user_id, event_id, title, barrier):
-    from app.db.neo4j_repos.events import update_event_fields
+    from app.db.graph_repos.events import update_event_fields
 
     async with driver.session() as session:
         await barrier.wait()
@@ -218,7 +218,7 @@ async def test_two_concurrent_EVENT_edits_at_the_same_version_cannot_BOTH_apply(
     The entity half had this test; the event half, which carries the identical bug in the
     identical shape, had a substring.
     """
-    from app.db.neo4j_repos.events import merge_event
+    from app.db.graph_repos.events import merge_event
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     both_applied = 0

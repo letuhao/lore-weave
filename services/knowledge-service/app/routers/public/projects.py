@@ -36,7 +36,7 @@ from app.db.models import (
     ProjectUpdate,
 )
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.project_graph import purge_project
+from app.db.graph_repos.project_graph import purge_project
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
@@ -562,9 +562,9 @@ async def patch_project(
     # The "nothing to orphan" test is a PASSAGE-EXISTENCE probe, not
     # `extraction_status`: that column reads 'disabled' both after a graph
     # delete (vectors gone) and after `POST /extraction/disable` (vectors
-    # explicitly preserved). See app/db/neo4j_repos/graph_state.py.
+    # explicitly preserved). See app/db/graph_repos/graph_state.py.
     if "embedding_model" in body.model_fields_set:
-        from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+        from app.db.graph_repos.graph_state import project_has_embedded_passages
 
         current = await repo.get(user_id, project_id)
         if current is None:

@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 
 from app.adapters.age_anchor_scores import age_anchor_scores
-from app.db.neo4j_repos import entities as en
+from app.db.graph_repos import entities as en
 
 _GRAPH = "anchor_scores_conformance"
 

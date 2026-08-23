@@ -46,7 +46,7 @@ from uuid import UUID
 from app.db.neo4j import graph_session
 from app.adapters.graph_store_provider import get_graph_store
 # T17 — the model comes from the engine-neutral domain module, so this file no longer
-# imports `neo4j_repos` at all.
+# imports `graph_repos` at all.
 from app.domain.graph_models import Event
 from app.db.pool import get_knowledge_pool
 

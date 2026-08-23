@@ -1,6 +1,6 @@
 """A `CypherSession` over Apache AGE — spec §10.1's *other* half.
 
-§10.1 says what binds `neo4j_repos` to Neo4j is **"the Cypher dialect and the session type"**.
+§10.1 says what binds `graph_repos` to Neo4j is **"the Cypher dialect and the session type"**.
 T77–T82 took the dialect to zero, which is a ratchet reading, not a proof: every repo function
 still runs through `session.run(cypher, **params)`, and until something other than a Neo4j
 `AsyncSession` can answer that call the layer has one engine. This module is that something.
@@ -274,7 +274,7 @@ class AgeTransaction:
         return False
 
 class AgeCypherSession:
-    """Runs `neo4j_repos` Cypher against an AGE graph. Satisfies `CypherSession` structurally.
+    """Runs `graph_repos` Cypher against an AGE graph. Satisfies `CypherSession` structurally.
 
     `conn` is an `asyncpg` connection (or anything with the same `fetch`), already carrying
     `LOAD 'age'` and the `ag_catalog` search path — see `prepare`.
@@ -359,7 +359,7 @@ class _PooledAgeSession:
     """`async with age_repo_session() as s:` — an `AgeCypherSession` on a pooled connection.
 
     T54's blocker was that flipping `KNOWLEDGE_GRAPH_BACKEND` split one conceptual graph across
-    two stores: the 19 `GraphStore` adopters read AGE while the 54 `neo4j_repos` binders read
+    two stores: the 19 `GraphStore` adopters read AGE while the 54 `graph_repos` binders read
     Neo4j, **inside a single service**, with AGE empty. The measurement that stopped the row is
     in the plan (T54b): `Neo4j schema applied` and `AGE pool ready` seconds apart, extraction
     reading the empty one without erroring.

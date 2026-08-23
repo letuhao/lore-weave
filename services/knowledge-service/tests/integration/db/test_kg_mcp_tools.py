@@ -25,7 +25,7 @@ from app.db.repositories.ontology_mutations import OntologyMutationsRepo
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.triage import TriageRepo
-from app.db.neo4j_repos.entities import merge_entity
+from app.db.graph_repos.entities import merge_entity
 from app.ontology.resolver import OntologyResolver
 from app.tools.executor import ToolContext, execute_tool
 

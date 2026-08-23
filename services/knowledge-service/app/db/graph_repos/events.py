@@ -38,7 +38,7 @@ from app.db.neo4j_helpers import (
     run_read,
     run_write,
 )
-from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.graph_repos.canonical import canonicalize_text
 from app.db.repositories import VersionMismatchError
 
 logger = logging.getLogger(__name__)

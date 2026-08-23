@@ -11,7 +11,7 @@ the adapter directories. That is a real invariant and it passes. It is **not** B
 substitutability claim, and conflating them is how this refactor nearly walked into a swap
 it could not perform:
 
-    a module can call `neo4j_repos.merge_entity(...)`, contain no Cypher of its own,
+    a module can call `graph_repos.merge_entity(...)`, contain no Cypher of its own,
     satisfy graph-port-gate completely — and still break the moment the engine changes.
 
 Cypher being centralised says the *queries* live in one place. Substitutability says the
@@ -20,7 +20,7 @@ what makes the second adapter reachable rather than merely present.
 
 MEASURED 2026-08-12
 -------------------
-Modules under `app/`, excluding `app/db/neo4j_repos/` (the implementation) and
+Modules under `app/`, excluding `app/db/graph_repos/` (the implementation) and
 `app/adapters/` (legitimate adapter territory), that IMPORT the Neo4j repository layer —
 against modules that import a port. The ratio is the honest statement of where B1 stands.
 
@@ -56,11 +56,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCAN_ROOT = os.path.join(ROOT, "services", "knowledge-service", "app")
 
-# `neo4j_repos` IS the Neo4j implementation and `adapters/` is where an implementation is
+# `graph_repos` IS the Neo4j implementation and `adapters/` is where an implementation is
 # allowed to be named — the adapters exist precisely to import it. Excluding them is not a
 # loophole; including them would make the number measure the architecture working.
 EXEMPT_DIRS = (
-    os.path.join("db", "neo4j_repos"),
+    os.path.join("db", "graph_repos"),
     "adapters",
 )
 
@@ -72,7 +72,7 @@ EXEMPT_DIRS = (
 # importers followed. This is the ceiling becoming ABLE to fall — before it, no amount of
 # call-site migration could reach zero.
 # **58** (2026-08-13, T24b-b) — `context/selectors/passages.py` stopped importing
-# `neo4j_repos.passages` when the L3 selector's vector read moved onto `VectorStore`.
+# `graph_repos.passages` when the L3 selector's vector read moved onto `VectorStore`.
 # The first ceiling drop from a READ-PATH migration rather than a model move: the
 # other two migrated readers still import the module for non-vector names
 # (`SUPPORTED_PASSAGE_DIMS`, `KNOWN_SOURCE_TYPES`, the CJK lexical leg), which is why
@@ -115,19 +115,19 @@ MAX_CONCRETE_IMPORTERS = 54
 #
 # **11** — `mirror/glossary_mirror.py`, the glossary→KG mirror detector
 # (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER). It asks presence through `neighborhood()`
-# rather than reaching for `neo4j_repos`, so the divergence it reports is measured against
+# rather than reaching for `graph_repos`, so the divergence it reports is measured against
 # whichever adapter T43 selects — a detector bound to Neo4j would have to be rewritten by
 # the engine swap it is supposed to survive.
 #
 # **13** — T17 batch: `routers/internal_kg_neighborhood.py` and `routers/internal_wiki.py`.
 # Both asked the port's own question (one entity plus its capped one-hop neighbourhood)
-# while reaching past it to the same `neo4j_repos` function, so neither produced a shadow
+# while reaching past it to the same `graph_repos` function, so neither produced a shadow
 # observation for T43 to measure. Ceiling 69 -> 67 in the same move.
 #
 # **14** — `extraction/motif_beat.py`, via `events_in_window(axis="narrative")`.
 #
 # ⚠️ Note the CEILING did not move with it, and that is not a miss: motif_beat still
-# imports the `Event` MODEL from `neo4j_repos`, which this gate counts as a concrete
+# imports the `Event` MODEL from `graph_repos`, which this gate counts as a concrete
 # import because it is one. The ceiling cannot reach zero while the port's own types
 # live in the concrete layer — `ports/graph_store.py` is itself counted for exactly
 # that reason. Moving the models is a separate slice; the number stays honest until
@@ -137,7 +137,7 @@ MAX_CONCRETE_IMPORTERS = 54
 #: lifespan. The floor rising on a CUTOVER commit is the point of the floor — T42/T43 shipped
 #: an adapter nobody could select, and adoption is the number that would have shown it.
 MIN_GRAPHSTORE_ADOPTERS = 19
-_CONCRETE = "neo4j_repos"
+_CONCRETE = "graph_repos"
 
 #: T25 (3)'s REAL precondition, and it is not a database operation.
 #:
@@ -149,7 +149,7 @@ _CONCRETE = "neo4j_repos"
 #:
 #: So retiring the indexes means deleting their DDL, and that cannot land while production
 #: still queries them. These are the modules that do -- by IMPORTED SYMBOL, because the
-#: module-level `neo4j_repos` count above cannot separate a vector reader from any other
+#: module-level `graph_repos` count above cannot separate a vector reader from any other
 #: caller, and it was the count everyone was watching.
 #:
 #:   benchmark/flat_knn_rawsearch.py    FLOOR -- benchmarks the Neo4j backend ON PURPOSE
@@ -180,7 +180,7 @@ _PORTS = "ports"
 def _imports(tree: ast.AST) -> set[str]:
     """Module paths this file actually IMPORTS.
 
-    Only `Import` / `ImportFrom` nodes. A docstring that discusses `neo4j_repos`, or a
+    Only `Import` / `ImportFrom` nodes. A docstring that discusses `graph_repos`, or a
     comment explaining why a call was migrated off it, is not an import — and counting those
     is how the first estimate of this number came out ~18% high.
     """
@@ -195,7 +195,7 @@ def _imports(tree: ast.AST) -> set[str]:
 
 def _imported_symbols(tree: ast.AST) -> set[str]:
     """NAMES pulled in by `from X import name`. The module-level scan cannot see these, and
-    a vector reader is invisible inside a 54-module `neo4j_repos` count."""
+    a vector reader is invisible inside a 54-module `graph_repos` count."""
     out: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -204,14 +204,14 @@ def _imported_symbols(tree: ast.AST) -> set[str]:
 
 
 def _repo_symbols(tree: ast.AST) -> set[str]:
-    """Names this file pulls specifically out of `neo4j_repos` — the class-(d) input.
+    """Names this file pulls specifically out of `graph_repos` — the class-(d) input.
 
     Narrower than `_imported_symbols`, deliberately: that one returns every `from X import`
     name in the file, so a module importing `merge_entity` from a SERVICE layer would be
     scored as needing a port operation it does not need.
 
     ⚠️ A SUBMODULE import is resolved to the attributes actually USED, and that correction is
-    worth more than it looks. `from app.db.neo4j_repos import maintenance` binds nine
+    worth more than it looks. `from app.db.graph_repos import maintenance` binds nine
     functions; §1.2 decided five of them stay engine-specific forever and two became port
     operations. Scoring the bare name `maintenance` puts all five janitor callers in class (d)
     — work that spec text says will never be done — which is one of the two errors in the
@@ -299,19 +299,19 @@ def selftest() -> int:
     """
     ok = True
 
-    real = ast.parse("from app.db.neo4j_repos.entities import merge_entity\n")
+    real = ast.parse("from app.db.graph_repos.entities import merge_entity\n")
     if not any(_CONCRETE in m for m in _imports(real)):
-        print("  FAIL — a real `from … neo4j_repos …` import was not detected")
+        print("  FAIL — a real `from … graph_repos …` import was not detected")
         ok = False
 
-    prose = ast.parse('"""This used to call neo4j_repos.merge_entity directly."""\n')
+    prose = ast.parse('"""This used to call graph_repos.merge_entity directly."""\n')
     if any(_CONCRETE in m for m in _imports(prose)):
-        print("  FAIL — a docstring mentioning neo4j_repos was counted as an import")
+        print("  FAIL — a docstring mentioning graph_repos was counted as an import")
         ok = False
 
-    comment = ast.parse("# migrated off neo4j_repos in T17\nx = 1\n")
+    comment = ast.parse("# migrated off graph_repos in T17\nx = 1\n")
     if any(_CONCRETE in m for m in _imports(comment)):
-        print("  FAIL — a comment mentioning neo4j_repos was counted as an import")
+        print("  FAIL — a comment mentioning graph_repos was counted as an import")
         ok = False
 
     port = ast.parse("from app.ports.graph_store import GraphStore\n")
@@ -323,7 +323,7 @@ def selftest() -> int:
     # migration must not count: `extraction/entity_embedder.py` and `ports/vector_store.py`
     # both name `find_entities_by_vector` in prose and neither is a bypass. Counting prose
     # would report 6 instead of 4 and bury the two real ones in noise.
-    vreal = ast.parse("from app.db.neo4j_repos.entities import find_entities_by_vector" + chr(10))
+    vreal = ast.parse("from app.db.graph_repos.entities import find_entities_by_vector" + chr(10))
     if not (_imported_symbols(vreal) & _VECTOR_SYMS):
         print("  FAIL — a real vector-search import was not detected")
         ok = False
@@ -459,7 +459,7 @@ def selftest() -> int:
     if _repo_symbols(foreign):
         print("  FAIL — a same-named import from a NON-repo module was scored as a repo symbol")
         ok = False
-    submod = ast.parse("from app.db.neo4j_repos import maintenance" + chr(10))
+    submod = ast.parse("from app.db.graph_repos import maintenance" + chr(10))
     if "maintenance" not in _repo_symbols(submod):
         print("  FAIL — a whole-SUBMODULE import was missed; it binds every operation in it")
         ok = False
@@ -476,7 +476,7 @@ def selftest() -> int:
         ok = False
 
     # The negative that makes the check mean something: a NON-janitor function reached through
-    # the same submodule must still count. §1.2 kept `count_nodes_by_label` in `neo4j_repos`
+    # the same submodule must still count. §1.2 kept `count_nodes_by_label` in `graph_repos`
     # as a Neo4j-internal helper — a caller of it is bound to the engine.
     helper = classify({"jobs/j.py": {"maintenance.count_nodes_by_label"}})["jobs/j.py"]
     if helper[0] != CLASS_D:
@@ -503,7 +503,7 @@ def selftest() -> int:
     # hand `classify` an already-resolved symbol set, so none of them ever ran the resolution.
     # A selftest that cannot see the step it is meant to protect is the "detector validated on
     # the cases that motivated it" shape, and it was green by construction until this line.
-    src = ("from app.db.neo4j_repos import maintenance" + chr(10) +
+    src = ("from app.db.graph_repos import maintenance" + chr(10) +
            "async def run(s):" + chr(10) +
            "    await maintenance.clear_embedding_model_tag(s)" + chr(10))
     resolved = _repo_symbols(ast.parse(src))
@@ -522,7 +522,7 @@ def selftest() -> int:
     # ── the dialect ratchet (§10.1's second path) ────────────────────────────────────
     # These live inside triple-quoted Cypher STRINGS, so the detector is text and its risk is
     # the opposite of the AST ones above: it CANNOT tell a construct from prose about it. That
-    # is an accepted limit inside `neo4j_repos`, where a docstring naming `ON CREATE SET` is
+    # is an accepted limit inside `graph_repos`, where a docstring naming `ON CREATE SET` is
     # describing this file's own Cypher — but the counting itself must be right, and the
     # case-insensitive and spacing variants are where a hand-written regex silently misses.
     probe = (
@@ -739,15 +739,40 @@ def selftest() -> int:
         print("  FAIL — `self.db.execute` counted as a Neo4j procedure call")
         ok = False
 
+    # A30 — engine-named repo packages, and the SUBSTRING trap that would fake a violation
+    if not scan_engine_named_repo_binders(
+            {"x.py": "from app.db.neo4j_repos.entities import merge_entity" + chr(10)}):
+        print("  FAIL — an `app.db.neo4j_repos` import was not detected")
+        ok = False
+    neutral = scan_engine_named_repo_binders(
+        {"x.py": "from app.db.graph_repos.entities import merge_entity" + chr(10)})
+    if neutral:
+        print(f"  FAIL — the NEUTRAL package name was flagged: {neutral}")
+        ok = False
+    sub = scan_engine_named_repo_binders(
+        {"x.py": "from app.db.storage_repos.blobs import put" + chr(10) +
+                 "from app.db.message_repos.queue import pop" + chr(10)})
+    if sub:
+        print(f"  FAIL — a SUBSTRING match faked a violation ('age' inside 'storage'/'message'): {sub}")
+        ok = False
+    if not scan_engine_named_repo_binders({"x.py": "import app.db.kuzu_repos" + chr(10)}):
+        print("  FAIL — a plain `import app.db.kuzu_repos` was not detected")
+        ok = False
+    if scan_engine_named_repo_binders(
+            {"x.py": chr(34)*3 + "This used to import app.db.neo4j_repos.entities." + chr(34)*3 + chr(10)}):
+        print("  FAIL — a DOCSTRING mentioning the old package was counted")
+        ok = False
+
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways; and "
-          f"an unconformed port method from a covered one")
+          f"an unconformed port method from a covered one; and an ENGINE-NAMED repo "
+          f"package from a neutral one, without a substring faking either")
     return 0 if ok else 1
 
 
 # ── CLASS (d): THE POPULATION THAT ACTUALLY BLOCKS THE ENGINE SWAP ──────────────────────
 #
-# `MAX_CONCRETE_IMPORTERS` counts every module importing `neo4j_repos`, and §1.3 is right that
+# `MAX_CONCRETE_IMPORTERS` counts every module importing `graph_repos`, and §1.3 is right that
 # it never reaches zero: the benchmarks bind the Neo4j backend ON PURPOSE, the one-shot
 # migration scripts ran once against a known engine, and §1.2 keeps the destructive janitors
 # engine-specific forever. So the ceiling cannot be the cutover criterion. The number that CAN
@@ -771,7 +796,7 @@ def selftest() -> int:
 #
 # Neither number was checkable by reading, which is the argument for deriving it. A figure that
 # decides whether a cutover is reachable does not belong in a sentence.
-_REPO_DIR = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
+_REPO_DIR = os.path.join(SCAN_ROOT, "db", "graph_repos")
 _PORT_FILE = os.path.join(SCAN_ROOT, "ports", "graph_store.py")
 _DOMAIN_FILES = ("graph_models.py", "graph_labels.py")
 
@@ -811,17 +836,17 @@ CLASS_OUT = "(1.2) engine-specific janitors — out forever"
 #: every earlier figure for this population was hand-written prose, and it drifted.
 MAX_CLASS_D = 34
 
-#: Class (a) is now EMPTY, and this pins it there. A module in (a) binds `neo4j_repos` for a
+#: Class (a) is now EMPTY, and this pins it there. A module in (a) binds `graph_repos` for a
 #: CONSTANT — a domain fact re-exported by the repo layer, which T17 A5/A6 moved to
 #: `app/domain/` and then left every consumer importing through the old path. Seven modules
 #: sat that way for nine days, counting as bound to the concrete layer for a tuple of
 #: integers. Zero is the honest reading and a ceiling of zero is what keeps it: the next
-#: `from app.db.neo4j_repos.X import SOME_CONSTANT` reopens the class and fails here.
+#: `from app.db.graph_repos.X import SOME_CONSTANT` reopens the class and fails here.
 MAX_CLASS_A = 0
 
 
 def _symbol_home(path: str) -> dict[str, tuple[str, str]]:
-    """Every top-level name `neo4j_repos` exports, as (kind, defining module).
+    """Every top-level name `graph_repos` exports, as (kind, defining module).
 
     The KIND separates "move a constant" from "grow an operation and write it twice"; the
     MODULE is what §3.1 deletes. Conflating either with the other produced the stale count.
@@ -886,7 +911,7 @@ def _port_operations() -> set[str]:
 def _domain_symbols() -> set[str]:
     """Models and label vocabularies already MOVED out of the engine layer (T17, §1.2).
 
-    `neo4j_repos` re-exports them preserving class identity, so importing one is a stale import
+    `graph_repos` re-exports them preserving class identity, so importing one is a stale import
     PATH, not a binding to Neo4j. Counting these as engine bindings overstates the work.
     """
     out: set[str] = set()
@@ -898,7 +923,7 @@ def _domain_symbols() -> set[str]:
 def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list[str], list[str]]]:
     """Split the concrete binders into the classes §1.2 and §1.3 decided, by IMPORTED SYMBOL.
 
-    A module is class (d) if ANY name it still takes from `neo4j_repos` is an operation the
+    A module is class (d) if ANY name it still takes from `graph_repos` is an operation the
     port does not have and no decision retires. One is enough — that is the whole correction
     over the hand count, which filed modules under their most memorable import.
     """
@@ -944,14 +969,14 @@ def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list
 # ── THE SECOND PATH TO ZERO (spec §10.1) ────────────────────────────────────────────────
 #
 # §10.1 decided that class (d) does NOT reach zero by growing `GraphStore` to 106 methods —
-# 85 operations against a port of 21 would make the port a mirror of `neo4j_repos` with a
+# 85 operations against a port of 21 would make the port a mirror of `graph_repos` with a
 # different import path, which its own law forbids ("grows by demand, not by inventory").
 # Substitutability lands at two levels instead: the port stays the DOMAIN boundary, and the
 # repo layer becomes ENGINE-AGNOSTIC.
 #
 # That second path needs a number, or it is a plan with no mechanism — the failure this file
 # already records twice (the stale 28, the stale vector precondition). This is that number:
-# the Neo4j-ONLY dialect sites left inside `neo4j_repos`.
+# the Neo4j-ONLY dialect sites left inside `graph_repos`.
 #
 # Each is a construct AGE rejects and has a measured equivalent for
 # (`docs/measurements/2026-08-11-age-construct-probe.md`, extended by T57–T59):
@@ -967,13 +992,13 @@ def classify(concrete_symbols: dict[str, set[str]]) -> dict[str, tuple[str, list
 # the layer runs on AGE — that is what the conformance suite and the shadow differential are
 # for, and they are the ones with teeth. This number exists so the translation cannot stall
 # silently, the way class (d) sat at "28" for eight days.
-_DIALECT_ROOT = os.path.join(SCAN_ROOT, "db", "neo4j_repos")
+_DIALECT_ROOT = os.path.join(SCAN_ROOT, "db", "graph_repos")
 #: T91 — Neo4j SERVER-SIDE procedures and admin commands, counted SEPARATELY from the
 #: dialect families above.
 #:
 #: 🔴 They were not counted at all, and the gate's headline said so wrongly. `scan_dialect`
 #: knew `apoc.` but not `db.*`, so `CALL db.index.vector.queryNodes` — the whole of semantic
-#: search — sat inside `neo4j_repos` while the gate printed *"0/0 — the repo layer is
+#: search — sat inside `graph_repos` while the gate printed *"0/0 — the repo layer is
 #: ENGINE-AGNOSTIC"*. Measured against AGE 1.7.0 on 2026-08-22, all three shapes are hard
 #: syntax errors, not degraded behaviour:
 #:
@@ -1165,6 +1190,73 @@ def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
     return bad
 
 
+# ── A30: the repo layer's NAME, which §10.1 made a criterion and nothing measured ─────────
+#
+# §10.1 decided substitutability arrives when "the repo layer becomes ENGINE-AGNOSTIC", and
+# named exactly two things binding it: "the Cypher dialect and the session type". Both read
+# zero — the dialect since T63/T67, the session since A29 renamed `neo4j_session`. The same
+# decision also said the ceiling "counts modules bound to a **Neo4j-named** package, and that
+# count must still fall as the layer is renamed".
+#
+# A30 renamed it, so that count is zero. Nothing measured it, and a criterion a DECISION names
+# and no gate reads is one that comes back silently — which is the failure the pinned-session
+# ratchet caught in A29 by refusing to credit a counter that fell to 0.
+_ENGINE_TOKENS = frozenset({"neo4j", "age", "kuzu", "bolt", "postgres", "pg", "cypher"})
+MAX_ENGINE_NAMED_REPO_BINDERS = 0
+
+
+def _names_an_engine(package: str) -> bool:
+    """Whole SEGMENTS, never substrings.
+
+    `age` is a substring of `stor(age)` and `mess(age)`, and `pg` of `pg`-anything; a naive
+    `in` test would flag a hypothetical `storage_repos` and read as a violation that is really
+    a spelling coincidence. This gate has been bitten by exactly that shape twice — T42a's
+    `:7688` matching inside `:27688`, and T48's `TEST_VECTOR_DB_URL` inside `..._RENAMED`.
+    """
+    return any(seg in _ENGINE_TOKENS for seg in package.lower().split("_"))
+
+
+def scan_engine_named_repo_binders(sources=None) -> list[tuple[str, str]]:
+    """`(module, package)` for every import of an `app.db.<engine>_repos` package.
+
+    Derived from the import graph rather than from `_CONCRETE`, deliberately: a gate that
+    asserted its own constant would go green by being edited, which is not a measurement.
+    """
+    if sources is None:
+        sources = {}
+        for base in ("app", "tests"):
+            root = os.path.join(ROOT, "services", "knowledge-service", base)
+            for dirpath, _dirs, files in os.walk(root):
+                for fn in files:
+                    if not fn.endswith(".py"):
+                        continue
+                    full = os.path.join(dirpath, fn)
+                    try:
+                        sources[os.path.relpath(
+                            full, os.path.join(ROOT, "services", "knowledge-service")
+                        ).replace(os.sep, "/")] = open(
+                            full, encoding="utf-8", errors="replace").read()
+                    except OSError:
+                        continue
+    found: list[tuple[str, str]] = []
+    for where, text in sorted(sources.items()):
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            mods = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                mods.append(node.module)
+            elif isinstance(node, ast.Import):
+                mods.extend(a.name for a in node.names)
+            for mod in mods:
+                m = re.match(r"^app\.db\.([A-Za-z0-9_]+_repos)\b", mod)
+                if m and _names_an_engine(m.group(1)):
+                    found.append((where, m.group(1)))
+    return sorted(set(found))
+
+
 # ── A28: the port's PARAMETERS, not just its methods ─────────────────────────────────────
 #
 # `port conformance 21/21 methods have a rule` counts METHODS. A24 established the gap that
@@ -1292,7 +1384,7 @@ _DIALECT_PATTERNS = (
 #: found the OCC gate the construct implemented was not atomic on NEO4J either. The last
 #: class is 11 `CALL {}`, which the probe DID measure (`LATERAL`/CTE).
 #:
-#: **ZERO as of T82.** Every Neo4j-only construct in `neo4j_repos` is gone: 37 anchoring
+#: **ZERO as of T82.** Every Neo4j-only construct in `graph_repos` is gone: 37 anchoring
 #: branches, 25 `datetime()`, 1 `duration(`, 3 `FOREACH` and 14 `CALL {}`. The ceiling stays
 #: here as a RATCHET — its job now is to refuse the next one, not to record a backlog. A
 #: non-zero reading is a regression, not progress in the wrong direction.
@@ -1322,7 +1414,7 @@ _ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
 #: `graph_session(engine="neo4j")` — call sites PINNED to one engine. Shrink-only.
 #:
 #: T54's blocker was that `graph_session()` could only return a Bolt session, so flipping
-#: `KNOWLEDGE_GRAPH_BACKEND` put the 19 `GraphStore` adopters on AGE and the 54 `neo4j_repos`
+#: `KNOWLEDGE_GRAPH_BACKEND` put the 19 `GraphStore` adopters on AGE and the 54 `graph_repos`
 #: binders on Neo4j — one conceptual graph, two stores, one empty, inside one service (T54b,
 #: measured on dev and reverted). Since T83/T84 the repo layer runs on either engine and the
 #: session follows the configured backend, so the split is closed by construction.
@@ -1385,7 +1477,7 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: Floor — it may only rise.
 #:
 #: 🔴 **This exists because class (d)'s printed claim went false.** That number was labelled
-#: *"AGE cannot be the only engine until 0"*, which was true while `neo4j_repos` could only run
+#: *"AGE cannot be the only engine until 0"*, which was true while `graph_repos` could only run
 #: on Neo4j: a module binding it was pinned to one engine. Since T83/T84 the layer runs on
 #: either, and since T54c `graph_session()` follows the configured backend — so a class (d)
 #: module is no longer engine-pinned. Class (d) still measures something real (port-adoption
@@ -1476,7 +1568,7 @@ def scan_age_proven() -> tuple[set[str], int]:
         return proven, 0
     aliases: dict[str, str] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "app.db.neo4j_repos":
+        if isinstance(node, ast.ImportFrom) and node.module == "app.db.graph_repos":
             for a in node.names:
                 aliases[a.asname or a.name] = a.name
     for node in ast.walk(tree):
@@ -1520,7 +1612,7 @@ def _code_strings(src: str) -> str:
 
     ⚠️ The first cut of this detector matched the RAW FILE TEXT, and it over-counted by 10:
     a docstring naming `ON CREATE SET` was scored as Cypher, and the single `apoc.` hit in the
-    whole layer turned out to be a COMMENT — there is no APOC dependency left in `neo4j_repos`
+    whole layer turned out to be a COMMENT — there is no APOC dependency left in `graph_repos`
     at all. Shipped 2026-08-22 as an "accepted limit"; corrected the same day, because it was
     not one. **This ceiling's target is ZERO, and prose can never reach zero** — a document
     explaining the migration would have held the number above the floor forever, which is the
@@ -1689,7 +1781,7 @@ def main() -> int:
         print(f"\n[port-adoption-gate] FAIL — direct binding GREW to {len(concrete)}.\n")
         print("  Sealed B1 makes the ports the substitutability boundary, and T42 has built")
         print("  a second adapter (AGE) that only reachable code can benefit from. A module")
-        print("  importing `neo4j_repos` breaks when the engine changes even if it contains")
+        print("  importing `graph_repos` breaks when the engine changes even if it contains")
         print("  no Cypher — which is why `graph-port-gate` passing is not this check.")
         print("  Import a port instead, or lower the ceiling in the same commit that")
         print("  justifies raising it.")
@@ -1743,7 +1835,7 @@ def main() -> int:
     if len(class_a) > MAX_CLASS_A:
         print(f"{chr(10)}[port-adoption-gate] FAIL — class (a) GREW to {len(class_a)} "
               f"(ceiling {MAX_CLASS_A}): {sorted(class_a)}{chr(10)}")
-        print("  A module is binding `neo4j_repos` for a CONSTANT. The constant has a home")
+        print("  A module is binding `graph_repos` for a CONSTANT. The constant has a home")
         print("  in app/domain/ — import it from there. Nothing about a tuple of integers")
         print("  needs the concrete layer, and this is the cheapest class to keep at zero.")
         return 1
@@ -1765,7 +1857,7 @@ def main() -> int:
         print("  criterion and the last one to be carried in prose went stale by 14.")
         return 1
     # ⚠️ The claim on this line USED to be "AGE cannot be the only engine until 0". It was
-    # true while `neo4j_repos` ran only on Neo4j; since T83/T84 it runs on either and since
+    # true while `graph_repos` ran only on Neo4j; since T83/T84 it runs on either and since
     # T54c the session follows the configured backend, so a class (d) module is not
     # engine-pinned. The number still measures port-adoption debt — it stopped measuring
     # engine readiness, and the coverage line below is what replaced it.
@@ -1815,7 +1907,7 @@ def main() -> int:
         print(f"{chr(10)}[port-adoption-gate] FAIL — Neo4j-only dialect GREW to {dsites} "
               f"(ceiling {MAX_NEO4J_DIALECT_SITES}).{chr(10)}")
         print("  A new `ON CREATE SET` / `datetime()` / `CALL {}` / `FOREACH` / `apoc.` was")
-        print("  added inside `neo4j_repos`. Spec §10.1 makes the repo layer ENGINE-AGNOSTIC;")
+        print("  added inside `graph_repos`. Spec §10.1 makes the repo layer ENGINE-AGNOSTIC;")
         print("  every one of these has a measured AGE equivalent (2026-08-11 probe, T57-T59).")
         print("  Run --dialect to see where.")
         return 1
@@ -1882,6 +1974,21 @@ def main() -> int:
           f"{MAX_NON_AGE_BACKEND_DECLARATIONS} non-`age` — §9.2's DDL-exit condition holds for "
           f"every DECLARED deployment; `neo4j` stays SELECTABLE for the T43 harness and the "
           f"two benchmarks, which are declared evaluation-only")
+
+    # ── A30: §10.1's OTHER criterion — the repo layer's NAME ──────────────────────────
+    engine_named = scan_engine_named_repo_binders()
+    if len(engine_named) > MAX_ENGINE_NAMED_REPO_BINDERS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(engine_named)} module(s) bind an "
+              f"ENGINE-NAMED repo package (ceiling {MAX_ENGINE_NAMED_REPO_BINDERS}):")
+        for where, pkg in engine_named[:10]:
+            print(f"    {where}  ->  app.db.{pkg}")
+        print("  §10.1: the repo layer is engine-agnostic in its SEMANTICS, so naming it for one")
+        print("  engine is what made 54 modules read as bound to Neo4j. A29 took the last such")
+        print("  name off the session, A30 off the package. Do not reintroduce one.")
+        return 1
+    print(f"[port-adoption-gate] engine-named repo binders {len(engine_named)}/"
+          f"{MAX_ENGINE_NAMED_REPO_BINDERS} — §10.1's second criterion, and a RATCHET: the repo "
+          f"layer names no engine, so the 54 above bind a NEUTRAL package")
 
     # ── A19: those sites must REFUSE by name, not leak a SQL parse error ───────────────
     unguarded, stale_exempt = scan_neo4j_only_guards()

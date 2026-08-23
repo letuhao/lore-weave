@@ -23,7 +23,7 @@ from uuid import UUID
 from app.clients.book_client import BookClient
 # T17 A5 — the reading-axis stride is a fact about the BOOK, so it comes from the domain
 # and not from a graph engine. This module computes a spoiler ceiling and touches no
-# Cypher at all; importing it from `neo4j_repos` made it count as bound to the concrete
+# Cypher at all; importing it from `graph_repos` made it count as bound to the concrete
 # layer, which was both untrue and indistinguishable — to `port-adoption-gate` — from a
 # module that really does need Neo4j.
 from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE

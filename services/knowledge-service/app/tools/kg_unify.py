@@ -37,8 +37,8 @@ from dataclasses import dataclass, replace
 from loreweave_extraction.canonical import canonicalize_entity_name
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import load_entity_details_by_ids
-from app.db.neo4j_repos.relations import Subgraph
+from app.db.graph_repos.entities import load_entity_details_by_ids
+from app.db.graph_repos.relations import Subgraph
 
 __all__ = [
     "UnifySeed",
@@ -143,7 +143,7 @@ async def load_seed_details(
     cross-partition Cypher (EC-M4)."""
     if not entity_ids:
         return []
-    # The query moved to `neo4j_repos/entities.py` (plan T17). What stays here is the
+    # The query moved to `graph_repos/entities.py` (plan T17). What stays here is the
     # mapping into `UnifySeed` — the unifier's domain type, which the repo must not know
     # about or `app.db` would import `app.tools` and the dependency would run backwards.
     rows = await load_entity_details_by_ids(

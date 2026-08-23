@@ -13,10 +13,10 @@ from app.db.migrations.backfill_status import (
     _parse_classify_json,
     run_status_backfill,
 )
-from app.db.neo4j_repos.entities import merge_entity
-from app.db.neo4j_repos.entity_status import status_at_order
-from app.db.neo4j_repos.events import merge_event
-from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
+from app.db.graph_repos.entities import merge_entity
+from app.db.graph_repos.entity_status import status_at_order
+from app.db.graph_repos.events import merge_event
+from app.db.graph_repos.provenance import add_evidence, upsert_extraction_source
 
 
 # ── pure parser units ─────────────────────────────────────────────────

@@ -44,7 +44,7 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.adapters.vector_store_provider import get_vector_store
 from app.db.neo4j_helpers import CypherSession
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
-from app.db.neo4j_repos.passages import delete_passages_for_source, get_source_ingest_state, set_source_lang_for_source
+from app.db.graph_repos.passages import delete_passages_for_source, get_source_ingest_state, set_source_lang_for_source
 from app.extraction.patterns import detect_primary_language
 from app.ports.vector_store import PassageVectorRecord
 from app.jobs.budget import record_spending

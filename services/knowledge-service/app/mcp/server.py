@@ -56,8 +56,8 @@ from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
-from app.db.neo4j_repos.facts import FactType
+from app.db.graph_repos.entities import AuthorableKind, list_entities_filtered
+from app.db.graph_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.graph_views import GraphViewsRepo
@@ -2038,7 +2038,7 @@ async def project_entities_resource(project_id: str, ctx: MCPContext) -> str:
         "total": total,
         "entities": [
             # NOTE: :Entity nodes carry no description property (name / kind /
-            # aliases only — see app/db/neo4j_repos/entities.py Entity); the
+            # aliases only — see app/db/graph_repos/entities.py Entity); the
             # aliases stand in as the compact per-entity context.
             {"name": e.name, "kind": e.kind, "aliases": e.aliases[:5]}
             for e in rows

@@ -48,8 +48,8 @@ async def test_user(neo4j_driver):
 
 async def _anchor_with_edges(session, *, user_id, project_id, glossary_entity_id=None):
     """One entity with five outgoing relations of known, deliberately unsorted confidences."""
-    from app.db.neo4j_repos.entities import merge_entity
-    from app.db.neo4j_repos.relations import create_relation
+    from app.db.graph_repos.entities import merge_entity
+    from app.db.graph_repos.relations import create_relation
 
     tag = uuid.uuid4().hex[:6]
     anchor = await merge_entity(session, user_id=user_id, project_id=project_id,
@@ -75,7 +75,7 @@ def _confidences(detail) -> list[float]:
 
 @pytest.mark.asyncio
 async def test_the_detail_cap_keeps_the_HIGHEST_confidence_relations(neo4j_driver, test_user):
-    from app.db.neo4j_repos.entities import get_entity_with_relations
+    from app.db.graph_repos.entities import get_entity_with_relations
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
@@ -106,7 +106,7 @@ async def test_the_detail_cap_keeps_the_HIGHEST_confidence_relations(neo4j_drive
 async def test_the_glossary_FK_twin_caps_the_same_way(neo4j_driver, test_user):
     """The two queries were collapsed together and are one edit apart; a cap that ordered in
     one and not the other is exactly what near-duplicate queries hide."""
-    from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+    from app.db.graph_repos.entities import get_neighborhood_by_glossary_id
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     gid = f"gl-{uuid.uuid4().hex[:8]}"
@@ -133,7 +133,7 @@ async def test_an_entity_with_NO_relations_still_returns_a_row(neo4j_driver, tes
     """The other half of what the two subqueries were for: `collect()` over an `OPTIONAL MATCH`
     miss collects a `null`, so the list is filtered AFTER aggregating. Filtering before would
     drop the row and the detail endpoint would 404 an entity that exists."""
-    from app.db.neo4j_repos.entities import get_entity_with_relations, merge_entity
+    from app.db.graph_repos.entities import get_entity_with_relations, merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:

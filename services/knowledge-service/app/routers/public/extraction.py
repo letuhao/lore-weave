@@ -41,8 +41,8 @@ from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos import maintenance
-from app.db.neo4j_repos.flywheel import get_flywheel_delta
+from app.db.graph_repos import maintenance
+from app.db.graph_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
 from app.routers.internal_benchmark import BenchmarkStatusResponse, gate_failures_from_raw
@@ -1206,7 +1206,7 @@ async def cancel_extraction_job(
 
 # ── K16.8 — Delete graph ──────────────────────────────────────────────
 
-# The label list moved to `neo4j_repos/maintenance.PROJECT_GRAPH_LABELS` (plan T17), and
+# The label list moved to `graph_repos/maintenance.PROJECT_GRAPH_LABELS` (plan T17), and
 # the reason `:Passage` is absent from it moved too — that reason is about what the QUERY
 # does, and it was proven live on 2026-07-23 rather than assumed.
 
@@ -1240,7 +1240,7 @@ async def _delete_project_graph(
                 session, user_id=str(user_id), project_id=str(project_id), label=label,
             )
         if include_passages:
-            from app.db.neo4j_repos.passages import delete_all_passages_for_project
+            from app.db.graph_repos.passages import delete_all_passages_for_project
 
             deleted_total += await delete_all_passages_for_project(
                 session, user_id=str(user_id), project_id=str(project_id),

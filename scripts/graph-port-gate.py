@@ -9,7 +9,7 @@ of the tree rather than a convention people remember.
 
 WHAT COUNTS AS AN ADAPTER
 -------------------------
-`app/adapters/` and — deliberately — `app/db/neo4j_repos/`. That package predates the
+`app/adapters/` and — deliberately — `app/db/graph_repos/`. That package predates the
 naming: it IS the Neo4j implementation, complete with the `run_read`/`run_write` tenancy
 guards that make its queries safe, and the adapters under `app/adapters/` DELEGATE to it
 rather than copying its Cypher (a byte-for-byte copy would be two places to fix a tenant
@@ -76,13 +76,13 @@ CYPHER_TOKENS = (
 # Adapter territory — see the module docstring for why this is two paths, not one.
 ADAPTER_DIRS = (
     os.path.join(SCAN_ROOT, "adapters"),
-    os.path.join(SCAN_ROOT, "db", "neo4j_repos"),
+    os.path.join(SCAN_ROOT, "db", "graph_repos"),
 )
 
 # Documented non-adapter exceptions. Each needs a REASON, not just a path.
 EXEMPT_FILES = {
     # The global schema (constraints + indexes + vector indexes) applied at startup.
-    # neo4j_repos/__init__.py already names this as the one documented exception: it runs
+    # graph_repos/__init__.py already names this as the one documented exception: it runs
     # before any adapter exists and owns DDL rather than queries.
     os.path.join(SCAN_ROOT, "db", "neo4j_schema.py"): "startup schema DDL, pre-dates any adapter",
 }
@@ -215,7 +215,7 @@ def main(argv: list[str]) -> int:
         f"{' / '.join(ADAPTER_DIRS)}"
         + (f", {len(stale)} stale baseline entr(y/ies)" if stale else "") + ".\n"
         "Cypher belongs in an adapter so the graph engine can be swapped and the fakes can\n"
-        "stand in for it. Move the query into app/db/neo4j_repos/ (the Neo4j adapter) and\n"
+        "stand in for it. Move the query into app/db/graph_repos/ (the Neo4j adapter) and\n"
         "call it from here. If this file genuinely owns DDL that predates any adapter, add\n"
         "it to EXEMPT_FILES **with a reason**."
     )

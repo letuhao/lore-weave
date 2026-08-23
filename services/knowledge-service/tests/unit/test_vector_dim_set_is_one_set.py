@@ -1,7 +1,7 @@
 """T17 — entity and passage vectors share ONE closed dim set, proven from the DDL.
 
 `SUPPORTED_VECTOR_DIMS` used to be a second literal of the same tuple, living in
-`db/neo4j_repos/entities.py`. That is not harmless duplication, because the two sets were
+`db/graph_repos/entities.py`. That is not harmless duplication, because the two sets were
 never independent: `ensure_vector_schema` iterates the PASSAGE set and creates BOTH tables
 from it —
 

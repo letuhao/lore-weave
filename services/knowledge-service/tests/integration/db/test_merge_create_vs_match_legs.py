@@ -52,7 +52,7 @@ async def test_a_later_job_does_not_STEAL_credit_for_creating_the_entity(
     hands each of them to whichever job happens to touch it next, and that job's "entities
     created" number silently counts work someone else did.
     """
-    from app.db.neo4j_repos.entities import merge_entity
+    from app.db.graph_repos.entities import merge_entity
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
@@ -94,8 +94,8 @@ async def test_a_later_job_does_not_STEAL_credit_for_creating_the_entity(
 
 async def _merge_and_read_rewired(session, *, user_id, project_id, **relkw):
     """Build loser -[knows]-> other, merge loser into winner, return the winner's new edge."""
-    from app.db.neo4j_repos.entities import merge_entities, merge_entity
-    from app.db.neo4j_repos.relations import create_relation
+    from app.db.graph_repos.entities import merge_entities, merge_entity
+    from app.db.graph_repos.relations import create_relation
 
     tag = uuid.uuid4().hex[:6]
     loser = await merge_entity(session, user_id=user_id, project_id=project_id,
@@ -129,8 +129,8 @@ async def test_a_CLOSED_relation_stays_closed_when_it_is_rewired(neo4j_driver, t
     for an edge being created: on a new edge `r.valid_until` is null, so the open rule fires and
     a relation the author closed comes back open on the winner.
     """
-    from app.db.neo4j_repos.entities import merge_entities, merge_entity
-    from app.db.neo4j_repos.relations import create_relation, invalidate_relation
+    from app.db.graph_repos.entities import merge_entities, merge_entity
+    from app.db.graph_repos.relations import create_relation, invalidate_relation
 
     proj = f"p-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:

@@ -46,7 +46,7 @@ SCAN_ROOT = os.path.join(ROOT, "services", "knowledge-service", "app")
 # and an over-stated checklist hides the real remainder inside noise (the same mistake T17's
 # "still owed" paragraph made). These five actually CALL it.
 # **5 -> 4** (2026-08-14, T35b): `extraction/glossary_sync.py` is OFF, and unlike T35a
-# this one is a real shrink — the derivation moved into `neo4j_repos/entities.py`,
+# this one is a real shrink — the derivation moved into `graph_repos/entities.py`,
 # which was ALREADY on the baseline, so nothing new went on.
 #
 # Its old entry read *"THE defect site: computes it, ON MATCH SET never rewrites e.id"*.
@@ -59,7 +59,7 @@ SCAN_ROOT = os.path.join(ROOT, "services", "knowledge-service", "app")
 # `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id`.
 
 # ⚠️ **STILL FIVE** (2026-08-13, T35a). `routers/internal_enrichment.py` came OFF and
-# `db/neo4j_repos/enrichment.py` went ON, because the derivation MOVED rather than went
+# `db/graph_repos/enrichment.py` went ON, because the derivation MOVED rather than went
 # away. That is the honest count and it is worth stating: the batch fixed a real defect
 # and did **not** move this gate. Where to mint when nothing exists yet is a storage
 # detail — a router computing it had to know that `Entity.id` is `hash(name, kind)`,
@@ -68,8 +68,8 @@ SCAN_ROOT = os.path.join(ROOT, "services", "knowledge-service", "app")
 BASELINE = {
     os.path.join("adapters", "fake_graph_store.py"):            "test double — mirrors the real adapter's key, so it must move WITH it",
     os.path.join("db", "migrations", "recanon_honorifics.py"):  "one-shot backfill (Phase 7 owns it — D-T17-BACKFILL-CYPHER)",
-    os.path.join("db", "neo4j_repos", "enrichment.py"):         "the enrichment anchor's MINT-IF-ABSENT fallback (T35 2026-08-13 — moved here from routers/internal_enrichment.py; the router should not know the id is a hash)",
-    os.path.join("db", "neo4j_repos", "entities.py"):           "the entity MERGE + reads — the join sites",
+    os.path.join("db", "graph_repos", "enrichment.py"):         "the enrichment anchor's MINT-IF-ABSENT fallback (T35 2026-08-13 — moved here from routers/internal_enrichment.py; the router should not know the id is a hash)",
+    os.path.join("db", "graph_repos", "entities.py"):           "the entity MERGE + reads — the join sites",
 }
 
 CALL_RE = re.compile(r"(?<![A-Za-z0-9_])entity_canonical_id(?![A-Za-z0-9_])")
@@ -116,7 +116,7 @@ def main() -> int:
             path = os.path.join(base, f)
             rel = os.path.relpath(path, SCAN_ROOT)
             # The re-export shim is the definition site, not a caller.
-            if rel == os.path.join("db", "neo4j_repos", "canonical.py"):
+            if rel == os.path.join("db", "graph_repos", "canonical.py"):
                 continue
             try:
                 raw = open(path, encoding="utf-8", errors="replace").read()

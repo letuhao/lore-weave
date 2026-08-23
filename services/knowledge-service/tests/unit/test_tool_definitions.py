@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.db.neo4j_repos.facts import FACT_TYPES, MEMORY_FACT_TYPES
+from app.db.graph_repos.facts import FACT_TYPES, MEMORY_FACT_TYPES
 from app.tools.definitions import (
     ARG_MODELS,
     TOOL_DEFINITIONS,

@@ -26,7 +26,7 @@ from typing import TypedDict
 
 from app.clients.glossary_client import GlossaryClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import Entity, find_gap_candidates
+from app.db.graph_repos.entities import Entity, find_gap_candidates
 from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
 
 logger = logging.getLogger(__name__)

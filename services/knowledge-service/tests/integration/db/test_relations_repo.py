@@ -18,12 +18,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     archive_entity,
     merge_entity,
     upsert_glossary_anchor,
 )
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos.relations import (
     Relation,
     create_relation,
     find_relations_2hop,

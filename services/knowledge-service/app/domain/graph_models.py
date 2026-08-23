@@ -1,9 +1,9 @@
 """The graph domain models — the vocabulary the `GraphStore` port speaks.
 
-WHY THEY MOVED OUT OF `neo4j_repos` (T17)
+WHY THEY MOVED OUT OF `graph_repos` (T17)
 ------------------------------------------
 `ports/graph_store.py` imported `Entity`, `Relation`, `Event` and friends from
-`db/neo4j_repos/` — so **the port imported its own implementation**. Every signature on the
+`db/graph_repos/` — so **the port imported its own implementation**. Every signature on the
 port was typed in the vocabulary of one engine, and `port-adoption-gate` counted the port
 itself among the modules bound to the concrete layer, correctly: an import is an import.
 
@@ -16,7 +16,7 @@ every one came back with no module-level dependency except `EntityDetail` on `En
 which moved with it. They are plain Pydantic/dataclass shapes: the DOMAIN's vocabulary that
 happened to be defined next to the first thing that spoke it.
 
-⚠️ `neo4j_repos` re-exports every name from here, so existing imports keep working. That is
+⚠️ `graph_repos` re-exports every name from here, so existing imports keep working. That is
 deliberate: moving 380 lines of models and rewriting ~60 importers in one commit would make
 a mechanical change impossible to review. The re-exports are the compatibility shim, and the
 gate's ceiling is what records callers moving off them.
@@ -178,7 +178,7 @@ class Relation(BaseModel):
     # (the chapter ordinal the edge was established at, on the same scale as
     # events.event_order); valid_to_ordinal is set ONLY by temporal.maintain_chain
     # when a later instance on the same (subject, predicate) chain supersedes it.
-    # NULL on legacy / positionless edges. See app.db.neo4j_repos.temporal + §12.3.
+    # NULL on legacy / positionless edges. See app.db.graph_repos.temporal + §12.3.
     valid_from_ordinal: int | None = None
     valid_to_ordinal: int | None = None
     valid_to_ordinal_eff: int | None = None
@@ -385,7 +385,7 @@ class EvidenceWriteResult(BaseModel):
 # is also the chapter→order contract a composition spoiler-cutoff uses: "canon before
 # chapter N" = `before_order N × EVENT_ORDER_CHAPTER_STRIDE`.
 #
-# It lives HERE and not in `neo4j_repos` because it is a fact about the BOOK, not about a
+# It lives HERE and not in `graph_repos` because it is a fact about the BOOK, not about a
 # graph engine. Leaving it there made every consumer of the reading axis — including ones
 # that touch no Cypher at all — count as bound to the concrete layer, which is both untrue
 # and, for `port-adoption-gate`, indistinguishable from a real binding.
@@ -393,7 +393,7 @@ EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
 
 # ── :Fact (T17 A7) ───────────────────────────────────────────────────────────
 #
-# Moved out of `db/neo4j_repos/facts.py` for the reason the port already records: a port
+# Moved out of `db/graph_repos/facts.py` for the reason the port already records: a port
 # that imports its own implementation is not a boundary. `merge_fact` is the port's
 # newest operation and it RETURNS this, so the model had to precede it here.
 
@@ -425,7 +425,7 @@ class Fact(BaseModel):
     # a later fact on the same (subject, type) chain supersedes it. The wall-
     # clock valid_from/valid_until above stay the TRANSACTION-time axis. NULL on
     # legacy / positionless facts (chat-tool facts with no chapter).
-    # See app.db.neo4j_repos.temporal + spec §12.3.
+    # See app.db.graph_repos.temporal + spec §12.3.
     valid_from_ordinal: int | None = None
     valid_to_ordinal: int | None = None
     # Indexable null-sink ceiling for open intervals (= INT64_MAX when open);

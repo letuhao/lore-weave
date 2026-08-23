@@ -27,10 +27,10 @@ import re
 
 import pytest
 
-from app.db.neo4j_repos import entities as en
-from app.db.neo4j_repos import events as em
-from app.db.neo4j_repos import facts as fm
-from app.db.neo4j_repos import relations as rm
+from app.db.graph_repos import entities as en
+from app.db.graph_repos import events as em
+from app.db.graph_repos import facts as fm
+from app.db.graph_repos import relations as rm
 
 
 def _assignments(cypher: str, field: str) -> list[str]:

@@ -27,7 +27,7 @@ from app.db.neo4j import graph_session
 # fetches, invalidates and recreates edges, all three of which the port grew in A1
 # BY THIS ROUTER'S DEMAND. Binding it to the concrete layer bought nothing and cost
 # substitutability — T43 picks the engine on measurement, and an operation reachable
-# only through `neo4j_repos` produces no shadow observations to measure.
+# only through `graph_repos` produces no shadow observations to measure.
 from app.adapters.graph_store_provider import get_graph_store
 from app.domain.graph_models import Relation
 from app.events.outbox_emit import (

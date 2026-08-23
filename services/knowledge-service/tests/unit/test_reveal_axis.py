@@ -85,7 +85,7 @@ def test_reveal_all_means_a_CEILING_on_the_status_read_not_a_null():
     Every status carries a position, so there is nothing unplaced to rescue and
     "unbounded" is genuinely +infinity. Same constant the temporal chain uses.
     """
-    from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING
+    from app.db.graph_repos.temporal import ORDINAL_OPEN_CEILING
     assert isinstance(ORDINAL_OPEN_CEILING, int)
     assert ORDINAL_OPEN_CEILING > 10 ** 12, "must exceed any real event_order"
 

@@ -198,8 +198,8 @@ async def set_campaign_models(
         if new_model != (project.embedding_model or ""):
             # D-EMB-MODEL-REF-04 — passage existence, not `extraction_status`: that
             # column cannot tell a graph DELETE apart from a graph-preserving
-            # `POST /extraction/disable`. See app/db/neo4j_repos/graph_state.py.
-            from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+            # `POST /extraction/disable`. See app/db/graph_repos/graph_state.py.
+            from app.db.graph_repos.graph_state import project_has_embedded_passages
 
             has_graph = await project_has_embedded_passages(payload.user_id, project_id)
             if has_graph and not payload.confirm_embedding_change:

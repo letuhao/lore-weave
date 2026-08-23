@@ -845,7 +845,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         # was a silent no-op (canon drifted on every re-publish). The natural-key
         # helper hashes (user, project, source_type, source_id) the same way
         # `upsert_extraction_source` did at write time.
-        from app.db.neo4j_repos.provenance import (
+        from app.db.graph_repos.provenance import (
             cleanup_zero_evidence_nodes,
             remove_evidence_for_natural_key,
         )
@@ -907,7 +907,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             # first-extract hot path. Best-effort: a re-stitch failure must not
             # 500 a successful write — the repair job is the INV-FACTS backstop.
             try:
-                from app.db.neo4j_repos.temporal import (
+                from app.db.graph_repos.temporal import (
                     restitch_chains_after_retract,
                 )
                 restitched = await restitch_chains_after_retract(
@@ -1819,7 +1819,7 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
         logger.info("tag-threads: Neo4j not configured — no-op")
         return TagThreadsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_narrative_threads
+    from app.db.graph_repos.events import list_events_in_order, set_narrative_threads
     from app.extraction.motif_beat import _list_user_book_projects
     from app.extraction.thread_tag import classify_event_threads
 
@@ -1890,7 +1890,7 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
         logger.info("tag-motifs: Neo4j not configured — no-op")
         return TagMotifsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_realized_motifs
+    from app.db.graph_repos.events import list_events_in_order, set_realized_motifs
     from app.extraction.motif_beat import _list_user_book_projects
     from app.extraction.motif_tag import classify_event_motifs
 
@@ -1966,7 +1966,7 @@ async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
         logger.info("tag-beats: Neo4j not configured — no-op")
         return TagBeatsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_mined_motif_codes
+    from app.db.graph_repos.events import list_events_in_order, set_mined_motif_codes
     from app.extraction.motif_beat import _list_user_book_projects
     # Reuse the realized-motif classifier engine verbatim — same task shape (classify each
     # event into one code of a provided vocab); only the vocab source (catalog vs arc) and the
@@ -2039,7 +2039,7 @@ async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
         logger.info("causal-edges: Neo4j not configured — no-op")
         return CausalEdgesResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, merge_causal_edges
+    from app.db.graph_repos.events import list_events_in_order, merge_causal_edges
     from app.extraction.causal_edges import infer_causal_edges
     from app.extraction.motif_beat import _list_user_book_projects
 
@@ -2090,7 +2090,7 @@ async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsR
     if not settings.neo4j_uri:
         return CausalMotifPairsResponse()
 
-    from app.db.neo4j_repos.events import get_causal_motif_pairs
+    from app.db.graph_repos.events import get_causal_motif_pairs
     from app.extraction.motif_beat import _list_user_book_projects
 
     containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)

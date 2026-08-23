@@ -29,7 +29,7 @@ import pytest
 
 from app.db.cypher_dialect import _TOKEN
 
-_REPOS = pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "neo4j_repos"
+_REPOS = pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "graph_repos"
 
 
 def _module_templates(tree: ast.Module) -> dict[str, str]:

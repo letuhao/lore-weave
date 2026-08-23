@@ -256,7 +256,7 @@ def test_real_event_model_carries_mined_motif_code_through_producer():
     """Guard against a field/property rename: the REAL knowledge Event model (not a
     SimpleNamespace fake) must expose `mined_motif_code` and the producer must read it for the
     generic axes — the round-trip the live smoke proved, locked as a unit test."""
-    from app.db.neo4j_repos.events import Event
+    from app.db.graph_repos.events import Event
     ev = Event(id="e1", user_id="u1", title="Lin slaps the heir",
                canonical_title="Lin slaps the heir", chapter_id="ch-1",
                mined_motif_code="cultivation.face_slap")

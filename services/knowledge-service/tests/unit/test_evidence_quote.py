@@ -14,8 +14,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos import provenance as pm
-from app.db.neo4j_repos.provenance import add_evidence, list_evidence_for_target
+from app.db.graph_repos import provenance as pm
+from app.db.graph_repos.provenance import add_evidence, list_evidence_for_target
 from app.extraction.pass2_writer import _evidence_quote
 
 _USER = str(uuid4())
@@ -40,8 +40,8 @@ def test_add_evidence_cypher_stores_and_coalesces_quote():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_read", new_callable=AsyncMock)
-@patch("app.db.neo4j_repos.provenance.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_write", new_callable=AsyncMock)
 async def test_add_evidence_passes_quote(mock_run, mock_read):
     # T75: add_evidence now READS first — a pre-MATCH count in the same transaction that
     # replaces the `_just_created` marker. n=0 means "this citation is new".
@@ -58,8 +58,8 @@ async def test_add_evidence_passes_quote(mock_run, mock_read):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_read", new_callable=AsyncMock)
-@patch("app.db.neo4j_repos.provenance.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_write", new_callable=AsyncMock)
 async def test_add_evidence_blank_quote_normalizes_to_none(mock_run, mock_read):
     mock_read.return_value = _result({"n": 0})
     mock_run.return_value = _result(
@@ -93,7 +93,7 @@ def test_list_evidence_cypher_projects_quote_tenant_scoped():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.provenance.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.run_read", new_callable=AsyncMock)
 async def test_list_evidence_for_target_surfaces_quote(mock_run):
     rows = [{
         "source_id": "src-hash", "source_type": "chapter", "raw_source_id": "ch5",

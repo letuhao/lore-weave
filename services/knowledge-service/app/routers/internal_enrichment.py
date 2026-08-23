@@ -41,7 +41,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.enrichment import (
+from app.db.graph_repos.enrichment import (
     promote_enriched_facts,
     retract_enriched_facts,
     upsert_enriched_anchor,
@@ -161,7 +161,7 @@ async def enriched_writeback(
 
     written: list[EnrichedFactRef] = []
     async with graph_session() as session:
-        # The anchor upsert moved to `neo4j_repos/enrichment.py` (plan T17) — including
+        # The anchor upsert moved to `graph_repos/enrichment.py` (plan T17) — including
         # the null-before-claim ordering and the strict ON CREATE / ON MATCH split that
         # keep enrichment from ever making a node look like canon.
         # T35 — the RESOLVED id, not the recomputed hash. After a glossary rename the real

@@ -94,7 +94,7 @@ async def load_golden_set_as_passages(
     shouldn't abort the whole fixture load, the harness will catch
     low-coverage at score time anyway.
 
-    T17 A11 — writes through `VectorStore`, not `neo4j_repos.passages`. A fixture loader that
+    T17 A11 — writes through `VectorStore`, not `graph_repos.passages`. A fixture loader that
     could only write to one store would stop loading fixtures the day §3.1 finishes moving
     passages to Postgres, and the benchmarks it feeds measure retrieval quality — a property
     of the corpus, not of the engine holding it.

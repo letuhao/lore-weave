@@ -70,16 +70,16 @@ from uuid import uuid4
 
 from loreweave_extraction.canonical import canonicalize_entity_name
 
-from app.db.neo4j_repos.entities import Entity, EntityDetail
-from app.db.neo4j_repos.canonical import canonicalize_text as _canonicalize_text
+from app.db.graph_repos.entities import Entity, EntityDetail
+from app.db.graph_repos.canonical import canonicalize_text as _canonicalize_text
 # `event_id` is aliased because `update_event_fields` takes a PARAMETER of that name;
 # an unaliased import would be shadowed inside the method that needs it most.
-from app.db.neo4j_repos.events import Event, event_id as _event_id
-from app.db.neo4j_repos.facts import fact_id as _fact_id
-from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING as _ORDINAL_OPEN_CEILING
+from app.db.graph_repos.events import Event, event_id as _event_id
+from app.db.graph_repos.facts import fact_id as _fact_id
+from app.db.graph_repos.temporal import ORDINAL_OPEN_CEILING as _ORDINAL_OPEN_CEILING
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
-from app.db.neo4j_repos.relations import Relation
+from app.db.graph_repos.relations import Relation
 from app.ports.graph_store import EventAxis, RelationDirection
 
 __all__ = ["AgeGraphStore"]
@@ -196,7 +196,7 @@ def _to_entity(props: dict) -> Entity:
     `created_at`, `updated_at`. Measured on the live AGE graph, the same entity read through
     the repo layer carried `created_at`/`updated_at` and through this adapter carried `None`;
     the other five agreed only because that row happened to hold defaults. `version` is the
-    one that matters most — it is the OCC token, and `neo4j_repos.entities._node_to_entity`
+    one that matters most — it is the OCC token, and `graph_repos.entities._node_to_entity`
     carries a `/review-impl HIGH lock` about exactly what drifting it costs.
 
     Pass-through is safe because `Entity` takes Pydantic's default `extra="ignore"`: live
@@ -693,7 +693,7 @@ class AgeGraphStore:
         # A transaction, not a single statement, is what makes it atomic here. Doing the
         # check outside one would let two concurrent extractions both see "absent" and both
         # increment — the read-modify-write the docstring rules out.
-        from app.db.neo4j_repos.provenance import EvidenceWriteResult
+        from app.db.graph_repos.provenance import EvidenceWriteResult
 
         tag_probe = f"""
         MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})

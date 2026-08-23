@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.events import Event, archive_event, update_event_fields
+from app.db.graph_repos.events import Event, archive_event, update_event_fields
 from app.db.repositories import VersionMismatchError
 
 _USER = uuid4()
@@ -38,7 +38,7 @@ def _result(record):
 # ── repo ────────────────────────────────────────────────────────────
 
 def test_update_event_cypher_captures_before_and_bumps_version():
-    from app.db.neo4j_repos import events as m
+    from app.db.graph_repos import events as m
     # T80 split the OCC path into two statements in one transaction (the FOREACH form was
     # not atomic — see the measurement on `entities._LOCK_AND_READ_ENTITY_CYPHER`). The
     # `before` snapshot still comes from the LOCKED READ, and the new version still comes
@@ -140,7 +140,7 @@ async def test_update_event_none_on_missing():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_write", new_callable=AsyncMock)
 async def test_archive_event(mock_run):
     mock_run.return_value = _result({"e": _event_node(archived_at=datetime.now(timezone.utc))})
     ev = await archive_event(session=MagicMock(), user_id=str(_USER), event_id=_EID)

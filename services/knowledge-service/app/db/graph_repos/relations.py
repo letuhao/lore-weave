@@ -41,7 +41,7 @@ from pydantic import BaseModel, Field
 from loreweave_extraction.canonical import relation_id
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
-from app.db.neo4j_repos.temporal import (
+from app.db.graph_repos.temporal import (
     MAINTAIN_RELATION_CHAIN_CYPHER,
     ORDINAL_OPEN_CEILING,
 )

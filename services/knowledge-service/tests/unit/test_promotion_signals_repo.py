@@ -2,7 +2,7 @@
 
 The move is not a tidy-up. `app/context/selectors/salience.py` called `session.run(...)`
 DIRECTLY, so it never passed through `run_read` and its Cypher never carried `$user_id` —
-the bypass `app/db/neo4j_repos/__init__.py` calls "the single highest-severity bug class in
+the bypass `app/db/graph_repos/__init__.py` calls "the single highest-severity bug class in
 this service". It matched on `project_id` alone, and `:Entity.project_id` is not a tenant
 boundary: two users' entities can share a project id shape, and nothing in that query said
 which owner's graph to read.
@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from app.db.neo4j_helpers import assert_user_id_param
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     _PROMOTION_SIGNALS_CYPHER,
     PromotionSignals,
     load_promotion_signals,

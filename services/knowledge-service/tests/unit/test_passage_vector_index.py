@@ -17,7 +17,7 @@ import re
 
 import pytest
 
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.vector_indexes import (
     ensure_passage_vector_index,
     passage_index_name,
 )

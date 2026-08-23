@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import math
 
-from app.db.neo4j_repos.vector_indexes import parse_summary_index_name, summary_index_name
+from app.db.graph_repos.vector_indexes import parse_summary_index_name, summary_index_name
 from app.ports.vector_store import (
     EntityVectorRecord,
     PassageVectorRecord,

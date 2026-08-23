@@ -14,9 +14,9 @@ from app.context.selectors.facts import (
     format_relation_hop,
     select_l2_facts,
 )
-from app.db.neo4j_repos.entities import Entity
-from app.db.neo4j_repos.facts import Fact
-from app.db.neo4j_repos.relations import Relation, RelationHop
+from app.db.graph_repos.entities import Entity
+from app.db.graph_repos.facts import Fact
+from app.db.graph_repos.relations import Relation, RelationHop
 
 
 USER_ID = "user-1"
@@ -228,7 +228,7 @@ async def test_select_2hop_passes_required_hop1_types(monkeypatch):
         session, *, user_id, entity_id, hop1_types,
         hop2_types=None, project_id=None, min_confidence=0.8, limit=100,
     ):
-        # Mirror db/neo4j_repos/relations.py::find_relations_2hop exactly.
+        # Mirror db/graph_repos/relations.py::find_relations_2hop exactly.
         if not hop1_types:
             raise ValueError("hop1_types must be a non-empty list")
         captured["hop1_types"] = hop1_types

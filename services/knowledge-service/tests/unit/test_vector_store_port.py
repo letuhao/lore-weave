@@ -30,8 +30,8 @@ from app.adapters.pg_vector_store import (
     parse_vector_index_name,
     passage_table,
 )
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
-from app.db.neo4j_repos.vector_indexes import parse_summary_index_name
+from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.graph_repos.vector_indexes import parse_summary_index_name
 from app.ports.vector_store import (
     EntityVectorRecord,
     PassageVectorRecord,
@@ -186,7 +186,7 @@ async def test_ensure_index_is_idempotent_and_names_match_the_real_scheme():
     assert len(await store.list_indexes()) == 3
     # The fake reuses the REAL name builder, so a name it minted must survive the real
     # parser — otherwise the prune-orphans tests would agree with nothing in production.
-    from app.db.neo4j_repos.vector_indexes import parse_summary_index_name
+    from app.db.graph_repos.vector_indexes import parse_summary_index_name
     assert parse_summary_index_name(first["chapter"]) is not None
     await store.drop_index(name=first["chapter"])
     assert len(await store.list_indexes()) == 2
@@ -249,7 +249,7 @@ def test_no_name_this_store_mints_looks_project_scoped_to_the_prune_path():
 def test_that_check_is_not_vacuous():
     """Positive control. `parse_summary_index_name` returning None for EVERYTHING would
     make the test above pass while proving nothing, so a real summary name must parse."""
-    from app.db.neo4j_repos.vector_indexes import summary_index_name
+    from app.db.graph_repos.vector_indexes import summary_index_name
 
     real = summary_index_name("1" * 32, "2" * 32, "chapter")
     assert parse_summary_index_name(real) is not None

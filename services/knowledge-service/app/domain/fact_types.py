@@ -3,9 +3,9 @@
 These are two producers' vocabularies: the memory extractor's and the story extractor's
 (`loreweave_extraction.extractors.fact.FactType`). Neither is a property of a graph engine,
 and `tools/definitions.py` — which builds MCP tool schemas and touches no Cypher — was
-counted as bound to `neo4j_repos` solely for reading `MEMORY_FACT_TYPES` out of it.
+counted as bound to `graph_repos` solely for reading `MEMORY_FACT_TYPES` out of it.
 
-They are re-exported from `db/neo4j_repos/facts.py`, so every existing importer keeps working
+They are re-exported from `db/graph_repos/facts.py`, so every existing importer keeps working
 and there is still exactly ONE definition of each.
 """
 from __future__ import annotations

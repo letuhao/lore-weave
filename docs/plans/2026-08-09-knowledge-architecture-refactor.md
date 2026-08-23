@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 87 of 130 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 88 of 131 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (33/43) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (9/10) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,77 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A30 2026-08-24 — **`neo4j_repos` → `graph_repos`, and the criterion §10.1 wrote down that no gate had ever read**
+
+  ```
+  bare `neo4j_repos`     614 -> 0    app 93 · tests 130 files · 4 gates · 4 raid · 2 sdk comments
+  ceiling                 54 -> 54   UNCHANGED, and that is the honest number
+  engine-named binders     —  -> 0/0 NEW ratchet, 5 selftest cases
+  suite      BEFORE  4666 passed, 812 skipped   ->  AFTER  4666 passed, 812 skipped
+  ```
+
+  📐 **§10.1 named three things and instrumented two.** Its two binders were *"the Cypher dialect
+  and the session type"* — dialect `0/0` since T63/T67, session zeroed by A29. But the same
+  section also wrote that the ceiling *"counts modules bound to a **Neo4j-named** package, and
+  that count must still fall as the layer is renamed"*, and **nothing anywhere read that
+  sentence**. A criterion a decision names and no gate measures is one that comes back silently.
+
+  🔴 **The ceiling does NOT move, and putting that first is the point.** Renaming a package
+  migrates no module: 54 modules bound the repo layer before and 54 bind it after, and class (d)
+  is still 34. What the rename discharges is the *naming* half of §10.1's path 2 — a different
+  criterion from the one the ceiling counts. A cycle that reported "54 → 0" here would be
+  reporting a rename as a migration.
+
+  🎯 **A29 said this batch was too big for one cycle. It was — until the method existed.** What
+  changed is not my appetite but the measurement: A29's sweep proved out word-boundary matching,
+  a before/after suite under one set of conditions, and a **repo-wide** residue sweep. That last
+  one is what made this safe, because the in-service sweep is not enough twice running:
+
+  ```
+  A29   eval/ + scripts/chaos/          7 references the suite could never catch
+  A30   4 gates + 4 raid scripts + 2 sdk comments   62 references outside the service
+  ```
+
+  ⚖️ **The gate coupling was 45 references and almost all of it was prose.** The load-bearing
+  parts are one constant (`_CONCRETE`), one path exclusion, and the selftest's AST fixtures —
+  which is why this was tractable where the raw count read as forbidding. Measured before
+  building, and the measurement is what changed the answer.
+
+  🧪 **The new ratchet matches by SEGMENT, never substring, and that is bitten.** `age` is inside
+  `stor**age**` and `mess**age**`; a naive `in` test would report a spelling coincidence as an
+  architecture violation. This gate has been bitten by that exact shape twice — T42a's `:7688`
+  inside `:27688`, T48's `TEST_VECTOR_DB_URL` inside `..._RENAMED`.
+
+  ```
+  BITE R  reintroduce `from app.db.neo4j_repos.entities import merge_entity`
+          FAIL — 1 module(s) bind an ENGINE-NAMED repo package (ceiling 0):
+              app/db/graph_backend.py  ->  app.db.neo4j_repos
+  BITE T  swap segment matching for `any(tok in package)`
+          FAIL — a SUBSTRING match faked a violation ('age' inside 'storage'/'message'):
+              [('x.py', 'message_repos'), ('x.py', 'storage_repos')]
+          SELFTEST FAIL
+  ```
+
+  T is the one that matters: it proves the substring case is load-bearing rather than decorative,
+  by breaking the guard and watching that specific case — not the suite — go red.
+
+  ⚠️ **Docs keep the old name, deliberately.** ~20 references survive in `docs/plans/` and
+  `docs/audit/`, and two more in `sdks/python/build/lib/` which is a **generated** copy and not
+  edited by hand. No standard and no contract names the package, checked. Rewriting history to
+  match today is how a measurement stops meaning what it measured.
+
+  **QC (a) gates:** `port-adoption-gate --selftest` PASS with **five new cases** (real import,
+  neutral name, the substring trap, a plain `import`, and a docstring) — a hand-bite is invisible
+  to CI, so the new check carries its own; live gate PASS at the ceiling with
+  `engine-named repo binders 0/0`. `graph-port-gate`, `bitemporal-parity-gate`,
+  `derived-entity-id-gate` all green after their renames. Four plan gates green.
+  **QC (b) live smoke:** N/A — no behaviour changed. One package name; every module body,
+  signature and import target is otherwise byte-identical, and the suite result is too.
+  **QC (c) real data:** N/A — produces no data. The figures are the reference census and the two
+  suite runs, taken back-to-back under identical conditions (containers down in both, hence 812
+  skips rather than T48b's 9).
+
   ---
   ### ✅ T17 A29 2026-08-24 — **the session stops naming an engine it no longer returns: `neo4j_session` → `graph_session`, 647 sites**
 

@@ -28,14 +28,14 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     GLOBAL_PROJECT_SENTINEL,
     link_to_glossary,
     merge_entity,
     sync_glossary_entity_node,
     upsert_glossary_anchor_counted,
 )
-from app.db.neo4j_repos.enrichment import upsert_enriched_anchor
+from app.db.graph_repos.enrichment import upsert_enriched_anchor
 from loreweave_extraction.canonical import entity_canonical_id
 
 
@@ -159,7 +159,7 @@ async def test_a_node_at_the_derived_id_still_wins(neo4j_driver, test_user):
     distinct glossary entities whose names canonicalise together, each mirrored
     to its own node. A bare "oldest wins" would have re-pointed those writes.
     """
-    from app.db.neo4j_repos.canonical import entity_canonical_id
+    from app.db.graph_repos.canonical import entity_canonical_id
 
     P = "p-t35"
     derived = entity_canonical_id(

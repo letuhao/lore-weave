@@ -36,8 +36,8 @@ from typing import Any, Literal, get_args
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
-from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
-from app.db.neo4j_repos.temporal import (
+from app.db.graph_repos.canonical import canonicalize_entity_name, canonicalize_text
+from app.db.graph_repos.temporal import (
     AS_OF_ORDINAL_PREDICATE,
     MAINTAIN_FACT_CHAIN_CYPHER,
     ORDINAL_OPEN_CEILING,

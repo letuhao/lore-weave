@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import resolve_participant_anchors
+from app.db.graph_repos.entities import resolve_participant_anchors
 
 logger = logging.getLogger(__name__)
 

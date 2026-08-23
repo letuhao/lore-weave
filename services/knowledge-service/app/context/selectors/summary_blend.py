@@ -19,7 +19,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.vector_indexes import query_summary_index
+from app.db.graph_repos.vector_indexes import query_summary_index
 
 logger = logging.getLogger(__name__)
 

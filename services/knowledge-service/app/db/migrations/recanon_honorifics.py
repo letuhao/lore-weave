@@ -222,7 +222,7 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
     Cross-tenant read (operator-initiated, like the C17 alias-map backfill). With
     ``apply=False`` this mutates nothing — it returns the plan for review.
     """
-    from app.db.neo4j_repos.entities import merge_entity_at_id  # local: avoid import cycle
+    from app.db.graph_repos.entities import merge_entity_at_id  # local: avoid import cycle
 
     rows: list[EntityRow] = []
     result = await session.run(_LIST_ENTITIES_CYPHER)

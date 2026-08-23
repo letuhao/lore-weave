@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import maintenance
+from app.db.graph_repos import maintenance
 
 __all__ = ["delete_orphan_extraction_sources"]
 
@@ -62,7 +62,7 @@ async def delete_orphan_extraction_sources(
 ) -> int:
     """Delete `:ExtractionSource` nodes with zero incoming EVIDENCED_BY edges.
 
-    The query moved to `neo4j_repos/maintenance.py` (plan T17); this module keeps the
+    The query moved to `graph_repos/maintenance.py` (plan T17); this module keeps the
     SCHEDULING contract, which is the part with operational teeth: do NOT run concurrently
     with extraction — the transaction-local race in the module docstring can delete a
     source a pending extraction is about to link edges to. `limit=None` removes the cap and

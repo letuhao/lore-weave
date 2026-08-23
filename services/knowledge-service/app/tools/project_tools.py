@@ -223,8 +223,8 @@ async def _handle_kg_project_set_embedding_model(
     # D-EMB-MODEL-REF-04 — ask Neo4j, not `extraction_status`. The status column says
     # 'disabled' both after a graph DELETE (vectors gone) and after
     # `POST /extraction/disable` (vectors explicitly PRESERVED), so it cannot answer
-    # "would this change orphan anything". See app/db/neo4j_repos/graph_state.py.
-    from app.db.neo4j_repos.graph_state import project_has_embedded_passages
+    # "would this change orphan anything". See app/db/graph_repos/graph_state.py.
+    from app.db.graph_repos.graph_state import project_has_embedded_passages
 
     if current.embedding_model and await project_has_embedded_passages(
         owner, ctx.project_id

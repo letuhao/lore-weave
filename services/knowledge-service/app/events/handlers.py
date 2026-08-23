@@ -603,7 +603,7 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
     # Demote — do NOT delete. The index request survives an editorial unpublish.
     try:
         from app.db.neo4j import graph_session
-        from app.db.neo4j_repos.passages import set_canon_for_source
+        from app.db.graph_repos.passages import set_canon_for_source
 
         async with graph_session() as session:
             demoted = await set_canon_for_source(
@@ -707,7 +707,7 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
     # Graph retract (independent; failure recorded, not swallowed).
     try:
         from app.db.neo4j import graph_session
-        from app.db.neo4j_repos.provenance import remove_evidence_for_natural_key
+        from app.db.graph_repos.provenance import remove_evidence_for_natural_key
 
         async with graph_session() as session:
             # CM3b-RETRACT-FIX: retract by NATURAL KEY. The prior call passed the
@@ -750,7 +750,7 @@ async def handle_chapter_kg_excluded(event: EventData, *, pool: asyncpg.Pool) ->
     # else the user's retracted prose lingers in the semantic index — R3-WARN#2).
     try:
         from app.db.neo4j import graph_session
-        from app.db.neo4j_repos.passages import delete_passages_for_source
+        from app.db.graph_repos.passages import delete_passages_for_source
 
         async with graph_session() as session:
             deleted = await delete_passages_for_source(
@@ -833,7 +833,7 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
                 from app.extraction.passage_ingester import (
                     delete_chapter_passages,
                 )
-                from app.db.neo4j_repos.provenance import delete_source_cascade
+                from app.db.graph_repos.provenance import delete_source_cascade
 
                 chapter_uuid = _uuid(chapter_id)
                 async with graph_session() as session:
@@ -1248,7 +1248,7 @@ async def handle_glossary_entity_merged(
 
     from app.db.neo4j import graph_session
     from loreweave_extraction.canonical import canonicalize_entity_name
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph_repos.entities import (
         MergeEntitiesError,
         get_entity_by_glossary_id,
         link_to_glossary,
@@ -1465,7 +1465,7 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
 
     from app.adapters.graph_store_provider import get_graph_store
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos.entities import get_entity_by_glossary_id
+    from app.db.graph_repos.entities import get_entity_by_glossary_id
 
     # Exceptions propagate to the consumer's retry path: a transient Neo4j outage SHOULD
     # redeliver rather than silently drop the propagation. Archiving is idempotent.
@@ -1507,7 +1507,7 @@ async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Poo
     project_id, user_id, glossary_entity_id = resolved
 
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos.entities import restore_entity_by_glossary_id
+    from app.db.graph_repos.entities import restore_entity_by_glossary_id
 
     async with graph_session() as session:
         # T28 scope: a recycle-bin restore undoes a `glossary_deleted` archive only. A node
@@ -1540,7 +1540,7 @@ async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool)
     project_id, user_id, glossary_entity_id = resolved
 
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos.entities import purge_entity_by_glossary_id
+    from app.db.graph_repos.entities import purge_entity_by_glossary_id
 
     async with graph_session() as session:
         deleted = await purge_entity_by_glossary_id(
@@ -1591,7 +1591,7 @@ async def handle_glossary_entity_status_changed(
         return
 
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph_repos.entities import (
         get_entity_by_glossary_id,
         restore_entity_by_glossary_id,
         user_archive_entity,

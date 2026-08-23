@@ -35,8 +35,8 @@ import uuid
 import pytest
 
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j_repos.entities import find_entities_by_name, merge_entity
-from app.db.neo4j_repos.relations import create_relation, find_relations_for_entity
+from app.db.graph_repos.entities import find_entities_by_name, merge_entity
+from app.db.graph_repos.relations import create_relation, find_relations_for_entity
 
 pytestmark = pytest.mark.asyncio
 

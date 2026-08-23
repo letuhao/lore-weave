@@ -19,7 +19,7 @@ from app.context.selectors.passages import (
     L3Passage,
     select_l3_passages,
 )
-from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+from app.db.graph_repos.passages import Passage, PassageSearchHit
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from loreweave_llm.models import Job
 
@@ -882,7 +882,7 @@ async def test_select_l3_skips_rerank_when_only_one_passage(monkeypatch):
 def test_embedding_model_to_dim_covers_supported_models():
     """Every mapped dim must be supported by passages.SUPPORTED_PASSAGE_DIMS
     OR the selector must be wise enough to skip unknown dims."""
-    from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+    from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
     for model, dim in EMBEDDING_MODEL_TO_DIM.items():
         _ = model  # silence unused
     assert any(

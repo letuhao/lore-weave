@@ -28,7 +28,7 @@ from neo4j.exceptions import ConstraintError
 
 from app.clients.glossary_client import GlossaryClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     upsert_glossary_anchor,
     upsert_glossary_anchor_counted,
 )

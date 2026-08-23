@@ -32,7 +32,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL, sync_glossary_entity_node
+from app.db.graph_repos.entities import GLOBAL_PROJECT_SENTINEL, sync_glossary_entity_node
 from loreweave_extraction.canonical import canonicalize_entity_name
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
@@ -67,7 +67,7 @@ async def sync_glossary_entity_to_neo4j(
     """
     canonical_name = canonicalize_entity_name(name)
 
-    # The MERGE moved to `neo4j_repos/entities.py` (plan T17) — including the
+    # The MERGE moved to `graph_repos/entities.py` (plan T17) — including the
     # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE reasoning about why `project_id` is part of the key.
     created = await sync_glossary_entity_node(
         session,

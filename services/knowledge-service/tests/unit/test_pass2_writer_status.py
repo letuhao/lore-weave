@@ -28,7 +28,7 @@ from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate, StatusEffect
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import write_pass2_extraction
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 from app.metrics import knowledge_extraction_status_effect_total
 
 USER_ID = "test-user-001"

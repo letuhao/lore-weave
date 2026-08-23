@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
-from app.db.neo4j_repos.flywheel import FlywheelDelta, FlywheelItem
+from app.db.graph_repos.flywheel import FlywheelDelta, FlywheelItem
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()

@@ -204,7 +204,7 @@ async def _safe_l3_passages(
     # a top-level import here would bind the original reference at
     # module load time, making the monkeypatch a no-op.
     from app.context.selectors.passages import select_l3_passages
-    from app.db.neo4j_repos.passages import get_chapter_index_for_source
+    from app.db.graph_repos.passages import get_chapter_index_for_source
 
     if embedding_client is None or not project.embedding_model:
         return []

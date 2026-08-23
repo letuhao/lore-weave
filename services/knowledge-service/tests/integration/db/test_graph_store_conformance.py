@@ -1585,7 +1585,7 @@ async def test_an_AUTHOR_RENAME_does_not_fork_the_event_on_re_extraction(store):
     An event's title comes from the PROSE: `pass2_writer` passes the extractor's `name_clean`,
     which is read out of the chapter. So when an author renames an event in the studio,
     re-extracting that chapter still produces the **original** title — and must land on the
-    same node. `neo4j_repos/events.py` says so in as many words, as a deliberate design:
+    same node. `graph_repos/events.py` says so in as many words, as a deliberate design:
 
         "the node id (a hash of the original title) is IMMUTABLE — a title edit updates the
          display title + canonical_title but the id is stable, so a future extraction with the

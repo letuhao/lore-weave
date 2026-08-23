@@ -66,7 +66,7 @@ from app.ontology.confirm import (
 )
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.graph_views import (
+from app.db.graph_repos.graph_views import (
     read_entity_edge_timeline,
     read_project_graph_edges,
 )
@@ -144,7 +144,7 @@ _NAME_MAX = 200
 # 2026-08-11: MEMORY_FACT_TYPES specifically. `:Fact` gained the story extractor's
 # vocabulary, but this enum advertises what the pending-facts INBOX accepts, and that
 # path stayed memory-only — see PendingFactType in app/db/models.py.
-from app.db.neo4j_repos.facts import MEMORY_FACT_TYPES as _FACT_TYPES
+from app.db.graph_repos.facts import MEMORY_FACT_TYPES as _FACT_TYPES
 _PROPOSE_FACT_TYPES = tuple(_FACT_TYPES)
 
 # B1(4) — cross-partition unification mode for the multi-KG read tools
@@ -589,9 +589,9 @@ class KgCreateNodeArgs(ProjectScopedArgs):
     def _gate_kind(self) -> "KgCreateNodeArgs":
         # S7-1 (INV-parity): close the free-string agent path so the agent can
         # only mint the same closed set the human REST create accepts. ONE home
-        # for the set: neo4j_repos.entities.AUTHORABLE_KINDS (imported lazily to
+        # for the set: graph_repos.entities.AUTHORABLE_KINDS (imported lazily to
         # keep the tools layer free of an eager data-layer import at class-def).
-        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+        from app.db.graph_repos.entities import AUTHORABLE_KINDS
 
         if self.kind.strip() not in AUTHORABLE_KINDS:
             raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
@@ -617,11 +617,11 @@ class KgAddNodesArgs(ProjectScopedArgs):
     @model_validator(mode="after")
     def _gate_manual_kind(self) -> "KgAddNodesArgs":
         # mode=manual mirrors kg_create_node's closed-set kind gate (ONE home:
-        # neo4j_repos.entities.AUTHORABLE_KINDS, lazily imported). from_glossary needs no kind.
+        # graph_repos.entities.AUTHORABLE_KINDS, lazily imported). from_glossary needs no kind.
         if self.mode == "manual":
             if not self.name or not self.kind:
                 raise ValueError("mode=manual requires name and kind")
-            from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+            from app.db.graph_repos.entities import AUTHORABLE_KINDS
             if self.kind.strip() not in AUTHORABLE_KINDS:
                 raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
         return self
@@ -1572,7 +1572,7 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
     REPORTED via ``partitions_unreadable`` — never dropped silently. EC-B5: a bad world /
     a book-service outage return a self-correcting error string, not a 500."""
     from app.clients.book_client import BookServiceUnavailable, WorldNotFound
-    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.db.graph_repos.relations import get_world_subgraph
     from app.tools.executor import ToolExecutionError
     from app.world_rollup import resolve_world_partitions
 
@@ -1665,7 +1665,7 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
     silently. Reuses the same per-partition union as kg_world_query
     (``get_world_subgraph`` binds user_id + project_id per read, so an unowned id would
     contribute nothing anyway — the ownership resolve here makes the report accurate)."""
-    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.db.graph_repos.relations import get_world_subgraph
     from app.tools.executor import ToolExecutionError
 
     # Validate + order-preserving dedup (a duplicate id must not double-count coverage).
@@ -1910,7 +1910,7 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # instead of parking then failing two steps later at confirm — this reads
     # Neo4j but never writes it, so the human-gated-write invariant is intact.
     from app.tools.executor import ToolExecutionError
-    from app.db.neo4j_repos.entities import existing_entity_node_ids
+    from app.db.graph_repos.entities import existing_entity_node_ids
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     project_str = str(ctx.project_id)
@@ -2089,7 +2089,7 @@ async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> 
     parked, then fails). Runs under the project OWNER (resolve-to-owner, EDIT grant),
     so a collaborator resolves the grant but the write is still owner-scoped."""
     from app.tools.executor import ToolExecutionError
-    from app.db.neo4j_repos.entities import merge_entity
+    from app.db.graph_repos.entities import merge_entity
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     name = args.name.strip()

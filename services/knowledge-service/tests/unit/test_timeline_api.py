@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
-from app.db.neo4j_repos.events import EVENTS_MAX_LIMIT, Event, list_events_filtered
+from app.db.graph_repos.events import EVENTS_MAX_LIMIT, Event, list_events_filtered
 
 
 _TEST_USER = uuid4()
@@ -280,7 +280,7 @@ def _make_result_stub(single_value=None, records=None):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_clamps_limit(mock_run_read):
     """Defence-in-depth: if the router's ``Query(le=EVENTS_MAX_LIMIT)``
     ever regresses, the repo still clamps so the worst case is one
@@ -308,7 +308,7 @@ async def test_list_events_filtered_clamps_limit(mock_run_read):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_passes_limit_below_cap(mock_run_read):
     """Counterpart to the clamp test — when ``limit`` is below the
     cap, the helper forwards it verbatim. Prevents a regression that
@@ -366,7 +366,7 @@ def test_timeline_response_contains_enriched_chapter_title(mock_list):
 
 
 def _entity_stub(name: str = "Kai", aliases: list[str] | None = None):
-    from app.db.neo4j_repos.entities import Entity
+    from app.db.graph_repos.entities import Entity
     from decimal import Decimal  # noqa: F401 (match original import style)
 
     return Entity(
@@ -506,7 +506,7 @@ def test_order_fragment_directions_both_axes():
     """D-K19e-α-03: the ORDER BY fragment flips the primary key direction for both
     axes, keeps the title/id tiebreaker stable, and flips the null sentinel so
     undated/unordered events sink LAST in BOTH directions. Closed allowlist."""
-    from app.db.neo4j_repos.events import _order_fragment
+    from app.db.graph_repos.events import _order_fragment
 
     assert _order_fragment("narrative", "asc") == (
         "coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
@@ -717,7 +717,7 @@ def test_event_importance_unset_for_ordinary_event():
 
 def test_event_importance_enum_only_major_pivotal():
     """No enum drift: importance is one of {major, pivotal, None}."""
-    from app.db.neo4j_repos.events import EVENT_IMPORTANCE
+    from app.db.graph_repos.events import EVENT_IMPORTANCE
 
     assert EVENT_IMPORTANCE == ("major", "pivotal")
     for ev in (
@@ -793,7 +793,7 @@ def test_timeline_sort_by_invalid_rejected(mock_list):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_narrative_orders_by_event_order(mock_run_read):
     """sort_by='narrative' (default) ORDER BY uses event_order — the
     legacy axis. Asserts the page Cypher carries the event_order key."""
@@ -814,7 +814,7 @@ async def test_list_events_filtered_narrative_orders_by_event_order(mock_run_rea
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_chronological_orders_by_chrono(mock_run_read):
     """sort_by='chronological' swaps the primary ORDER BY key to
     chronological_order — true in-story chronology, not insertion."""
@@ -836,7 +836,7 @@ async def test_list_events_filtered_chronological_orders_by_chrono(mock_run_read
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_bad_sort_by_raises(mock_run_read):
     """Repo-layer defence: an unknown sort_by raises before any Cypher
     is assembled (no user text can reach the ORDER BY clause)."""

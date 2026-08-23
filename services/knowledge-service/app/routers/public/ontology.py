@@ -43,7 +43,7 @@ from app.config import settings
 from app.db.ontology_models import GraphSchema
 from app.clients.llm_client import get_llm_client
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.schema_usage import (
+from app.db.graph_repos.schema_usage import (
     count_component_usage,
     observed_components,
     usage_summary,

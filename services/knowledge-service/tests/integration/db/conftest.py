@@ -123,7 +123,7 @@ async def vector_pool():
         pytest.skip(f"vector DB unreachable: {exc}")
     try:
         from app.adapters.pg_vector_store import entity_table, passage_table
-        from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+        from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
 
         async with p.acquire() as conn:
             # DROP, not TRUNCATE: these tests also assert on the SCHEMA (which indexes
@@ -182,7 +182,7 @@ def _guard_throwaway_neo4j(uri: str) -> None:
         )
 
 
-from app.db.neo4j_repos.vector_indexes import ensure_passage_vector_index
+from app.db.graph_repos.vector_indexes import ensure_passage_vector_index
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 
 

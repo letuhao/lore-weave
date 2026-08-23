@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     Entity,
     update_entity_fields,
     unlock_entity_user_edited,
@@ -151,7 +151,7 @@ async def test_update_entity_returns_none_on_missing():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.entities.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.entities.run_write", new_callable=AsyncMock)
 async def test_unlock_flips_user_edited_and_bumps_version(mock_run):
     unlocked = _entity_node(version=6, user_edited=False)
     mock_run.return_value = _make_result({"e": unlocked})
@@ -165,7 +165,7 @@ async def test_unlock_flips_user_edited_and_bumps_version(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.entities.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.entities.run_write", new_callable=AsyncMock)
 async def test_unlock_returns_none_on_missing(mock_run):
     """Cross-user / missing id — returns None, router 404s."""
     mock_run.return_value = _make_result(None)
@@ -183,7 +183,7 @@ def test_entity_defaults_version_to_1_when_missing():
     """Pre-C9 nodes lack the version property. _node_to_entity must
     provide a sane default so existing entities are readable after the
     C9 migration without a batch backfill."""
-    from app.db.neo4j_repos.entities import _node_to_entity
+    from app.db.graph_repos.entities import _node_to_entity
     node = _entity_node()
     del node["version"]  # simulate pre-C9 node
     entity = _node_to_entity(node)
@@ -202,7 +202,7 @@ def test_cypher_version_coalesce_default_matches_read_path():
     from the original implementation. A future edit that reintroduces
     a zero default will trip this test.
     """
-    from app.db.neo4j_repos import entities as m
+    from app.db.graph_repos import entities as m
 
     cypher_snippets = [
         ("_UNLOCK_ENTITY_CYPHER", m._UNLOCK_ENTITY_CYPHER),

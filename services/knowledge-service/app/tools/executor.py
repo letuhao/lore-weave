@@ -53,11 +53,11 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     get_entity_with_relations,
 )
-from app.db.neo4j_repos.events import list_events_filtered
-from app.db.neo4j_repos.facts import invalidate_fact, merge_fact
+from app.db.graph_repos.events import list_events_filtered
+from app.db.graph_repos.facts import invalidate_fact, merge_fact
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
@@ -490,9 +490,9 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
         if embed and embed.embeddings and embed.embeddings[0]:
             try:
                 # T25 (3) — through the PORT. This was one of the two production readers that
-                # still called `neo4j_repos` directly, and neither was in §3.1's migration list,
+                # still called `graph_repos` directly, and neither was in §3.1's migration list,
                 # so the module-level adoption count (54) could not see them: a vector reader
-                # and any other `neo4j_repos` caller looked identical to it.
+                # and any other `graph_repos` caller looked identical to it.
                 #
                 # Retiring the Neo4j vector indexes means deleting their DDL from
                 # `neo4j_schema.cypher` (a graph DROP is recreated at startup — proven on

@@ -33,8 +33,8 @@ from uuid import UUID
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.entities import resolve_participant_anchors
-from app.db.neo4j_repos.events import Event
+from app.db.graph_repos.entities import resolve_participant_anchors
+from app.db.graph_repos.events import Event
 from app.db.repositories.event_text_translations import (
     EVENT_TEXT_FIELDS,
     EventTextTranslationsRepo,

@@ -1,4 +1,4 @@
-"""T83 — real `neo4j_repos` functions, unchanged, executed against Apache AGE.
+"""T83 — real `graph_repos` functions, unchanged, executed against Apache AGE.
 
 §10.1 says two things bind the repo layer to Neo4j: **"the Cypher dialect and the session
 type"**. T77–T82 took the dialect ratchet to zero, which is a reading, not a proof — every repo
@@ -81,9 +81,9 @@ async def test_the_repo_layer_runs_against_AGE_unchanged(age_session):
     `AgeVertex` exists precisely because AGE's envelope would otherwise hand every caller the
     internal graph id under the name `id`.
     """
-    from app.db.neo4j_repos import entities as en
-    from app.db.neo4j_repos import provenance as pv
-    from app.db.neo4j_repos import relations as rl
+    from app.db.graph_repos import entities as en
+    from app.db.graph_repos import provenance as pv
+    from app.db.graph_repos import relations as rl
 
     ran = 0
     uid = f"u-{uuid.uuid4().hex[:8]}"
@@ -201,12 +201,12 @@ async def test_the_SECOND_WAVE_runs_on_AGE_too(age_session):
     The chain is the sharpest of the three: it is the bi-temporal machinery every as-of read
     depends on, and it was the last thing anyone would have guessed differed.
     """
-    from app.db.neo4j_repos import entities as en
-    from app.db.neo4j_repos import entity_status as es
-    from app.db.neo4j_repos import events as ev
-    from app.db.neo4j_repos import facts as fx
-    from app.db.neo4j_repos import hierarchy as hi
-    from app.db.neo4j_repos import maintenance as mt
+    from app.db.graph_repos import entities as en
+    from app.db.graph_repos import entity_status as es
+    from app.db.graph_repos import events as ev
+    from app.db.graph_repos import facts as fx
+    from app.db.graph_repos import hierarchy as hi
+    from app.db.graph_repos import maintenance as mt
 
     uid = f"u-{uuid.uuid4().hex[:8]}"
     proj = f"p-{uuid.uuid4().hex[:8]}"
@@ -309,9 +309,9 @@ async def test_the_THIRD_WAVE_covers_the_read_and_derive_surface(age_session):
     maintainers; this one survived because T82 rewrote the query without ever executing it on
     the other engine. **A rewrite that is not run on both engines is a rewrite for one.**
     """
-    from app.db.neo4j_repos import coref, entity_status as es, flywheel, graph_views
-    from app.db.neo4j_repos import entities as en, hierarchy as hi, maintenance as mt
-    from app.db.neo4j_repos import provenance as pv, relations as rl, schema_usage, temporal
+    from app.db.graph_repos import coref, entity_status as es, flywheel, graph_views
+    from app.db.graph_repos import entities as en, hierarchy as hi, maintenance as mt
+    from app.db.graph_repos import provenance as pv, relations as rl, schema_usage, temporal
 
     ran = 0
     uid = f"u-{uuid.uuid4().hex[:8]}"
@@ -408,8 +408,8 @@ async def test_the_FOURTH_WAVE_covers_the_bulk(age_session):
     characters they have not met, and it sits in the middle of the entity list every reader
     surface calls.
     """
-    from app.db.neo4j_repos import entities as en, events as ev, facts as fx
-    from app.db.neo4j_repos import provenance as pv
+    from app.db.graph_repos import entities as en, events as ev, facts as fx
+    from app.db.graph_repos import provenance as pv
 
     ran = 0
     uid = f"u-{uuid.uuid4().hex[:8]}"
@@ -563,9 +563,9 @@ async def test_the_FIFTH_WAVE_closes_the_live_surface(age_session):
        only the shape it was written from, which is the defect it exists to catch. It handles
        both now, and the `.format()` case is a parametrised case of its own.
     """
-    from app.db.neo4j_repos import entities as en, entity_status as es
-    from app.db.neo4j_repos import enrichment, fact_for_check, hierarchy as hi
-    from app.db.neo4j_repos import maintenance as mt, schema_usage
+    from app.db.graph_repos import entities as en, entity_status as es
+    from app.db.graph_repos import enrichment, fact_for_check, hierarchy as hi
+    from app.db.graph_repos import maintenance as mt, schema_usage
 
     ran = 0
     uid = f"u-{uuid.uuid4().hex[:8]}"
@@ -627,7 +627,7 @@ async def test_wave_6_the_embedding_WRITE_is_not_a_vector_procedure(age_session)
     difference is one function of coverage that was written off without being run.
     """
     s = age_session
-    from app.db.neo4j_repos import entities as en
+    from app.db.graph_repos import entities as en
 
     uid, proj = f"u-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}"
     kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai",
@@ -672,8 +672,8 @@ async def test_purge_project_runs_on_AGE_and_NAMES_what_it_could_not_do(age_sess
     silently skipped the delete too, so this asserts the node is GONE and that the skip came back
     as a named value.
     """
-    from app.db.neo4j_repos import entities as en
-    from app.db.neo4j_repos import project_graph as pg
+    from app.db.graph_repos import entities as en
+    from app.db.graph_repos import project_graph as pg
 
     s = age_session
     uid = f"u-{uuid.uuid4().hex[:8]}"

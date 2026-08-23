@@ -759,8 +759,8 @@ def test_resolve_schema_resolve_failure_returns_has_schema_false(mock_repo_cls, 
     assert resp.json()["has_schema"] is False
 
 
-@patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
-@patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
@@ -803,8 +803,8 @@ def test_persist_pass2_retract_uses_natural_key_and_sweeps_on_reextract(
     assert ck["project_id"] == pid
 
 
-@patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
-@patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
+@patch("app.db.graph_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.graph_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)

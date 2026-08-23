@@ -800,7 +800,7 @@ def _patch_l3_with_hits(monkeypatch, n: int = 3):
     return in-memory hits. Used by the rerank propagation tests
     where we need build_full_mode → selector → rerank_passages →
     provider.chat_completion to actually fire."""
-    from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+    from app.db.graph_repos.passages import Passage, PassageSearchHit
 
     # Undo the AsyncMock that _patch_mode3_pieces installed for
     # select_l3_passages so the real function runs. Use the module-
@@ -1473,7 +1473,7 @@ async def test_safe_l3_resolves_chapter_and_threads_boost(monkeypatch):
     _fake_neo4j_session(monkeypatch)
     resolve = AsyncMock(return_value=7)
     monkeypatch.setattr(
-        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+        "app.db.graph_repos.passages.get_chapter_index_for_source", resolve,
     )
     spy = AsyncMock(return_value=[])
     monkeypatch.setattr(
@@ -1512,7 +1512,7 @@ async def test_safe_l3_killswitch_skips_resolution(monkeypatch):
     _fake_neo4j_session(monkeypatch)
     resolve = AsyncMock(return_value=7)
     monkeypatch.setattr(
-        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+        "app.db.graph_repos.passages.get_chapter_index_for_source", resolve,
     )
     spy = AsyncMock(return_value=[])
     monkeypatch.setattr(

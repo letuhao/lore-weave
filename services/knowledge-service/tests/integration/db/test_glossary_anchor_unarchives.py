@@ -39,7 +39,7 @@ async def test_user(neo4j_driver):
 
 @pytest.mark.asyncio
 async def test_a_glossary_RESYNC_revives_an_archived_anchor(neo4j_driver, test_user):
-    from app.db.neo4j_repos.entities import (
+    from app.db.graph_repos.entities import (
         archive_entity,
         get_entity,
         upsert_glossary_anchor_counted,

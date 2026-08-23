@@ -18,7 +18,7 @@ import pytest
 import app.context.query_embedding as qe_mod
 from app.clients.glossary_client import GlossaryEntityForContext
 from app.context.selectors import glossary as gsel
-from app.db.neo4j_repos.entities import Entity, VectorSearchHit
+from app.db.graph_repos.entities import Entity, VectorSearchHit
 
 USER = uuid4()
 PROJECT = uuid4()

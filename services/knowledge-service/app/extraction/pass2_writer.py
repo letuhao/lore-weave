@@ -59,20 +59,20 @@ from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession
 from loreweave_extraction.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     get_glossary_anchor_id,
     resolve_participant_anchors,
 )
-from app.db.neo4j_repos.entity_status import merge_entity_status
-from app.db.neo4j_repos.events import (
+from app.db.graph_repos.entity_status import merge_entity_status
+from app.db.graph_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
     merge_event,
     rerank_chronological_order,
 )
-from app.db.neo4j_repos.facts import FACT_TYPES, merge_fact
+from app.db.graph_repos.facts import FACT_TYPES, merge_fact
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
-from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos.provenance import add_evidence, upsert_extraction_source
+from app.db.graph_repos.relations import create_relation
 from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_resolver import (
     AnchorIndex,

@@ -44,7 +44,7 @@ async def test_reconciler_threads_limit_into_cypher(monkeypatch):
     # orchestration. Patching the job module would now patch nothing — this test asserts
     # the limit reaches STORAGE, so the seam belongs where storage is.
     monkeypatch.setattr(
-        "app.db.neo4j_repos.maintenance.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     await reconcile_evidence_count(
@@ -67,7 +67,7 @@ async def test_reconciler_none_limit_forwards_as_none(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        "app.db.neo4j_repos.maintenance.run_write", fake_run_write,
+        "app.db.graph_repos.maintenance.run_write", fake_run_write,
     )
 
     await reconcile_evidence_count(MagicMock(), user_id="u-1")

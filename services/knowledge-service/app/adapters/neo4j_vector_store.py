@@ -1,9 +1,9 @@
 """Neo4j implementation of the `VectorStore` port (plan T14).
 
-Every method delegates to the existing `app/db/neo4j_repos` functions. The plan called for
+Every method delegates to the existing `app/db/graph_repos` functions. The plan called for
 the adapter to be "existing code lifted byte-for-byte"; delegation is the strictest reading
 of that — copying the Cypher would create a second place to fix a tenant filter, which is
-the exact failure `neo4j_repos` and its `run_read`/`run_write` guards exist to prevent.
+the exact failure `graph_repos` and its `run_read`/`run_write` guards exist to prevent.
 
 What this file DOES own is the translation between the port's vocabulary and the repos':
 
@@ -22,9 +22,9 @@ import logging
 import time
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import find_entities_by_vector, set_entity_embedding
-from app.db.neo4j_repos.passages import find_passages_by_vector, upsert_passage
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.entities import find_entities_by_vector, set_entity_embedding
+from app.db.graph_repos.passages import find_passages_by_vector, upsert_passage
+from app.db.graph_repos.vector_indexes import (
     drop_summary_index,
     ensure_summary_indexes,
     list_summary_vector_indexes,

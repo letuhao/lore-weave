@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos import coref as coref_repo
+from app.db.graph_repos import coref as coref_repo
 from loreweave_extraction.canonical import canonicalize_entity_name
 from app.llm_budget import max_tokens_for
 
@@ -440,7 +440,7 @@ async def detect_from_records(
 
 # ── Neo4j loaders ─────────────────────────────────────────────────────────────
 #
-# The Cypher moved to `app.db.neo4j_repos.coref` (plan T12). What stays here is the
+# The Cypher moved to `app.db.graph_repos.coref` (plan T12). What stays here is the
 # mapping from a graph row to this module's frozen `CorefEntity` — the domain type the
 # scoring functions take. Keeping the type on THIS side is deliberate: the repo returning
 # it would make `app.db` import `app.extraction`, and the dependency runs the other way.

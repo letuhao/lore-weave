@@ -32,7 +32,7 @@ async def project_has_embedded_passages(user_id: UUID | str, project_id: UUID | 
     """
     from app.config import settings
     from app.db.neo4j import graph_session
-    from app.db.neo4j_repos.passages import project_has_passages
+    from app.db.graph_repos.passages import project_has_passages
 
     if not settings.neo4j_uri:
         # No Neo4j configured at all ⇒ no vector store ⇒ genuinely nothing to orphan.

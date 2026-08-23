@@ -45,7 +45,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
 from app.db.neo4j import graph_session
-from app.db.neo4j_repos.graph_views import (
+from app.db.graph_repos.graph_views import (
     read_entity_edge_timeline,
     read_project_graph_edges,
 )
@@ -403,7 +403,7 @@ async def _resolve_entity_project_grant(
     timeline for an entity in book A, but CANNOT reach an entity whose project
     book they hold no grant on (404).
     """
-    from app.db.neo4j_repos.entities import get_entity_by_id_any_owner
+    from app.db.graph_repos.entities import get_entity_by_id_any_owner
 
     async with graph_session() as session:
         ent = await get_entity_by_id_any_owner(session, entity_id)

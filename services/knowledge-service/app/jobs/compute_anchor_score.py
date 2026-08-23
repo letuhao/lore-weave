@@ -36,7 +36,7 @@ from typing import Awaitable, Callable
 import asyncpg
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import recompute_anchor_score
+from app.db.graph_repos.entities import recompute_anchor_score
 
 logger = logging.getLogger(__name__)
 

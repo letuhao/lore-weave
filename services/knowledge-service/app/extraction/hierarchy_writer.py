@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.hierarchy import upsert_hierarchy_chain
+from app.db.graph_repos.hierarchy import upsert_hierarchy_chain
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ async def upsert_for_chapter(
     Per D2a: caller MUST run this inside the same Tx as pass2_writer so
     partial failure is atomic. This function does NOT open a Tx itself.
 
-    The MERGE moved to `neo4j_repos/hierarchy.py` (plan T17); what stays here is the path
+    The MERGE moved to `graph_repos/hierarchy.py` (plan T17); what stays here is the path
     construction and the source-label decision, which are extraction's business.
     """
     await upsert_hierarchy_chain(

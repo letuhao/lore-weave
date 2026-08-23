@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.vector_indexes import (
+from app.db.graph_repos.vector_indexes import (
     drop_summary_index,
     parse_summary_index_name,
     summary_index_name,
@@ -621,7 +621,7 @@ def test_parse_iso_date_tolerates_garbage_and_none():
 def test_erasure_kg_node_delete_cypher_targets_fact_entity_event():
     # E2E erase smoke caught this: the erase deleted :Passage but not the :Fact/:Entity nodes WS-2.4's
     # promote creates, so a confirmed diary fact + the colleague it names survived "erase my account".
-    from app.db.neo4j_repos import passages as pm
+    from app.db.graph_repos import passages as pm
     q = pm._DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER
     assert "n:Fact" in q and "n:Entity" in q and "n:Event" in q  # all confirmed-fact node types
     assert "DETACH DELETE n" in q                                 # removes the nodes + every edge

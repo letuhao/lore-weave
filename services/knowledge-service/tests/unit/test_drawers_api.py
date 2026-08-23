@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 
 from app.clients.embedding_client import EmbeddingError, EmbeddingResult
 from app.db.models import Project
-from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+from app.db.graph_repos.passages import Passage, PassageSearchHit
 
 
 _TEST_USER = uuid4()
