@@ -78,8 +78,25 @@ class Gate:
             "a run not driven through the real chat path does not count — the MCP endpoint sits "
             "below every layer the defects live in")
         errs = [r for r in runs if r.get("error")]
-        self._check(not errs, f"[{t['tool']}] LIVE clean",
-                    f"{len(errs)} run(s) errored; a transport failure is not a model result")
+        # 🔴 A PROVISION FAILURE IS NOT A TRANSPORT FAILURE, and calling it one sends the reader at
+        # the platform. Measured 2026-08-23: memory_forget errored 5 of 5 and this bar reported "a
+        # transport failure is not a model result". Every run's own error read
+        # "PROVISION MCPToolError: ... the assistant has reached its memory_remember limit (10) for
+        # this chat session" — the SEED could not build the fixture. The verdict is the same (this
+        # is not evidence about the tool) and the DIAGNOSIS is opposite: one is the provider, the
+        # other is a fixture whose seed hits a per-session cap.
+        #
+        # The loop has paid for this exact confusion before, one level up: an `err` COUNT of 5 was
+        # recorded as "5 of 5 lost to transport errors" in three commits while every run said
+        # SEED ASSERTION FAILED. Reading the error STRING rather than its presence is the fix, and
+        # it costs one substring.
+        _prov = [r for r in errs if str(r.get("error") or "").lstrip().upper().startswith("PROVISION")]
+        _why = (f"{len(errs)} run(s) errored; a transport failure is not a model result")
+        if _prov:
+            _why = (f"{len(errs)} run(s) errored and {len(_prov)} of them is a PROVISION failure — "
+                    f"the SEED could not build the fixture, so this is not the platform: "
+                    f"{str(_prov[0].get('error'))[:150]}")
+        self._check(not errs, f"[{t['tool']}] LIVE clean", _why)
         # 🔴 THE GATE COULD NOT TELL "THE TOOL RAN" FROM "THE TURN RAN".
         #
         # Until 2026-08-14 the LIVE bars were: enough repeats, the real path, no transport error.

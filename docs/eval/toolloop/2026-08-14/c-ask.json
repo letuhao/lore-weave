@@ -1298,7 +1298,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "NOT EVIDENCE — a SEED failure, not the platform. All 5 runs error with 'PROVISION MCPToolError: memory_remember ... the assistant has reached its memory_remember limit (10) for this chat session'. The fixture cannot build itself, so nothing here says anything about memory_forget in either direction.\n\nThe gate reported this as 'a transport failure is not a model result' until the LIVE clean bar was taught to read the error STRING; it now names the provision failure. BUILDABLE: the seed needs a session that has not spent its 10 memory_remember calls, or a seed that writes the memory directly."
     },
     {
       "tool": "kg_triage_schema_write",
@@ -2532,7 +2533,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 4,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "NOT RE-MEASURED — my prompt edit never reached the measured turn. This scenario declares follow_ups, and fe_runner measures the LAST turn, so the run was judged on 'Open the first one and show me its detail.' while my rewrite sat in turn 1 unread. See D-FE-RUNNER-MEASURES-THE-LAST-TURN-SO-A-PROMPT-EDIT-CAN-MISS.\n\nThe previous conclusion stands untouched; this batch adds nothing for this tool. To ask the intended question the FOLLOW-UP is what must name the action."
     },
     {
       "tool": "translation_job_control",
@@ -3123,7 +3125,8 @@
       "surfaced_count": 5,
       "called_count": 0,
       "wrote_count": 0,
-      "suspended_count": 4
+      "suspended_count": 4,
+      "blocked_reason": "NOT RE-MEASURED — my prompt edit never reached the measured turn. This scenario declares follow_ups, and fe_runner measures the LAST turn, so the run was judged on 'Cancel that job.' while my rewrite sat in turn 1 unread. See D-FE-RUNNER-MEASURES-THE-LAST-TURN-SO-A-PROMPT-EDIT-CAN-MISS.\n\nThe previous conclusion stands untouched; this batch adds nothing for this tool. To ask the intended question the FOLLOW-UP is what must name the action."
     }
   ]
 }
