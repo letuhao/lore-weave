@@ -151,7 +151,56 @@ async def canon_cast_at(
         return await cast_roster(kal, book_id, user_id), None
     logger.info("canon cast resolved story position: book=%s chapter=%s as_of=%d",
                 book_id, chapter_id, as_of)
-    return cast_from_state(await kal.state(book_id, as_of=as_of, user_id=user_id)), as_of
+    cast = cast_from_state(await kal.state(book_id, as_of=as_of, user_id=user_id))
+    return await _fill_missing_names(kal, book_id, user_id, cast), as_of
+
+
+async def _fill_missing_names(
+    kal: KalClient, book_id: UUID, user_id: UUID, cast: list[dict[str, str]]
+) -> list[dict[str, str]]:
+    """Give the state-derived cast the NAMES only the roster carries.
+
+    🔴 **Measured (QC-5 C41): the block headed "CHARACTER CANON" contained no characters.**
+    `state@as_of` projects `{entity_id, facts}` and nothing else, so a name reaches
+    `cast_from_state` only when the entity happens to carry a `name` FACT. On the acceptance
+    book **13 of 21 entities do; 8 do not** — and the 8 are the people. `render_canon` then
+    drops every nameless row (*"a nameless bible line grounds nothing"*, correctly), so the
+    bible listed the talent competition, the spirit stones and the tea pavilion, and not one
+    character. A critic asked whether prose contradicts a rule about a named character, handed a
+    character canon with that character missing, flags prose that conforms — which is QC-5's
+    clause 1a failing at 7/8 on the untouched control.
+
+    The names were never missing from the system: `roster` *"could only ever supply
+    `{entity_id, name}` — the KAL projects it to id+name by contract"*, which is this
+    function's whole reason to exist. Best-effort by construction: a roster outage leaves the
+    cast exactly as `state` gave it, because a thinner bible must never cost the critique.
+    """
+    if not any(not (c.get("name") or "").strip() for c in cast):
+        return cast
+    try:
+        names = {str(r.get("entity_id")): str(r.get("name") or "").strip()
+                 for r in await cast_roster(kal, book_id, user_id)}
+    except Exception:  # noqa: BLE001 — advisory; the bible degrades, the critique does not
+        # WARNING, not debug: this degrade costs the critic every character whose name lives
+        # only in the roster, and C41 measured that as 8 of 21 entities on the acceptance book.
+        # A fallback nobody can observe is a fallback that gets reported as a success — the same
+        # rule `canon_cast_at` states one function up.
+        logger.warning("canon cast: roster unavailable — %d entity(ies) stay NAMELESS and will "
+                       "be dropped from the bible", sum(1 for c in cast
+                                                        if not (c.get("name") or "").strip()),
+                       exc_info=True)
+        return cast
+    filled = 0
+    for c in cast:
+        if not (c.get("name") or "").strip():
+            nm = names.get(str(c.get("entity_id") or ""))
+            if nm:
+                c["name"] = nm
+                filled += 1
+    if filled:
+        logger.info("canon cast: filled %d name(s) from the roster that state@as_of omitted",
+                    filled)
+    return cast
 
 
 async def book_genre_tags(book: BookClient, book_id: UUID, bearer: str) -> list[str]:

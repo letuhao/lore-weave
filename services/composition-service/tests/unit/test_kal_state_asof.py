@@ -147,13 +147,31 @@ def test_cast_from_state_carries_the_attributes_the_bible_renders():
     assert "protagonist" not in render_canon([{"entity_id": e1, "name": _VI_NAME}])
 
 
-def test_cast_from_state_drops_an_entity_with_no_name_at_this_position():
-    # An entity whose name fact starts later did not exist yet at this position. A nameless
-    # bible line grounds nothing, and `render_canon` would skip it anyway — dropping it here
-    # keeps the two in agreement instead of relying on the renderer to clean up.
+def test_cast_from_state_KEEPS_a_nameless_entity_so_its_name_can_be_looked_up():
+    """⚠️ REWRITTEN 2026-08-24 (QC-5 C41). This asserted the opposite, on the reasoning that an
+    entity with no `name` fact "did not exist yet at this position" and that dropping it here
+    "keeps the two in agreement instead of relying on the renderer to clean up".
+
+    Measured on the acceptance book, the premise is false: **13 of 21 entities carry a `name`
+    fact and 8 do not, and the 8 are the PEOPLE.** `state@as_of` does not project a name;
+    `roster` does, by contract. Dropping here threw the characters away before anyone could look
+    them up, and the block headed "CHARACTER CANON" listed events and objects only — which is
+    what QC-5's clause 1a was failing on (7/8 on the untouched control).
+
+    The property that test defended is intact and asserted below: `render_canon` still emits no
+    nameless line. What moved is WHERE the decision happens.
+    """
     named, unnamed = str(uuid.uuid4()), str(uuid.uuid4())
     cast = cast_from_state([_entity(named, name="Alice"), _entity(unnamed, role="antagonist")])
-    assert [c["entity_id"] for c in cast] == [named]
+    assert [c["entity_id"] for c in cast] == [named, unnamed]
+    assert not cast[1].get("name"), "kept, but still nameless until someone fills it"
+
+    from app.engine.heal_canon import render_canon
+    rendered = render_canon(cast)
+    assert "Alice" in rendered
+    assert "- :" not in rendered, (
+        "the renderer must still emit no nameless line — that property did not move"
+    )
 
 
 def test_cast_from_state_ignores_attributes_the_bible_does_not_render():
@@ -240,4 +258,103 @@ async def test_canon_cast_falls_back_to_the_untimed_roster_and_warns(caplog):
 def test_cast_from_state_survives_malformed_rows(payload):
     # The bible is rendered on a request path a human is waiting on; a shape surprise must
     # thin the cast, never raise out of the route.
-    assert cast_from_state(payload) == []
+    #
+    # ⚠️ The assertion was `== []` until C41 kept nameless rows. The INTENT is unchanged and is
+    # what is asserted now: no malformed row may produce a NAMED cast member, so nothing
+    # malformed can reach a rendered bible line.
+    cast = cast_from_state(payload)
+    assert all(not c.get("name") for c in cast)
+
+# ── QC-5 C41: the block headed "CHARACTER CANON" contained no characters ──────────────────
+
+
+class _RosterKal(_StubKal):
+    """A KAL whose roster knows the names `state@as_of` does not project."""
+
+    def __init__(self, entities, roster_rows, roster_raises=False):
+        super().__init__(entities)
+        self._rows = roster_rows
+        self._raises = roster_raises
+
+    async def roster(self, book_id, *, user_id=None, strict=False):
+        self.roster_calls += 1
+        if self._raises:
+            raise RuntimeError("KAL roster unreachable")
+        return list(self._rows)
+
+
+async def test_a_nameless_entity_gets_its_name_from_the_ROSTER():
+    """🔴 Measured on the acceptance book: 13 of 21 entities carry a `name` FACT and 8 do not,
+    and the 8 are the people.
+
+    `state@as_of` projects `{entity_id, facts}` only, so `cast_from_state` sees a name only when
+    one happens to be stored as a fact. `render_canon` then drops every nameless row — correctly,
+    since "a nameless bible line grounds nothing" — and the bible listed the talent competition,
+    the spirit stones and the tea pavilion while omitting every character. A critic asked whether
+    prose contradicts a rule about a character, handed a character canon without that character,
+    flags prose that conforms: QC-5 clause 1a, failing at 7/8 on the untouched control.
+    """
+    from app.engine.canon_bible import canon_cast_at
+
+    chapter = uuid.uuid4()
+    eid = str(uuid.uuid4())
+    kal = _RosterKal([_entity(eid, role="betrayer")],          # facts, but NO name
+                     [{"entity_id": eid, "name": "Lam Trach"}])
+    cast, _ = await canon_cast_at(kal, _StubBook({str(chapter): 11}), BOOK, chapter, USER)
+
+    assert kal.roster_calls == 1
+    assert cast[0]["name"] == "Lam Trach", (
+        "the name was never missing from the system — `roster` projects id+name by contract, "
+        "which is the whole reason this fallback exists"
+    )
+
+
+async def test_a_cast_that_already_has_names_does_NOT_call_the_roster():
+    """The control arm, and it guards a cost as well as a behaviour: the roster is a keyset
+    drain over the whole book, and paying for it on every critique of a fully-named cast would
+    be a real regression. It also proves the fill is a FALLBACK rather than an override."""
+    from app.engine.canon_bible import canon_cast_at
+
+    chapter = uuid.uuid4()
+    eid = str(uuid.uuid4())
+    kal = _RosterKal([_entity(eid, name="FromState", role="x")],
+                     [{"entity_id": eid, "name": "FromRoster"}])
+    cast, _ = await canon_cast_at(kal, _StubBook({str(chapter): 11}), BOOK, chapter, USER)
+
+    assert kal.roster_calls == 0
+    assert cast[0]["name"] == "FromState", "state's own name must win; the roster only FILLS"
+
+
+async def test_a_roster_OUTAGE_leaves_the_cast_as_state_gave_it():
+    """Advisory all the way down: a thinner bible is acceptable, a failed critique is not."""
+    from app.engine.canon_bible import canon_cast_at
+
+    chapter = uuid.uuid4()
+    eid = str(uuid.uuid4())
+    kal = _RosterKal([_entity(eid, role="betrayer")], [], roster_raises=True)
+    cast, as_of = await canon_cast_at(kal, _StubBook({str(chapter): 11}), BOOK, chapter, USER)
+
+    assert as_of == 11
+    assert cast and not cast[0].get("name")
+
+async def test_the_roster_FILLS_a_missing_name_and_never_OVERRIDES_a_present_one():
+    """The control arm that actually fires. Its predecessor gave every entity a name, so the
+    fast path returned before the fill loop and the assertion held no matter what the loop did —
+    a bite proved it (mutating the guard to `if True:` left the suite green). A MIXED cast is
+    what makes the roster run and the precedence observable."""
+    from app.engine.canon_bible import canon_cast_at
+
+    chapter = uuid.uuid4()
+    have, missing = str(uuid.uuid4()), str(uuid.uuid4())
+    kal = _RosterKal(
+        [_entity(have, name="FromState", role="x"), _entity(missing, role="betrayer")],
+        [{"entity_id": have, "name": "RosterShouldNotWin"},
+         {"entity_id": missing, "name": "Lam Trach"}],
+    )
+    cast, _ = await canon_cast_at(kal, _StubBook({str(chapter): 11}), BOOK, chapter, USER)
+
+    assert kal.roster_calls == 1, "a missing name must trigger exactly one roster drain"
+    by_id = {c["entity_id"]: c for c in cast}
+    assert by_id[have]["name"] == "FromState", "state's own name WINS; the roster only fills"
+    assert by_id[missing]["name"] == "Lam Trach"
+

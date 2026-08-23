@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 96 of 142 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 97 of 143 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (30/57) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (31/58) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,81 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C41 2026-08-24 — **the block headed "CHARACTER CANON" contained no characters**
+
+  ```
+  entities with a `name` FACT     13 of 21   -> rendered
+  entities without one            8 of 21   -> silently dropped, and they are the PEOPLE
+  live: "canon cast: filled 6 name(s) from the roster that state@as_of omitted"
+  ESTABLISHED FACTS block         2218 -> 2559 chars; Lâm Trạch · Lâm Uyên · Tô Thanh Dao now render  <!-- doc-language-gate: ok -- the block's own heading IS the finding: it says CHARACTER and contained none -->
+  composition 3812 -> 3816 passed, 403 skipped, 0 failed
+  1a STILL unscorable             control 6/8 vs planted 3/5
+  ```
+
+  <!-- doc-language-gate: ok -- the cast names ARE the measurement: which characters reach the bible is the finding -->
+
+  📐 **C40 wired the grounding; this is what the grounding contained.** The block the critic
+  receives is headed `CANON NHÂN VẬT` — *character canon* — and every line in it was an event, an
+  object or a place: the talent competition, the spirit stones, the tea pavilion, a letter. Not
+  one character, in a book whose canon rules are entirely about characters.
+
+  🔴 **Cause, in one line of `cast_from_state`: `if not row.get("name"): continue`.** `state@as_of`
+  projects `{entity_id, facts}` and nothing else, so a name reaches the cast only when an entity
+  happens to store one as a FACT. Measured on the acceptance book: **13 of 21 entities do, 8 do
+  not, and the 8 are the people.** The drop ran before `entity_id` was even attached, so nothing
+  downstream could look the name up.
+
+  ⚖️ **Its justification was a sentence, and the data contradicts it.** The docstring read *"an
+  entity with no name fact at that position is dropped — it did not exist yet (or had no name
+  yet)"*. Lâm Trạch has five facts at ordinal 5 and a `cached_name`; the KAL's **roster** returns
+  him by name — *"roster could only ever supply `{entity_id, name}` — the KAL projects it to
+  id+name by contract"*, which is the sentence two functions up. He existed, he was named, and
+  the read that carries facts is simply not the read that carries names.
+
+  🎯 **Fix: keep the row, fill the name from the roster, drop only at RENDER.** The "no nameless
+  bible line" property is unchanged — `render_canon` still skips a blank name. What moved is
+  where the decision happens: after the caller has had its chance to look the name up.
+
+  ```
+  BITE T  restore the early drop        × 3 tests, incl. the roster fill and the outage arm
+  BITE U (1st)  let the roster OVERRIDE a name state gave      18 passed — NO BITE
+  BITE U (2nd)  same mutation, MIXED cast                      × the fill-never-overrides test
+  ```
+
+  U is worth keeping. The first control arm gave every entity a name, so the fast path returned
+  **before** the fill loop and the assertion held whatever the loop did — green by construction,
+  and the bite is what exposed it. A mixed cast is what makes the roster run and the precedence
+  observable.
+
+  📌 **Two existing tests asserted the old contract and were REWRITTEN, not deleted.**
+  `test_cast_from_state_drops_an_entity_with_no_name_at_this_position` now asserts the row
+  survives *and* that `render_canon` still emits no nameless line — the property it was really
+  defending. The malformed-row test kept its intent (*a shape surprise must thin the cast, never
+  raise*) with the assertion moved from `== []` to "no malformed row yields a NAMED member".
+
+  ⚠️ **And 1a is STILL unscorable: control 6/8, planted 3/5.** The third candidate eliminated,
+  after the model tier (C38) and the definition of contradiction (C39). The bible now names the
+  characters the rules are about and the critic still flags prose that conforms. Reported as a
+  negative because it is one.
+
+  🧪 **A silent degrade I introduced, caught and fixed in the same cycle.** The roster fallback
+  logged at DEBUG, so a roster outage would cost the critic 8 of 21 entities invisibly — the
+  exact shape `canon_cast_at` warns about one function up (*"a fallback nobody can observe is a
+  fallback that gets reported as a success"*). Now a WARNING that counts the entities it is about
+  to lose.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3816 passed, 403 skipped, 0
+  failed**.
+  **QC (b) live smoke:** rebuilt image on lw-iso; the fill's own log line, the block growing
+  2218 → 2559 chars with three named characters, and the 8×2 acceptance re-run.
+  **QC (c) real data:** the name-fact census (13/21 vs 8/21), the KAL roster (36 named items, 19
+  of 20 state ids overlapping), and the 16 re-run critiques.
+
+  📎 **Harness note, because it cost three misread runs.** Three "degraded" results in a row were
+  `{"detail": "invalid token"}` — my bearer had expired. `qc5_accept_live.py` guards for exactly
+  that (*"an auth failure must NOT read as a clean critique"*); the inline `curl` probes I was
+  using did not, and read `present_fact_count: None` as a critic failure.
   ---
   ### ✅ QC-5 C40 2026-08-24 — **the critique route reads the bi-temporal anchor it always had — and the bible comes back nearly empty**
 
