@@ -767,7 +767,7 @@ _OUTLINE_REF_FIELDS = (
 )
 async def composition_list_outline(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
     detail: Annotated[
         Literal["summary", "full"],
         "summary = refs only (id/kind/title/status/version, no prose); full = every field.",
@@ -816,8 +816,8 @@ async def composition_list_outline(
 )
 async def composition_get_outline_node(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The outline node's id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    node_id: Annotated[str, "The outline node's id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -873,8 +873,8 @@ def _project_prose(draft: dict, detail: str) -> dict:
 )
 async def composition_get_prose(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    chapter_id: Annotated[str, "The chapter's id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    chapter_id: Annotated[str, "The chapter's id. (a UUID)"],
     detail: Annotated[
         Literal["summary", "full"],
         "summary = metadata + draft_version only (drops the chapter body); full = the body too.",
@@ -957,8 +957,8 @@ async def composition_list_canon_rules(
 )
 async def composition_get_generation_job(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    job_id: Annotated[str, "The generation job id returned by composition_generate."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    job_id: Annotated[str, "The generation job id returned by composition_generate. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1077,7 +1077,7 @@ async def _ensure_pending_work(works: WorksRepo, created_by: UUID, book_id: UUID
 )
 async def composition_create_work(
     ctx: MCPContext,
-    book_id: Annotated[str, "The book the Work composes."],
+    book_id: Annotated[str, "The book the Work composes. (a UUID)"],
     project_id: Annotated[
         str | None,
         "The knowledge project id to bind the Work to (its PK). Optional — omit "
@@ -1466,8 +1466,8 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
 )
 async def composition_outline_node_delete(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The node to archive."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    node_id: Annotated[str, "The node to archive. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1505,8 +1505,8 @@ async def composition_outline_node_delete(
 )
 async def composition_outline_node_restore(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The node to restore."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    node_id: Annotated[str, "The node to restore. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1602,8 +1602,8 @@ async def composition_scene_link_create(ctx: MCPContext, args: _SceneLinkCreateA
 )
 async def composition_scene_link_delete(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    link_id: Annotated[str, "The scene-link edge id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    link_id: Annotated[str, "The scene-link edge id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1640,8 +1640,8 @@ async def composition_scene_link_delete(
 )
 async def composition_scene_link_restore(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    link_id: Annotated[str, "The scene-link edge id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    link_id: Annotated[str, "The scene-link edge id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1694,7 +1694,7 @@ class _DerivativeArchiveArgs(ForbidExtra):
 )
 async def composition_list_derivatives(
     ctx: MCPContext,
-    project_id: Annotated[str, "Any Work's project_id from the book."],
+    project_id: Annotated[str, "Any Work's project_id from the book. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -1731,7 +1731,7 @@ async def composition_list_derivatives(
 )
 async def composition_get_derivative_context(
     ctx: MCPContext,
-    project_id: Annotated[str, "The derivative Work's project_id."],
+    project_id: Annotated[str, "The derivative Work's project_id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -2366,8 +2366,8 @@ async def composition_canon_rule_update(ctx: MCPContext, args: _CanonRuleUpdateA
 )
 async def composition_canon_rule_delete(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    rule_id: Annotated[str, "The canon rule id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    rule_id: Annotated[str, "The canon rule id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -2411,8 +2411,8 @@ async def composition_canon_rule_delete(
 )
 async def composition_canon_rule_restore(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    rule_id: Annotated[str, "The canon rule id (from the delete response)."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    rule_id: Annotated[str, "The canon rule id (from the delete response). (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -2699,8 +2699,8 @@ def _book_error_result(exc: BookClientError) -> dict:
 )
 async def composition_publish(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    chapter_id: Annotated[str, "The chapter to publish (canonize)."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    chapter_id: Annotated[str, "The chapter to publish (canonize). (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -3941,7 +3941,7 @@ async def composition_motif_search(ctx: MCPContext, args: _MotifSearchArgs) -> d
 )
 async def composition_motif_get(
     ctx: MCPContext,
-    motif_id: Annotated[str, "The motif's id."],
+    motif_id: Annotated[str, "The motif's id. (a UUID)"],
 ) -> dict:
     # @small_return: single-object read (the get_by_id sibling) — this IS the
     # full-detail fetch the summary refs point to; no detail arg / SET projection.
@@ -3988,7 +3988,7 @@ def _motif_book_view(motif: Any, caller_id: UUID) -> dict[str, Any]:
 )
 async def composition_motif_book_list(
     ctx: MCPContext,
-    book_id: Annotated[str, "The book whose motif library to list (you need VIEW on it)."],
+    book_id: Annotated[str, "The book whose motif library to list (you need VIEW on it). (a UUID)"],
     genre: Annotated[str | None, "Filter by genre tag."] = None,
     kind: Annotated[_MotifKind | None, "Filter by motif kind."] = None,
     q: Annotated[str | None, "Free-text filter on name/summary."] = None,
@@ -4037,8 +4037,8 @@ async def composition_motif_book_list(
 )
 async def composition_motif_suggest_for_chapter(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The chapter outline node to rank motifs against."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    node_id: Annotated[str, "The chapter outline node to rank motifs against. (a UUID)"],
     limit: Annotated[int, "Max candidates."] = 5,
     detail: Annotated[
         Literal["summary", "full"],
@@ -4110,7 +4110,7 @@ async def composition_motif_suggest_for_chapter(
 )
 async def composition_arc_suggest(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
     premise: Annotated[str | None, "Optional premise text to seed the rank."] = None,
     genre: Annotated[str | None, "Optional genre filter."] = None,
     limit: Annotated[int, "Max candidates."] = 5,
@@ -4300,7 +4300,7 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
 )
 async def composition_motif_archive(
     ctx: MCPContext,
-    motif_id: Annotated[str, "The motif to archive."],
+    motif_id: Annotated[str, "The motif to archive. (a UUID)"],
     book_id: Annotated[
         str | None,
         "Set ONLY to archive a SHARED book-tier motif — requires EDIT on that book; any "
@@ -4347,7 +4347,7 @@ async def composition_motif_archive(
 )
 async def composition_motif_restore(
     ctx: MCPContext,
-    motif_id: Annotated[str, "The archived motif to restore."],
+    motif_id: Annotated[str, "The archived motif to restore. (a UUID)"],
     book_id: Annotated[
         str | None,
         "Set ONLY to restore a SHARED book-tier motif — requires EDIT on that book; any "
@@ -4526,7 +4526,7 @@ class _MotifLinkCreateArgs(ForbidExtra):
 )
 async def composition_motif_link_list(
     ctx: MCPContext,
-    motif_id: Annotated[str, "The motif whose edges to list (must be visible to you)."],
+    motif_id: Annotated[str, "The motif whose edges to list (must be visible to you). (a UUID)"],
     # K20 — see the Literal note on composition_arc_template_list: a runtime-checked closed
     # set must be declared in the schema, not only enforced after the call arrives.
     direction: Annotated[Literal["out", "in", "both"], "'out', 'in', or 'both'."] = "both",
@@ -4620,7 +4620,7 @@ async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateA
 )
 async def composition_motif_link_delete(
     ctx: MCPContext,
-    link_id: Annotated[str, "The motif-link edge id (must be on one of your motifs)."],
+    link_id: Annotated[str, "The motif-link edge id (must be on one of your motifs). (a UUID)"],
     book_id: Annotated[
         str | None,
         "Set to delete an edge in a SHARED book graph (D-MOTIF-LINK-SHARED-TIER) — requires EDIT "
@@ -4745,8 +4745,8 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
 )
 async def composition_motif_unbind(
     ctx: MCPContext,
-    project_id: Annotated[str, "The Work's project_id."],
-    node_id: Annotated[str, "The chapter node to clear / undo a bind on."],
+    project_id: Annotated[str, "The Work's project_id. (a UUID)"],
+    node_id: Annotated[str, "The chapter node to clear / undo a bind on. (a UUID)"],
     undo_token: Annotated[
         dict | None,
         "The undo_token from a prior composition_motif_bind — when present, does the EXACT "
@@ -5499,7 +5499,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
 )
 async def composition_get_mine_job(
     ctx: MCPContext,
-    job_id: Annotated[str, "The motif job id returned by a confirmed Tier-W motif action."],
+    job_id: Annotated[str, "The motif job id returned by a confirmed Tier-W motif action. (a UUID)"],
 ) -> dict:
     """BE-7c — OWNER-scoped poll of an async motif job.
 
@@ -6014,7 +6014,7 @@ async def plan_compile(
     ctx: MCPContext,
     book_id: Annotated[str, "The book (UUID)."],
     run_id: Annotated[str, "The plan run (UUID)."],
-    arc_id: Annotated[str, "The arc to compile (e.g. 'arc_2')."],
+    arc_id: Annotated[str, "The arc to compile (e.g. 'arc_2'). (a UUID)"],
     run_pipeline: Annotated[bool, "Also start the planning pipeline job."] = False,
     model_ref: Annotated[
         str | None,
@@ -6771,7 +6771,7 @@ async def composition_arc_list(
 )
 async def composition_arc_get(
     ctx: MCPContext,
-    node_id: Annotated[str, "The arc/saga (structure_node) id."],
+    node_id: Annotated[str, "The arc/saga (structure_node) id. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
@@ -6990,7 +6990,7 @@ async def composition_arc_update(ctx: MCPContext, args: _ArcUpdateArgs) -> dict:
 )
 async def composition_arc_delete(
     ctx: MCPContext,
-    node_id: Annotated[str, "The arc/saga to archive."],
+    node_id: Annotated[str, "The arc/saga to archive. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
@@ -7019,7 +7019,7 @@ async def composition_arc_delete(
 )
 async def composition_arc_restore(
     ctx: MCPContext,
-    node_id: Annotated[str, "The arc/saga to restore."],
+    node_id: Annotated[str, "The arc/saga to restore. (a UUID)"],
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
@@ -7478,7 +7478,7 @@ async def composition_arc_extract_template(
 )
 async def composition_arc_template_drift(
     ctx: MCPContext,
-    node_id: Annotated[str, "The arc (structure_node) to compare against its source template."],
+    node_id: Annotated[str, "The arc (structure_node) to compare against its source template. (a UUID)"],
     project_id: Annotated[str, "The Work whose realized prose the drift is measured against — its "
                                "book MUST be the arc's book (no cross-book oracle)."],
 ) -> dict:

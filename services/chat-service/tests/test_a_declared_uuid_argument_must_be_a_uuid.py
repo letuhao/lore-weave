@@ -167,3 +167,63 @@ def test_the_call_site_passes_the_declaration():
     call = src[i:i + 320]
     assert "_tool_def_for_args" in call
     assert '.get("properties")' in call
+
+
+# ── A FIXTURE'S OWN NAME IS THE MOST ID-SHAPED STRING IN THE TURN ────────────────────────
+#
+# 🔴 MEASURED TWICE. composition_list_derivatives was called with
+# project_id="LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed" (2026-08-23), and
+# earlier in this loop a LOOP-THROWAWAY name was passed as a world_id, with the model saying
+# "I'm having trouble accessing the map (ID: LOOP-THROWAWAY-…)".
+#
+# No other arm can see it: there is no whitespace, it is not SCREAMING_SNAKE, and it is not a
+# placeholder word. Only the DECLARED-UUID arm can, and it could not — composition's
+# `project_id` was declared as "The Work's project_id." with no mention of a UUID, so
+# `_declares_uuid` returned False. 48 of that module's 93 `*_id` declarations were in that
+# state; 9 of the 10 distinct names are validated by `_uuid()` in the handler, so they ARE
+# UUIDs and now say so. (`structure_template_id` is NOT `_uuid()`-validated and was left alone.)
+#
+# Renaming the fixtures is NOT the fix: the distinctive naming is deliberate and documented in
+# `_purge_worlds`. The declaration is what has to be true.
+_DERIV_PROPS = {
+    "project_id": {"type": "string",
+                   "description": "Any Work's project_id from the book. (a UUID)"},
+}
+
+
+def test_a_throwaway_fixture_name_is_dropped_when_the_arg_declares_a_uuid():
+    """A NON-context id declaring a UUID drops the fixture name."""
+    props = {"node_id": {"type": "string", "description": "The outline node's id. (a UUID)"}}
+    args = {"node_id": "LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed"}
+    assert _invented_supplier_ids(args, None, props) == ["node_id"]
+
+
+def test_project_id_is_EXEMPT_even_when_it_declares_a_uuid_and_that_is_deliberate():
+    """🔴 THE MEASURED CASE IS UNCATCHABLE BY THIS ARM, BY DESIGN — and my first draft of this
+    test asserted the opposite before the suite corrected it.
+
+    `project_id` is in `_RUNTIME_CONTEXT_IDS`. D-FJ-2 records why: a context id is injected by
+    the runtime UPSTREAM of this point and is not guaranteed to be a UUID, so treating a
+    non-UUID one as fabricated once DELETED A VALUE THE RUNTIME ITSELF HAD SUPPLIED and broke
+    the dispatch. The exemption is worth more than this catch.
+
+    So widening composition's declarations helps the SIX non-context names (arc_id, job_id,
+    link_id, motif_id, node_id, rule_id) and cannot help book_id / chapter_id / project_id.
+    The measured failure — a LOOP-THROWAWAY name sent as a project_id — needs a different
+    mechanism, and pretending otherwise here would hide that.
+    """
+    args = {"project_id": "LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed"}
+    assert _invented_supplier_ids(args, None, _DERIV_PROPS) == []
+
+
+def test_the_same_name_survives_when_the_declaration_stays_silent():
+    """This is exactly why the 41 declarations were widened — the arm is declaration-driven."""
+    silent = {"node_id": {"type": "string", "description": "The outline node's id."}}
+    args = {"node_id": "LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed"}
+    assert _invented_supplier_ids(args, None, silent) == []
+
+
+def test_a_real_uuid_is_untouched_by_the_widened_declaration():
+    props = {"node_id": {"type": "string", "description": "The outline node's id. (a UUID)"}}
+    assert _invented_supplier_ids({"node_id": "01a02cd6-01e1-73f2-8bbf-6d297e51213a"},
+                                  None, props) == []
