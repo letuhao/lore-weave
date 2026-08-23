@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 92 of 135 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 93 of 136 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (26/50) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (27/51) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,86 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C34 2026-08-24 — **the LIVE run: it proved the wiring and found TWO defects the suite could not**
+
+  ```
+  composition image   REBUILT on lw-iso, container recreated, healthy
+  llm_jobs, by purpose and model — the record that settles what actually ran
+    19:47:19  prose_critic         019eb620    BEFORE: no verify call AT ALL (stale image)
+    19:50:10  prose_critic_verify  019eb620    verify runs, falls back to the CRITIC
+    19:57:10  prose_critic_verify  51ea9fd7    after the route fix: the VERIFIER model
+  composition 3801 -> 3803 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **The GOAL says "a live run proves it", and this is the run.** `violations_unverified` is
+  ABSENT from the stale image's response and PRESENT after the rebuild, so the envelope key is
+  itself the deployment marker — no need to trust that the build took.
+
+  🔴 **FINDING 1 — C33 wired the role at ONE of THREE call sites, and only the live run could
+  see it.** Every unit test passed. Then a book WITH a verifier configured was still audited by
+  its critic, and `llm_jobs` said so in one column: `prose_critic_verify` on `019eb620`, the
+  critic, not on the `51ea9fd7` the Work's `critic_verifier` names. `judge_prose` has three
+  callers —
+
+  ```
+  services/authoring_run_service.py:799   wired by C33
+  routers/engine.py:2064                  NOT wired  <- the route the studio and QC-5 call
+  engine/quality_report.py:154            exempt: active_rules=[], so nothing is attributable
+  ```
+
+  — which is the one-concept-many-readers shape this service already records for
+  `resolve_critic` (*"the rule had an EIGHTH copy that the S6 sweep missed"*). Fixed, and the
+  callers are now DERIVED from the AST rather than listed, because a hand-written list would
+  reproduce the defect it is meant to catch.
+
+  ```
+  BITE J  unwire the route again
+          AssertionError: ['app/routers/engine.py'] call `judge_prose` without the verifier
+          role. A book that configured one would have its findings audited by the critic
+          instead, silently.                                       1 failed, 11 passed
+  BITE K  break the scan so it matches nothing
+          AssertionError: only 0 judge_prose call site(s) found     1 failed, 11 passed
+  ```
+
+  🔴 **FINDING 2 — on a REAL chapter the shipped critic returns nothing, and it is ONE MISSING
+  COMMA.** The clean arm scored `canon=None raw=0` on **3 of 3** runs over the real 4757-char
+  chapter-10 draft. Not truncation, and `llm_jobs` is what rules that out: `finish_reason=stop`,
+  2257–2273 tokens, three times. The reply is JSON-shaped and invalid —
+
+  <!-- doc-language-gate: ok -- the model's RAW output is the finding; the missing comma is only visible in the bytes it emitted -->
+  ```
+  "note": "...does not fit well with the established narrative flow."
+              "span": "Trong khoảnh khắc cận kề cái chết..."          <- no comma
+  ```
+  <!-- doc-language-gate: end -->
+
+  — so `parse_critique_json` refuses the whole object and the verdict is discarded **including
+  the well-formed `violations` array above it**, which had already found and attributed R1. The
+  envelope says `critic_unparsable`, honestly; what it cannot say is that a finding existed and
+  was thrown away over punctuation. This is the same family as C12's dropped verdict, one layer
+  lower, and it is **newly diagnosed here rather than carried over**.
+
+  ⚖️ **What the live run did NOT establish, said plainly.** Precision on the clean arm is still
+  unmeasured **live**, because the critique never parsed there — 3/3. The planted arm ran
+  (`raw 3/4/3, kept 2/4/2`) and keeping R1 findings is CORRECT there, since the plant makes R1
+  false by construction; the verifier also refuted one R1 finding per run in 2 of 3, which is a
+  false refusal on a true violation. So the live evidence supports **the wiring**, not yet the
+  precision claim — that still rests on C31's offline eval over the 14 adjudicated verdicts and
+  the planted/clean arms. Finding 2 is why, and it is now the thing standing between QC-5 and a
+  live precision number.
+
+  ⚠️ **Fixture note.** The iso Work now carries
+  `model_roles.critic_verifier = 51ea9fd7…` — written on **lw-iso**, the code stack (rule 1),
+  never dev. Its original settings were `{source_language, critic_model_ref, critic_model_source}`
+  and are recorded here so the change is reversible by anyone reading this row.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3803 passed, 403 skipped, 0
+  failed**. No new gate; the new check is a test and carries its own bites.
+  **QC (b) live smoke:** **this row IS the live smoke**, against a REBUILT image — and it is the
+  control that found Finding 1, which every unit test had passed over.
+  **QC (c) real data:** the `llm_jobs` table above (purpose × model × finish_reason × tokens),
+  the six critique responses, and the raw model output that Finding 2 quotes.
   ---
   ### ✅ QC-5 C33 2026-08-24 — **the seventh ModelRole, and the PO's reading of C31's numbers**
 

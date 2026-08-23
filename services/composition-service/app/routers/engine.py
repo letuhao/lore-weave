@@ -56,6 +56,7 @@ from app.deps import (
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.structure import StructureRepo
 from app.db.models import CorrectionKind
+from app.engine.model_roles import role_ref
 from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
@@ -2061,11 +2062,18 @@ async def critique(
     rules = await canon.list_active(job.project_id)
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
+    # QC-5 C34 — the verifier role, resolved HERE too. C33 wired it into the authoring
+    # path only, and the live smoke caught the gap: this route is what the studio and the
+    # QC-5 harness call, so a book that had configured a verifier still had its findings
+    # audited by the critic. `judge_prose` has three call sites and the role was passed at
+    # one — the same one-concept-N-readers shape `resolve_critic` records an eighth copy of.
+    _ver_src, _ver_ref = role_ref(settings_dict, "critic_verifier")
     critic = await judge_prose(
         llm, user_id=str(user_id),
         model_source=str(critic_res.source), model_ref=str(critic_res.ref),
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
+        verifier_source=_ver_src, verifier_ref=_ver_ref,
     )
     # WHICH judge answered, stamped on the verdict itself. The authoring path already does
     # this (`authoring_run_service.py`), and the studio renders both fields; this route did

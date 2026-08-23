@@ -216,3 +216,63 @@ async def test_no_verifier_configured_FALLS_BACK_to_the_critic():
     assert judge.calls[1]["model_ref"] == "critic-model"
     assert judge.calls[1]["model_source"] == "s"
 
+# ── QC-5 C34: every caller must pass the verifier role, and that is DERIVED ───────────────
+
+#: Call sites that legitimately do NOT resolve the role, each with the reason it cannot matter.
+_VERIFIER_EXEMPT = {
+    "app/engine/quality_report.py":
+        "passes active_rules=[], so `map_rule_tokens` can attribute nothing and the verifier "
+        "branch (`if crit['violations']`) is unreachable — there is no verdict to audit",
+}
+
+
+def test_EVERY_judge_prose_caller_resolves_the_verifier_role():
+    """🔴 Found by the LIVE run, not by this suite, which is why it exists.
+
+    C33 wired `critic_verifier` into the authoring path and every unit test passed. The
+    end-to-end smoke then showed a book WITH a verifier configured still being audited by its
+    critic: `judge_prose` has THREE call sites and the role was passed at ONE. `routers/engine.py`
+    is the route the studio and the QC-5 harness actually call.
+
+    That is the one-concept-many-readers shape this service already records for `resolve_critic`
+    ("the rule had an EIGHTH copy that the S6 sweep missed"), and a hand-written list of callers
+    would reproduce it — so the callers are derived from the source.
+    """
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2] / "app"
+    missing = []
+    seen = 0
+    for path in root.rglob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "judge_prose"):
+                continue
+            seen += 1
+            rel = path.relative_to(root.parent).as_posix()
+            kwargs = {k.arg for k in node.keywords}
+            if "verifier_ref" not in kwargs and rel not in _VERIFIER_EXEMPT:
+                missing.append(rel)
+    assert seen >= 3, (
+        f"only {seen} judge_prose call site(s) found — the scan must not pass by finding "
+        f"nothing, which is how a caller stays unwired"
+    )
+    assert not missing, (
+        f"{missing} call `judge_prose` without the verifier role. A book that configured one "
+        f"would have its findings audited by the critic instead, silently."
+    )
+
+
+def test_the_verifier_exemptions_are_not_stale():
+    """An exemption naming a file that no longer calls the judge reads as a considered decision
+    about a call site that has since moved — and would excuse a future one that reused the path."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2]
+    for rel in _VERIFIER_EXEMPT:
+        src = (root / rel).read_text(encoding="utf-8")
+        assert "judge_prose(" in src, f"{rel} is exempt but no longer calls judge_prose"
+
