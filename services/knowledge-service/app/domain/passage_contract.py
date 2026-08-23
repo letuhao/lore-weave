@@ -25,7 +25,7 @@ comments below warn about.
 """
 from __future__ import annotations
 
-__all__ = ["KNOWN_SOURCE_TYPES", "SUPPORTED_PASSAGE_DIMS"]
+__all__ = ["KNOWN_SOURCE_TYPES", "SUPPORTED_PASSAGE_DIMS", "SUPPORTED_VECTOR_DIMS"]
 
 # C8 (D-K19e-γa-01) — closed set of recognised `source_type` values on :Passage nodes.
 # Single source of truth consumed by:
@@ -43,3 +43,17 @@ KNOWN_SOURCE_TYPES: frozenset[str] = frozenset({"chapter", "chat", "glossary"})
 # checklist; adding to it without the two index changes yields a dim that validates and then
 # has nowhere to be written.
 SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
+
+# ENTITY vectors use the SAME closed set, and that is not a convention — it is what the
+# Postgres writer already does. `create_vector_tables` iterates `SUPPORTED_PASSAGE_DIMS` and
+# creates BOTH tables from it:
+#
+#     for dim in dims or SUPPORTED_PASSAGE_DIMS:
+#         ptable, etable = passage_table(dim), entity_table(dim)
+#
+# So a second literal here is not duplication that merely drifts, it is a latent bug with a
+# direction: a dim in the entity set but NOT in the passage set validates at the embedder and
+# then has no `entity_vectors_{dim}` table to be written to. It lived in
+# `db/neo4j_repos/entities.py` as its own tuple, which is exactly the split that makes that
+# reachable. One name, one object, one place to add a dim.
+SUPPORTED_VECTOR_DIMS: tuple[int, ...] = SUPPORTED_PASSAGE_DIMS

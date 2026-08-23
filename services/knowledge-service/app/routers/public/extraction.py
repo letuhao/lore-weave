@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.clients.chapter_title_enricher import (
     enrich_jobs_with_current_chapter_titles,
 )

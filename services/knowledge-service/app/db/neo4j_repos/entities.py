@@ -92,11 +92,10 @@ __all__ = [
 ]
 
 
-# K11.5b — supported embedding dimensions per KSA §3.4.B.
-# Mirrors the vector indexes created by the K11.3 schema runner.
-# Tuple (not set) for stable iteration; lookup is O(n) on n=4 so
-# no hash overhead matters.
-SUPPORTED_VECTOR_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
+# T17 — the literal moved to `app.domain.passage_contract`, which is where the platform's
+# closed dim set lives. It was a SECOND copy of that set, and the Postgres writer builds
+# `entity_vectors_{dim}` from the passage one, so the two were never independent.
+from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS  # noqa: E402
 # T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
 # names, so defining them here made the port import its own implementation. Re-exported
 # so existing importers keep working; the adoption gate records callers moving off.

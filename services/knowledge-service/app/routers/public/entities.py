@@ -29,29 +29,8 @@ from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
 from loreweave_extraction.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import (
-    AUTHORABLE_KINDS,
-    find_alias_collision,
-    ENTITIES_MAX_LIMIT,
-    ENTITY_SORT_KEYS,
-    ENTITY_STATUSES,
-    SUPPORTED_VECTOR_DIMS,
-    Entity,
-    EntityDetail,
-    MergeEntitiesError,
-    user_archive_entity,
-    get_entities_by_ids,
-    find_gap_candidates,
-    get_entity,
-    get_entity_with_relations,
-    link_to_glossary,
-    list_entities_filtered,
-    list_user_entities,
-    merge_entities,
-    merge_entity,
-    unlock_entity_user_edited,
-    update_entity_fields,
-)
+from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
+from app.db.neo4j_repos.entities import AUTHORABLE_KINDS, ENTITIES_MAX_LIMIT, ENTITY_SORT_KEYS, ENTITY_STATUSES, Entity, EntityDetail, MergeEntitiesError, find_alias_collision, find_gap_candidates, get_entities_by_ids, get_entity, get_entity_with_relations, link_to_glossary, list_entities_filtered, list_user_entities, merge_entities, merge_entity, unlock_entity_user_edited, update_entity_fields, user_archive_entity
 from app.db.neo4j_repos.entity_status import statuses_detail_at_order
 from app.db.neo4j_repos.facts import (
     Fact,

@@ -31,7 +31,7 @@ from app.deps import (
 )
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
 from app.config import settings as app_settings
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.middleware.internal_auth import require_internal_token
 from app.routers.public.extraction import (
     StartJobRequest,

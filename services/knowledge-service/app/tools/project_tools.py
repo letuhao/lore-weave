@@ -192,7 +192,7 @@ async def _handle_kg_project_set_embedding_model(
     confirm-gated REST operation and this Tier-A tool refuses it by name.
     """
     from app.db.models import ProjectUpdate
-    from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+    from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
     from app.tools.executor import ToolExecutionError
     from app.tools.graph_schema_tools import _resolve_project_owner_and_level
 

@@ -30,8 +30,6 @@ __all__ = [
     "get_passage_content_hash",
     "Passage",
     "PassageSearchHit",
-    "SUPPORTED_PASSAGE_DIMS",
-    "KNOWN_SOURCE_TYPES",
     "passage_canonical_id",
     "upsert_passage",
     "delete_passages_for_source",
@@ -50,13 +48,13 @@ __all__ = [
 # MOVED to `app.domain.passage_contract` (T17 A6) — a fact about the CORPUS, not this
 # engine. Re-exported so every existing importer keeps working and there is still exactly
 # ONE definition.
-from app.domain.passage_contract import KNOWN_SOURCE_TYPES  # noqa: E402,F401
+from app.domain.passage_contract import KNOWN_SOURCE_TYPES  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 # MOVED to `app.domain.passage_contract` (T17 A6) — the POSTGRES adapter validates against
 # the same closed set, which is the proof it was never this engine's fact. Re-exported.
-from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS  # noqa: E402,F401
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS  # noqa: E402
 class Passage(BaseModel):
     """Pydantic projection of a `:Passage` node.
 

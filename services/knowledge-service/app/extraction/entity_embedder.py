@@ -40,10 +40,8 @@ from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.clients.glossary_client import GlossaryClient
 from app.adapters.vector_store_provider import get_vector_store
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import (
-    SUPPORTED_VECTOR_DIMS,
-    find_entities_needing_embedding,
-)
+from app.domain.passage_contract import SUPPORTED_VECTOR_DIMS
+from app.db.neo4j_repos.entities import find_entities_needing_embedding
 from app.ports.vector_store import EntityVectorRecord
 
 logger = logging.getLogger(__name__)

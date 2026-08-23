@@ -34,10 +34,8 @@ from typing import Any
 from app.adapters.vector_store_provider import get_vector_store
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import (
-    SUPPORTED_PASSAGE_DIMS,
-    get_passage_content_hash,
-)
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
+from app.db.neo4j_repos.passages import get_passage_content_hash
 from app.ports.vector_store import PassageVectorRecord
 
 __all__ = ["render_glossary_passage", "sync_glossary_entity_passage"]

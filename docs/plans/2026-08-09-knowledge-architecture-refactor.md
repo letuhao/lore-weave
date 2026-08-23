@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: TWO owed inputs, both operational — T46's topology (§6.3c) and QC-5's ship/fix/amend call (§2.1). T25 ④'s DDL is NOT one: §9.2 shows it is coupled to the backend flip, already decided.**
+**RESUME: T25 §3.1 — the vector cutover.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 59 of 102 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 60 of 103 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (19/29) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,88 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A15 2026-08-23 — **class (a) 7 → 0, and the constant it was hiding was a LATENT BUG**
+
+  ```
+  class (a) constants and types only    7 -> 0   ratchet MAX_CLASS_A = 0, new
+  class (b) deleted by 3.1 / moved      3 -> 10
+  class (d) needs port operations      34 -> 34  unchanged
+  ceiling   modules binding neo4j_repos 54 -> 54  UNCHANGED, and that is honest
+  ```
+
+  🔴 **The ceiling does not move, and saying so first is the point.** Every one of the 7 also
+  imports an operation, so none is freed from `neo4j_repos` today — their operations fall away
+  with §3.1, not with this. What this cycle removes is the *other* reason they were bound: a
+  **constant**. `--classify` called them *"(a) constants and types only — a MOVE, not port
+  growth"*, and the move had already happened.
+
+  📐 **A5/A6 moved the constants to `app/domain/passage_contract.py` and never repointed the
+  consumers.** Its own docstring records the compatibility shim and its reason:
+
+  ```
+  "They are re-exported from db/neo4j_repos/passages.py, so every existing importer keeps
+   working and there is still exactly ONE definition."
+  ```
+
+  One definition, yes — but **eleven modules importing it through the repo layer**, which is
+  what made them count as bound to the concrete layer *for a tuple of integers*, the exact
+  phrase A5/A6 used about the twelve it was fixing. The shim outlived its migration. Repointed
+  all eleven, withdrew the two re-exports from `__all__`, and the `# noqa: F401` pragmas that
+  existed only to keep them went with them.
+
+  🎯 **And the third constant was not hygiene — it was a bug with a direction.**
+  `SUPPORTED_VECTOR_DIMS` lived in `db/neo4j_repos/entities.py` as **its own literal of the same
+  tuple**. The two were never independent, and the proof is in the Postgres writer:
+
+  ```python
+  for dim in dims or SUPPORTED_PASSAGE_DIMS:
+      ptable, etable = passage_table(dim), entity_table(dim)   # BOTH, from the PASSAGE set
+  ```
+
+  So a dim in the entity set but not the passage set **validates at the embedder and then has no
+  `entity_vectors_{dim}` table to be written to**. Not a config mismatch — a failed write, found
+  by reading the two literals against the DDL loop rather than by noticing they were equal.
+
+  🧪 **Two ratchets and a behavioural test, each bitten.**
+
+  ```
+  BITE 1  tools/executor.py:61 -> the repo-layer import      GATE STAYED GREEN
+          — and correctly: executor also imports non-deleted ops, so it is class (d),
+            not (a). The bite caught ME claiming a check fires on a case it cannot see.
+  BITE 1' tools/project_tools.py:195 -> the repo-layer import
+          [port-adoption-gate] FAIL — class (a) GREW to 1 (ceiling 0):
+                                      ['tools/project_tools.py']
+  BITE 2  passage_contract.py:59 -> its own literal again, plus one dim
+          AssertionError: dims [4096] are accepted by the entity embedder but no
+          entity_vectors_<dim> table is created for them — an embedding that
+          validates and has nowhere to go
+  ```
+
+  Both restored; the working diff hashes back to `f07d93d8`, so the bites left nothing behind.
+
+  ⚖️ **The `is` check is a regression guard and the file says so.** Two names bound to one object
+  make `SUPPORTED_VECTOR_DIMS is SUPPORTED_PASSAGE_DIMS` true by construction — worthless alone.
+  The two tests that carry the weight read the **DDL the adapter emits**, in both directions: no
+  accepted dim without a table, and no table for a dim the embedder rejects. A one-sided check
+  would pass just as well if the writer created a table for everything.
+
+  ⚠️ **The `MAX_CLASS_A` ratchet has ONE branch, deliberately.** Class (d) carries both `>` and
+  `<` because its ceiling is 34 and a real improvement must move the number in the same commit.
+  Class (a)'s ceiling is **zero**, so an `improved` branch could never fire — a branch that
+  cannot go red is the defect this gate exists to catch, one level up.
+
+  **QC (a) gates:** `port-adoption-gate --selftest` green with a new case proving the ratchet
+  detects the regression it exists to stop; `knowledge-service` **4609 passed, 786 skipped**
+  (+3, the new file). Two failures in `test_coaching_gate1.py` are **pre-existing and proven so**
+  — stashed the whole change, ran them at `HEAD`, both failed identically, popped, and the diff
+  hash came back byte-identical. They are about `FactType`'s union shape; this diff does not
+  contain the string `FactType`.
+  **QC (b) live smoke:** N/A — no service seam crossed. Import paths and one constant's home;
+  the behaviour is pinned by the DDL test rather than by a deployment.
+  **QC (c) real data:** N/A — this task produces no data. The numbers it does produce are the
+  gate's own classification, printed above before and after.
+
   ---
   ### ✅ A6 2026-08-13 — class (a): three constant families out of the engine layer
 

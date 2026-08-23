@@ -349,6 +349,16 @@ def selftest() -> int:
               f"not class (d); that is the exact error the stale hand count made")
         ok = False
 
+    # The MAX_CLASS_A ratchet, proven in CI rather than by hand. A hand-bite shows the check
+    # can go red once; this shows it goes red for the reason claimed -- a module importing a
+    # domain constant THROUGH the repo layer, which is the only way to re-enter class (a).
+    regressed = classify({"svc/regress.py": {"STATUS_VALUES"}})
+    n_a = len([k for k, v in regressed.items() if v[0] == CLASS_A])
+    if not n_a > MAX_CLASS_A:
+        print(f"  FAIL — a constant-only binder left class (a) at {n_a} against ceiling "
+              f"{MAX_CLASS_A}; the ratchet cannot detect the regression it exists to stop")
+        ok = False
+
     const_only = classify({"svc/x.py": {"STATUS_VALUES"}})["svc/x.py"]
     if const_only[0] == CLASS_D:
         print("  FAIL — a CONSTANT-only importer was scored as needing a port operation; "
@@ -664,6 +674,14 @@ CLASS_OUT = "(1.2) engine-specific janitors — out forever"
 #: A shrink-only ratchet, same contract as the ceiling above. This is the first DERIVED value;
 #: every earlier figure for this population was hand-written prose, and it drifted.
 MAX_CLASS_D = 34
+
+#: Class (a) is now EMPTY, and this pins it there. A module in (a) binds `neo4j_repos` for a
+#: CONSTANT — a domain fact re-exported by the repo layer, which T17 A5/A6 moved to
+#: `app/domain/` and then left every consumer importing through the old path. Seven modules
+#: sat that way for nine days, counting as bound to the concrete layer for a tuple of
+#: integers. Zero is the honest reading and a ceiling of zero is what keeps it: the next
+#: `from app.db.neo4j_repos.X import SOME_CONSTANT` reopens the class and fails here.
+MAX_CLASS_A = 0
 
 
 def _symbol_home(path: str) -> dict[str, tuple[str, str]]:
@@ -1347,6 +1365,16 @@ def main() -> int:
     # Two explicit branches, never `MIN < n < MAX`. The vector bypass carried the
     # two-sided form and went SILENT at exactly the count that mattered — see the note
     # above it. A ratchet that prints nothing on success cannot be trusted on failure.
+    class_a = sorted(k for k, v in classes.items() if v[0] == CLASS_A)
+    if len(class_a) > MAX_CLASS_A:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — class (a) GREW to {len(class_a)} "
+              f"(ceiling {MAX_CLASS_A}): {sorted(class_a)}{chr(10)}")
+        print("  A module is binding `neo4j_repos` for a CONSTANT. The constant has a home")
+        print("  in app/domain/ — import it from there. Nothing about a tuple of integers")
+        print("  needs the concrete layer, and this is the cheapest class to keep at zero.")
+        return 1
+    print(f"[port-adoption-gate] class (a) {len(class_a)}/{MAX_CLASS_A} — no module binds "
+          f"the concrete layer for a constant; every domain fact is imported from its home")
     if len(class_d) > MAX_CLASS_D:
         print(f"{chr(10)}[port-adoption-gate] FAIL — class (d) GREW to {len(class_d)} "
               f"(ceiling {MAX_CLASS_D}).{chr(10)}")

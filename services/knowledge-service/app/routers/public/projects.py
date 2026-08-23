@@ -37,7 +37,7 @@ from app.db.models import (
 )
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.project_graph import purge_project
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.event_text_translations import EventTextTranslationsRepo

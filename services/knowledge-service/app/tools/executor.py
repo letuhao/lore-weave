@@ -58,9 +58,7 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.events import list_events_filtered
 from app.db.neo4j_repos.facts import invalidate_fact, merge_fact
-from app.db.neo4j_repos.passages import (
-    SUPPORTED_PASSAGE_DIMS,
-)
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.db.repositories.projects import ProjectsRepo
 from app.extraction.injection_defense import neutralize_injection

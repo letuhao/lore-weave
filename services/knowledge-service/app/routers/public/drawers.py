@@ -28,11 +28,8 @@ from pydantic import BaseModel
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.passages import (
-    KNOWN_SOURCE_TYPES,
-    SUPPORTED_PASSAGE_DIMS,
-    count_passages_by_source_type,
-)
+from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
+from app.db.neo4j_repos.passages import count_passages_by_source_type
 
 # C8 (D-K19e-γa-01) — enum for the source_type filter query param.
 # Mirrors KNOWN_SOURCE_TYPES (single source of truth in the repo); Literal
