@@ -1,0 +1,33 @@
+[
+ {
+  "tool": "jobs_pause",
+  "pre": [],
+  "args": {
+   "service": "translation",
+   "job_id": "01a02d7b-5543-7a8c-9af9-cf8a70960882"
+  },
+  "first": [
+   "refused",
+   "MCP jobs_pause error: Error executing tool jobs_pause: {\"message\": \"action 'pause' not valid for status 'pending'\"}"
+  ],
+  "second": [
+   "refused",
+   "MCP jobs_pause error: Error executing tool jobs_pause: {\"message\": \"action 'pause' not valid for status 'pending'\"}"
+  ],
+  "diff_first": {},
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe measured two no-ops and proves nothing about idempotency.",
+  "first_had_effect": false,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d7b-5543-7a8c-9af9-cf8a70960882",
+   "title": "LOOP-THROWAWAY-idem-jobs_pause-f10ae123",
+   "tables": {
+    "composition(project)": "01a02d7b-56d4-7748-b756-feb6c350d751"
+   }
+  }
+ }
+]

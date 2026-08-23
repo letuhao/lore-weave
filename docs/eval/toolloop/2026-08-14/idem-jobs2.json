@@ -1,0 +1,6 @@
+[
+ {
+  "tool": "jobs_cancel",
+  "error": "RuntimeError: db_query failed (loreweave_jobs): ERROR:  relation \"translation_jobs\" does not exist\nLINE 1: ...', 'pending', 'Idem probe job', now(), now() FROM translatio...\n                                                             ^"
+ }
+]

@@ -1,0 +1,51 @@
+[
+ {
+  "tool": "jobs_cancel",
+  "pre": [],
+  "args": {
+   "service": "translation",
+   "job_id": "01a02d7a-2e4e-7aef-9836-d1b2ac1e6187"
+  },
+  "first": [
+   "ok",
+   {
+    "success": true,
+    "status_code": 200,
+    "result": {
+     "job_id": "01a02d7a-2e4e-7aef-9836-d1b2ac1e6187",
+     "status": "cancelled"
+    }
+   }
+  ],
+  "second": [
+   "refused",
+   "MCP jobs_cancel error: Error executing tool jobs_cancel: {\"message\": \"tool error\"}"
+  ],
+  "diff_first": {
+   "loreweave_translation.translation_jobs": {
+    "before": {
+     "rows": 1,
+     "latest": "2026-08-23 07:16:17.639832+00"
+    },
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-23 07:16:31.40913+00"
+    }
+   }
+  },
+  "diff_second": {},
+  "verdict": "STRICTLY IDEMPOTENT — the second call touched nothing at all",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d7a-2e4e-7aef-9836-d1b2ac1e6187",
+   "title": "LOOP-THROWAWAY-idem-jobs_cancel-20eff67d",
+   "tables": {
+    "composition(project)": "01a02d7a-2fb1-788d-b301-d05f8d2c5dc0"
+   }
+  }
+ }
+]
