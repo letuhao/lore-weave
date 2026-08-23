@@ -9128,6 +9128,82 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
   ---
+  ### 📊 T33b 2026-08-23 — **the live run, measured DURABLY: the soak has genuinely never carried a passage**
+
+  ```
+  real stack (rule 1 — DATA on 5555/7688)
+
+    PRIMARY   pgvector  passage_vectors_1024        0 rows
+    SECONDARY Neo4j     :Passage with embedding  1051
+    PRIMARY   pgvector  entity_vectors_1024        25 rows
+  ```
+
+  📐 **T33a said what T33 is waiting on, and it is not another row:** *"this plan's remaining
+  rows all reduce to the same two writes… `T46b` showed 1819 entities fork until `recanon
+  --apply` runs; `T25c` showed the vector soak has never run. **Those two writes are the live
+  run.**"* `recanon --apply` ran (T46d: 1819 re-keyed, 1 merged, `actions=0` on the re-run). This
+  is the other half, measured.
+
+  🔴 **`ARMED_IDLE` has been read as "the soak never ran", and the gate's own text says that is
+  not what it means.** The counter is **process-local**: `knowledge-service` was rebuilt and
+  restarted **six times this afternoon** (A17, A18, A20, A21, A22, A23), so a fresh `0` carries
+  no information at all. The verdict already told the reader to go and check row counts —
+
+  ```
+  "The durable evidence is row counts in the secondary; check those before concluding
+   the soak never ran."
+  ```
+
+  — and then did not accept them. That loop is closed here: `--primary-rows` folds the durable
+  count into the verdict, so the same counters now read two opposite ways and each says which it
+  is:
+
+  ```
+  --primary-rows 0   no write since the last restart AND the primary durably holds 0 rows —
+                     on this evidence the soak has genuinely never carried a row
+  --primary-rows 25  no write since the last restart, but the primary DURABLY holds 25 row(s)
+                     — the soak HAS run; this counter reset with the process
+  ```
+
+  ⚖️ **What the numbers mean, and it is not a new defect.** 1051 embedded passages in the
+  secondary against **0** in the primary is precisely the state §9.1 sent to the PO — *"dev's
+  Postgres held ZERO passage rows against 1051 passages and someone had to accept an emptied
+  search"* — and that decision was taken. The 25 entity rows are T25s's work. So the durable
+  evidence **confirms an accepted state** rather than finding a new one; what changes is that it
+  is now measured instead of inferred from a counter that cannot carry the claim.
+
+  🔴 **A method failure of mine, recorded because it invalidates a technique I used nine times.**
+  I first drove a real `DualWriteVectorStore.upsert` through the composition root inside the
+  container — it returned `True` — and **no counter moved.** `docker exec python` is a different
+  process from uvicorn, and Prometheus counters are process-local. The in-process technique
+  verified return values correctly in A16–A23, but it **cannot** verify a served metric. Recorded
+  rather than quietly worked around.
+
+  🧪 **BITE 13 — collapse the two durable readings into one (`if primary_rows > 0` → `if True`):**
+
+  ```
+  FAIL  identical counters + opposite DURABLE rows -> readings that differ by more than the number
+  FAIL  the two readings SAY which one they are
+  ```
+
+  ⚠️ **The first bite attempt PASSED, and the weak assertion was mine.** `why_never != why_ran`
+  is satisfied even when the branch is collapsed, because both sentences interpolate the row
+  count — they differ on `"0"` vs `"25"` whatever the code does. Strengthened to compare with the
+  digits stripped, and re-bitten: now both assertions fail.
+
+  ✅ **Two controls.** With no durable count the gate keeps the old text and **refuses to guess**
+  — omitting the evidence must not silently pick a side. And a populated primary does **not**
+  soften `secondary_failed`: FAILING still outranks everything, which is exactly the moment
+  someone would be tempted to wave one through.
+
+  **QC (a) gates:** four plan gates green; `soak-armed-gate --selftest` green with **four new
+  cases**.
+  **QC (b) live smoke:** the verdicts above are the gate run against the RUNNING
+  `lw-iso knowledge-service` `/metrics`.
+  **QC (c) real data:** the row counts are `count(*)` on the real stack's `knowledge-pg` and a
+  Neo4j `count()` on `infra-neo4j-1` — reads, rule 6.
+
+  ---
   ### 📊 T33a 2026-08-21 — every open row's blocker re-checked; **four were stale, one pointed at a retracted phase**
 
   ```

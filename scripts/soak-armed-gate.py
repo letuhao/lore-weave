@@ -120,6 +120,7 @@ def classify(
     armed: float | None = None,
     *,
     min_writes: int = 1,
+    primary_rows: float | None = None,
 ) -> tuple[str, str]:
     """Decide arming FIRST, from the arming gauge, and only then read the counters.
 
@@ -176,13 +177,32 @@ def classify(
     if failed:
         return FAILING, f"secondary_failed = {failed:g} across {total:g} write(s)"
     if total < min_writes:
+        # ⚠️ The note below used to be the WHOLE verdict, and it told the reader to go and
+        # check something this gate then did not accept. That is how ARMED_IDLE came to be
+        # read as "the soak never ran" for weeks: the counter is process-local, and this
+        # service was restarted six times in one afternoon, so a fresh 0 says nothing at all.
+        # `--primary-rows` closes that loop — measured 2026-08-23 on the real stack, the
+        # secondary holds 1051 embedded passages and the primary holds 0, which the counter
+        # alone could never have told anyone.
+        if primary_rows is not None:
+            if primary_rows > 0:
+                return ARMED_IDLE, (
+                    f"no write since the last restart, but the primary DURABLY holds "
+                    f"{primary_rows:g} row(s) — the soak HAS run; this counter reset with the "
+                    f"process. Do not read this as 'never ran'."
+                )
+            return ARMED_IDLE, (
+                f"no write since the last restart AND the primary durably holds "
+                f"{primary_rows:g} rows — on this evidence the soak has genuinely never "
+                f"carried a row, which the process-local counter alone cannot establish."
+            )
         return ARMED_IDLE, (
             f"the store is wired but only {total:g} write(s) have reached it "
             f"(need >= {min_writes}). `secondary_failed = 0` is vacuous until writes flow. "
             "NOTE: this counter is PROCESS-LOCAL — a service restart resets it to 0, so this "
             "verdict means 'no writes since the last restart', NOT 'no writes ever'. The "
-            "durable evidence is row counts in the secondary; check those before concluding "
-            "the soak never ran."
+            "durable evidence is row counts in the secondary; pass `--primary-rows N` and "
+            "this gate will fold them in rather than leaving it to the reader."
         )
     return SOAKING, f"{total:g} write(s) landed, secondary_failed = 0"
 
@@ -274,6 +294,43 @@ def selftest() -> int:
         bad += not ok
         print(f"  {'PASS' if ok else 'FAIL'}  {name}: expected {want}, got {got}")
 
+    # ── A24: the durable count SPLITS ARMED_IDLE, and the split is the point ──
+    # The counter is process-local. This service was restarted six times in one afternoon,
+    # so a fresh 0 says nothing — yet ARMED_IDLE had been read as "the soak never ran" for
+    # weeks. These pin the two readings apart on IDENTICAL exposition text, which is the
+    # only way to show the durable count is doing the work and not the counters.
+    idle_text = _PRESEEDED + _armed(1)
+    v_never, why_never = classify(*parse(idle_text), primary_rows=0)
+    v_ran, why_ran = classify(*parse(idle_text), primary_rows=25)
+    # ⚠️ Compared with the DIGITS stripped. The first version asserted `why_never != why_ran`
+    # and BITE 13 walked straight through it: both sentences interpolate the row count, so
+    # they differ on "0" vs "25" even when the branch that distinguishes them is collapsed.
+    # A difference that survives the defect is not a difference the test can rest on.
+    _strip = lambda s: re.sub(r"[0-9]+", "N", s)
+    ok = (v_never == v_ran == ARMED_IDLE
+          and _strip(why_never) != _strip(why_ran))
+    bad += not ok
+    print(f"  {'PASS' if ok else 'FAIL'}  identical counters + opposite DURABLE rows -> "
+          f"readings that differ by more than the number")
+
+    ok = "never carried a row" in why_never and "HAS run" in why_ran
+    bad += not ok
+    print(f"  {'PASS' if ok else 'FAIL'}  the two readings SAY which one they are")
+
+    # Omitting the evidence must not silently pick a side — it keeps the old text, which
+    # tells the reader to go and get it.
+    _v, why_absent = classify(*parse(idle_text))
+    ok = "PROCESS-LOCAL" in why_absent and "never carried a row" not in why_absent
+    bad += not ok
+    print(f"  {'PASS' if ok else 'FAIL'}  with NO durable count, the gate refuses to guess")
+
+    # A durable count must not override a real failure: FAILING outranks everything, and a
+    # populated primary is exactly when someone would be tempted to wave one through.
+    v_fail, _ = classify(*parse(_PRESEEDED + _armed(1) + _fail("passage", 9)), primary_rows=999)
+    ok = v_fail == FAILING
+    bad += not ok
+    print(f"  {'PASS' if ok else 'FAIL'}  a populated primary does NOT soften secondary_failed")
+
     # ── the properties the fixtures alone cannot pin ─────────────────────────
     # 1. The distinction the whole gate exists for.
     disarmed, _ = classify(*parse(_PRESEEDED + _armed(0)))
@@ -314,6 +371,11 @@ def main() -> int:
                     help="writes required before SOAKING is claimable (default 1)")
     ap.add_argument("--require-soaking", action="store_true",
                     help="exit non-zero unless the verdict is SOAKING")
+    ap.add_argument("--primary-rows", type=float, default=None,
+                    help="rows the PRIMARY vector store durably holds. The write counter is "
+                         "process-local and resets on restart; this is the evidence that "
+                         "survives one, and without it ARMED_IDLE cannot distinguish 'no "
+                         "writes yet' from 'the process restarted'.")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
 
@@ -330,7 +392,8 @@ def main() -> int:
         text = open(a.file, encoding="utf-8", errors="replace").read()
         source = a.file
 
-    verdict, why = classify(*parse(text), min_writes=a.min_writes)
+    verdict, why = classify(*parse(text), min_writes=a.min_writes,
+                            primary_rows=a.primary_rows)
     print(f"[soak-armed-gate] {verdict} — {why}")
     print(f"[soak-armed-gate] source: {source}")
     # FAILING exits non-zero WITHOUT --require-soaking. The other verdicts are legitimate
