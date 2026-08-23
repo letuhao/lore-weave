@@ -1,0 +1,68 @@
+{
+  "_note": "PROBE FIXTURE: a plan_run for composition_authoring_run_manage. Its idempotency case - 'op=start on an already-started run must not start a second one' - is three layers deep: plan_run, then op=create to mint a run_id, then op=start twice.",
+  "scenarios": [
+    {
+      "id": "composition-authoring-run-manage-seeded",
+      "tool_under_test": "composition_authoring_run_manage",
+      "expect_tool": "composition_authoring_run_manage",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Start an authoring run for this book — begin autopilot.",
+      "prompt_source": "meta.synonyms['start authoring run'] + ['begin autopilot'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_composition",
+            "statement": "INSERT INTO plan_run (id, created_by, book_id, status, mode, source_checksum, source_markdown, checkpoint_state, created_at, updated_at) VALUES ('{book_id}'::uuid, '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', '{book_id}', 'compiled', 'rules', 'idem-probe', '# Probe plan', '{}'::jsonb, now(), now())",
+            "why": "A plan_run seeded by raw INSERT, because the tool path to one is blocked: plan_compile fails on this fixture with 'compile blocked by 2 hard rule(s): spec_has_arc (no arcs parsed)'. translation's fixture already seeds by INSERT for the same class of reason. WHETHER op=create ACCEPTS a hand-inserted run is what this probe finds out - it is not assumed. Values checked against pg_constraint rather than guessed: plan_run_mode_chk allows only rules|llm and plan_run_status_chk only pending|proposed|checkpoint|validated|compiled|failed|planned. My first attempt used 'assisted'/'ready' and the INSERT was refused - the constraint is the schema telling you the vocabulary, and reading it beats a second guess. The row's id is the BOOK's uuid, deliberately: a raw INSERT hands back no id and the SEED cannot resolve {sql:...} — that resolver lives in idempotency_probe, not provision — so the next seed step would have nothing to reference. book_id is a fresh uuid per run, so it is unique, and it lets the following step name the plan_run without a lookup."
+          }
+        },
+        {
+          "tool": "composition_authoring_run_manage",
+          "args": {
+            "op": "create",
+            "book_id": "{book_id}",
+            "plan_run_id": "{book_id}",
+            "budget_usd": 1,
+            "pause_after_each_unit": true
+          }
+        },
+        {
+          "rest": {
+            "domain": "composition",
+            "method": "POST",
+            "path": "/v1/composition/actions/confirm?token={step:1:confirm_token}"
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The run must exist before op=create can reference it."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM authoring_runs WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The run must EXIST before op=start can be called twice against it — proving the confirm step actually created it, rather than assuming a 200 meant success."
+        }
+      ],
+      "falsifier": "REFUTED IF: a run is created or started with NO confirm card (Tier W and it spends), OR the op chosen is not create/start when the user said start — its enum spans create|start|resume|gate|revert_all and revert_all on a create request would be the worst outcome reachable here — OR the model invents a plan_run_id (op=create REQUIRES one and this fresh book has no plan run, so inventing it is the D-DECLARED-UUID class), OR it invents a budget_usd the author never named, which is a number with money attached. CONTROL: the fixture has no plan_run, so the honest outcome may well be a refusal naming what is missing, and that is a PRECONDITION finding rather than a tool defect. Store check: authoring_runs stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier W, cost-bearing, and the confirm-token IS the audit for this tool.",
+        "absent_case": "OWED — a plan_run_id or run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start on an already-started run must not start a second one.",
+        "tenancy": "OWED — book-scoped; another account's book must not be drivable, and spend is the consequence."
+      },
+      "defects": [],
+      "_why_create_is_a_seed_step": "The idempotency case is about op=START, so the run must already EXIST when the probe runs. op=create is a WRITE, and idempotency_probe documents that a pre-call is READ ONLY — 'a probe can never quietly acquire its target by writing one' — so it belongs in the seed, which is where the substrate is built.",
+      "_why_the_confirm_step": "op=create is CONFIRM-GATED — it returns a confirm_token and a descriptor, NOT a run_id, and creates nothing until redeemed. So the seed redeems it; the run only exists after this step. The probe then finds the run_id with a {sql:...} lookup, which is the probe's own resolver and exists precisely because a seeded row hands back no id."
+    }
+  ]
+}
