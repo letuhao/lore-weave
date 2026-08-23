@@ -156,10 +156,11 @@
       ],
       "falsifier": "REFUTED IF: the link lands with NO confirm card (Tier A), OR the model invents an entity_id or chapter_id rather than resolving them, OR it links to a chapter that is not the one open in the editor. The store check is glossary_chapter_links: unchanged, because the card is never approved.",
       "ship_audit": {
-        "gate": "OWED — Tier A.",
-        "absent_case": "OWED — an entity_id or chapter_id that does not exist must be refused.",
-        "idempotency": "OWED — its description says it ERRORS if the entity is already linked to that chapter; that refusal is the audit.",
-        "tenancy": "OWED — book-scoped."
+        "absent_case": "EXERCISED by direct probe (MCPDirect, 2026-08-23): an absent entity_id is refused, 'entity not found in this book'. NOTE the first probe did NOT reach this case — I guessed relevance='primary' and the enum refusal (major|appears|mentioned) arrived before the entity was ever looked at. A refusal that lands before the boundary is not that boundary.",
+        "tenancy": "EXERCISED by direct probe: a book_id the caller cannot access is refused, 'book not accessible' — a DIFFERENT message from the absent case, so the two are distinguishable and the tenancy check runs before the entity lookup.",
+        "empty_case": "EXERCISED by direct probe: an empty entity_id is refused by NAME — 'entity_id must be a UUID'.",
+        "idempotency": "EXERCISED and STRICTLY IDEMPOTENT (docs/eval/toolloop/2026-08-14/p4-chapterlink-idem.json), measured from the STORE rather than from the tool's replies: the first call wrote exactly one chapter_entity_links row, the second was refused ('entity is already linked to this chapter') and its store diff is EMPTY. It does not double the link.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/p4-batch.json): this is a class-W tool — 'additive, takes effect immediately; Edit' — so it mints no confirm card BY DESIGN and its gate is the Edit permission plus the book guard. The tenancy probe is that gate firing: a book outside the caller's reach is refused before anything is written. Recorded as what it IS rather than forced into the card-shaped case, which this tool does not have."
       },
       "defects": [],
       "max_approvals": 6,

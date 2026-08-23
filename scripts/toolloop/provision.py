@@ -340,6 +340,25 @@ class Throwaway:
                 f"EARLIER step (this fixture has {len(self.seeded)} so far)") from None
         cur = rec.get("result")
         for part in path.split("."):
+            # 🔴 A LIST INDEX, because half the write tools answer with one. Measured 2026-08-23:
+            # `glossary_propose_entities` returns {guidance, results: [{entity_id, ...}]}, and this
+            # walk handled dicts ONLY — so `{step:1:results.0.entity_id}` was unreachable and the
+            # idempotency probe for `glossary_create_chapter_link` could not be built at all. That
+            # is the same gap `{step:N:...}` itself was written to close, one level down: a seed
+            # cannot use what an earlier seed produced. `results`/`items` is the common shape for
+            # any tool that writes more than one row, so this was never about one tool.
+            if isinstance(cur, (list, tuple)):
+                if not part.lstrip("-").isdigit():
+                    raise ProvisionError(
+                        f"seed step {idx}: {path!r} indexes a list with {part!r}, which is not a "
+                        f"number. A list is addressed positionally — `results.0.entity_id`.")
+                i = int(part)
+                if not -len(cur) <= i < len(cur):
+                    raise ProvisionError(
+                        f"seed step {idx}: {path!r} wants index {i} of a {len(cur)}-item list. "
+                        f"The tool returned fewer rows than the seed assumes.")
+                cur = cur[i]
+                continue
             if not isinstance(cur, dict) or part not in cur:
                 raise ProvisionError(
                     f"seed step {idx} returned no {path!r} — got keys "
