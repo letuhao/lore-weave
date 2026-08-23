@@ -1,0 +1,6 @@
+[
+ {
+  "tool": "composition_authoring_run_manage",
+  "error": "HTTPStatusError: Client error '400 Bad Request' for url 'http://localhost:8217/v1/composition/actions/confirm?token=eyJkIjoiY29tcG9zaXRpb24uYXV0aG9yaW5nX3J1bl9nYXRlIiwiZXhwIjoxNzg3NDY2MDA2LCJwIjp7ImJvb2tfaWQiOiIwMWEwMmQzZC05M2YyLTdmYmEtYWViNC04ZGQyYTM3Mjk1NWIiLCJydW5faWQiOiIwMWEwMmQzZC05Nzk2LTc4MTEt"
+ }
+]

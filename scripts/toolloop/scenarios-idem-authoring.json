@@ -37,6 +37,21 @@
             "method": "POST",
             "path": "/v1/composition/actions/confirm?token={step:1:confirm_token}"
           }
+        },
+        {
+          "tool": "composition_authoring_run_manage",
+          "args": {
+            "op": "gate",
+            "book_id": "{book_id}",
+            "run_id": "{step:2:run.run_id}"
+          }
+        },
+        {
+          "rest": {
+            "domain": "composition",
+            "method": "POST",
+            "path": "/v1/composition/actions/confirm?token={step:3:confirm_token}"
+          }
         }
       ],
       "seed_assert": [
@@ -62,7 +77,8 @@
       },
       "defects": [],
       "_why_create_is_a_seed_step": "The idempotency case is about op=START, so the run must already EXIST when the probe runs. op=create is a WRITE, and idempotency_probe documents that a pre-call is READ ONLY — 'a probe can never quietly acquire its target by writing one' — so it belongs in the seed, which is where the substrate is built.",
-      "_why_the_confirm_step": "op=create is CONFIRM-GATED — it returns a confirm_token and a descriptor, NOT a run_id, and creates nothing until redeemed. So the seed redeems it; the run only exists after this step. The probe then finds the run_id with a {sql:...} lookup, which is the probe's own resolver and exists precisely because a seeded row hands back no id."
+      "_why_the_confirm_step": "op=create is CONFIRM-GATED — it returns a confirm_token and a descriptor, NOT a run_id, and creates nothing until redeemed. So the seed redeems it; the run only exists after this step. The probe then finds the run_id with a {sql:...} lookup, which is the probe's own resolver and exists precisely because a seeded row hands back no id.",
+      "_why_the_gate_step": "MEASURED, not guessed: redeeming op=start's token returned 409 {'code':'action_error','detail':'start requires status=gated, run is draft'}. The documented effect is 'gated -> running', so op=gate must run the draft->gated check first, and it is confirm-gated too — hence a tool step AND a redemption.\n\nThat 409 was INVISIBLE until the probe recorded every confirm attempt instead of the last one: the query shape carried the real reason and the body shape then returned a meaningless 422 ('query token Field required') which overwrote it."
     }
   ]
 }

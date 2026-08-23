@@ -299,7 +299,23 @@ class Throwaway:
                     f"points at a DIFFERENT service. Check by route, not by /health — several "
                     f"services answer /health with a bare 'ok' and cannot be told apart by it.")
             r.raise_for_status()
-            self.seeded.append({"rest": spec, "status": r.status_code})
+            # 🔴 RECORD THE RESPONSE BODY, so a later step can reference what this call CREATED.
+            # Measured 2026-08-23 building composition_authoring_run_manage's fixture: a Tier-W seed
+            # step mints a confirm_token and creates NOTHING until a REST redemption — and the thing
+            # the redemption creates (the run's id) was unreachable, because this recorded only the
+            # STATUS. `{step:N:key}` reads `result`, so a confirm step had nothing to offer and the
+            # chain create -> confirm -> gate could not be expressed at all.
+            #
+            # Same shape as the two resolver gaps already fixed here: `{step:N:...}` existed because
+            # a seed could not use what an earlier seed produced, and list indexing because half the
+            # write tools answer with `results: [...]`. A confirm-gated seed step is the third.
+            _body = None
+            try:
+                if (r.headers.get("content-type") or "").startswith("application/json"):
+                    _body = r.json()
+            except Exception:  # noqa: BLE001 — a body that will not parse is not a seed failure
+                _body = None
+            self.seeded.append({"rest": spec, "status": r.status_code, "result": _body})
             return
         tool = step["tool"]
         args = self._substitute(step.get("args") or {})

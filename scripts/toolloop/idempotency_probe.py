@@ -171,18 +171,27 @@ def _redeem_if_gated(result, out: dict, slot: str) -> None:
         (f"{base}/v1/{seg}/actions/confirm", {"params": {"token": token}}),
         (f"{base}/v1/{seg}/actions/confirm", {"json": {"confirm_token": token}}),
     )
+    # 🔴 RECORD EVERY ATTEMPT, NOT THE LAST. Keeping only `last` hid the answer: the QUERY attempt
+    # returned 400 with the real reason and the BODY attempt then returned a meaningless 422 (no
+    # token where the route wants one), so the recorded value said "422 body" and I went looking for
+    # a validation problem that did not exist. The failing shape a caller happens to try last is not
+    # the diagnosis.
     hdr = {"X-Internal-Token": _INTERNAL_TOKEN, "X-User-Id": _USER_ID}
-    last = None
+    tried = []
     for url, kw in attempts:
+        shape = "query" if "params" in kw else "body"
         try:
             r = httpx.post(url, headers=hdr, timeout=180, **kw)
         except Exception as e:  # noqa: BLE001 — recorded, never swallowed
-            last = f"{type(e).__name__}: {e}"
+            tried.append(f"{shape}: {type(e).__name__}: {e}")
             continue
-        last = f"{r.status_code} {'query' if 'params' in kw else 'body'}"
+        body = ""
+        if r.status_code not in (200, 201, 202, 204):
+            body = f" {str(r.text)[:160]}"
+        tried.append(f"{shape}: {r.status_code}{body}")
         if r.status_code in (200, 201, 202, 204):
             break
-    out.setdefault("confirm", {})[slot] = last
+    out.setdefault("confirm", {})[slot] = tried
 
 
 def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None) -> dict:
