@@ -1,0 +1,83 @@
+[
+ {
+  "tool": "composition_decompile_arcs",
+  "pre": [],
+  "args": {
+   "book_id": "01a02d1b-762c-705b-bcfa-cb70bc9aaef8"
+  },
+  "first": [
+   "ok",
+   {
+    "confirm_token": "eyJkIjoiY29tcG9zaXRpb24uZGVjb21waWxlIiwiZXhwIjoxNzg3NDYzNzg5LCJwIjp7ImJvb2tfaWQiOiIwMWEwMmQxYi03NjJjLTcwNWItYmNmYS1jYjcwYmM5YWFlZjgiLCJjaGFwdGVyc19wZXJfYXJjIjoxMH0sInIiOiIwMWEwMmQxYi03NjJjLTcwNWItYmNmYS1jYjcwYmM5YWFlZjgiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.GyrMpVB64o9wDro-B7BatxJcuh4PKOpzHsSEVlLKAEo",
+    "descriptor": "composition.decompile",
+    "title": "Decompile 3 chapter(s) into ~1 arc(s)",
+    "domain": "composition",
+    "dry_run": {
+     "chapters": 3,
+     "would_create_arcs": 1
+    }
+   }
+  ],
+  "confirm": {
+   "first": 200,
+   "second": 200
+  },
+  "second": [
+   "ok",
+   {
+    "confirm_token": "eyJkIjoiY29tcG9zaXRpb24uZGVjb21waWxlIiwiZXhwIjoxNzg3NDYzODA5LCJwIjp7ImJvb2tfaWQiOiIwMWEwMmQxYi03NjJjLTcwNWItYmNmYS1jYjcwYmM5YWFlZjgiLCJjaGFwdGVyc19wZXJfYXJjIjoxMH0sInIiOiIwMWEwMmQxYi03NjJjLTcwNWItYmNmYS1jYjcwYmM5YWFlZjgiLCJ1IjoiMDE5ZDVlM2MtN2NjNS03ZTZhLThiMjctMTM0NGUxNDhiZjdjIn0.gupZJy61Mf5UO-XzNnSnn0SSVHAeJqnlBt2Q1zkZVFc",
+    "descriptor": "composition.decompile",
+    "title": "Decompile 3 chapter(s) into ~1 arc(s)",
+    "domain": "composition",
+    "dry_run": {
+     "chapters": 3,
+     "would_create_arcs": 1
+    }
+   }
+  ],
+  "diff_first": {
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 3,
+     "latest": "2026-08-23 05:32:50.433778+00"
+    },
+    "after": {
+     "rows": 3,
+     "latest": "2026-08-23 05:33:09.546448+00"
+    }
+   },
+   "loreweave_composition.structure_node": {
+    "before": null,
+    "after": {
+     "rows": 1,
+     "latest": "2026-08-23 05:33:09.537938+00"
+    }
+   }
+  },
+  "diff_second": {
+   "loreweave_composition.outline_node": {
+    "before": {
+     "rows": 3,
+     "latest": "2026-08-23 05:33:09.546448+00"
+    },
+    "after": {
+     "rows": 3,
+     "latest": "2026-08-23 05:33:29.926943+00"
+    }
+   }
+  },
+  "verdict": "IDEMPOTENT IN EFFECT — no row was added or removed by the second call; it re-wrote the same row in place (updated_at moved). Worth recording, not a defect.",
+  "first_had_effect": true,
+  "teardown": {
+   "worlds": [],
+   "models": [],
+   "arc_templates": [],
+   "motifs": [],
+   "book_id": "01a02d1b-762c-705b-bcfa-cb70bc9aaef8",
+   "title": "LOOP-THROWAWAY-idem-composition_decompile_arcs-5c698ccf",
+   "tables": {
+    "composition(project)": "01a02d1b-77af-7e5d-991d-a8daa04a707e"
+   }
+  }
+ }
+]

@@ -42,6 +42,14 @@ import sys
 _SOFT_ARCHIVING_TABLES = ("outline_node", "structure_node", "arc_template", "motif",
                           "composition_work", "glossary_entities")
 
+import httpx  # noqa: E402 — used by _redeem_if_gated
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from eval.tool_liveness import config as _tlc  # noqa: E402
+_DOMAIN_BASE = _tlc.DOMAIN_BASE
+_INTERNAL_TOKEN = _tlc.INTERNAL_TOKEN
+_USER_ID = _tlc.USER_ID
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
@@ -118,6 +126,41 @@ def _resolve_pre(args: dict, pre_results: list, fx) -> dict:
     return out
 
 
+def _redeem_if_gated(result, out: dict, slot: str) -> None:
+    """Redeem a confirm_token so a CONFIRM-GATED tool's write actually happens.
+
+    🔴 WITHOUT THIS THE PROBE CANNOT ASK THE QUESTION AT ALL. A Tier-W tool's call only MINTS a
+    token and writes NOTHING until it is redeemed, so both store diffs come back empty however the
+    tool behaves and the guard below correctly reports "two no-ops ... proves nothing". Measured
+    2026-08-23 on composition_decompile_arcs, whose own scenario asks "decompiling a book that
+    ALREADY has an arc layer must not silently duplicate it" — a question that can only be asked
+    AFTER a first confirmation.
+
+    Same route the seeds already use: POST /v1/{domain}/actions/confirm?token=…, domain taken from
+    the tool-name prefix. Best-effort and RECORDED either way: a redemption that fails is written
+    into the result rather than swallowed, because a silent failure here would look exactly like a
+    tool that wrote nothing.
+    """
+    if not isinstance(result, dict):
+        return
+    token = result.get("confirm_token")
+    if not isinstance(token, str) or not token:
+        return
+    domain = out["tool"].split("_", 1)[0]
+    base = _DOMAIN_BASE.get(domain)
+    if not base:
+        out.setdefault("confirm", {})[slot] = f"no base url for domain {domain!r}"
+        return
+    try:
+        r = httpx.post(f"{base}/v1/{domain}/actions/confirm",
+                       params={"token": token},
+                       headers={"X-Internal-Token": _INTERNAL_TOKEN, "X-User-Id": _USER_ID},
+                       timeout=180)
+        out.setdefault("confirm", {})[slot] = r.status_code
+    except Exception as e:  # noqa: BLE001 — recorded, never swallowed
+        out.setdefault("confirm", {})[slot] = f"{type(e).__name__}: {e}"
+
+
 def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None) -> dict:
     scen = next((s for s in scenarios["scenarios"] if s.get("tool_under_test") == tool), None)
     if scen is None:
@@ -138,13 +181,17 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
 
         before = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
         try:
-            out["first"] = ["ok", fx.mcp.call(tool, args)]
+            _r1 = fx.mcp.call(tool, args)
+            out["first"] = ["ok", _r1]
+            _redeem_if_gated(_r1, out, "first")
         except MCPToolError as e:
             out["first"] = ["refused", str(e)[:200]]
         mid = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
 
         try:
-            out["second"] = ["ok", fx.mcp.call(tool, args)]
+            _r2 = fx.mcp.call(tool, args)
+            out["second"] = ["ok", _r2]
+            _redeem_if_gated(_r2, out, "second")
         except MCPToolError as e:
             out["second"] = ["refused", str(e)[:200]]
         after = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
