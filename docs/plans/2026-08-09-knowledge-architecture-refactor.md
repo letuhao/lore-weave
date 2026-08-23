@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 60 of 103 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 61 of 104 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (19/29) · `T25` (15/22) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (19/29) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6115,8 +6115,10 @@ vectors and validity intervals live in different stores.
 - [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.1. Unfinished, not undecided.
   **① backup path ✅ · ② cutover switch ✅ (2026-08-13) · ③ PASSAGE indexes ✅ (2026-08-22,
-  T25o) — soak SOAKING, dev cut over, DDL deleted; ENTITY/EVENT stay per §3.3 until
-  `D-T25B-PG-ANCHOR-SCORE`.**
+  T25o) — soak SOAKING, dev cut over, DDL deleted · ④ EVENT index ✅ (2026-08-23, T25u) —
+  deleted, 0 producers / 0 readers / 0 index reads. ENTITY DDL stays, and now for a MEASURED
+  reason (T25t's bite 27) rather than for `D-T25B-PG-ANCHOR-SCORE`, which T25p answered: it
+  goes when the last deployment leaves the Neo4j backend (§8.5).**
 
   ⚠️ **The paragraph below saying the cutover is ⛔ blocked is HISTORY and is kept for its
   measurement, not its verdict.** It was right when written — nothing held a `VectorStore`,
@@ -6128,6 +6130,86 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25u 2026-08-23 — **④ takes the EVENT index: "entity/event stays" was true of one half**
+
+  ```
+  event_embeddings_1024   DELETED   0 producers · 0 readers · 0 rows · 0 index reads, ever
+  entity_embeddings_*     STAYS     753 index reads on dev, last 2026-08-12
+  ```
+
+  📐 **The sentence coupling them was a NAME, not a fact.** §9.2 records *"the entity/event
+  vector DDL stays until no deployment can take the Neo4j entity path"*, and T25t proved the
+  entity half **from the workload** — bite 27 dropped `entity_embeddings_1024` on iso and the
+  same query went from 5 hits to `52U00 / 52N37 ProcedureCallFailed`. Rule 13 says a divergence
+  recorded is not diagnosed; the event half had never been measured at all, only listed beside
+  the half that had.
+
+  🎯 **Measured, four ways, before deleting anything:**
+
+  ```
+  producers of (:Event).embedding_1024, any language     0   (py/ts/go/cypher)
+  readers of event_embeddings_1024                       0
+  :Event nodes carrying the property   dev 1186 -> 0     iso 110 -> 0
+  index readCount / lastRead           dev 0 / NULL      iso 0 / NULL
+  ```
+
+  The only references left in the tree were **three tests asserting the DDL existed**.
+
+  ⚖️ **The `readCount` is the measurement that settles it, and it carries its own control.**
+  `SHOW INDEXES YIELD name, readCount, lastRead` on both stacks, one query:
+
+  ```
+  entity_embeddings_1024   dev  753 reads   last 2026-08-12T04:54:27Z
+  entity_embeddings_1024   iso    1 read    last 2026-08-22T19:22:55Z   <- T25t's own bite
+  event_embeddings_1024    dev    0 reads   NULL
+  event_embeddings_1024    iso    0 reads   NULL
+  ```
+
+  Same instrument, same moment, opposite answers — so `0` is a fact about the event index and
+  not about the counter. A zero with no control beside it would have been the NV-7 shape this
+  plan keeps finding: *the check fires on everything, so firing means nothing*, inverted.
+
+  🔴 **The BITE failed to bite, and what it caught was older than my change.** Commenting out
+  all five `CREATE VECTOR INDEX entity_embeddings_*` lines left the survival test **GREEN**:
+
+  ```
+  BITE B (1st)  // CREATE VECTOR INDEX entity_embeddings_384 …   x5     1 passed
+  ```
+
+  `re.findall` over the raw file matches just as happily **inside a `//` comment**. The test
+  could not tell a declaration from a note about one — and **the version before my split had
+  the identical hole**, so the entity DDL's guard has been decorative for as long as it has
+  existed. Added `_declarations()`, which strips Cypher comments, and re-bit:
+
+  ```
+  BITE B (3rd)  AssertionError: no entity_embeddings_* index is declared any more — a
+                Neo4j-backend deployment still serves entity reads from Neo4j and a
+                missing vector index RAISES, so this is a 500 in waiting
+  BITE A        AssertionError: ['event_embeddings_1024'] is declared again — nothing
+                writes `(:Event).embedding_<dim>`, so this indexes a property that does
+                not exist
+  ```
+
+  ⛔ **The event test asserts ABSENCE rather than being deleted.** A family that came back would
+  come back silently, and the next reader of `neo4j_schema.cypher` has no way to know this one
+  was considered and rejected. Its message says what to do if an event embedder is ever built —
+  delete the test and say so, do not restore the index alone.
+
+  ⚠️ **Live indexes were NOT dropped**, on either stack. Deleting the DDL stops a fresh
+  deployment creating it; dropping an existing index is a WRITE, and rule 6 does not authorise
+  one here. This is exactly what T25o did for the passage family — its DDL has been gone since
+  2026-08-22 and all five `passage_embeddings_*` are still live on both stacks.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4610 passed, 786 skipped**. The
+  two `test_coaching_gate1.py` failures are the same pre-existing pair proven at `HEAD` in A15;
+  this diff touches neither `FactType` nor its registries.
+  **QC (b) live smoke:** no service seam crossed — this is DDL a deploy applies, and the read
+  path it would have served does not exist. The live half is the `readCount` table above, taken
+  on both Neo4j instances.
+  **QC (c) real data:** the four measurements above, all reads: node counts, property counts,
+  and index usage statistics from the two running graphs.
+
   ---
   ### ✅ T25t 2026-08-23 — **④'s DDL deletion is decided by a COUPLING I created, not by a PO call**
 

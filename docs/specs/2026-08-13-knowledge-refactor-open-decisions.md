@@ -1390,8 +1390,17 @@ backend = age    entity reads -> Postgres (anchor_score joined, §3.3c)   DDL un
 backend = neo4j  entity reads -> Neo4j    (the self-guarding fallback)   DDL REQUIRED
 ```
 
-**Decided: the entity/event vector DDL stays until no deployment can take the Neo4j entity
-path** — that is, until the fallback is removed, which is only correct once every deployment is
+**Decided: the ENTITY vector DDL stays until no deployment can take the Neo4j entity
+path**
+
+⚠️ **AMENDED 2026-08-23 (T25u) — this said "entity/event", and the event half was wrong.** It
+was never measured; it was listed beside the half that had been. Measured since: `(:Event).
+embedding_1024` has **no producer and no reader in any language**, the live graphs hold 1186
+events / 0 embeddings (dev) and 110 / 0 (iso), and `SHOW INDEXES` reports `event_embeddings_1024`
+at **readCount 0, lastRead NULL** on both — against `entity_embeddings_1024` at **753 reads** on
+dev, the control that makes the zero meaningful. An index over a property nothing writes protects
+no read path, so its exit was never coupled to the backend flip. **`event_embeddings_1024` is
+DELETED**; the sentence below is about the entity family only — that is, until the fallback is removed, which is only correct once every deployment is
 on AGE. It is not a scheduling call and it is not owed to anyone: the condition is mechanical
 and already written down in `read_scopes`.
 

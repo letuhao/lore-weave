@@ -269,18 +269,18 @@ OPTIONS {
   }
 };
 
-// Event embeddings — only the 1024-dim variant in Track 2 because
-// the event extractor uses bge-m3 by default. Other dimensions
-// can be added later if needed.
-
-CREATE VECTOR INDEX event_embeddings_1024 IF NOT EXISTS
-FOR (e:Event) ON (e.embedding_1024)
-OPTIONS {
-  indexConfig: {
-    `vector.dimensions`: 1024,
-    `vector.similarity_function`: 'cosine'
-  }
-};
+// ── EVENT VECTOR INDEX — DELETED 2026-08-23 (plan T25 ④) ─────────────────
+// `event_embeddings_1024` indexed `(:Event).embedding_1024`, a property NOTHING
+// writes and NOTHING reads. Measured before deleting: 0 producers and 0 readers
+// in any language, and on the live graphs 1186 events / 0 embeddings (dev) and
+// 110 / 0 (iso). The only references left were three tests asserting the DDL
+// existed.
+//
+// It survived this long by being named beside the entity family — "entity/event
+// vector DDL stays" — and the entity half is TRUE: T25t proved with a live bite
+// that dropping `entity_embeddings_*` turns the Neo4j entity fallback into a
+// ProcedureCallFailed. Event has no fallback to protect, because it has no read
+// path at all. Same sentence, two different facts.
 
 // ─────────────────────────────────────────────────────────────────
 // K18.3 :Passage — L3 semantic-search surface.

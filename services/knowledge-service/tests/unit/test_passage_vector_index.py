@@ -61,23 +61,60 @@ def test_the_schema_no_longer_declares_a_passage_vector_index():
     )
 
 
-def test_the_ENTITY_and_EVENT_vector_ddl_must_SURVIVE():
-    """§3.3 cut over the passage scope ONLY.
+def _declarations(schema: str) -> str:
+    """The schema with Cypher comments stripped.
 
-    Entity reads stay on Neo4j until `D-T25B-PG-ANCHOR-SCORE` has an answer, because
-    `PgVectorStore` omits `anchor_score` and entity reads RANK by it. Deleting this DDL in
-    the same sweep as the passage indexes is the obvious next tidy-up and it would turn
-    entity semantic search into a `ProcedureCallFailed` — measured on iso (T25n), a missing
-    vector index raises rather than returning empty. Nothing else in the tree says these two
-    families have different fates, so this test does.
+    Found by a bite that FAILED to bite: commenting out all five
+    `CREATE VECTOR INDEX entity_embeddings_*` lines left the survival test GREEN, because
+    `re.findall` over the raw file matches just as happily inside `// CREATE VECTOR ...`.
+    A test that cannot tell a declaration from a note about one is not guarding the DDL, and
+    the version of this test before the split had the same hole.
+    """
+    return chr(10).join(
+        line for line in schema.splitlines() if not line.lstrip().startswith("//")
+    )
+
+
+def test_the_ENTITY_vector_ddl_must_SURVIVE():
+    """§3.3 cut over the passage scope ONLY, and the ENTITY family is still load-bearing.
+
+    A Neo4j-backend deployment keeps entity reads on `Neo4jVectorStore` — `read_scopes`
+    supplies an `anchor_score` resolver only when the configured backend is AGE — and that
+    path resolves `entity_embeddings_{dim}` and calls `db.index.vector.queryNodes` on it.
+    T25t measured the consequence on iso: with the index present the query returns 5 hits,
+    without it `52U00 / 52N37 ProcedureCallFailed`. So deleting this DDL breaks entity search
+    exactly where the design deliberately sends it.
     """
     schema = _SCHEMA.read_text()
-    for family in ("entity_embeddings", "event_embeddings"):
-        found = re.findall(rf"CREATE VECTOR INDEX ({family}_\d+)", schema)
-        assert found, (
-            f"no {family}_* index is declared any more — entity/event reads are still served "
-            f"by Neo4j (§3.3) and a missing vector index RAISES, so this is a 500 in waiting"
-        )
+    found = re.findall(r"CREATE VECTOR INDEX (entity_embeddings_\d+)", _declarations(schema))
+    assert found, (
+        "no entity_embeddings_* index is declared any more — a Neo4j-backend deployment "
+        "still serves entity reads from Neo4j and a missing vector index RAISES, so this is "
+        "a 500 in waiting"
+    )
+
+
+def test_the_EVENT_vector_ddl_must_NOT_come_back():
+    """The other half of that sentence, and it is the opposite answer (T25 ④).
+
+    This test used to demand `event_embeddings_*` SURVIVE, for the entity family's reason —
+    its docstring said "nothing else in the tree says these two families have different
+    fates, so this test does". The workload says it: `(:Event).embedding_1024` has **no
+    producer and no reader in any language**, and on the live graphs 1186 events carry 0
+    embeddings (dev) and 110 carry 0 (iso). An index over a property nothing writes protects
+    no read path, so the coupling was the NAME, not the fact.
+
+    Asserting the absence rather than deleting the test: a family that came back would come
+    back silently, and the next reader of `neo4j_schema.cypher` has no way to know it was
+    considered and rejected.
+    """
+    schema = _SCHEMA.read_text()
+    found = re.findall(r"CREATE VECTOR INDEX (event_embeddings_\d+)", _declarations(schema))
+    assert not found, (
+        f"{found} is declared again — nothing writes `(:Event).embedding_<dim>`, so this "
+        f"indexes a property that does not exist. If an event embedder has since been "
+        f"built, delete this test and say so; do not restore the index alone."
+    )
 
 
 @pytest.mark.asyncio
