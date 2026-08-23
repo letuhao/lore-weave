@@ -3464,6 +3464,15 @@
       "status": "FIXED 2026-08-23",
       "what": "`ps aux | grep fe_runner` under Git Bash does not enumerate native Windows processes. It printed 0 while two runners were live, the kill built on it was a no-op, and the empty output read as 'stopped'. Two runners on one account means each one's store diff sees the other's writes and each one's provider calls contend with the other's - the exact confound the cleanup was being performed to remove.",
       "fix": "fe_runner refuses to start when another fe_runner is live, detecting via Win32_Process on win32, excluding its own pid, and returning [] (no signal, run permitted) when it cannot tell - so 'nothing found' can never masquerade as 'nothing there'."
+    },
+    "D-TURN-STALLS-AFTER-THE-SURFACE-IS-BUILT": {
+      "status": "OPEN — characterised, not fixed; blocks composition_motif_link_edit",
+      "what": "A turn is accepted, chat-service builds and logs its agent-surface (35 activated tools, the tool under test among them), and then NOTHING returns: no tool call, no text, no error from the service. The runner records ReadTimeout. Measured on composition_motif_link_edit 2026-08-23: 3 of 5 at a 480s budget and 4 of 5 at 180s.",
+      "not_a_timeout": "REFUTED by raising the budget. 180s -> 480s changed the rate 4/5 -> 3/5 and produced no completed turn. Eight minutes of silence is not impatience, so the harness's turn budget is not the binding constraint.",
+      "reaches_the_service": "PROVEN, not assumed: every one of the 5 sessions appears in chat-service's own `agent-surface advertised (session=...)` log line, so the request arrives and the turn starts. The stall is after surface construction.",
+      "not_the_two_known_causes": "The dead fixture is repaired and the endpoints are active; the refusal now returns the dropped name. Neither removes this. The runs that DO produce calls show link_edit -> motif_search -> ... and die differently, with RUN_ERROR.",
+      "consequence": "By the gate's own rule a transport-dead turn is not evidence in either direction, so this tool cannot be concluded on any of these batches and P3-NAME-TO-ID cannot be CLEARED. Recording the condition rather than re-running: four K=5 batches (c2-motif7/8/9 and the stopped control) reproduced the same shape, and a fifth would too.",
+      "not_chased_further": "Deliberate. Each K=5 costs ~25 minutes and returns the same shape, and the next honest step is a provider-side investigation (LM Studio /v1/responses under a 35-tool surface), which is a different piece of work from this loop's tool-resolution question."
     }
   },
   "deferred_questions": {
