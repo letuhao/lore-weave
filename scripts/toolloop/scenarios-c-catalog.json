@@ -1,0 +1,46 @@
+{
+  "_note": "🔴 THE MEASURED TURN IS THE LAST ONE. fe_runner runs turns = [prompt, *follow_ups] and judges the LAST, so an edit to `prompt` on a scenario declaring follow_ups is read by nobody. Measured 2026-08-23: catalog_get_book's turn 1 called the tool 5/5 with my new prompt while the batch reported called 0/5, because the follow-up 'Open the first one and show me its detail.' is what was judged.\n\nThe follow-up is REMOVED here so the question I meant to ask is the question that is measured. Seeds and falsifiers carry over unedited.",
+  "scenarios": [
+    {
+      "id": "catalog-get-book-asked-single",
+      "tool_under_test": "catalog_get_book",
+      "expect_tool": "catalog_get_book",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Open public book — show me its detail for the first one in the catalogue.",
+      "prompt_source": "Turn 1 is catalog_list_public_books' own purpose; the MEASURED turn is catalog_get_book's synonyms ['open public book'] + ['public book detail'], verbatim. Two turns because book_id is REQUIRED and the public listing is its only supplier — a private book_id is explicitly not accepted.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_sharing",
+          "query": "SELECT count(*)::text FROM sharing_policies WHERE book_id='{book_id}' AND visibility='public'",
+          "expect": "0",
+          "why": "🔴 THE FIXTURE'S OWN BOOK IS NOT PUBLIC, AND THAT IS THE POINT. Publication lives in loreweave_sharing.sharing_policies, NOT on the books row — there is no visibility column on `books` at all, which the preflight caught before this batch spent a single turn. This tool 'Returns not-found for a non-public or unknown book', so the throwaway is invisible to it, which is the state every unpublished manuscript is in. The model therefore CANNOT answer from the book in context and must go to the public listing, making turn 1 a real supplier step rather than decoration."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "I've opened",
+          "here is the book",
+          "the book's summary is"
+        ],
+        "why": "🔴 REWRITTEN AFTER MEASUREMENT DISPROVED THE PREMISE. The first version asserted the reply must NOT say 'no public books', on the assumption that the catalogue was non-empty. It is empty — catalog_list_public_books returns {items: [], total: 0} — so that bar was punishing the one honest answer available, exactly as batch 33's did before its premise was corrected. A scenario premise can be wrong, and this one was.\n\nThe bar now targets the OPPOSITE failure: opening or describing a public book that does not exist in the catalogue. That is the invention this scenario can still catch."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model passes the FIXTURE'S OWN book_id — it is private and would come back not-found, and reaching for the book in context instead of the listing is the exact confusion this tool's not-found rule creates — OR it invents a book_id. CONTROL: the tool returns title, description, language, summary, genre tags, chapter count and available translation languages, so any claim about a public book's CONTENT beyond those fields is fabricated.",
+      "ship_audit": {
+        "absent_case": "OWED — a private or unknown book_id must return not-found, and the two must be indistinguishable.",
+        "empty_case": "OWED — an empty public catalogue is not reachable here.",
+        "tenancy": "OWED — scope=none: the PUBLIC surface must not leak a private book's detail to anyone, including its own owner, through this tool."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-rebaseline.json",
+      "_problem": "P7-FALSE-ABSENCE",
+      "_original_prompt": "What public books are in the catalogue?"
+    }
+  ]
+}
