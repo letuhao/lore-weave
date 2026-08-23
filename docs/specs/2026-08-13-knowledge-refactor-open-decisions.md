@@ -1416,6 +1416,38 @@ already decided. When the last deployment is on AGE the fallback becomes dead co
 goes with it — a removal, not a cutover.
 
 
+
+### 9.3 Two port parameters can never be conformed — **DECIDED (T17 A24, 2026-08-23)**
+
+`GraphStore.resolve_or_merge_entity` declares four parameters beyond the identity tuple.
+Measured against the domain model:
+
+```
+Entity.version         PRESENT   -> a conformance rule can assert it
+Entity.auto_created    PRESENT   -> a conformance rule can assert it
+Entity.provenances     absent    -> the port ACCEPTS it and cannot REPORT it
+Entity.created_job_id  absent    -> same
+```
+
+The port takes `provenance` and `job_id`, both stores write them (`e.provenances` accumulates a
+deduped set; `e.created_job_id` is create-only), and **neither comes back through the port's
+return type.** So no rule in the adapter-parameterised suite can ever check them — which is
+exactly why the AGE adapter accepted and discarded both for as long as it did, and why the
+in-memory double does the same today. The fake's own comment had already spotted it: *"`provenances`
+is written by the Cypher but is NOT a field on the Entity model, so it never crosses this
+boundary. Mirroring it here would be inventing state the real store's RETURN cannot produce."*
+
+**Decided: they stay write-only side effects, verified PER ADAPTER against the store, not through
+the port.** `A23` does this for AGE — it reads `provenances` and `created_job_id` back out of the
+graph with a direct query after the write, in a throwaway graph.
+
+⚖️ **The alternative was widening `Entity`, and it is refused for a reason, not skipped.** Adding
+`provenances`/`created_job_id` to the domain model would put extraction bookkeeping on the object
+every reader of the knowledge graph receives, to make two write-only fields testable. The model is
+what crosses the service boundary; attribution metadata is not something a consumer of an entity
+should have to ignore. **The asymmetry is real and is now written down instead of being
+rediscovered** — a port that accepts what it cannot report will always hide a dropped parameter,
+and the next person to add such a parameter should know that this is what they are choosing.
 ### 10.1 The port does NOT grow to 106 methods — **DECIDED (T61, 2026-08-22)**
 
 **Measured before deciding** (rule 8), from the same classifier `port-adoption-gate` ratchets:

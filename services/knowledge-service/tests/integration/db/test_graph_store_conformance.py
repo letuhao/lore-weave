@@ -255,6 +255,87 @@ async def test_resolving_the_same_name_twice_returns_the_same_entity(store):
 
 
 @pytest.mark.asyncio
+async def test_the_merge_arm_ADVANCES_the_version(store):
+    """T17 A24 — OCC is a port-level promise and nothing conformed it.
+
+    `Entity.version` is the optimistic-concurrency token. The AGE adapter never wrote it at
+    all (A23): every entity came back with `version = NULL`, and a read-side coalesce turned
+    that into a plausible `1`. The suite could not catch it because no rule looked — the rules
+    for this method asserted id-stability, `source_types` accumulation and isolation, and
+    stopped there.
+
+    A create-then-merge on the same identity tuple is the smallest thing that can tell an
+    adapter which maintains the token from one which returns a constant.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chat")
+    assert a.id == b.id, "precondition: this must be the MERGE arm, not a second node"
+    assert b.version > a.version, (
+        f"version did not advance across the merge ({a.version} -> {b.version}). A token that "
+        f"never moves cannot detect a concurrent write, and a read-side default makes an "
+        f"unwritten one look correct."
+    )
+
+
+@pytest.mark.asyncio
+async def test_auto_created_is_carried_and_a_real_extraction_CLAIMS_the_node(store):
+    """The second half of A23, and it is not merely 'the flag round-trips'.
+
+    `auto_created=False` from a later call is a REAL extraction claiming a node an earlier
+    auto-creation minted, which the Neo4j writer documents as its own CASE arm. An adapter
+    that stored the first value and never updated it would pass a round-trip assertion and
+    fail this one.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter",
+        auto_created=True)
+    assert a.auto_created is True, "the port declares this parameter; it must reach the store"
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chat",
+        auto_created=False)
+    assert b.id == a.id
+    assert b.auto_created is False, (
+        "a later auto_created=False is a real extraction claiming the node — an adapter that "
+        "keeps the first value passes a round-trip check and loses this"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_returned_entity_is_a_SNAPSHOT_not_a_live_handle(store):
+    """A store returns a value, not a window onto its own state.
+
+    The in-memory double returned the object it had stored, on BOTH arms. Every before/after
+    assertion in every test using it was therefore comparing one object with itself — the
+    version rule above read `2 > 2` and failed for a reason that had nothing to do with
+    versioning. A real store cannot do this; a double that does is not modelling one.
+
+    Mutating what came back must not reach the store, and the merge arm needs its own check:
+    with only the create arm fixed, `a` is already frozen and the version rule passes while
+    the merge arm still leaks.
+    """
+    u, p, _ = _ids()
+    a = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    a.name = "MUTATED-ON-THE-CREATE-ARM"
+    b = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chat")
+    assert b.name != "MUTATED-ON-THE-CREATE-ARM", (
+        "the create arm handed back a live handle: a caller's edit reached the store"
+    )
+    b.name = "MUTATED-ON-THE-MERGE-ARM"
+    c = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    assert c.name != "MUTATED-ON-THE-MERGE-ARM", (
+        "the MERGE arm handed back a live handle — the arm the version rule cannot reach, "
+        "because by then the caller's first object is already a frozen snapshot"
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_same_name_in_two_projects_is_two_entities(store):
     u, p, _ = _ids()
     a = await store.resolve_or_merge_entity(

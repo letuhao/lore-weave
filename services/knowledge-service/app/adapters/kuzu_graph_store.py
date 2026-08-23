@@ -68,25 +68,25 @@ _UNIMPLEMENTED = (
 
 
 def _to_entity(row: dict) -> Entity:
-    """One node's properties → the domain model. Mirrors `age_graph_store._to_entity` field for
-    field: two adapters that disagree about defaults would pass the conformance suite
-    separately and diverge in production."""
-    return Entity.model_validate({
-        "id": row.get("id") or "",
-        "user_id": row.get("user_id") or "",
-        "project_id": row.get("project_id"),
-        "name": row.get("name") or "",
-        "canonical_name": row.get("canonical_name") or "",
-        "kind": row.get("kind") or "",
-        "aliases": list(row.get("aliases") or []),
-        "canonical_version": row.get("canonical_version") or 1,
-        "source_types": list(row.get("source_types") or []),
-        "confidence": row.get("confidence") or 0.0,
-        "glossary_entity_id": row.get("glossary_entity_id"),
-        "anchor_score": row.get("anchor_score") or 0.0,
-        "archived_at": row.get("archived_at"),
-        "archive_reason": row.get("archive_reason"),
-    })
+    """One node's properties -> the domain model, PASSING THROUGH what the row holds.
+
+    Its docstring used to say it "mirrors `age_graph_store._to_entity` field for field: two
+    adapters that disagree about defaults would pass the conformance suite separately and
+    diverge in production." It mirrored it exactly — including the DEFECT. Both named 14 keys
+    against a 21-field model and dropped the same seven (`version`, `user_edited`,
+    `auto_created`, `mention_count`, `evidence_count`, `created_at`, `updated_at`), and the
+    suite passed both because no rule looked at any of them.
+
+    A21 fixed the AGE side; the two new conformance rules found this one. That is the mirror
+    working as intended for the first time — the sentence above was true and useless while
+    nothing conformed the fields it was talking about.
+    """
+    data = dict(row)
+    if data.get("version") is None:
+        data["version"] = 1
+    if data.get("auto_created") is None:
+        data["auto_created"] = False
+    return Entity.model_validate(data)
 
 
 class KuzuGraphStore:
@@ -160,9 +160,16 @@ class KuzuGraphStore:
                     "MATCH (n:Entity) WHERE n.id = $id SET "
                     "n.source_types = list_distinct(list_concat(n.source_types, $st)), "
                     "n.confidence = CASE WHEN n.confidence >= $conf THEN n.confidence "
-                    "ELSE $conf END",
+                    "ELSE $conf END, "
+                    # A24 — the ON MATCH arms this adapter was missing. `version` is the OCC
+                    # token and must advance on every merge; `auto_created` FALLS to false
+                    # when a real extraction claims a node an auto-creation minted. Both are
+                    # copied from the Neo4j writer rather than guessed, and neither was
+                    # conformed against ANY adapter until now.
+                    "n.version = coalesce(n.version, 0) + 1, "
+                    "n.auto_created = CASE WHEN $auto THEN n.auto_created ELSE false END",
                     {"id": self._props(found[0])["id"], "st": [source_type],
-                     "conf": float(confidence)})
+                     "conf": float(confidence), "auto": bool(auto_created)})
             rows = await self._run(
                 "MATCH (n:Entity) WHERE n.user_id = $u AND n.canonical_name = $c "
                 "AND n.kind = $k AND ((n.project_id IS NULL AND $p IS NULL) "

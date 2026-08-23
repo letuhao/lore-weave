@@ -116,8 +116,17 @@ class FakeGraphStore:
             # NOTE: `provenances` is written by the Cypher but is NOT a field on the
             # Entity model, so it never crosses this boundary. Mirroring it here would be
             # inventing state the real store's RETURN cannot produce.
+            # ON MATCH, `auto_created` FALLS to false when a real extraction claims a node an
+            # auto-creation minted. Copied from the Neo4j CASE arm, not guessed: the fake only
+            # ever set this on CREATE, so an adapter that lost the arm agreed with the double.
+            if auto_created is False:
+                existing.auto_created = False
             existing.version = (existing.version or 1) + 1
-            return existing
+            # ⚠️ A COPY, not the stored object. Returning the live instance made every
+            # before/after assertion in every test using this double VACUOUS — the caller's
+            # `a` and `b` were one object, so `b.version > a.version` compared 2 with 2. A real
+            # store returns a snapshot; a double that does not is not modelling it.
+            return existing.model_copy(deep=True)
         entity = Entity(
             id=eid, user_id=user_id, project_id=project_id, name=name,
             canonical_name=canonical, kind=kind, source_types=[source_type],
@@ -129,7 +138,7 @@ class FakeGraphStore:
             created_at=_now(), updated_at=_now(),
         )
         self._entities[eid] = entity
-        return entity
+        return entity.model_copy(deep=True)   # snapshot, for the reason above
 
     async def find_entities_by_name(
         self,

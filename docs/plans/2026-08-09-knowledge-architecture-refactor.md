@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 70 of 113 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 71 of 114 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (27/37) · `T25` (16/23) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (28/38) · `T25` (16/23) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,81 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A24 2026-08-23 — **why A23 survived a conformance suite: the DOUBLE had the same defect**
+
+  ```
+  three new conformance rules, run across all four adapters:
+
+    version advances on the merge arm     fake FAIL · kuzu FAIL · age PASS · neo4j skipped
+    auto_created falls on a real claim    fake FAIL · kuzu FAIL · age PASS · neo4j skipped
+    a returned entity is a SNAPSHOT       fake FAIL (both arms)
+  ```
+
+  🔴 **The suite could not catch A23, and the reason is structural.** `port-adoption-gate` reads
+  **21/21 methods have a rule** — and the rules for `resolve_or_merge_entity` asserted
+  id-stability, `source_types` accumulation and isolation, and stopped. `version`,
+  `auto_created`, `provenance` and `job_id` were unconformed against **every** adapter. A method
+  having a rule is not the same as its CONTRACT having one.
+
+  🎯 **And the fake dropped the same fields, which is why no rule was ever written.**
+  `FakeGraphStore.resolve_or_merge_entity` takes `provenance` and `job_id` and mentions each
+  exactly once — in the signature — precisely as the AGE adapter did. A rule asserting them
+  would have failed the double too, so the missing rule and the missing behaviour protected each
+  other.
+
+  ⚖️ **Rule 8 split the batch on a fact, not a judgement.** Of the four unconformed parameters,
+  only two can be asserted through the port at all:
+
+  ```
+  Entity.version         PRESENT   -> conformable
+  Entity.auto_created    PRESENT   -> conformable
+  Entity.provenances     absent    -> the port ACCEPTS it and cannot REPORT it
+  Entity.created_job_id  absent    -> same
+  ```
+
+  So two rules were built and two were not, for a stated reason rather than a shrug. The fake's
+  own comment had already noticed the asymmetry — *"`provenances` is written by the Cypher but
+  is NOT a field on the Entity model, so it never crosses this boundary"* — and that is exactly
+  why A23's provenance half stayed invisible: **no conformance rule can ever see it.** Recorded
+  in §9.3 as a write-only side effect, verified per-adapter (A23 reads it back from the graph),
+  not through the port.
+
+  🔍 **The rules then found the SAME defect in a second adapter.** `kuzu_graph_store._to_entity`
+  named 14 keys against the 21-field model and dropped **the identical seven** A21 found in AGE.
+  Its docstring said it *"mirrors `age_graph_store._to_entity` field for field: two adapters that
+  disagree about defaults would pass the conformance suite separately and diverge in
+  production."* It mirrored it faithfully — including the defect. That sentence was true and
+  useless while nothing conformed the fields it described.
+
+  🔴 **And the fake was returning a LIVE HANDLE to its own store.** Both arms returned the stored
+  object, so a caller's `a` and `b` were one object: the version rule read `2 > 2`. Every
+  before/after assertion in every test using this double was vacuous.
+
+  🧪 **BITE 15 FAILED TO BITE, and what it exposed was a change I could not defend.** Reverting
+  the MERGE arm alone left the version rule GREEN — because with the create arm fixed, `a` is
+  already a frozen snapshot, so `2 > 1` passes while the merge arm still leaks. The merge-arm
+  copy had **no assertion covering it**. Added one that mutates what came back and requires the
+  store not to see it, then bit both arms separately:
+
+  ```
+  MERGE arm live   AssertionError: the MERGE arm handed back a live handle — the arm the
+                   version rule cannot reach, because by then the caller's first object is
+                   already a frozen snapshot
+  CREATE arm live  AssertionError: the create arm handed back a live handle: a caller's edit
+                   reached the store
+  ```
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate` PASS at 21/21;
+  `knowledge-service` **4721 passed, 719 skipped** with `TEST_AGE_DSN` set — conformance
+  **142 passed** across four adapters. The two `test_coaching_gate1.py` failures are the
+  pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a rebuilt image — the changed code is the in-memory double, the
+  Kuzu evaluation adapter and test rules. The AGE half was smoked live in A23 and its
+  conformance rules PASS here against the real AGE graph.
+  **QC (c) real data:** the conformance run is real: `age` executes against the live AGE
+  database, `kuzu` against a real embedded Kuzu file.
+
   ---
   ### ✅ T17 A23 2026-08-23 — **the WRITE path discarded three of the port's own parameters, and never advanced the OCC token**
 
