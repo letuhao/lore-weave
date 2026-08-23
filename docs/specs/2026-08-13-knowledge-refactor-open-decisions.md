@@ -1590,6 +1590,48 @@ stored-TYPE change (§10.2), the dialect counter was over-counting prose (T63), 
 `ON CREATE SET` recipe does not cover its own rarest form. Each was found by measuring before
 applying, and each would have been silent afterwards.
 
+## 11 · The spoiler window fails CLOSED on a value it cannot read (T48g)
+
+**Decided 2026-08-23. Cited by T48g.**
+
+`kal-read.controller.ts::neighborhood` is the only KAL read that does not pass its query
+through: it hand-picks `hops` / `cap` / `as_of` and RENAMES `as_of` to `as_of_chapter`. The
+rename carried a `parseInt` whose comment called it *"a PARSING guard, not a domain one"* and
+which dropped anything unreadable. Measured on the real handler, that is what it did:
+
+```
+as_of="abc"    -> as_of_chapter=ABSENT (window REMOVED -> latest/all open)
+as_of="2abc"   -> as_of_chapter=2
+as_of="1e9"    -> as_of_chapter=1
+as_of="12.5"   -> as_of_chapter=12
+as_of="NaN"    -> as_of_chapter=ABSENT (window REMOVED -> latest/all open)
+as_of=" 12"    -> as_of_chapter=12
+as_of="0x0c"   -> as_of_chapter=0
+```
+
+Proven from the workload, not by analogy (rule 13): knowledge-service's `graph_views.py`
+documents *"`as_of_chapter` omitted = latest (all open)"*. Dropping the parameter therefore did
+not degrade the window — it **removed** it, returning the present-day graph to a caller who
+asked to be held at a story position. The coercions are the quieter half: `1e9` asked for
+position one billion and got **1**; `0x0c` asked for 12 and got **0**.
+
+**DECISION — refuse, do not drop.** A non-empty `as_of` that is not an integer is a 400 naming
+the value. Absent or empty stays "no window". This matches the contract this gateway already
+keeps one route away — `kal-state` *"propagates the service 400 for a missing `as_of` instead of
+defaulting it"* — and it matches the platform's posture that a spend- or spoiler-bearing switch
+fails closed.
+
+**Blast radius: none, and that is measured rather than argued.** The only caller is
+`frontend/src/features/knowledge-temporal/api.ts`, whose `qs()` omits `undefined`/`null`/`''`
+and whose `asOf` is typed `number`; `composition-service`'s KAL client names `neighborhood` in a
+docstring and has no method for it. So no caller can produce a refused value, which is what makes
+this latent rather than live — and is not a reason to leave a spoiler window that fails open.
+
+**What was deliberately NOT decided here.** Whether a well-formed position is in range, or
+honourable by the substrate, stays the owning service's call (T26). The guard reads; it does not
+judge. A gateway that decided range here would repeat the env-var mistake its own comment
+records.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

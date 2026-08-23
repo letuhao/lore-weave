@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 84 of 127 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 85 of 128 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (7/8) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (8/9) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,85 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48g 2026-08-23 — **the spoiler window failed OPEN on a value it could not read, and `1e9` meant chapter 1**
+
+  ```
+  knowledge-gateway   9 suites / 106 tests   ->   10 suites / 118 tests
+  neighborhood as_of  parseInt-and-drop      ->   refuse with 400, naming the value
+  ```
+
+  📐 **T48f named the read side as owed; `neighborhood` is the one that mattered.** Alone among
+  the KAL reads it does not pass its query through — `timeline`, `attr-values` and `search` all
+  forward `@Query()` verbatim through `URLSearchParams`, which is exactly what makes the
+  "never default `as_of`" contract hold for them. `neighborhood` hand-picks three parameters and
+  **renames** `as_of` to `as_of_chapter`. The rename is where the defect lived.
+
+  🎯 **Run, not read (rule 2). The old handler, probed on every malformed shape:**
+
+  ```
+  as_of="abc"    -> as_of_chapter=ABSENT (window REMOVED -> latest/all open)
+  as_of="2abc"   -> as_of_chapter=2
+  as_of="1e9"    -> as_of_chapter=1
+  as_of="12.5"   -> as_of_chapter=12
+  as_of="NaN"    -> as_of_chapter=ABSENT (window REMOVED -> latest/all open)
+  as_of=" 12"    -> as_of_chapter=12
+  as_of="0x0c"   -> as_of_chapter=0
+  as_of="12"     -> as_of_chapter=12          <- the control: a good value still works
+  ```
+
+  ⚖️ **Which side is wrong, proven FROM THE WORKLOAD (rule 13).** knowledge-service's own
+  `graph_views.py` documents *"`as_of_chapter` omitted = latest (all open)"*. So dropping the
+  parameter did not degrade the window, it **removed** it: a caller asking to be held at a story
+  position got the **present-day** graph. The coercions are the quieter half — `1e9` asked for
+  position one billion and received **1**; `0x0c` asked for 12 and received **0**. A window that
+  silently moves to a chapter nobody named is not safer than no window at all.
+
+  The comment defending the old code called it *"a PARSING guard, not a domain one"*, and that is
+  true and beside the point: the guard's failure mode, not its remit, is what fails open. One
+  route away, this same gateway already keeps the opposite contract — `kal-state` *"propagates
+  the service 400 for a missing `as_of` instead of defaulting it"*. Decided in
+  [`§11`](../specs/2026-08-13-knowledge-refactor-open-decisions.md): **refuse, do not drop.**
+
+  🔴 **The BITE is the old code itself, which is the cleanest bite available.**
+
+  ```
+  BITE I  restore `parseInt` + `Number.isFinite` drop
+          × REFUSES an unreadable as_of=abc / 2abc / 1e9 / 12.5 / NaN / " 12" / 0x0c
+          × the refusal never reaches the network
+          8 failed, 4 passed
+  BITE J (1st)  `if (true)` -> TS narrowing error, 0 tests: proves NOTHING, recorded
+  BITE J (2nd)  `if (asOf !== undefined)` — treat empty as malformed
+          × an EMPTY as_of is treated as absent, not as a malformed value
+          1 failed, 11 passed
+  BITE K  regex -> `/^$/`, so the guard refuses everything
+          × forwards a well-formed as_of as as_of_chapter
+          × a negative story position is still forwarded
+          2 failed, 10 passed
+  ```
+
+  K is the control arm (rule 3): every `REFUSES` assertion above is satisfied by a guard that
+  refuses **everything**, and such a guard would break the default read path the UI uses. J's
+  second form pins the other edge — `?as_of=` means "no window", not "malformed", so the fix
+  aims at unreadable values rather than at callers.
+
+  ⚠️ **Blast radius: none, and measured rather than argued.** The only caller is
+  `frontend/src/features/knowledge-temporal/api.ts`, whose `qs()` drops `undefined`/`null`/`''`
+  and whose `asOf` is typed `number`; `composition-service`'s KAL client names `neighborhood` in
+  a docstring and has no method for it. **No caller can produce a refused value** — which is what
+  makes this latent rather than live, and is not a reason to leave a spoiler window failing open.
+
+  **QC (a) gates:** four plan gates green; `tsc --noEmit` exit 0; `knowledge-gateway`
+  **118 passed, 10 suites**, up from 106/9. No `--selftest` owed — no gate changed.
+  **QC (b) live smoke:** **not run, and here is the argument instead of a shrug.** The seam is
+  unchanged for every value a caller can send: the FE cannot emit a refused value (typed `number`,
+  empty dropped), and the forward path for well-formed input is byte-identical — pinned by the
+  well-formed and negative-position tests. The new refusal is decided **in-process before the
+  downstream call**, asserted directly (`expect(fetch).not.toHaveBeenCalled()`), so there is no
+  network behaviour for a rebuilt image to reveal.
+  **QC (c) real data:** the probe table above — the real handler, every malformed shape, taken
+  before the fix.
+
   ---
   ### ✅ T48f 2026-08-23 — **the eight destructive routes get BEHAVIOUR, and the attribution guard on `purge` had never been bitten**
 

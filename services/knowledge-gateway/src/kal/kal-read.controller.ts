@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, Body, Req, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Body, Req, UseGuards, HttpCode, HttpException } from '@nestjs/common';
 import { ctxFromReq, glossary, knowledge } from './downstream.js';
 import { temporalCapability } from './temporal.js';
 import { KalAuthGuard } from '../auth/kal-auth.guard.js';
@@ -314,13 +314,22 @@ export class KalReadController {
     qs.set('entity_id', entityId);
     if (hops) qs.set('hops', hops);
     if (cap) qs.set('cap', cap);
-    // Guard parseInt: a non-numeric as_of must not forward literal "NaN" downstream — drop it.
-    // That is a PARSING guard, not a domain one. Whether the KG can honour a well-formed
-    // as_of is the owning service's call (T26); the gateway used to decide it from its own
-    // env var and could disagree with the substrate it was describing.
-    const parsedAsOf = asOf !== undefined ? parseInt(asOf, 10) : undefined;
-    if (parsedAsOf !== undefined && Number.isFinite(parsedAsOf)) {
-      qs.set('as_of_chapter', String(parsedAsOf));
+    // `as_of` is the SPOILER WINDOW, so a value it cannot read fails CLOSED. This used to
+    // parseInt and silently drop anything unreadable, which inverted the window: knowledge-
+    // service documents `as_of_chapter` omitted = latest (all open), so `as_of=abc` returned
+    // the PRESENT-DAY neighborhood to a caller who asked to be held at a story position.
+    // parseInt also read '2abc' as 2, moving the window without telling anyone. Refusing
+    // matches the sibling contract this gateway already keeps — kal-state propagates a 400
+    // for a missing as_of rather than defaulting it. Absent or empty stays 'no window': the
+    // FE omits the parameter entirely when nothing is selected.
+    if (asOf !== undefined && asOf !== '') {
+      if (!/^-?\d+$/.test(asOf)) {
+        throw new HttpException(
+          `as_of must be an integer story position; got ${JSON.stringify(asOf)}`,
+          400,
+        );
+      }
+      qs.set('as_of_chapter', asOf);
     }
     const data = (await knowledge.get(
       `/internal/books/${bookId}/kg/neighborhood?${qs.toString()}`,
