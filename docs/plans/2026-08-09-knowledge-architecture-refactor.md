@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 83 of 126 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 84 of 127 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (6/7) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (7/8) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,77 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48f 2026-08-23 — **the eight destructive routes get BEHAVIOUR, and the attribution guard on `purge` had never been bitten**
+
+  ```
+  knowledge-gateway   8 suites /  52 tests   ->   9 suites / 106 tests
+  @Post handlers on the write surface                    13, every one exercised
+  properties per route     forwards-to · identity · 4xx faithful · 5xx -> 502
+  ```
+
+  📐 **T48e said in its own text that it had bought the guard and not the behaviour.** This is the
+  half it named. The write surface funnels 13 routes through three shapes — `forward` (7, under
+  `facts/`), `entityCommand` (4, under `entities/:id/`), and two direct posts (`fold`, `status`) —
+  which is why the route count and the `this.forward` count disagree; measured rather than
+  assumed, and the disagreement was the shape, not a bypass (`fetch` appears 0 times in the file).
+
+  🎯 **Only `fetch` is mocked, and that is the design.** Both properties worth testing live in
+  `downstream.ts`, not in the controller: the faithful-status mapping (line 46) and the identity
+  guard (line 29). Mocking `glossary.post` would have replaced the very seam under test — the
+  "inject a fake at the chokepoint" shape that proves nothing. What runs is the real chain,
+  handler → `glossary.post` → `call()` → `fetch`, with the outbound headers read off the mock.
+
+  ⚖️ **The load-bearing line is `if (ctx.userId)`, and its comment states a contract nothing
+  checked.** The controller says the KAL *"forwards `X-User-Id` when a caller identity exists and
+  omits it otherwise ... Nothing here synthesises an identity to fill the gap"* — which is what
+  lets glossary record a pipeline sweep as `pipeline` instead of as some user's deletion. Written
+  as the plain assignment it reads like, the header goes out as the **string `"undefined"`** and
+  every destructive command — `purge` included — is recorded against a user who did not issue it.
+  An audit trail that is wrong is worse than one that is missing.
+
+  ```
+  BITE E  downstream.ts:29 -> `headers['X-User-Id'] = ctx.userId as string;`
+          ● OMITS X-User-Id when there is no caller identity
+            Received array: ["X-Internal-Token", "Content-Type", "X-User-Id"]
+          14 failed, 40 passed   <- 13 routes + the empty-string boundary
+  BITE F  downstream.ts:46 -> `const status = 502;`
+          ● surfaces a downstream 4xx faithfully rather than as a silent success
+          13 failed, 41 passed   <- one per route; a 409 conflict became a 502
+  ```
+
+  🧪 **The table is hand-written and the ratchet is what makes that safe.** Each route must
+  DECLARE the downstream path it forwards to, so a table is the honest shape — but a route added
+  tomorrow is invisible to a list it is not on, which is the defect one level up. The handler
+  names are derived from the source and compared with the table:
+
+  ```
+  BITE G  add `@Post('entities/:entityId/obliterate')` to the controller, table untouched
+          ● exercises EVERY @Post handler — a new route is untested until it is on the table
+          1 failed, 53 passed    <- and ONLY that one: the new route is caught, not the suite
+  BITE H  break the derivation (`@Post` -> `@Kost`) so it matches nothing
+          ● expect(declared.length).toBeGreaterThanOrEqual(13)   Received: 0
+          1 failed, 53 passed
+  ```
+
+  H is the control arm (rule 3): every other assertion in the file is satisfied by an EMPTY table,
+  so a regex that quietly stopped matching would leave 54 green tests proving nothing about a
+  surface that can purge entities.
+
+  ⚠️ **What is still NOT bought, stated rather than implied.** These are the write routes; the
+  READ side still has 12 routes named by no test (`neighborhood`, `timeline`, `attr-values`,
+  `search`, and the project-axis reads). A read that returns the wrong rows is a different and
+  quieter failure than a purge attributed to the wrong user, which is why the destructive half
+  went first. T48 stays `[~]`.
+
+  **QC (a) gates:** four plan gates green; `knowledge-gateway` **106 passed, 9 suites**, up from
+  52/8. No `--selftest` owed — these are tests, not a gate.
+  **QC (b) live smoke:** N/A — no service seam crossed and no runtime code changed. `git diff --stat`
+  on `services/knowledge-gateway/src` is **empty** after bites E, F and G, so what ships is one test
+  file; the downstream contract is pinned by the bites rather than by a deployment.
+  **QC (c) real data:** N/A — this task produces no data. The figures above are handler counts and
+  suite counts, printed before and after.
+
   ---
   ### ✅ T48e 2026-08-23 — **the census closes on the last service, and the gateway's answer was "no dark tests, 20 untested routes"**
 
