@@ -1133,7 +1133,15 @@ async def test_divergence_spec_update_taxonomy_is_closed_set():
 
 
 async def test_entity_override_add_success_and_duplicate():
-    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500)."""
+    """add creates an override after derive; a duplicate target → OVERRIDE_EXISTS (not a 500).
+
+    The glossary client is stubbed to CONFIRM the target because op=add now checks that the
+    entity exists in this derivative's own book (D-AN-OVERRIDE-ACCEPTS-A-TARGET-ENTITY-THAT-IS-
+    NOT-THERE). Without the stub this test would fail at the new gate and never reach the
+    duplicate it exists to assert — the stub restores the precondition, it does not soften the
+    assertion. The gate itself is covered in
+    tests/unit/test_an_override_target_must_exist_in_this_book.py.
+    """
     import asyncpg as _asyncpg
     import app.mcp.server as srv
     from types import SimpleNamespace as NS
@@ -1147,7 +1155,9 @@ async def test_entity_override_add_success_and_duplicate():
     ov = NS(id=uuid.uuid4(), target_entity_id=target, overridden_fields={"role": "hero"})
     async with _patched(works_get=get_deriv) as s:
         s.WorksRepo(None).get = AsyncMock(return_value=deriv)
-        with patch.object(srv, "DerivativesRepo") as DR:
+        _gloss = NS(entities_by_ids_or_raise=AsyncMock(
+            return_value=[{"entity_id": str(target), "cached_name": "Aldric"}]))
+        with patch.object(srv, "DerivativesRepo") as DR,                 patch.object(srv, "get_glossary_client", return_value=_gloss):
             DR.return_value.add_override = AsyncMock(return_value=ov)
             res = await srv.composition_entity_override_add(
                 _Ctx(), srv._EntityOverrideAddArgs(
@@ -1181,11 +1191,15 @@ async def test_an_override_with_no_fields_is_refused():
     override everywhere downstream — the derivative's context pack, the undo hint, the list — and
     resolves to no change at all.
 
-    Deliberately NOT the other two cases the same probe found (a target_entity_id that does not
-    exist, and one belonging to another BOOK). Those need an existence check against
-    glossary-service, whose client is documented to "return [] / None on any failure and never
-    raise"; making that a GATE is a fail-open / fail-closed decision about what happens during a
-    glossary outage, which is a product call rather than a lint.
+    This case is refused BEFORE the target check, which is why no glossary stub is needed here:
+    an empty field-set is wrong whatever the target is, and checking the cheap local thing first
+    keeps a wire call off the path of a call that was never going to succeed.
+
+    🔴 THIS DOCSTRING USED TO SAY the other two cases (an absent target, and another BOOK's)
+    were a fail-open/fail-closed product call because glossary's client "never raises". That
+    premise was wrong — the module already carried GlossaryClientError and seed_entities_or_raise
+    for exactly this situation — and both are closed. See
+    tests/unit/test_an_override_target_must_exist_in_this_book.py.
     """
     import app.mcp.server as srv
 

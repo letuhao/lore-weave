@@ -67,6 +67,7 @@ from loreweave_mcp import (
 )
 
 from app.clients.book_client import BookClient, BookClientError, get_book_client
+from app.clients.glossary_client import GlossaryClientError, get_glossary_client
 from app.clients.knowledge_client import (
     KnowledgeClient,
     KnowledgeContractError,
@@ -2015,13 +2016,14 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
     # downstream — the derivative's context pack, the undo hint, the list — and resolves to no
     # change at all. Refused here rather than written and puzzled over later.
     #
-    # DELIBERATELY NOT THE OTHER TWO CASES the same probe found (a target_entity_id that does not
-    # exist, and one belonging to another BOOK). Those need an existence check against
-    # glossary-service, and its client is documented to "return [] / None on any failure and never
-    # raise" so an outage degrades rather than 500s. Turning that into a GATE is a fail-open /
-    # fail-closed decision — reject during a glossary outage, or keep accepting bad targets — and
-    # that is a product call, not a lint. See
-    # D-AN-OVERRIDE-ACCEPTS-A-TARGET-ENTITY-THAT-IS-NOT-THERE.
+    # 🔴 THE PARAGRAPH THAT USED TO SIT HERE DEFERRED THE OTHER TWO CASES — a target_entity_id
+    # that does not exist, and one belonging to another BOOK — on the grounds that glossary's
+    # client is "documented to return [] / None on any failure and never raise", so gating on it
+    # would be a fail-open/fail-closed product call. That premise was wrong, and checking it is
+    # what closed these: the docstring describes the DEGRADE-SAFE methods, and the same module
+    # already carries GlossaryClientError plus `seed_entities_or_raise`, whose own docstring
+    # states this exact principle for a gate "which must never record a mutation as applied when
+    # it actually failed". The codebase had answered the question before I called it undecidable.
     if not args.overridden_fields:
         return {
             "success": False,
@@ -2031,10 +2033,36 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
                 "nothing while appearing in the derivative as a real one."
             ),
         }
+    # D-AN-OVERRIDE-ACCEPTS-A-TARGET-ENTITY-THAT-IS-NOT-THERE — the target must EXIST in this
+    # derivative's own book. The endpoint is book-scoped, so one call answers both open cases:
+    # an entity that does not exist and one belonging to ANOTHER book are alike absent from this
+    # book's items, and earn the same refusal — which is also what H13 wants, since telling them
+    # apart would be an existence oracle for a book the caller may not own.
+    _target = _uuid(args.target_entity_id, "target_entity_id")
+    try:
+        _known = await get_glossary_client().entities_by_ids_or_raise(
+            work.book_id, [str(_target)])
+    except GlossaryClientError as exc:
+        # The THIRD branch, and the reason the raising variant is used instead of the
+        # degrade-safe one: "I could not ask" is not "it is not there". Refusing keeps today's
+        # bug from surviving an outage, and naming it separately means the caller is never told
+        # its argument was invalid when the truth is that the check could not run.
+        logger.warning("override target check unavailable (book=%s): %s", work.book_id, exc)
+        return {"success": False, "error": (
+            "TARGET_UNVERIFIED — could not confirm that this entity exists, because "
+            "glossary-service did not answer. NOTHING WAS WRITTEN and the argument may well be "
+            "fine; this is an availability failure, not a rejection. Retry shortly."
+        )}
+    if not any(str(e.get("entity_id")) == str(_target) for e in _known):
+        return {"success": False, "error": (
+            "TARGET_NOT_IN_THIS_BOOK — no such entity in the book this derivative belongs to. An "
+            "override must point at an entity of its own book; find the right id with "
+            "glossary_search on that book and pass the entity_id it returns."
+        )}
     derivatives = DerivativesRepo(get_pool())
     try:
         ov = await derivatives.add_override(
-            work.id, work.book_id, tc.user_id, _uuid(args.target_entity_id, "target_entity_id"), args.overridden_fields,
+            work.id, work.book_id, tc.user_id, _target, args.overridden_fields,
         )
     except asyncpg.UniqueViolationError:
         return {"success": False, "error": "OVERRIDE_EXISTS — an override for this entity already exists; update it instead"}
