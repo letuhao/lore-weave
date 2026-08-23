@@ -383,7 +383,16 @@ async def run_scenario(client, auth, sc, idx, fx):
                               book_id=fx.book_id,
                               chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
                               permission_mode=sc.get("permission_mode", "write"),
-                              approve=sc.get("approve"))
+                              approve=sc.get("approve"),
+                              # 🔴 A HARNESS CONSTANT WAS DECIDING A MEASUREMENT. max_approvals
+                              # defaulted to 3 with no way to say otherwise. Measured 2026-08-23 on
+                              # kg_propose_edge: all five runs used EXACTLY 3, four of them landed,
+                              # and the fifth spent its three on a longer chain and left its final
+                              # card unapproved — reported as the tool failing 4/5. That is the
+                              # same shape as `approve=None` making the tool read 0/5: a harness
+                              # limit wearing the tool's name. Default unchanged, so every existing
+                              # scenario measures exactly what it measured before.
+                              max_approvals=int(sc.get("max_approvals", 3)))
         if _ti < len(turns) - 1:
             prior.append({"prompt": _prompt,
                           "called": sorted(called_names(res)),
