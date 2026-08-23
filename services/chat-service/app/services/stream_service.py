@@ -11212,7 +11212,23 @@ async def resume_stream_response(
         rail_progress=_r_rail_progress or None,
         # NB: the rail_user_abandoned flag is computed INSIDE _emit_chat_turn from its
         # user_message_content (= susp.user_message_content, passed above) before it calls
-        # _stream_with_tools — the resume path needs no extra arg here.
+        # _stream_with_tools — the resume path needs no extra arg for THAT one.
+        #
+        # 🔴 R1 IS A DIFFERENT ARGUMENT, AND OMITTING IT MADE THE GUARANTEE INERT ON EVERY
+        # RESUMED TURN. `_emit_chat_turn(request_text="")` is the documented off switch ("Empty
+        # ⇒ inert"), and the per-pass advertise chokepoint is reached only through here — so
+        # from the approval onward, no tool could be rescued onto the wire by its own declared
+        # vocabulary. The one-off `_advertise_discovery_tools` call above passes the same text
+        # and says why: "A resume is still answering the ORIGINAL request." That was true for
+        # its first tool_defs and false for every pass after it.
+        #
+        # MEASURED 2026-08-23, K=5: asked to "Back up ... cite where it says ...",
+        # glossary_create_evidence (which DECLARES both "back up" and "cite where") was
+        # advertised on every pass before the card and on none after it, 5 runs of 5 — the
+        # resume re-seeds with studio=True and the composition family took its slot at an
+        # unchanged 41-tool budget. Displacement by domain selection is precisely what R1
+        # overrules; it just never saw the request.
+        request_text=susp.user_message_content,
     ):
         yield line
 
