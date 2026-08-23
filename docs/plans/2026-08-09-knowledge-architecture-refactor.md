@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 95 of 141 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 96 of 142 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/56) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (30/57) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,64 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C40 2026-08-24 — **the critique route reads the bi-temporal anchor it always had — and the bible comes back nearly empty**
+
+  ```
+  job.input["chapter_id"]   set on 232 of 514 jobs, and on every acceptance draft
+  target_chapter_id COLUMN  set on 0 of 514        <- the anchor is in `input`, not the column
+  present_fact_count        0  ->  1   live, same route, same job, rebuilt image
+  entity_facts for this book                       116 facts across 21 entities
+  composition 3809 -> 3812 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **C39 named the lack; this reads it.** The route's comment claimed *"no chapter anchor, so
+  no spoiler-safe `as of` cast exists to render; DEFENSIBLE"*. Measured, that is false:
+  `create_chapter_job_guarded` documents *"`chapter_id` is matched via `input->>'chapter_id'`"*,
+  and 232 of 514 jobs carry it. **The anchor was never missing — this route did not read it**,
+  so it passed `present_facts=[]` and asked a bi-temporal question with no bi-temporal answer.
+
+  🔴 **I nearly built the wrong thing, and the measurement stopped it.** `target_chapter_id` is a
+  real column on `GenerationJob` with a setter on the repo, and it is NULL on **all 514** rows —
+  so my first read was "the column has zero writers, build the writer". One query later the data
+  was already there under a different key. A writer for a column nothing reads, feeding a reader
+  that already had its input, is the shape rule 8 exists to prevent.
+
+  🎯 **Live, on a rebuilt image: `present_fact_count` 0 → 1.** The wiring is proven end to end by
+  the envelope's own counter rather than by the setting.
+
+  ⚠️ **And 1a is UNCHANGED, because ONE fact is not a bible.** The book has **116 entity facts
+  across 21 entities**; the bible returned one. So C39's hypothesis is **not yet tested** — the
+  route now asks for the story position and receives almost nothing. Grounding was wired; it was
+  not filled.
+
+  📌 **Worse, that is invisible on this route, and the bible's own docstring predicted it.** It
+  records exactly this failure — *"C2 reported `grounding='as_of', cast_size=0` — which reads as
+  GROUNDED and was [not]"* — and the AUTHORING path stamps `canon_grounding`, `canon_as_of` and
+  `canon_cast_size` on every verdict for that reason. **The `/critique` route stamps none of
+  them.** A reader of its verdict cannot tell a bible with 21 entities from one with zero, which
+  is the same class as every silent-drop this plan has already fixed one layer up.
+
+  🧪 **Bites.**
+
+  ```
+  BITE R  stop reading the anchor (the state QC-5 failed in)
+          × test_critique_GROUNDS_the_judge_when_the_job_carries_a_chapter_anchor
+  BITE S  narrow the catch so a KAL outage escapes
+          × test_a_canon_read_FAILURE_does_not_fail_the_critique
+  ```
+
+  S is the one that keeps this safe: `canon_for_chapter` is degrade-safe by design and this
+  route is advisory, so an unreachable KAL must cost the GROUNDING and never the critique. The
+  control arm — a job with no chapter grounds EMPTY rather than inventing a position — is the
+  third test, because 282 of 514 jobs have no chapter and must not be given one.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3812 passed, 403 skipped, 0
+  failed**.
+  **QC (b) live smoke:** rebuilt image on lw-iso; `present_fact_count` 0 → 1 through the studio's
+  route, and the 8×2 acceptance measurement re-run against it.
+  **QC (c) real data:** the job/anchor census (232 of 514 in `input`, 0 of 514 in the column),
+  the entity-fact count for the book (116/21), and the 16 re-run critiques.
   ---
   ### 🔻 QC-5 C39 2026-08-24 — **what the critic is actually MISSING: it is asked a bi-temporal question with no bi-temporal context**
 

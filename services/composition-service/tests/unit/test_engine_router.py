@@ -1149,3 +1149,73 @@ def test_a_configured_critique_does_NOT_carry_a_skip_status(ctx):
                json={"target_revision_id": str(uuid.uuid4())}).json()
     assert r.get("critic_status") is None and r.get("warning") is None
     judge.assert_called()
+
+# ── QC-5 C40: the bi-temporal anchor the critique route always had and never read ─────────
+
+
+def _ground(monkeypatch, facts, raises=False):
+    """Patch the canon bible the route builds. `canon_for_chapter` is imported INSIDE the
+    handler, so the patch lands on its module."""
+    class _Bible:
+        def as_present_facts(self):
+            return list(facts)
+
+    async def _fake(**kw):
+        if raises:
+            raise RuntimeError("KAL unreachable")
+        return _Bible()
+
+    monkeypatch.setattr("app.engine.canon_bible.canon_for_chapter", _fake)
+    monkeypatch.setattr("app.clients.kal_client.get_kal_client", lambda: object())
+
+
+def test_critique_GROUNDS_the_judge_when_the_job_carries_a_chapter_anchor(ctx, monkeypatch):
+    """🔴 QC-5's clause 1a failed because this route asked a bi-temporal question with no
+    bi-temporal answer.
+
+    C39 dumped the prompt it builds: six one-line rules, `ESTABLISHED FACTS (none)`, one
+    chapter, no position — and the critic then reads a scene in which the betrayer acts humble
+    as CONTRADICTING "he is the betrayer". Measured live, the untouched control flagged as often
+    as the planted draft (7/8 vs 7/8, C37/C38).
+
+    The anchor was never missing: `job.input["chapter_id"]` is set on 232 of 514 jobs and
+    `create_chapter_job_guarded` documents it. The route simply did not read it.
+    """
+    c, works, _, canon, jobs, judge, _ = ctx
+    ch = uuid.uuid4()
+    jobs.job = _job(input={"model_ref": str(DRAFTER), "chapter_id": str(ch)})
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    _ground(monkeypatch, ["Lam Uyen is a member of the Lam family"])
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert judge.call_args.kwargs["present_facts"] == ["Lam Uyen is a member of the Lam family"]
+
+
+def test_critique_WITHOUT_an_anchor_still_grounds_empty(ctx, monkeypatch):
+    """The control arm. Every assertion above is satisfied by a route that always grounds, and
+    a job with no chapter (232 of 514 carry one, so this is the real other half) has no
+    spoiler-safe position to render — it must not invent one."""
+    c, works, _, canon, jobs, judge, _ = ctx
+    jobs.job = _job(input={"model_ref": str(DRAFTER)})          # no chapter_id
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    _ground(monkeypatch, ["should never be reached"])
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert judge.call_args.kwargs["present_facts"] == []
+
+
+def test_a_canon_read_FAILURE_does_not_fail_the_critique(ctx, monkeypatch):
+    """`canon_for_chapter` is degrade-safe by design and this route is advisory: an unreachable
+    KAL must cost the GROUNDING, never the critique. Without this the anchor would turn a
+    best-effort read into a new way for a critique to 500."""
+    c, works, _, canon, jobs, judge, _ = ctx
+    jobs.job = _job(input={"model_ref": str(DRAFTER), "chapter_id": str(uuid.uuid4())})
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = [CanonRule(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, text="no guns")]
+    _ground(monkeypatch, [], raises=True)
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique", json={"target_revision_id": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert judge.call_args.kwargs["present_facts"] == []
+

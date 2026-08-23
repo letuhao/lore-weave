@@ -2062,6 +2062,38 @@ async def critique(
     rules = await canon.list_active(job.project_id)
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
+    # ── QC-5 C40: the bi-temporal ANCHOR this route has always had and never used ────────
+    #
+    # 🔴 The comment below used to read "no chapter anchor, so no spoiler-safe `as of` cast
+    # exists to render; DEFENSIBLE". Measured: `job.input["chapter_id"]` is set on **232 of
+    # 514** jobs, including every acceptance-book draft, and `create_chapter_job_guarded`
+    # documents it — *"`chapter_id` is matched via `input->>'chapter_id'`"*. The anchor was
+    # there; this route simply did not read it.
+    #
+    # What that cost is QC-5's clause 1a. C39 dumped the prompt this route builds: six one-line
+    # rules, `ESTABLISHED FACTS (none)`, one chapter, no position — and the critic then reads a
+    # scene in which the betrayer acts humble as CONTRADICTING "he is the betrayer". A rule is a
+    # fact about the whole story; a passage is one moment inside it. Asked without the story
+    # position, concealment is indistinguishable from contradiction, and the untouched control
+    # flags as often as the planted draft (7/8 vs 7/8, C37/C38).
+    #
+    # `canon_for_chapter` is degrade-safe by construction: any read failure yields an `empty`
+    # bible rather than raising, which is why an advisory critique can depend on it.
+    present_facts: list[str] = []
+    _anchor = (job.input or {}).get("chapter_id")
+    if _anchor and job.book_id:
+        from app.clients.kal_client import get_kal_client
+        from app.engine.canon_bible import canon_for_chapter
+        try:
+            _bible = await canon_for_chapter(
+                kal=get_kal_client(), book=book, book_id=job.book_id,
+                chapter_id=UUID(str(_anchor)), user_id=user_id, bearer=bearer,
+                source_language=str(settings_dict.get("source_language") or "auto"),
+            )
+            present_facts = _bible.as_present_facts()
+        except Exception:  # noqa: BLE001 — advisory; a critique must not fail over a canon read
+            logger.debug("critique canon bible unavailable — grounding empty", exc_info=True)
+
     # QC-5 C34 — the verifier role, resolved HERE too. C33 wired it into the authoring
     # path only, and the live smoke caught the gap: this route is what the studio and the
     # QC-5 harness call, so a book that had configured a verifier still had its findings
@@ -2071,7 +2103,7 @@ async def critique(
     critic = await judge_prose(
         llm, user_id=str(user_id),
         model_source=str(critic_res.source), model_ref=str(critic_res.ref),
-        passage=passage, active_rules=active_rules, present_facts=[],
+        passage=passage, active_rules=active_rules, present_facts=present_facts,
         profile=from_settings(settings_dict),
         verifier_source=_ver_src, verifier_ref=_ver_ref,
     )
