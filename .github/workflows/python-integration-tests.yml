@@ -19,7 +19,7 @@ name: python-integration-tests
 #    a PK to the built-in uuidv7() (PG18); a pg16/17 image would fail migration.
 #  - neo4j:2026.03-community to match dev: knowledge's schema uses CREATE VECTOR INDEX /
 #    SHOW VECTOR INDEXES (Neo4j 5+) and a CJK full-text index. NO apoc plugin is loaded —
-#    the schema runner deliberately avoids APOC (neo4j_repos/events.py), so the container
+#    the schema runner deliberately avoids APOC (graph_repos/events.py), so the container
 #    stays minimal and fast.
 #  - Each harness self-applies its schema (the `pool` fixture runs migrations; knowledge's
 #    neo4j_driver fixture runs run_neo4j_schema), so the job only needs EMPTY databases.

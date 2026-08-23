@@ -763,6 +763,18 @@ def selftest() -> int:
         print("  FAIL — a DOCSTRING mentioning the old package was counted")
         ok = False
 
+    # A30/T48: a cross-language PATH reference, which an import scan cannot see
+    if not scan_engine_named_repo_paths(
+            {"x.ts": "resolve('../services/knowledge-service/app/db/neo4j_repos/entities.py')"}):
+        print("  FAIL — a TypeScript path into an engine-named repo package was not detected")
+        ok = False
+    if scan_engine_named_repo_paths(
+            {"x.ts": "resolve('../services/knowledge-service/app/db/graph_repos/entities.py')"}):
+        print("  FAIL — the NEUTRAL package path was flagged")
+        ok = False
+    if scan_engine_named_repo_paths({"x.ts": "const s = 'db/storage_repos/blobs.py'"}):
+        print("  FAIL — a SUBSTRING match faked a path violation ('age' inside 'storage')")
+        ok = False
     print(f"[port-adoption-gate] SELFTEST {'PASS' if ok else 'FAIL'} — distinguishes a real "
           f"import from a docstring, a PYTHON comment and a CYPHER comment, both ways; and "
           f"an unconformed port method from a covered one; and an ENGINE-NAMED repo "
@@ -1254,6 +1266,47 @@ def scan_engine_named_repo_binders(sources=None) -> list[tuple[str, str]]:
                 m = re.match(r"^app\.db\.([A-Za-z0-9_]+_repos)\b", mod)
                 if m and _names_an_engine(m.group(1)):
                     found.append((where, m.group(1)))
+    return sorted(set(found))
+
+
+#: Source trees a cross-language PATH reference can hide in. `neo4j_repos` survived the A30
+#: rename in a TypeScript test that reads a Python file by path — my sweep filtered on
+#: `--include=*.py --include=*.sh`, so it never looked at the language most likely to hold one.
+_PATH_SCAN_GLOBS = ("frontend/src/**/*.ts", "frontend/src/**/*.tsx", "services/**/*.go",
+                    ".github/workflows/*.yml", ".githooks/*")
+#: The gate's OWN selftest fixtures must name the old package to prove the detector fires.
+_PATH_SCAN_EXEMPT = {"scripts/port-adoption-gate.py"}
+MAX_ENGINE_NAMED_REPO_PATHS = 0
+
+
+def scan_engine_named_repo_paths(sources=None) -> list[tuple[str, str]]:
+    """`(where, package)` for an `db/<engine>_repos/` PATH string outside Python imports.
+
+    A rename verified by two full language suites still broke a cross-language lock, because a
+    TypeScript test opened `services/knowledge-service/app/db/neo4j_repos/entities.py` to
+    compare a server-side constant against the frontend's copy. No Python suite could see it and
+    no import scan could either — it is a string, in another language, naming a path.
+    """
+    import glob as _glob
+
+    if sources is None:
+        sources = {}
+        for pat in _PATH_SCAN_GLOBS:
+            for path in _glob.glob(os.path.join(ROOT, pat), recursive=True):
+                if not os.path.isfile(path):
+                    continue
+                rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+                if rel in _PATH_SCAN_EXEMPT:
+                    continue
+                try:
+                    sources[rel] = open(path, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+    found: list[tuple[str, str]] = []
+    for where, text in sorted(sources.items()):
+        for m in re.finditer(r"db/([A-Za-z0-9_]+_repos)/", text):
+            if _names_an_engine(m.group(1)):
+                found.append((where, m.group(1)))
     return sorted(set(found))
 
 
@@ -1990,6 +2043,19 @@ def main() -> int:
           f"{MAX_ENGINE_NAMED_REPO_BINDERS} — §10.1's second criterion, and a RATCHET: the repo "
           f"layer names no engine, so the 54 above bind a NEUTRAL package")
 
+    paths = scan_engine_named_repo_paths()
+    if len(paths) > MAX_ENGINE_NAMED_REPO_PATHS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(paths)} cross-language PATH "
+              f"reference(s) to an engine-named repo package (ceiling "
+              f"{MAX_ENGINE_NAMED_REPO_PATHS}):")
+        for where, pkg in paths[:10]:
+            print(f"    {where}  ->  db/{pkg}/")
+        print("  A rename verified by two full language suites still broke a cross-language")
+        print("  lock this way: a TypeScript test opened a Python file BY PATH. An import scan")
+        print("  cannot see a string in another language.")
+        return 1
+    print(f"[port-adoption-gate] engine-named repo PATHS {len(paths)}/"
+          f"{MAX_ENGINE_NAMED_REPO_PATHS} — no cross-language reference to a renamed package")
     # ── A19: those sites must REFUSE by name, not leak a SQL parse error ───────────────
     unguarded, stale_exempt = scan_neo4j_only_guards()
     if stale_exempt:

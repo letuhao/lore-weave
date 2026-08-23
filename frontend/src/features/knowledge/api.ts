@@ -242,7 +242,7 @@ export type ChangeEmbeddingModelResponse =
 
 // K19c.4 — user-scope entity (from the Track 2 Neo4j graph, projected
 // into the shape returned by /v1/knowledge/me/entities). Mirrors
-// services/knowledge-service/app/db/neo4j_repos/entities.py::Entity.
+// services/knowledge-service/app/db/graph_repos/entities.py::Entity.
 export interface Entity {
   id: string;
   user_id: string;
@@ -638,7 +638,7 @@ export type EntityMergeErrorCode =
 
 /**
  * K19e.2 — timeline event. Mirrors
- * services/knowledge-service/app/db/neo4j_repos/events.py::Event
+ * services/knowledge-service/app/db/graph_repos/events.py::Event
  * one-to-one so a future BE field addition surfaces here without
  * breaking the union. Fields not yet rendered by the FE (chronological
  * _order, archived_at) are retained in the type so downstream cycles

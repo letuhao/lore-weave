@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 98 of 145 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 99 of 146 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (11/12) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -23365,6 +23365,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
   ---
+  ---
+  ### ✅ T48j 2026-08-24 — **the cross-service sweep: my "repo-wide" rename sweep had a FILE-TYPE FILTER**
+
+  ```
+  knowledge-service      4666 passed, 812 skipped     identical to the pre-rename baseline
+  knowledge-gateway       135 passed
+  composition-service    3818 passed, 403 skipped
+  chat-service           1966 passed
+  campaign-service        184 passed,  20 skipped
+  lore-enrichment        1262 passed, 161 skipped
+  frontend               6401 passed, 851 files       <- 1 FAILED before this row
+                        ────────────
+                        17,832 passing, 0 failing
+  ```
+
+  🔴 **A30's rename broke a CROSS-LANGUAGE LOCK, and two full language suites could not see it.**
+
+  ```
+  FAIL src/features/knowledge/lib/__tests__/entityKinds.test.ts
+       > equals the server-side AUTHORABLE_KINDS gate (cross-language lock)
+    ENOENT: services\knowledge-service\app\db\neo4j_repos\entities.py
+  ```
+
+  A TypeScript test opens a **Python file by path** to prove the frontend's `AUTHORABLE_ENTITY_KINDS`
+  still equals the server's. `knowledge-service` was green (4666) and so was the gateway — neither
+  could possibly fail, because the reference is a *string, in another language, naming a path*.
+
+  📐 **And the cause is my own instrument.** A30 says it swept "repo-wide". It swept
+  `--include=*.py --include=*.sh` — a **file-type filter that excluded the language most likely
+  to hold a cross-language path**. Re-run without it, the old name survived in seven places: the
+  broken test, two `frontend/src` comments citing paths, a githook comment, and two CI workflow
+  comments. All fixed.
+
+  🧪 **The cure is a ratchet, because the next rename will have the same blind spot.**
+  `MAX_ENGINE_NAMED_REPO_PATHS = 0` scans `frontend/src`, `services/**/*.go`, the workflows and
+  the githooks for a `db/<engine>_repos/` PATH — the shape an import scan structurally cannot
+  see. `port-adoption-gate.py` is exempt: its selftest fixtures must name the old package to
+  prove the detector fires.
+
+  ```
+  BITE X  put the old path back in the FE test
+          FAIL — 1 cross-language PATH reference(s) (ceiling 0):
+              frontend/src/features/knowledge/lib/__tests__/entityKinds.test.ts -> db/neo4j_repos/
+  BITE Y  break the scan's regex so it matches nothing
+          FAIL — a TypeScript path into an engine-named repo package was not detected
+          SELFTEST FAIL
+  ```
+
+  Y is the control arm: every other assertion is satisfied by a scan that finds nothing, which is
+  precisely the failure mode being fixed one level up.
+
+  📌 **Two things this row does NOT claim.** The skips are the documented env-gated ones (the
+  throwaway containers are down; `docs/dev/TEST_DATABASES.md` names each), not new darkness. And
+  a green sweep proves the working tree, not the commit — which is why the ratchet, not the
+  sweep, is the deliverable.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` PASS with **three new
+  cases** (a TS path is detected, the neutral name is not flagged, and `storage_repos` does not
+  fake a violation); live gate PASS with `engine-named repo PATHS 0/0`.
+  **QC (b) live smoke:** N/A — no runtime behaviour changed. Six test suites plus a path
+  correction; the seam work of this session was smoked in C34–C42.
+  **QC (c) real data:** the suite table above, taken across six services and the frontend.
   ### ✅ T48i 2026-08-24 — **the RECANON grant verified on the LIVE graph, not cited; and the one invalid escape in the repo**
 
   ```
