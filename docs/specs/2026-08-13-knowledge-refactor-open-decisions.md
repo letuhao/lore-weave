@@ -1656,6 +1656,59 @@ honourable by the substrate, stays the owning service's call (T26). The guard re
 judge. A gateway that decided range here would repeat the env-var mistake its own comment
 records.
 
+## 12 · QC-5 clause 1a is not satisfiable by the critic family available — DECIDED (C43, 2026-08-24)
+
+**Cited by QC-5 C37–C43.**
+
+1a asks that a PLANTED canon violation be attributed, measured against the SAME draft with
+nothing planted. Measured live on 8 real drafts of the acceptance book, through the studio's
+route, against rebuilt images: the untouched control flags as often as the plant.
+
+```
+                                    planted   control
+  qwen2.5-7b   pre-verification      8/8       7/8
+  gemma-4-26b  pre-verification      7/8       7/8
+```
+
+The two arms are semantically opposite with respect to R1 — the plant replaces the canon
+antagonist throughout, so the planted text attributes the trap to a character the rule says is
+not the betrayer, and the clean text attributes it to the one the rule names. A critic that
+tracked identity would flag one and not the other. Neither model does.
+
+**Six candidate causes, each eliminated by measurement rather than by argument:**
+
+| candidate | result | row |
+|---|---|---|
+| the verification pass drops the plant | pre-verification the arms are identical | C37 |
+| the model tier is too small | the PO-target 26B behaves identically | C38 |
+| "contradiction" is undefined in the prompt | counts fell, discrimination did not move | C39 |
+| the critique route had no bi-temporal anchor | wired (`present_fact_count` 0→1); 1a unchanged | C40 |
+| the bible carried no characters | fixed (8 of 21 entities were nameless); 1a unchanged | C41 |
+| the canon rules are un-windowed | the only one that moved a number: R1 is cited on 7 of 8 clean drafts, and removing it takes the clean arm 7/8 → 4/8 | C42 |
+| narrative-position framing | **did not replicate** — reported as movement off single runs, flat on re-measurement | C43 |
+
+**DECIDED — 1a is not satisfiable with this critic family, and the row says so rather than
+carrying an open question.** Three real defects were found and fixed on the way (C40/C41/C42),
+each a bi-temporal mechanism with no reader, which is this refactor's own subject. None of them
+is what 1a is failing on.
+
+**What would change the answer, and neither is a code task.**
+
+1. **A stronger critic class.** The clause is a capability assertion about a judge; both locally
+   available tiers fail it. Nothing in the pipeline can compensate for a judge that cannot tell
+   the two texts apart.
+2. **Rule windows on the acceptance book.** C42 made `from_order`/`until_order` readable and
+   measured what a windowed R1 would buy. Authoring them is a judgment about the BOOK — at which
+   chapter each rule becomes true — and it also reshapes 1a itself: at a pre-reveal chapter a
+   planted "someone else is the betrayer" is not a canon violation, so the plant only means
+   something where the rule it contradicts is already in force.
+
+**What this does NOT license.** It does not retract C14 (a blatant hand-built contradiction was
+caught 3/3, with no matched control). It does not close QC-5, which stays `[~]`. It does not
+make the critic useless: clause 2 passes, the verification pass removes real false positives
+(the invented-clause verdict, 3/3), and the OFF switch and verifier role are shipped and
+user-controllable.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

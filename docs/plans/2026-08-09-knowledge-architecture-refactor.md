@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 98 of 144 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 98 of 145 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/59) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,56 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### 🔻 QC-5 C43 2026-08-24 — **my own "first movement" did not replicate, and that closes the diagnosis**
+
+  ```
+  narrative-position framing, re-measured with the anchor + names + windowing all in place
+    control     planted 5/8   clean 6/8     no separation
+    treatment   planted 4/6   clean 5/8     no separation
+  C39 reported this arm as 6/6 vs 4/6 — single runs, and it does not hold
+  ```
+
+  📐 **Rule 2, applied to my own result.** C39 called narrative-position framing *"the FIRST
+  movement"* off one run per draft. Re-measured against the same 8 drafts with everything since
+  in place, both arms are flat. A number that reads as success is guilty until checked, and this
+  one was mine. C39's row now has a negative attached to its own most promising line rather than
+  a claim nobody re-ran.
+
+  ⛔ **That was the sixth candidate, and it ends the search.** Recorded as a decision in
+  [`§12`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) rather than left open: **QC-5
+  clause 1a is not satisfiable by the critic family available.** The two arms are semantically
+  OPPOSITE with respect to R1 — the plant attributes the trap to a character the rule says is not
+  the betrayer, the control attributes it to the one the rule names — and neither the shipped 7B
+  nor the PO-target 26B can tell them apart.
+
+  🎯 **What the search DID produce, and it is not nothing.** Three real defects, each a
+  bi-temporal mechanism with no reader, which is this refactor's own subject:
+
+  ```
+  C40  job.input["chapter_id"]      set on 232/514 jobs, never read by the critique route
+  C41  the roster's entity NAME     8 of 21 entities dropped from the "CHARACTER CANON"
+  C42  canon_rule.from_order        window columns with no reader at all
+  ```
+
+  Plus the parse salvage (C35), the verifier role (C33), the OFF switch (C32) and the precision
+  pass (C31) — every one measured, bitten, and live-proven against rebuilt images.
+
+  ⚠️ **What is owed, and neither is a code task**: a stronger critic class, or rule windows
+  authored on the acceptance book. C42 measured what the second would buy (clean arm 7/8 → 4/8
+  from R1 alone) and made the mechanism usable; deciding at which chapter each rule becomes true
+  is a judgment about the BOOK, and it reshapes 1a itself — at a pre-reveal chapter a planted
+  "someone else is the betrayer" is not a violation at all.
+
+  📌 **QC-5 stays `[~]`.** Clause 2 passes; 1a is unscorable and now says why, with the six
+  eliminated causes named. The row is unfinished, not undecided.
+
+  **QC (a) gates:** four plan gates green.
+  **QC (b) live smoke:** N/A for this row — it is a re-measurement of an offline A/B whose
+  control arm is production's own prompt builder. The live half is C37/C38/C40–C42, all against
+  rebuilt images.
+  **QC (c) real data:** the four-row table above, and the full acceptance corpus in
+  [`docs/measurements/2026-08-24-qc5-1a-planted-vs-control.json`](../measurements/2026-08-24-qc5-1a-planted-vs-control.json).
   ---
   ### ✅ QC-5 C42 2026-08-24 — **the canon rules were never windowed: `from_order`/`until_order` had NO READER**
 
