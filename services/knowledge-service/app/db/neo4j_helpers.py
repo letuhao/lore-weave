@@ -46,6 +46,7 @@ __all__ = [
     "parse_summary_index_name",
     "list_summary_vector_indexes",
     "drop_summary_index",
+    "require_index_admin",
 ]
 
 
@@ -114,6 +115,33 @@ def assert_user_id_param(cypher: str) -> None:
         )
 
 
+
+
+def require_index_admin(session: CypherSession, operation: str) -> None:
+    """Refuse an INDEX-ADMIN command on any engine that has no such command (rule 9).
+
+    `SHOW VECTOR INDEXES`, `CREATE VECTOR INDEX` and `DROP INDEX` are Neo4j index administration,
+    not Cypher — AGE wraps every statement in `SELECT * FROM cypher(...)`, where they are a SQL
+    parse error. Measured on iso: `PostgresSyntaxError: syntax error at or near "SHOW"`.
+
+    That raise was already happening; what it was not doing was SAYING anything. `purge_project`
+    is a general repo function that called these unconditionally, and its caller wraps the whole
+    purge in `except Exception` and logs "graph orphaned, re-sweep owed". On AGE -- the DEFAULT
+    backend since T54 -- every project delete therefore reported an orphaned graph whose nodes
+    had in fact been deleted, and the message could not be told apart from a real purge failure.
+
+    A refusal that names itself is the difference. Engine comes from `engine_of`, which is the
+    one home for it (§10.1: the session is the only thing that knows its dialect).
+    """
+    engine = engine_of(session)
+    if engine != "neo4j":
+        raise NotImplementedError(
+            f"vector_indexes.{operation} — index administration is a Neo4j-only capability and "
+            f"this session speaks {engine!r}. There are no per-project summary vector indexes "
+            f"on {engine!r} to list, create or drop: §3.1 moves the vector layer to Postgres, "
+            f"where they are per-dim TABLES. Callers that must tolerate this should catch "
+            f"NotImplementedError explicitly rather than swallowing every exception."
+        )
 
 
 def engine_of(session: Any) -> Engine:

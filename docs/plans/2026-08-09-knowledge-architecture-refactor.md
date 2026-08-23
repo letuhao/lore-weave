@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 61 of 104 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 62 of 105 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (19/29) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (20/30) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,102 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A16 2026-08-23 — **project delete reported an orphaned graph that was not orphaned, on the DEFAULT backend**
+
+  ```
+  AGE coverage  117/119 -> 118/119 (99%)   floor moved in this commit (rule 5)
+  purge_project  unproven on AGE -> PROVEN, live, against a throwaway AGE graph
+  ```
+
+  🔴 **The defect, measured on iso before anything was changed:**
+
+  ```
+  purge_project(age_session, <any project>)
+      -> PostgresSyntaxError: syntax error at or near "SHOW"
+  ```
+
+  `purge_project` is two halves. The node purge is portable Cypher; the second half sweeps
+  per-project summary vector indexes, and `SHOW VECTOR INDEXES` is Neo4j **index
+  administration**, not Cypher — AGE wraps every statement in `SELECT * FROM cypher(...)`, where
+  it is a SQL parse error.
+
+  ⚖️ **The raise was already happening. What it was not doing was SAYING anything.** The caller
+  wraps the whole purge in `except Exception` and logs *"graph orphaned, re-sweep owed"*:
+
+  ```python
+  except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
+      logger.warning("neo4j purge for deleted project %s failed — graph orphaned, re-sweep owed", …)
+  ```
+
+  So since T54 made AGE the **default**, every project delete logged an orphaned graph **whose
+  nodes had in fact just been deleted** — and that message could not be told apart from a purge
+  that genuinely failed. A false alarm that is indistinguishable from the real alarm disables
+  both.
+
+  🎯 **Rule 9 is the shape of the fix: refuse by NAME, citing the section.** `require_index_admin`
+  raises a `NotImplementedError` naming the operation, the engine it was handed, and §3.1;
+  `purge_project` catches **that** and returns the skip as a value:
+
+  ```
+  nodes_deleted   : 0
+  indexes_dropped : 0
+  indexes_skipped : vector_indexes.list_summary_vector_indexes — index administration is a
+                    Neo4j-only capability and this session speaks 'age'. …§3.1 moves the
+                    vector layer to Postgres, where they are per-dim TABLES.
+  ```
+
+  📐 **The guard lives in `neo4j_helpers`, not in `neo4j_repos`, and a GATE moved it there.** The
+  first version compared `engine != "neo4j"` inside `vector_indexes.py` and
+  `test_NO_repo_call_site_NAMES_an_engine` went red:
+
+  ```
+  the repo layer names an engine in a string literal … a literal here pins the layer to one
+  engine while the dialect ratchet still reads zero:
+      vector_indexes.py:115: if engine != "neo4j":
+  ```
+
+  That test exists because the dialect ratchet once read **zero while 51 call sites said
+  `render(TEMPLATE, "neo4j")`**. It caught the same mistake being made again, one file over.
+
+  🧪 **Three bites, each red for its own reason.**
+
+  ```
+  BITE 1  drop `require_index_admin` from list_summary_vector_indexes
+          Failed: DID NOT RAISE <class 'NotImplementedError'>   +   KeyError: 'indexes_skipped'
+  BITE 2  widen `except NotImplementedError` -> `except Exception`
+          Failed: DID NOT RAISE <class 'RuntimeError'>
+  BITE 3  keep the count, delete the DELETE (live, on AGE)
+          AssertionError: purge_project returned a count but the entity is still readable —
+          a count is not a delete, and only re-reading it says which happened
+  ```
+
+  **Bite 2 is the one that matters most.** `except NotImplementedError` and `except Exception`
+  are one word apart and the wider one reads as more robust; it would swallow a genuine Neo4j
+  index-admin failure and report `indexes_dropped: 0` as though the sweep had run. The test that
+  fails on it is the only thing keeping that word narrow.
+
+  ⚠️ **Bite 3 exists because "it does not raise" is not a proof.** A `purge_project` that
+  skipped the delete entirely would satisfy every other assertion in the new live test. The test
+  re-reads the entity afterwards, which is the only assertion that distinguishes the two.
+
+  ✅ **The control arm (rule 3):** `test_a_neo4j_session_is_NOT_refused` — a guard that refuses
+  everything satisfies every refusal assertion above while breaking the engine the capability
+  exists for. Derived from the opposite case to the one that motivated it: a Neo4j session must
+  reach the driver and actually issue `SHOW VECTOR INDEXES`.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` green with the AGE
+  floor moved **117 → 118 in this commit**, and the sentence that named `purge_project` as
+  unproven corrected in the same edit. `knowledge-service` **4686 passed, 716 skipped** with
+  `TEST_AGE_DSN` SET — the AGE integration file runs rather than skipping, because an env-gated
+  proof that skips makes the green suite lie. The two `test_coaching_gate1.py` failures are the
+  pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso` (`iso.sh build` + `up -d
+  --no-deps`), the guard verified present in the image — `grep -c def require_index_admin` = 1,
+  and the old private name gone — before re-running the purge on the default backend.
+  **QC (c) real data:** the before/after pair above are real calls against the live AGE graph,
+  and the new proof runs against a throwaway graph the fixture creates and drops.
+
   ---
   ### ✅ T17 A15 2026-08-23 — **class (a) 7 → 0, and the constant it was hiding was a LATENT BUG**
 

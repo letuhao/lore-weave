@@ -1030,7 +1030,7 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: procedure at all, and running it (T91) showed it writes and enforces tenancy on AGE
 #: unchanged. Adjacency to the vector layer was doing the work that a measurement should
 #: have.
-MIN_AGE_PROVEN_FUNCTIONS = 117
+MIN_AGE_PROVEN_FUNCTIONS = 118
 
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",
@@ -1480,7 +1480,7 @@ def main() -> int:
         return 1
     print(f"[port-adoption-gate] Neo4j procedures {n_proc}/{MAX_VECTOR_PROCEDURE_SITES} — "
           f"the VECTOR layer only ({detail}); §3.1 moves it to Postgres. These sites are "
-          f"why `find_entities_by_vector` and `purge_project` are unproven on AGE: a "
+          f"why `find_entities_by_vector` is unproven on AGE: a "
           f"Neo4j-only capability, not a gap in the proof. NOT `set_entity_embedding`, "
           f"which reaches no procedure and was proven at T91.")
 

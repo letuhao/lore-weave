@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from typing import Literal as _Literal
 
-from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_helpers import CypherSession, require_index_admin
 
 __all__ = [
     "query_summary_index",
@@ -95,6 +95,7 @@ def parse_summary_index_name(name: str) -> dict[str, str] | None:
     }
 
 
+
 async def list_summary_vector_indexes(
     session: CypherSession,
 ) -> list[dict[str, str]]:
@@ -110,6 +111,7 @@ async def list_summary_vector_indexes(
     SHOW/DROP are admin ops without `$user_id` semantics — mirrors
     `ensure_summary_indexes` which does the same.
     """
+    require_index_admin(session, "list_summary_vector_indexes")
     rows = await session.run("SHOW VECTOR INDEXES YIELD name")
     parsed: list[dict[str, str]] = []
     async for record in rows:
@@ -130,6 +132,7 @@ async def drop_summary_index(session: CypherSession, name: str) -> None:
     `summary_index_name` — `_SUMMARY_INDEX_NAME_RE` constrains it to
     [a-z0-9_], structurally injection-safe.
     """
+    require_index_admin(session, "drop_summary_index")
     if parse_summary_index_name(name) is None:
         # Defense-in-depth — only summary indexes are eligible here.
         raise ValueError(f"refusing to DROP non-summary index {name!r}")
@@ -151,6 +154,7 @@ async def ensure_summary_indexes(
     to call every job start — `CREATE VECTOR INDEX IF NOT EXISTS` is no-op
     on existing indexes.
     """
+    require_index_admin(session, "ensure_summary_indexes")
     if embedding_dimension <= 0:
         raise ValueError(f"invalid embedding_dimension {embedding_dimension!r}")
     names: dict[str, str] = {}

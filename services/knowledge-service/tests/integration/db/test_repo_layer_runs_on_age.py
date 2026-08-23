@@ -653,3 +653,48 @@ async def test_wave_6_the_embedding_WRITE_is_not_a_vector_procedure(age_session)
         s, user_id="someone-else", entity_id=kai.id, embedding=[0.5] * 384,
         embedding_dim=384, embedding_model="x", embedding_version=9) is False, (
         "another user stamped an embedding onto this entity")
+
+
+async def test_purge_project_runs_on_AGE_and_NAMES_what_it_could_not_do(age_session):
+    """T17/§10.1 — the last non-vector repo function that could not complete on AGE.
+
+    `purge_project` is two halves. The node purge is portable Cypher; the second half sweeps
+    per-project summary vector indexes, and `SHOW VECTOR INDEXES` is Neo4j index administration,
+    not Cypher. AGE wraps every statement in `SELECT * FROM cypher(...)`, where it is a SQL parse
+    error — measured on iso: `PostgresSyntaxError: syntax error at or near "SHOW"`.
+
+    That raise reached `routers/public/projects.py`, which wraps the whole purge in
+    `except Exception` and logs *"graph orphaned, re-sweep owed"*. On AGE — the DEFAULT backend
+    since T54 — every project delete therefore reported an orphaned graph whose nodes had in fact
+    just been deleted, and the message was indistinguishable from a purge that really failed.
+
+    A test that only asserted "it does not raise" would pass against a `purge_project` that
+    silently skipped the delete too, so this asserts the node is GONE and that the skip came back
+    as a named value.
+    """
+    from app.db.neo4j_repos import entities as en
+    from app.db.neo4j_repos import project_graph as pg
+
+    s = age_session
+    uid = f"u-{uuid.uuid4().hex[:8]}"
+    proj = f"p-{uuid.uuid4().hex[:8]}"
+
+    kai = await en.merge_entity(s, user_id=uid, project_id=proj, name="Kai", kind="person",
+                                source_type="chapter", confidence=0.9)
+    assert await en.get_entity(s, user_id=uid, canonical_id=kai.id) is not None
+
+    out = await pg.purge_project(s, proj)
+
+    assert out["nodes_deleted"] >= 1, (
+        f"the portable half did not run: {out}. This is the assertion that stops a "
+        f"`purge_project` which skips the delete from passing as 'it did not raise'."
+    )
+    assert await en.get_entity(s, user_id=uid, canonical_id=kai.id) is None, (
+        "purge_project returned a count but the entity is still readable — a count is not a "
+        "delete, and only re-reading it says which happened"
+    )
+    assert out["indexes_dropped"] == 0
+    assert "Neo4j-only capability" in out.get("indexes_skipped", ""), (
+        f"the index sweep must come back as a NAMED skip, not an exception and not silence: "
+        f"{out}"
+    )

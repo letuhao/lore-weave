@@ -56,8 +56,20 @@ async def purge_project(session: CypherSession, project_id: str) -> dict[str, in
         await session.run("MATCH (n {project_id: $pid}) DETACH DELETE n", pid=project_id)
     proj_hex = project_id.replace("-", "").lower()
     dropped = 0
-    for idx in await list_summary_vector_indexes(session):
-        if idx["project_id"] == proj_hex:
-            await drop_summary_index(session, idx["name"])
-            dropped += 1
+    # The node purge above is PORTABLE Cypher and has already happened. Index administration
+    # is not: on AGE `SHOW VECTOR INDEXES` is a SQL parse error, and there are no per-project
+    # summary indexes there to drop (§3.1 makes the vector layer per-dim Postgres TABLES).
+    #
+    # Catching the NAMED refusal only. Before this, the helper raised a bare PostgresSyntaxError
+    # that propagated to the caller's `except Exception`, which logs "graph orphaned, re-sweep
+    # owed" -- so on the DEFAULT backend every project delete reported an orphan whose nodes had
+    # in fact been deleted, indistinguishable from a purge that really did fail. A bare `except`
+    # here would restore exactly that: it would also swallow a genuine Neo4j index failure.
+    try:
+        for idx in await list_summary_vector_indexes(session):
+            if idx["project_id"] == proj_hex:
+                await drop_summary_index(session, idx["name"])
+                dropped += 1
+    except NotImplementedError as exc:
+        return {"nodes_deleted": nodes, "indexes_dropped": 0, "indexes_skipped": str(exc)}
     return {"nodes_deleted": nodes, "indexes_dropped": dropped}
