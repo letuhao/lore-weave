@@ -118,7 +118,8 @@
         "settings_provider_inventory",
         "world_map_add_marker",
         "composition_entity_override_edit",
-        "composition_glossary_build"
+        "composition_glossary_build",
+        "glossary_propose_batch"
       ],
       "notes": {
         "registry_list_workflows": "Advertised 5/5 and lost 5/5 to workflow_list, a CONSUMER-LOCAL tool — and answered well. Not a false absence and not the lazy tail.",
@@ -412,21 +413,8 @@
       "blocked_on_dq_2026_08_23": "🔴 P8 CANNOT BE CLEARED WITHOUT DQ-T32, and that is now measured rather than suspected. Its own tool composition_motif_bind_edit is the DQ's sharpened case, and the corpus measurement splits the outcome cleanly: 'Bind Emberfall Vein to the opening arc' NOW matches, because a bare 'bind' was added to the declarations — option (a) working — while THREE sibling phrasings of the same tool still miss, because 'Attach the pattern called Emberfall Binding to this book's opening arc' splits the contiguous synonym 'attach pattern to chapter' with the motif's own name.\n\nSo P8's fix is whichever option the owner picks: (a) keep adding declarations per phrasing, or (b) relax the matcher for the one shape that is never a different intent. Shipping either without the decision would pre-empt it.\n\nCONTEXT FROM THE CORPUS (194 unique tool/turn pairs): recall is 95%, mean answerable-set size is 1.8 of a possible 8, and only 9 turns miss. Three of the nine are this shape; two are tool_load, which SHOULD not match; four are plain declaration gaps.\n\nAND TWO PROVEN TOOLS CARRY THE SAME LATENT GAP: memory_recall_entity ('What do we know about Mira Solene so far?') and translation_coverage ('How much of this book has been translated so far?') are answerable on NOTHING and were concluded anyway — they reached the wire by the hot seed or the session's activated set. Their conclusions stand, but the gap would bite on a surface where those paths do not carry them, which is worth knowing before anyone reads `proven` as `robust`."
     },
     {
-      "id": "P9-INTENT-GATE",
-      "cycle": 10,
-      "title": "The world-setup intent gate shuts on the concrete request",
-      "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
-      "false_statement_tools": [],
-      "tools": [
-        "glossary_book_sync_apply",
-        "glossary_propose_batch"
-      ],
-      "measured": "The VAGUE prompt left the gate open (0 withheld) and the model correctly asked which kinds, because ops must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT it: 4 tools withheld at stage=intent_gate including the one asked for. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind.",
-      "dq": "DQ-T31"
-    },
-    {
       "id": "P10-TOOL-LOAD",
-      "cycle": 11,
+      "cycle": 10,
       "title": "tool_load is not used to read a schema",
       "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
       "false_statement_tools": [],
@@ -437,7 +425,7 @@
     },
     {
       "id": "P11-DISTRIBUTION",
-      "cycle": 12,
+      "cycle": 11,
       "title": "Surfaced, occasionally chosen — and the costly half of the enum never came up",
       "invariant_candidate": "K>=3 as a DISTRIBUTION is the bar; a tool chosen 3 times in 15 is not proven by the 3.",
       "false_statement_tools": [],
@@ -448,7 +436,7 @@
     },
     {
       "id": "P12-RAIL-PINNED-TURN",
-      "cycle": 13,
+      "cycle": 12,
       "title": "A rail-pinned turn never emits an assistant message",
       "invariant_candidate": "A turn must emit an assistant message. A rail that drives itself to exhaustion is still a turn the author is waiting on.",
       "status": "DIAGNOSED — the mechanism is named and proven by a control; the FIX is not written.",
@@ -463,7 +451,7 @@
     },
     {
       "id": "P13-SILENT-TURN",
-      "cycle": 14,
+      "cycle": 13,
       "title": "The turn produces no user-visible text, with no card and no error",
       "invariant_candidate": "A turn that says nothing is not a completed turn.",
       "status": "OPEN — recording fixed, ROOT CAUSE IDENTIFIED (a stray `<tool_call|>` delimiter), cause not fixed. See D-SILENT-TURN-NO-CARD-NO-PROSE.",
@@ -477,7 +465,7 @@
     },
     {
       "id": "P15-TRANSPORT-STALL",
-      "cycle": 15,
+      "cycle": 14,
       "title": "The provider fails mid-generation on the pass after a tool result",
       "invariant_candidate": "A tool cannot be adjudicated on a turn the transport killed. Either the stall is fixed, or its tools are stated as unmeasurable and why.",
       "status": "OPEN and BLOCKED ON EXTERNAL VISIBILITY - opened 2026-08-23 by the P4-PRECONDITION partition move. The provider is LM Studio at host.docker.internal:1234 and its server logs have not been written since 2026-08-04, so the only place the reason exists is not being recorded.",
@@ -501,6 +489,23 @@
       "tools": [
         "composition_motif_adopt"
       ]
+    },
+    {
+      "id": "P9-INTENT-GATE",
+      "cycle": 15,
+      "title": "The world-setup intent gate shuts on the concrete request",
+      "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
+      "false_statement_tools": [],
+      "tools": [
+        "glossary_book_sync_apply"
+      ],
+      "measured": "The VAGUE prompt left the gate open (0 withheld) and the model correctly asked which kinds, because ops must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT it: 4 tools withheld at stage=intent_gate including the one asked for. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind.",
+      "dq": "DQ-T31",
+      "moved_out": {
+        "glossary_propose_batch": "MOVED to P5-SIBLING-WINS 2026-08-23 by the partition rule — THE GATE WAS OPEN ON ITS TURNS, so the gate is not what blocks it. Batch c-r1-recheck, K=5, ZERO errored runs: the turn's injected skills were ['co_write', 'glossary', 'glossary_shaping'], and glossary_shaping is exactly the skill filter_intent_gated_setup_tools requires — verified directly against the deployed function, which drops all five gated tools with injected=[] or ['co_write'] and keeps all five with ['glossary_shaping']. So this tool was in the turn's catalogue.\n\nIt was called 0/5 anyway: on every run the model ran glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input. glossary_adopt_standards is ANOTHER of the five gated tools, surfaced by the same open gate, and it won the request. That is P5's shape, not P9's.\n\nNOTE THE ASYMMETRY THIS EXPOSES, which is P9's actual subject: the two tools in P9 had the SAME gate and opposite outcomes, decided by the prompt's vocabulary. 'Set up several kinds and attributes at once for this book's ontology' injects glossary_shaping; 'Take the upstream changes - apply the standard updates to this book' does not."
+      },
+      "diagnosis": "THE GATE IS ALL-OR-NOTHING ON A SKILL INJECTION, AND R1 CANNOT OVERRULE IT BY CONSTRUCTION. Both halves measured 2026-08-23.\n\n1. THE GATE ITSELF. filter_intent_gated_setup_tools, called directly against the deployed build, drops all five INTENT_GATED_SETUP_TOOLS with injected skills [] or ['co_write'] and keeps all five with ['glossary_shaping']. There is no per-tool nuance: the turn either has the setup skill or has no setup tools. So the whole question is what injects the skill, and the answer is the prompt's VOCABULARY - the two tools in this problem got opposite outcomes from the same gate (glossary_propose_batch's prompt injected it, glossary_book_sync_apply's did not), which is DQ-T31's measurement repeated on a second pair.\n\n2. 🔴 AND THE ANSWERABILITY RESCUE CANNOT REACH A GATED TOOL - THIS IS NEW. R1 promises a tool whose declared vocabulary answers the request reaches the wire 'whatever the budget, the domain selection or the rail decided'. For glossary_book_sync_apply the request IS its vocabulary twice over ('take the upstream changes', 'apply the standard updates') and answerable_tools returns EXACTLY that one tool for it - yet chat-service's own per-pass log shows 'R1 answerability: request matches [glossary_book_sync_apply]' ONCE per turn and 34 activated tools without it on EVERY pass.\n\nThe cause is which catalogue each advertise site is handed: the ONE-OFF build gets _catalog_index(catalog) - unfiltered - and does rescue the tool; the PER-PASS build gets _catalog_index(discovery_catalog) - filtered by the gate - cannot match a tool that is not in it, and REPLACES the one-off list on the first pass. Neither piece is buggy and the guarantee still cannot hold. See D-R1-CANNOT-RESCUE-AN-INTENT-GATED-TOOL-BY-CONSTRUCTION.\n\nWHAT THAT MEANS FOR THE FIX. DQ-T31's recommendation is to add a declaration arm to the gate, 'the rule R1 already applies at the advertise chokepoint'. It cannot be inherited for free: R1 runs at a chokepoint that no longer contains the tool. The arm has to live in the GATE, before the narrowing - or the narrowing needs an exemption like the one a pinned rail's step tools already get.",
+      "status": "DIAGNOSIS COMPLETE 2026-08-23, NOT CLEARED, and the fix is an OWNER decision (DQ-T31). One tool remains after glossary_propose_batch moved out on measured cause: glossary_book_sync_apply, surfaced 0/5 and called 0/5 at K=5 with zero errored runs. Whether a gated tool SHOULD be reachable by a request that names it is a product question about an over-reach guard, not mine."
     }
   ],
   "deferred_questions_backlog": {
