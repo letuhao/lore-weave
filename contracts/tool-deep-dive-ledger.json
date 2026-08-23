@@ -1601,9 +1601,9 @@
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
    "evidence_class": "gate-backed",
-   "state": "blocked",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-r1-recheck.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: THE QUESTION WAS ANSWERABLE WITHOUT IT, AND THE TURN RAISED AN UNREQUESTED WRITE CARD. Asked 'What exactly do you need from me to add a new character to my story bible? Check the real requirements', the model ran glossary_book_ontology_read -> kg_project_create and suspended, on 5 of 5 runs.\n\nIn the earlier c10-run measurement it answered the question CORRECTLY and from a real read: glossary_list_system_standards returned the character kind with attribute_count 13, and the prose answer named the name and description requirements accurately. So the scenario's premise is the weak part - a domain read answers 'what do you need', and tool_load's discovery path is not required to satisfy it. Re-authoring the prompt is the honest fix, and it is a DIFFERENT question, recorded as such rather than smuggled in.\n\nSEPARATE FINDING, and it is about the product: a READ-ONLY question proposes a Tier-A kg_project_create on 5 of 5 runs, while the model's own prose promises 'I will create a draft entry in your review inbox' - a different act from creating a knowledge project. approve stays None here on purpose: approving a write on a turn that only asked to look would make the harness the thing that wrote.\n\nON THE HARNESS'S 'READ-INTENT TURN WROTE TO THE STORE in 5/5' WARNING: the only table that moved is loreweave_knowledge.entity_access_log, which is a record OF reads. The gate itself passed 'DATA read-is-read', so the summary line is broader than the gate and should not be read as a write defect here.\n\nTHE SHARED FINDING, and it changes what 'blocked' means for these six. Their previous verdicts were all 'surfaced 5/5, called 0/5, suspended-on-card 5/5' under approve=None, where the card belonged to some OTHER tool - so the turn died before the tool under test had a chance and the old number measured nothing about it (D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD). This run lets the harness click, on the run's own throwaway book. Every turn now completes: ZERO errored runs across all 30, and every scenario moved its store.\n\nAnd the tools are still called 0/5. So the blocker is NOT surfacing and NOT the gate: it is SELECTION. Each tool was advertised 5/5, and answerable_tools picks each one for its own prompt against the live 303-tool catalogue (verified per tool). The model had the right tool in front of it and chose a familiar sibling instead, deterministically.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/c-r1-recheck.json"
+   "state": "proven",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-toolload3.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-toolload3.json"
   },
   "memory_recall_entity": {
    "state": "proven",
@@ -4433,8 +4433,8 @@
   "tools_declared": 315,
   "tools_concluded": 198,
   "tools_in_cycle": 0,
-  "tools_proven": 183,
-  "tools_blocked": 15,
+  "tools_proven": 184,
+  "tools_blocked": 14,
   "defects_proven": 25,
   "defects_open": 14,
   "deferred_questions": 18,

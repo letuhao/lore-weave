@@ -1108,6 +1108,32 @@ def _excluded_in_scope(catalog: list[dict], category: str | None, exclude: set[s
     return sorted(set(held))
 
 
+def _stamp_no_schemas(payload: dict) -> dict:
+    """Say that a listing carries NAMES and DESCRIPTIONS, never arguments.
+
+    🔴 A MODEL ANSWERED A CONTRACT QUESTION FROM THIS PAYLOAD AND GOT IT WRONG. Measured
+    2026-08-23, batch c-toolload2: asked "What arguments does the composition_arc_apply tool
+    require? Read its real schema", one run of five called `tool_list` instead of `tool_load` and
+    replied "arc_template_id + book_id". The real input_schema is {project_id, arc_template_id,
+    roster_bindings, replace, idempotency_key} — there is NO book_id — and the words it answered
+    with came from a DIFFERENT tool's description: composition_arc_edit's reads "op=create mints a
+    saga/arc (needs book_id; optional ... arc_template_id ...)". One tool's requirements were
+    attributed to another, confidently, with no error.
+
+    The payload was not wrong; it was SILENT about what it is. 29KB of 53 descriptions reads like
+    an authoritative answer to "what does this tool need", and nothing in it says otherwise. This
+    is the same move the file already makes for `always_available` and for an unknown `category`:
+    when a listing withholds something a caller could mistake for absent, it says so IN the
+    payload rather than leaving the caller to infer it.
+    """
+    payload["schemas"] = (
+        "NOT INCLUDED — these entries carry each tool's NAME and DESCRIPTION only. For a tool's "
+        "arguments (which are required, their types), call tool_load with that tool's name. A "
+        "description may MENTION another tool's arguments in prose; that is not this tool's schema."
+    )
+    return payload
+
+
 def _stamp_always_available(
     payload: dict, catalog: list[dict], category: str | None, exclude: set[str],
 ) -> dict:
@@ -1207,6 +1233,7 @@ def tool_list_result(
             categories.setdefault(_domain_of(t["name"]), []).append(t)
         payload_all: dict = {"categories": categories, "count": len(tools)}
         _stamp_always_available(payload_all, catalog, None, exclude)
+        _stamp_no_schemas(payload_all)
         return _stamp_incomplete(payload_all, unavailable_providers)
     if category not in CATEGORY_ENUM:
         # T7-D3 — a category that is not a domain at all must say SO, not report itself empty.
@@ -1237,6 +1264,7 @@ def tool_list_result(
         )
     tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
     payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    _stamp_no_schemas(payload)
     held = _excluded_in_scope(catalog, category, exclude)
     if not tools:
         # T7-D2 — `reason` is the field a caller uses to tell "no such tools" from "bad guess",
