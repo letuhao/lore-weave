@@ -560,7 +560,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 2,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED ON AN UNANSWERABLE PROMPT, AND THE MODEL IS RIGHT. The prompt says 'use ONE OF my library arc templates' — it names no target, and the seed is EMPTY, so no fixture-created template could be the obvious answer. The account holds 31 ACTIVE arc templates, 51 of 57 being account-scoped test debris. The model replies 'I need you to specify WHICH template', which is correct: guessing on a WRITE is worse than asking.\n\nPRE-REGISTERED TEST, REFUTED: the scenario was re-run with an explicit follow-up 'Yes, go ahead and do it.' and stayed 0/5 — a bare affirmative cannot answer a which-one question. Not measurable as written; a fair scenario must seed its own template and NAME it, which is a different question and is recorded as such rather than smuggled in as a re-run."
     },
     {
       "tool": "composition_derivative_edit",
@@ -1113,7 +1114,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 1,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED ON P4's OWN CAUSE, now measured rather than assumed. With an explicit confirmation the model answers 'there are no active derivatives (what-if versions) currently listed. The only work found is your canonical version.' There is nothing to edit — the fixture never creates a derivative. BUILDABLE: seed one."
     },
     {
       "tool": "composition_motif_adopt",
@@ -1660,7 +1662,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 1,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED ON AN UNANSWERABLE PROMPT, AND THE MODEL IS RIGHT — identical shape to composition_arc_apply. 'Copy ONE OF the built-in tropes' names no target against 84 system motifs and 268 user motifs, and the seed is empty. The model asks which specific motif. The explicit-yes follow-up left it at 0/5, refuting the confirmation reading."
     },
     {
       "tool": "jobs_cancel",
@@ -2573,7 +2576,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, and the follow-up turn exposed a defect worth more than the original reading. Turn 1 lists the author's jobs and asks. Turn 2's 'Yes, go ahead and do it.' is treated as a BRAND NEW request: workflow_load, glossary_list_system_standards, glossary_adopt_standards, glossary_task_provide_input, and the reply 'I've started setting up the foundation for your book.' The author asked to cancel a job. The store moved on 5/5 runs, so it is not a no-op — a different thing was DONE and reported as progress. See D-AFFIRMATIVE-FOLLOW-UP-LOSES-THE-PRIOR-INTENT."
     },
     {
       "tool": "jobs_pause",
@@ -3544,7 +3548,8 @@
       "surfaced_count": 0,
       "called_count": 0,
       "wrote_count": 5,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED, identically to jobs_cancel: the affirmative turn ran a book-setup workflow instead of pausing anything, store moved 5/5. See D-AFFIRMATIVE-FOLLOW-UP-LOSES-THE-PRIOR-INTENT."
     }
   ]
 }
