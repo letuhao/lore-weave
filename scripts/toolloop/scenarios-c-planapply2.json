@@ -1,0 +1,64 @@
+{
+  "_note": "plan_bootstrap_apply with a COMPILED run - the state plan_bootstrap_propose requires before it will mint a proposal_id.",
+  "scenarios": [
+    {
+      "id": "plan-bootstrap-apply-compiled",
+      "tool_under_test": "plan_bootstrap_apply",
+      "expect_tool": "plan_bootstrap_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Create the chapters — make the plan real for this book.",
+      "prompt_source": "meta.synonyms['create the chapters'] + ['make the plan real'], verbatim.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "mode": "rules",
+            "source_markdown": "# Emberfall\n\n## Arc I - The Emberfall\n### The Ember Codex\nAldric Vane climbs the black stair and finds the codex burning.\n### The Waterline\nThe Obsidian Trench is walkable only at low tide.\n\n## Arc II - The Reckoning\n### The Black Stair Again\nAldric returns to the keep with the codex.\n### The Last Tide\nThe trench closes for good and the keep is cut off.\n"
+          },
+          "why": "🔴 THE SPEC MARKDOWN HAD TO BE REWRITTEN, and the old one is why this tool could never be reached. plan_compile refuses a spec with 'compile blocked by 2 hard rule(s): spec_has_arc (no arcs parsed - an arc is a \"## \" heading inside the Arc Overview section); spec_has_events'.\n\nThe previous markdown was '# Emberfall / ## Arc I / ### Chapter 1 / ### Chapter 2' - ONE '## ' heading. The ingest descends to the shallowest level with two or more headings, so it read the '### ' rows as the ARCS and found no events beneath them. Two '## ' arcs each holding two '### ' events parse correctly: measured, arc_count 2 ('Arc I - The Emberfall', 'Arc II - The Reckoning')."
+        },
+        {
+          "tool": "plan_compile",
+          "args": {
+            "book_id": "{book_id}",
+            "run_id": "{step:0:run_id}",
+            "arc_id": "arc_1"
+          },
+          "why": "🔴 arc_id IS THE SPEC'S OWN ID, NOT THE STRUCTURE NODE'S, and the tool says so when you get it wrong: 'no arc <uuid> in this spec - it has: arc_1, arc_2. (Ids are the spec's own, not positional; arc_1 and arc_01 are different.)' Passing composition_arc_list's node id fails. That refusal is unusually good and is quoted here so the next reader does not repeat the hour I spent.\n\nWITHOUT THIS STEP THE FIXTURE CANNOT REACH THE TOOL. plan_bootstrap_propose refuses with 'cannot preview - run has no compiled package yet - call compile() first', so proposal_id is never minted and plan_bootstrap_apply has nothing to apply. Measured 2026-08-23: this is what the tool was actually blocked on, and it was invisible until R1 was made transitive and the model finally reached the supplier."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "ONE chapter — the fixture's own — before anything is applied. This tool CREATES real book chapters from a previewed proposal, so the count moving is the whole signal. The card is never approved, so it must still be 1 afterwards. CONTROL: `proposal_id` comes from plan_bootstrap_propose, which has NOT been run here, so the honest outcome may be a refusal naming the missing proposal — a PRECONDITION finding rather than a tool defect."
+        },
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT (count(*) > 0)::text FROM plan_artifact a JOIN plan_run r ON r.id = a.run_id WHERE r.book_id = '{book_id}' AND a.kind = 'package'",
+          "expect": "true",
+          "why": "A COMPILED PACKAGE must exist for this run, or plan_bootstrap_propose refuses and the tool under test is unreachable - which is exactly the state every earlier run of this scenario measured. Keyed on the artifact KIND rather than on a row count for the run, so a spec-only run cannot satisfy it.\n\n🔴 EXISTENCE, NOT A COUNT. The first version expected exactly 1 and the store said 3 - compile writes more than one package artifact per run - so the assertion failed on a fixture that was CORRECT. A count is a claim about the implementation; what this scenario needs to know is whether a compiled package exists at all."
+        }
+      ],
+      "falsifier": "REFUTED IF: chapters are created with NO confirm card (Tier A — this materialises real book content), OR the model invents a proposal_id, OR the reply claims chapters were created while the card is still pending. Store check: loreweave_book.chapters stays at 1.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and it creates real chapters.",
+        "absent_case": "OWED — a proposal_id that does not exist must be refused.",
+        "idempotency": "OWED — applying the same proposal twice must not create the chapters twice.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "_carried_from": "scripts/toolloop/scenarios-rebaseline.json",
+      "_problem": "P4-PRECONDITION",
+      "approve_why": "🔴 approve SET, and the reason is a measurement error this batch exists to correct. Each of these five was recorded 'surfaced 5/5, called 0/5, suspended-on-card 5/5' with approve=None — and the card is NEVER for the tool under test. Read off their own raw evidence: composition_entity_override_edit died on kg_project_create / glossary_entity_set_attributes cards; tool_load died on a kg_project_create card 5/5; composition_generate on composition_arc_edit / book_chapter_save_draft / glossary_deep_research.\n\nSo 'called 0/5' did not measure whether the model can reach this tool. It measured whether the model can reach it BEFORE ANY OTHER TOOL RAISES A CARD — and an unrelated tool's card decided the result. A user would click; the turn would continue.\n\nLegitimate under the standing rule: intent is WRITE, and the target is the run's OWN throwaway book, provisioned and torn down. Bounded by max_approvals (default 3), so a model that re-proposes the same write forever still cannot spend the run.\n\ntool-load KEEPS approve=None on purpose: it is READ intent, and approving a write on a turn that only asked to look would make the harness the thing that wrote. That a read-only question raises a kg_project_create card on 5 of 5 runs is a FINDING about the product, not an obstacle to approve away.",
+      "rebuilt_why": "Rebuilt 2026-08-23 after R1 was made transitive over declared argument emitters. That change made the model call plan_bootstrap_propose - the declared supplier of proposal_id - on 5 of 5 runs, where before it called plan_compile and read the outline. The supplier then refused for a STATE it did not have, which is what this seed now provides. The two fixes are separate and both were needed: the surface could not offer the step, and the fixture could not satisfy it."
+    }
+  ]
+}

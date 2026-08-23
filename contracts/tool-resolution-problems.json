@@ -366,13 +366,14 @@
         "DQ-T34"
       ],
       "diagnosis": "FIVE TOOLS, ONE SHAPE, AND THE DEPTH IS THE POINT. Each was re-run LIVE at K>=5 on 2026-08-23 with a fixture that reaches its state, and each fails on an id no tool on its surface can supply.\n\n  glossary_create_evidence   needs attr_value_id      <- glossary_get_entity        advertised 0/130\n  composition_arc_apply      needs arc_template_id    <- composition_arc_template_list  0 passes\n  plan_bootstrap_apply       needs proposal_id        <- plan_bootstrap_propose      0 of 21 passes\n  composition_reference_update needs reference_id     <- composition_find_references ADVERTISED,\n                               and THAT refuses for its own entity_id <- a glossary lookup, 0/40\n  composition_authoring_run_manage needs plan_run_id  <- no supplier named anywhere\n\nWire counts are from chat-service's own per-pass log, not the harness's agentSurface record, which was shown the same day to disagree with it.\n\nTHE MECHANISM. R1 answerability forces onto the wire the tool whose declared vocabulary answers the request. Nothing forces the tools THAT tool needs. A user names a GOAL, not an intermediate step, so a supplier reaches the wire only by accident - and the tiers refute the obvious explanation: 'the budget favours writes over reads' fits two pairs and fails the other two (plan apply/propose are both Tier A; arc_template get/list are both Tier R). It is depth, not tier.\n\nAND THE FIX MUST BE TRANSITIVE. composition_reference_update proves it: level 1 was already on the wire and the turn still died at level 2. A one-hop 'force the supplier too' would have looked correct on the other four and left this one exactly as broken.\n\nTHE PLATFORM ALREADY HOLDS THE ANSWER FOR AT LEAST ONE. contracts/agent-runtime-tool-contracts.json declares plan_bootstrap_apply => {proposal_id: plan_bootstrap_propose} as DATA, and does not use it to put the supplier on the wire. Its argument_emitters map has 3 real entries, so the data exists for a few tools and not for the rest.\n\nAND THE REPAIR THAT SHOULD RESCUE THIS SAYS NOTHING USEFUL FOR HALF THE CATALOGUE. The refusal appends 'look it up with the tool named above', which means a supplier named in the tool's OWN description. Measured: 86 tools require a non-ambient UUID and 45 name no tool at all - and that 86 UNDER-counts, because a flat-superset op-dispatch tool declares only `op` as required, so composition_authoring_run_manage's plan_run_id was never in the population.",
-      "moved_out": {},
+      "moved_out": {
+        "plan_bootstrap_apply": "MOVED to P16-PROSE-CONFIRMATION 2026-08-23 by the partition rule — its supplier is now on the wire AND SUCCEEDS, and the tool is still not called for a third, different reason.\n\nTHE CHAIN WAS FIXED IN TWO STEPS AND BOTH WERE NEEDED:\n  1. R1 made transitive over declared argument emitters, so plan_bootstrap_propose reaches the wire. Before: package_tree -> plan_compile -> list_outline (5/5). After: package_tree -> plan_bootstrap_propose -> list_outline (5/5).\n  2. The fixture now COMPILES the run. propose had been refusing 'cannot preview - run has no compiled package yet'; the seed's spec markdown was rewritten so arcs and events parse (two '## ' arcs each holding two '### ' events) and a plan_compile step added with the SPEC's own arc id, arc_1.\n\nMEASURED AFTER BOTH, K=5, ZERO errored runs: loreweave_composition.plan_bootstrap_proposal WROTE 5/5 - the supplier now mints a real proposal_id ({'proposal_id': '01a02f69-...', 'status': 'pending', 'new_chapters_count': 4, 'new_chapters': [The Ember Codex, The Waterline, The Black Stair Again, The Last Tide]}).\n\nAND THE MODEL THEN ASKS INSTEAD OF ACTING. Its reply lists the four chapters and ends 'Would you like me to go ahead and create these chapters so we can start writing?' - holding the proposal_id that plan_bootstrap_apply needs, on a turn whose request was 'Create the chapters - make the plan real for this book.' No card is raised; the author gets a question they already answered."
+      },
       "cleared_note": null,
       "worst_measured": "Across ALL evidence on disk, a required argument the model could not supply is 48% of every tool-call failure with world_* excluded entirely (779 of 1030 including them, 25 distinct tools). The guarantee that puts a tool on the wire, R1 answerability, matches the tool the user's WORDS name and carries nothing that tool needs - it stops at depth 1, and composition_reference_update fails at depth 2.",
       "tools": [
         "glossary_create_evidence",
         "composition_arc_apply",
-        "plan_bootstrap_apply",
         "composition_reference_update",
         "composition_authoring_run_manage"
       ],
@@ -513,8 +514,30 @@
       ]
     },
     {
-      "id": "P9-INTENT-GATE",
+      "id": "P16-PROSE-CONFIRMATION",
       "cycle": 15,
+      "title": "The turn holds what it needs, and ends by asking in prose instead of acting",
+      "invariant_candidate": "When the user's request IS the instruction and the turn already holds every argument the tool requires, asking again in prose is not a confirmation - it is a turn that did not happen. A Tier-A write has a card for consent; prose is not that card.",
+      "status": "OPEN - opened 2026-08-23 when plan_bootstrap_apply arrived here after its supplier and its precondition were both fixed. One tool.",
+      "retired_hypotheses": [],
+      "false_statement_tools": [],
+      "cross_refs": [
+        "D-R1-STOPPED-AT-DEPTH-1",
+        "P6-DESCRIBE-NOT-RECORD",
+        "DQ-T33"
+      ],
+      "dq": [],
+      "diagnosis": "ONE TOOL SO FAR, AND IT ARRIVED HERE BY ELIMINATION RATHER THAN BY GUESS - which is what makes it worth its own problem. plan_bootstrap_apply was blocked as a PRECONDITION failure (P4), then as a SUPPLIER failure (P14), and each diagnosis was true when it was made and stopped being true when the layer beneath it was fixed. With the supplier on the wire and the run compiled, the remaining cause is that the model asks.\n\nMeasured K=5, zero errored runs, identical on every run: composition_package_tree -> plan_bootstrap_propose x2 -> composition_list_outline, a real proposal_id in hand, and a reply ending 'Would you like me to go ahead and create these chapters so we can start writing?'\n\nIT IS NOT OBVIOUSLY WRONG, AND THAT IS THE PROBLEM'S DIFFICULTY. Creating four chapters is a Tier-A write and pausing before one is defensible. But the request WAS 'Create the chapters - make the plan real for this book', the platform HAS a consent mechanism for exactly this (the approval card), and prose asks for consent in a channel that records nothing and gates nothing. The author answers a question they already answered, and no card ever appears.\n\nRELATED BUT DISTINCT: P6-DESCRIBE-NOT-RECORD is prose offered INSTEAD of a storable artefact (propose_edit writing rewrites rather than proposing them). This is prose offered instead of an ACTION the turn is already equipped to take. DQ-T33 is the same surface seen from the other end - what the author is told when a turn produces nothing.",
+      "moved_out": {},
+      "cleared_note": null,
+      "worst_measured": "plan_bootstrap_apply - the turn holds proposal_id, names the four chapters it would create, and asks. The whole chain compile -> propose -> apply is satisfied except its last call.",
+      "tools": [
+        "plan_bootstrap_apply"
+      ]
+    },
+    {
+      "id": "P9-INTENT-GATE",
+      "cycle": 16,
       "title": "The world-setup intent gate shuts on the concrete request",
       "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
       "false_statement_tools": [],
@@ -616,5 +639,6 @@
     "recommendation": "gate.py audit should refuse a conclusion whose evidence_file predates the problem's own re-measurement, or is empty. Not implemented here: it would change the loop's evidence standard while that standard is blocking my own cycles, which is the same reason DQ-T40 was registered rather than acted on."
   },
   "partition_move_2026_08_23": "ELEVEN TOOLS MOVED OUT OF P4-PRECONDITION on measured cause, under this file's own denominator_rule: 'If a re-run moves a tool to a different problem, it moves.' All eleven read surfaced 5/5, ZERO errors, called 0/5 across 75 runs — the fixture reaches the state fine, so 'the fixture cannot reach the state the tool needs' was never their cause.\n\n  6 -> P5-SIBLING-WINS. A confirm card IS pending on every run and a SIBLING owns it, never the tool under test (kg_add_nodes, plan_compile, glossary_propose_entities, ...). 30/30.\n  5 -> P14-PROSE-CONFIRMATION (new). The turn ends ASKING IN PROSE with ZERO cards. 45 runs.\n\nThe denominator did not move: 65 before, 65 after, and problem_remaining.py's MECE check passed. The ORDERING did move, and the guard caught my placeholder cycle numbers rather than my noticing them — P5 rises to cycle 2 on 12 tools and P4 falls to 10. Cycle numbers here are the ordering rule's OUTPUT, recomputed, never typed.\n\nI first recorded this as a recommendation for the owner. That was over-deferring: the rule above is the contract's, and a measured cause that moves a tool moves it. What IS the owner's is what to DO about P14, not whether these eleven belong where their evidence puts them.",
-  "ordering_recomputed_2026_08_23": "Cycle numbers RECOMPUTED with problem_remaining.py's own order_key after the P4-PRECONDITION partition move opened P14-SUPPLIER-NOT-ON-SURFACE and P15-TRANSPORT-STALL. Not hand-typed - the ordering rule says so explicitly, and the first version of this file had them wrong because they were typed. P5-SIBLING-WINS now precedes P3-NAME-TO-ID because it gained two tools in the move."
+  "ordering_recomputed_2026_08_23": "Cycle numbers RECOMPUTED with problem_remaining.py's own order_key after the P4-PRECONDITION partition move opened P14-SUPPLIER-NOT-ON-SURFACE and P15-TRANSPORT-STALL. Not hand-typed - the ordering rule says so explicitly, and the first version of this file had them wrong because they were typed. P5-SIBLING-WINS now precedes P3-NAME-TO-ID because it gained two tools in the move.",
+  "stale_reference_note_2026_08_23": "`partition_move_2026_08_23` above says five tools moved to 'P14-PROSE-CONFIRMATION (new)'. No such problem was ever added - checked: all five are listed under existing problems and the partition is MECE at 65/65/0. The prose-confirmation shape did get its own problem eventually, on 2026-08-23, and it is P16-PROSE-CONFIRMATION with a different id because P14 had by then been taken by SUPPLIER-NOT-ON-SURFACE. Recorded so the dangling name in that note is not read as a missing row."
 }
