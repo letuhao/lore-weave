@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 72 of 115 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 73 of 116 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (28/38) · `T25` (17/24) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (28/38) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6823,6 +6823,72 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25w 2026-08-23 — **T25n's cure does NOT transfer to the entity family, and the test that demanded the DDL would have BLOCKED the removal**
+
+  ```
+  measured, not assumed:
+
+    benchmarks + shadow harness calling find_entities_by_vector    NONE (passage only)
+    the sole reader of entity_embeddings_*                         Neo4jVectorStore
+    what that makes it                                             a SERVICE fallback
+  ```
+
+  📐 **I set out to apply T25n's precedent and the measurement refused it.** T25n deleted the
+  PASSAGE DDL because passages left the service for Postgres and only the **benchmarks** stayed
+  on Neo4j — so they were given `ensure_passage_vector_index` and own their index. The obvious
+  next move was to do the same for entities. It does not work, and the reason is a distinction
+  nothing in the plan had written down: the benchmarks and the shadow harness touch passage
+  vectors **only**, and the sole reader of `entity_embeddings_*` is `Neo4jVectorStore` — a
+  **service fallback**, not a benchmark. A benchmark can create its own index; a service cannot
+  create one per read.
+
+  🔴 **And the test guarding that DDL would have blocked T25 from ever finishing.**
+  `test_the_ENTITY_vector_ddl_must_SURVIVE` (T25u) demanded the declaration **unconditionally**.
+  The day the fallback is removed, that test fails the removal — someone would have to edit the
+  test to let the row close, which is precisely how a criterion outlives its reason.
+
+  🎯 **So the coupling §9.2 describes is now DERIVED and asserted in both directions:**
+
+  ```
+  fallback present (today)   ->  the DDL is REQUIRED
+  fallback removed           ->  the DDL must be GONE
+  ```
+
+  The fallback's existence is read off the source — `Neo4jVectorStore` calling
+  `find_entities_by_vector` — not assumed. So the same test permits the removal **and** enforces
+  that the schema goes with it, which is what T25u did for the event family once its reader was
+  gone.
+
+  🧪 **Two bites, one per arm, because the second arm is NEW and could be dead code:**
+
+  ```
+  BITE 18  comment out all five entity CREATEs, fallback intact
+    AssertionError: no entity_embeddings_* index is declared any more, but
+    `Neo4jVectorStore` still calls `find_entities_by_vector` — … a 500 in waiting
+
+  BITE 19  remove the fallback call, DDL intact
+    AssertionError: the Neo4j entity fallback is GONE and ['entity_embeddings_384',
+    'entity_embeddings_1024', 'entity_embeddings_1536', 'entity_embeddings_2560',
+    'entity_embeddings_3072'] is still declared. §9.2 ties the DDL's exit to that path
+    being unreachable
+  ```
+
+  ⚖️ **What this settles about T25's residue.** T25v measured that **no declared deployment**
+  selects a non-`age` backend — necessary, but not sufficient. This adds the sufficient half:
+  the DDL goes when the **fallback code** goes, and that is now enforced rather than remembered.
+  The removal is a code change gated on the flip being irreversible (§8.5), not a scheduling
+  choice and not something a declaration count can authorise on its own. Recorded here because I
+  came close to reading T25v's `0/0` as permission to delete.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4721 passed, 719 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** N/A — no service code changed; the test's subject is the schema file and
+  an AST read of the adapter. The behaviour it guards was measured live by T25t (bite 27).
+  **QC (c) real data:** the reader census is an AST/grep scan over `app/`, and it is what refuted
+  the T25n analogy rather than confirming it.
+
   ---
   ### ✅ T25v 2026-08-23 — **§9.2's DDL-exit condition was PROSE; it is now a number**
 

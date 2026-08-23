@@ -75,23 +75,53 @@ def _declarations(schema: str) -> str:
     )
 
 
-def test_the_ENTITY_vector_ddl_must_SURVIVE():
-    """§3.3 cut over the passage scope ONLY, and the ENTITY family is still load-bearing.
+def _neo4j_still_serves_entity_reads() -> bool:
+    """Does the Neo4j entity FALLBACK still exist? Derived, not assumed.
 
-    A Neo4j-backend deployment keeps entity reads on `Neo4jVectorStore` — `read_scopes`
-    supplies an `anchor_score` resolver only when the configured backend is AGE — and that
-    path resolves `entity_embeddings_{dim}` and calls `db.index.vector.queryNodes` on it.
-    T25t measured the consequence on iso: with the index present the query returns 5 hits,
-    without it `52U00 / 52N37 ProcedureCallFailed`. So deleting this DDL breaks entity search
-    exactly where the design deliberately sends it.
+    `Neo4jVectorStore` is the only reader of `entity_embeddings_*` — the benchmarks and the
+    shadow harness touch PASSAGE vectors only, measured. So the fallback exists exactly while
+    that adapter still calls `find_entities_by_vector`.
+    """
+    import ast as _ast
+
+    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "adapters"
+           / "neo4j_vector_store.py").read_text(encoding="utf-8")
+    return any(isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)
+               and n.func.id == "find_entities_by_vector" for n in _ast.walk(_ast.parse(src)))
+
+
+def test_the_ENTITY_vector_ddl_tracks_the_FALLBACK_that_needs_it():
+    """§9.2 couples the entity DDL's life to the Neo4j entity path, so this asserts BOTH arms.
+
+    While the fallback exists, deleting the DDL breaks entity search exactly where the design
+    sends it — T25t measured it on iso: with the index present the query returns 5 hits,
+    without it `52U00 / 52N37 ProcedureCallFailed`.
+
+    ⚠️ The previous version demanded the DDL UNCONDITIONALLY, and that is a criterion which
+    outlives its reason: the day the fallback is removed, the test would fail the removal and
+    someone would have to edit this file to let T25 finish. Now the coupling is derived, so
+    the same test permits the removal AND requires the DDL to go with it — a schema carrying
+    an index for a path nobody can take is what T25u deleted on the event family.
+
+    T25n's cure does NOT transfer here, and that is measured rather than assumed: passages
+    left the service for Postgres and only the BENCHMARKS stayed on Neo4j, so they were given
+    `ensure_passage_vector_index` and own their index. The entity reader is a SERVICE
+    fallback; a service cannot create an index per read.
     """
     schema = _SCHEMA.read_text()
     found = re.findall(r"CREATE VECTOR INDEX (entity_embeddings_\d+)", _declarations(schema))
-    assert found, (
-        "no entity_embeddings_* index is declared any more — a Neo4j-backend deployment "
-        "still serves entity reads from Neo4j and a missing vector index RAISES, so this is "
-        "a 500 in waiting"
-    )
+    if _neo4j_still_serves_entity_reads():
+        assert found, (
+            "no entity_embeddings_* index is declared any more, but `Neo4jVectorStore` still "
+            "calls `find_entities_by_vector` — a Neo4j-backend deployment serves entity reads "
+            "from Neo4j and a missing vector index RAISES, so this is a 500 in waiting"
+        )
+    else:
+        assert not found, (
+            f"the Neo4j entity fallback is GONE and {found} is still declared. §9.2 ties the "
+            f"DDL's exit to that path being unreachable; an index for a path nobody can take "
+            f"is exactly what T25u deleted on the event family"
+        )
 
 
 def test_the_EVENT_vector_ddl_must_NOT_come_back():
