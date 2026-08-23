@@ -1308,10 +1308,10 @@
       "answer_expect": null,
       "falsifier_sha": "b8a9550a7d944c13",
       "ship_audit": {
-        "gate": "OWED — Tier W and schema-mutating.",
-        "absent_case": "OWED — a signature that is not in the queue must be refused.",
-        "empty_case": "OWED — an action with no value to add must be refused.",
-        "tenancy": "OWED — project-scoped."
+        "absent_case": "EXERCISED AND IT FAILS. An absent signature ('no-such-signature-000') is NOT refused: the tool mints a confirm token and the redemption returns {\"applied\": true, \"schema_version\": 2, \"resolved\": 0}. The schema change lands. See D-SCHEMA-WRITE-APPLIES-ON-A-SIGNATURE-THAT-DOES-NOT-EXIST.",
+        "empty_case": "EXERCISED by direct probe: an empty signature is refused by NAME — 'invalid arguments: signature: String should have at least 1 character'.",
+        "tenancy": "OWED — NOT REACHED. A foreign project refuses with 'this project has no adopted ontology to edit', which is a PRECONDITION refusal arriving before the tenancy check, not the tenancy check. Testing it needs a second project that HAS an ontology and that the caller does not own — this harness has one account.",
+        "gate": "EXERCISED live (docs/eval/toolloop/2026-08-14/c-ask.json): confirm-gated, and the gate itself is what let the absent-case defect be proven end to end — the mint alone proves nothing, the redemption does."
       },
       "defects": [],
       "runs": [
@@ -1932,7 +1932,8 @@
       "surfaced_count": 5,
       "called_count": 2,
       "wrote_count": 4,
-      "suspended_count": 0
+      "suspended_count": 0,
+      "blocked_reason": "BLOCKED ON A BOUNDARY THAT DOES NOT HOLD, and this is the first time it has been reachable. Asked plainly ('Add the edge type to the schema so that proposal fits'), the tool goes 0/5 -> 2/5 called with zero errors — its recorded prompt was 'Show me the graph triage queue', a READ question for a tool that WRITES schema.\n\nWith it reachable, the absent-signature probe applies a schema mutation for a triage group that does not exist: {\"applied\": true, \"schema_version\": 2, \"resolved\": 0}. The signature is the AUTHORITY for the change and is never validated. A tool that mutates an ontology on an invented signature is not shippable."
     },
     {
       "tool": "catalog_get_book",
