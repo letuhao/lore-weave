@@ -15,12 +15,29 @@ import json
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+import uuid
+
 from . import config
+
+# 🔴 A FIXED SESSION ID TURNS A PER-SESSION LIMIT INTO A ONE-TIME BUDGET FOR THE WHOLE HARNESS.
+# This header was the literal "tle-fixtures" for every seeded call ever made. memory_remember is
+# rate-limited per SESSION (knowledge-service executor: _check_remember_rate_limit(ctx.redis,
+# ctx.session_id), cap 10), so the harness spent that budget once and every later fixture failed:
+# measured 2026-08-23, memory_forget errored 5 of 5 with "the assistant has reached its
+# memory_remember limit (10) for this chat session" — a SEED failure that the gate was reporting as
+# a transport failure until it was taught to read the error string.
+#
+# One id per PROCESS, so a fixture behaves like the independent session it is meant to model, and
+# two probes running at once do not share a budget. Deliberately not per-CALL: a seed's several
+# calls belong to one session, and per-call would defeat any rate limit the platform means to
+# enforce — the point is to stop the harness pretending to be one immortal session, not to evade
+# the guard.
+_SESSION_ID = f"tle-fixtures-{uuid.uuid4().hex[:12]}"
 
 _HEADERS = {
     "X-Internal-Token": config.INTERNAL_TOKEN,
     "X-User-Id": config.USER_ID,
-    "X-Session-Id": "tle-fixtures",
+    "X-Session-Id": _SESSION_ID,
 }
 
 
