@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 82 of 125 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 83 of 126 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (5/6) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (6/7) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,103 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48e 2026-08-23 — **the census closes on the last service, and the gateway's answer was "no dark tests, 20 untested routes"**
+
+  ```
+  knowledge-gateway   jest   7 suites /  43 tests   ->   8 suites /  52 tests
+  .skip / xit / xdescribe sites                             0, before and after
+  routes exposed                                                             31
+  routes whose name appears in NO test                                       20
+  of those, DESTRUCTIVE write routes                                          8
+  ```
+
+  📐 **The census that closed four services could not see this one, and the reason matters.**
+  T48a–T48d swept `pytest.skip` and Go build tags; `knowledge-gateway` is TypeScript on jest, so
+  it was never in scope for the instrument — not passing it, invisible to it. Measured before
+  building (rule 8): **zero** skip sites of any form, and `npx jest` exits 0. So the way a suite
+  goes dark here is not a skip at all. **It is a route nobody wrote a test for.**
+
+  🎯 **20 of 31 routes are named by no test, and eight of them are the destructive ones** —
+  `merge` · `split` · `purge` · `fold` · `restore` · `reassign-kind` · `episodes` ·
+  `resolve-entity`, the entity lifecycle this branch is named for. Verified by direct `grep`
+  after the derived count, because "last path segment not in the test text" is a heuristic and
+  rule 2 says a number that reads as a finding is guilty until checked:
+
+  ```
+  neighborhood 0   merge 0   split 0   purge 0
+  fold 0   restore 0   reassign-kind 0   episodes 0        (test files mentioning it)
+  ```
+
+  ⚖️ **The obvious conclusion was WRONG, and checking it is the cycle.** The write controller
+  carries `@UseGuards(InternalTokenGuard)` and no grant check, while both read controllers carry
+  `KalAuthGuard` — which reads as destructive routes being less protected than reads. It is not a
+  hole: the controller docstring and `KalAuthGuard`'s own comment both say the write surface is
+  service-only, *"the FE never writes facts directly"*. Rule 13 — a divergence recorded is not a
+  divergence diagnosed. **Reported as a non-finding rather than shipped as a fix.**
+
+  🔴 **The BITE killed my first test, and the near-miss it exposed is the whole finding.**
+  `InternalTokenGuard` guards all eight routes, and its `!expected ||` clause is called
+  defence-in-depth by its own comment — untested. I wrote two tests for it. Deleting the clause
+  left **all five green**:
+
+  ```
+  BITE A (1st)  sed hit line 26, not the clause on 23   -> compile error, 0 tests: proves nothing
+  BITE A (2nd)  line 23: `if (presented !== expected)`  -> 5 passed, 5 total   NO BITE
+  ```
+
+  `config.ts:37` coerces the unset variable with `?? ''`, so an unset secret is `''`, not
+  `undefined`. A **missing** header therefore still fails closed without the clause —
+  `undefined !== ''` is true — which is why both of my tests passed against a guard that had lost
+  its guard. The case the clause actually closes is an **empty-valued** header: `'' !== ''` is
+  false, the guard returns `true`, and all eight destructive routes admit an unauthenticated
+  caller whose `X-User-Id` is then trusted as the tenancy identity. `curl -H 'X-Internal-Token;'`
+  sends exactly that. Re-aimed at that case:
+
+  ```
+  BITE A (3rd)  line 23: `if (presented !== expected)`
+                ● rejects an EMPTY presented token when the secret is unset
+                  Expected constructor: UnauthorizedException
+                  Received function did not throw            <- it ADMITTED
+                1 failed, 4 passed
+  ```
+
+  🧪 **The ratchet is derived, and its two halves are proven independent.** Hand-listing the
+  controllers would rebuild the defect one level up — a new file is invisible to a list it is not
+  on — so the scan walks `src/`, and the exemption (`health.controller.ts`, probed before a token
+  exists) is itself checked for staleness.
+
+  ```
+  BITE B  delete `@UseGuards` from kal-write.controller.ts:15    2 failed, 5 passed
+  BITE C  swap it to `@UseGuards(KalAuthGuard)`                  1 failed, 6 passed
+          -> coverage STAYS GREEN under a guard swap; only the named-guard test falls.
+             The two assertions are not redundant, and C is what proves it: a swap to the
+             user-facing guard leaves every destructive route reachable by any user
+             holding a book grant, with a guard still declared.
+  BITE D  break the scan's suffix so it finds NOTHING
+          ● finds the controllers at all — Received: 0
+            and the parametrised cases collapse 4 -> 1     3 failed, 1 passed
+  ```
+
+  D is the control arm (rule 3): every other assertion in the file is satisfied by an empty list,
+  so a renamed directory would have turned the whole thing green while proving nothing.
+
+  ⚠️ **What this does NOT do, stated rather than implied.** The 20 untested routes are still
+  untested; this cycle bought the *guard* on all of them, not their behaviour. The registry gate
+  remains Python-only — it does not read `it.skip`/`xit`, and the gateway having none is why that
+  is recorded as a stated limit here instead of being fixed on speculation. Both belong to T48's
+  own row, which stays `[~]`.
+
+  **QC (a) gates:** four plan gates green (`plan-final-verification` exit 0, `plan-row-honesty-gate`
+  OK, `plan-progress-block --check` OK, `plan-acceptance --floor` OK — floor 4); `test-env-registry-gate`
+  OK, 8 documented, 0 undocumented — this diff adds no skip. `knowledge-gateway` **52 passed, 8 suites**,
+  up from 43/7. No `--selftest` is owed: the new checks are tests, not a gate.
+  **QC (b) live smoke:** N/A — no service seam crossed and no runtime code changed. `git diff --stat`
+  on `services/knowledge-gateway/src` is **empty** after all four bites, so what shipped is two test
+  files; the guard's behaviour is pinned by bite A rather than by a deployment.
+  **QC (c) real data:** N/A — this task produces no data. The figures above are the route census and
+  the suite counts, both printed before and after.
+
   ---
   ### ✅ T48d 2026-08-23 — **the two recipes I marked "NOT yet run" now are, and a BUILD ARTIFACT is the other way a suite goes dark**
 
