@@ -752,10 +752,23 @@ async def list_facts_for_entity(
 # ── invalidate_fact ───────────────────────────────────────────────────
 
 
+# 🔴 `f.valid_until` COMES FIRST IN THE coalesce BECAUSE A REPEAT MUST NOT REWRITE HISTORY.
+#
+# This SET was `coalesce($valid_until, datetime())`, so calling it twice moved the moment the fact
+# stopped being true. Measured 2026-08-23 through memory_forget against the OWNING store (Neo4j):
+# a second forget on an already-invalidated fact re-stamped valid_until 07:52:12.211Z -> 07:54:29.154Z
+# while BOTH responses answered {"invalidated": true}. A tool that reports success either way and
+# silently moves a timestamp is not idempotent, it is lossy — and `valid_until` is the field the
+# temporal reads key on, so the damage is to the answer to "when was this true?".
+#
+# ORDER MATTERS AND IS DELIBERATE. An EXPLICIT $valid_until still wins, so a caller correcting the
+# time keeps that power (no caller passes one today — all four call sites omit it — but the
+# parameter is in the signature and silently ignoring it would be a second lie). Otherwise the
+# FIRST stamp is preserved, and only an un-invalidated fact gets `datetime()`.
 _INVALIDATE_FACT_CYPHER = """
 MATCH (f:Fact {id: $id})
 WHERE f.user_id = $user_id
-SET f.valid_until = coalesce($valid_until, datetime()),
+SET f.valid_until = coalesce($valid_until, f.valid_until, datetime()),
     f.updated_at = datetime()
 RETURN f
 """
