@@ -3587,13 +3587,19 @@
       "why_it_matters_beyond_one_tool": "The scenario's own question is 'decompiling a book that ALREADY has an arc layer must not silently duplicate it' — which can only be asked AFTER a first confirmation. Every Tier-W tool in the denominator has an idempotency case in the same position.",
       "measured_by": "docs/eval/toolloop/2026-08-14/idem-decompile2.json"
     },
-    "D-STORE-SNAPSHOT-IS-BLIND-TO-THE-AUTHORING-RUN-TABLES": {
-      "status": "OPEN — measured 2026-08-23",
-      "what": "store_snapshot covers no `authoring_runs` and no `plan_run`. Every tool in the composition_authoring_run_* and plan_* families writes there, so the DATA bar cannot see their effect at all and an idempotency probe compares two identical blind spots — which reads as 'STRICTLY IDEMPOTENT' whatever the tool did.",
-      "how_it_surfaced": "Building composition_authoring_run_manage's idempotency fixture. Three seed layers got op=start reachable — a raw plan_run INSERT, op=create, and redeeming create's confirm token — and the store diffs came back empty on both calls. The probe's own guard caught it ('the first call changed nothing either'), but the guard cannot tell a blind snapshot from a tool that wrote nothing.",
-      "sibling_finding": "op=start's OWN confirm redemption returns 422 on both the query and body shapes, so that write may not have happened either. Two independent reasons for an empty diff, and they must be separated before either is called a result — recorded rather than guessed.",
-      "why_it_matters_beyond_the_probe": "This is the DATA bar's blind-spot class, found repeatedly in this loop (the world/map store, 47 more tables, the account-scoped arc templates). Every one cost a wrong conclusion before it was found.",
-      "measured_by": "docs/eval/toolloop/2026-08-14/idem-authoring3.json"
+    "D-STORE-SNAPSHOT-IS-BLIND-TO-THE-AUTHORING-RUN-TABLES__RETRACTED": {
+      "status": "RETRACTED 2026-08-23, one commit after filing — refuted by direct measurement",
+      "what_i_claimed": "store_snapshot covers neither authoring_runs nor plan_run, so the DATA bar cannot see the composition_authoring_run_* or plan_* families.",
+      "why_it_was_wrong": "It covers BOTH. store_snapshot DISCOVERS its tables at runtime by scanning information_schema for a `book_id` column, and both tables have one. Verified against a book that actually holds rows: loreweave_composition.authoring_runs -> {rows: 10}, loreweave_composition.plan_run -> {rows: 1}.\n\nI reached the wrong conclusion two ways at once: I grepped the SOURCE for the table names, and the list is not in the source — it is derived; and I ran the snapshot against a TORN-DOWN book, which returns nothing for every table and looks identical to a blind spot.",
+      "what_actually_explains_the_empty_diffs": "The 422 alone. op=start's confirm redemption failed on both shapes, so the write never happened. I had TWO candidate explanations, wrote that they must not be conflated, and then filed one of them as a defect before separating them.",
+      "superseded_content": {
+        "status": "OPEN — measured 2026-08-23",
+        "what": "store_snapshot covers no `authoring_runs` and no `plan_run`. Every tool in the composition_authoring_run_* and plan_* families writes there, so the DATA bar cannot see their effect at all and an idempotency probe compares two identical blind spots — which reads as 'STRICTLY IDEMPOTENT' whatever the tool did.",
+        "how_it_surfaced": "Building composition_authoring_run_manage's idempotency fixture. Three seed layers got op=start reachable — a raw plan_run INSERT, op=create, and redeeming create's confirm token — and the store diffs came back empty on both calls. The probe's own guard caught it ('the first call changed nothing either'), but the guard cannot tell a blind snapshot from a tool that wrote nothing.",
+        "sibling_finding": "op=start's OWN confirm redemption returns 422 on both the query and body shapes, so that write may not have happened either. Two independent reasons for an empty diff, and they must be separated before either is called a result — recorded rather than guessed.",
+        "why_it_matters_beyond_the_probe": "This is the DATA bar's blind-spot class, found repeatedly in this loop (the world/map store, 47 more tables, the account-scoped arc templates). Every one cost a wrong conclusion before it was found.",
+        "measured_by": "docs/eval/toolloop/2026-08-14/idem-authoring3.json"
+      }
     }
   },
   "deferred_questions": {
