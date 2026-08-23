@@ -40,5 +40,6 @@
       "_carried_from": "scenarios-c5-rerun.json",
       "_why_the_prompt_changed": "🔴 THIS IS A NEW QUESTION AND IS LABELLED AS ONE. The old prompt named no reference, so the model's refusal was RIGHT and the tool could never be proven through it. Naming the seeded reference asks whether the tool works when the author is specific — which is a fair question and NOT the one the old row answered. The old conclusion stands on its own evidence; this does not overwrite it."
     }
-  ]
+  ],
+  "_outcome_2026_08_23": "🔴 THIS FIXTURE'S PROMPT IS A REGRESSION AND IS KEPT ONLY AS EVIDENCE. The seeded reference works; the PROMPT does not. 'Fix the title of my reference X' advertises the tool 0/5 because answerable_tools needs the declared synonym CONTIGUOUS, and the original prompt matched one. Do NOT adopt this prompt — the original row's conclusion (called 5/5, the model rightly asks WHICH reference) stands on its own evidence. See DQ-T32."
 }
