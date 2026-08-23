@@ -102,8 +102,68 @@
       "cleared_note": "🔴 THE RISK IN THESE MOVES IS OBVIOUS AND IS NAMED HERE RATHER THAN LEFT FOR A READER TO SPOT: a cycle can be 'cleared' by relocating every tool that will not go green. The defence is not my word for it, it is P1's own invariant — 'the advertised surface drops the tool'. ALL 20 tools in this cluster now SURFACE 5/5, measured on the identical scenarios they were blocked on; before the declaration fix, 2 of 25 were even MATCHED by answerability. The invariant is satisfied for every one of them. The three that are not `proven` are blocked by something else entirely — a model that describes instead of acting, a turn that emits no text, a fixture that cannot create its own target — and each carries the measurement that says so. A tool leaves the DENOMINATOR only by reaching proven; it stays at 65 throughout."
     },
     {
-      "id": "P3-NAME-TO-ID",
+      "id": "P5-SIBLING-WINS",
       "cycle": 2,
+      "title": "A sibling tool wins the request the tool was built for",
+      "invariant_candidate": "A request must reach the tool built for it. Where two tools genuinely tie on the platform's own vocabulary, precedence must be declared; where the platform already favours the right tool and the model chooses another, the cause is elsewhere and must be named per tool rather than assumed.",
+      "false_statement_tools": [
+        "settings_provider_inventory"
+      ],
+      "worst_measured": "settings_provider_inventory — the model answered from settings_list_models and presented REGISTERED rows as 'what your providers currently offer'. Registry and live inventory are different sets: a model retired upstream still sits in the registry. The answer is confidently wrong in exactly the case the question was asked to detect. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.",
+      "tools": [
+        "composition_arc_edit",
+        "composition_generate",
+        "glossary_deep_research",
+        "registry_list_workflows",
+        "settings_provider_inventory",
+        "world_map_add_marker",
+        "composition_entity_override_edit",
+        "composition_glossary_build"
+      ],
+      "notes": {
+        "registry_list_workflows": "Advertised 5/5 and lost 5/5 to workflow_list, a CONSUMER-LOCAL tool — and answered well. Not a false absence and not the lazy tail.",
+        "glossary_deep_research": "Lost to web_search, which is in ALWAYS_ON_CORE and therefore always present. A generic always-available tool displaced the domain-specific one the request described, and web_search is itself PAID.",
+        "composition_arc_edit": "Its own op enum includes create, so it overlaps composition_arc_create and lost to its specialised sibling. A declaration-overlap finding, not a defect.",
+        "world_map_add_marker": "Called world_map_list and then world_map_add_REGION — the wrong tool of the pair for a request that says 'put a pin'.\n\n✅ VERIFIED 2026-08-23 against the DEPLOYED builder: cycle 1's falsy-required-argument fix reaches this tool. Its required set is ['map_id','label','x','y'] and its prompt asks for a pin 'near the top-left' — which is x=0, y=0. _missing_required_names now returns [] for {x:0, y:0} where the old truthiness test reported BOTH as missing, so the author can finally place a pin on the left edge of a map. The string checks still behave: a blank or absent `label` is correctly reported missing. Its live re-measurement is in the re-baseline batch.\n\n🔴 THE SHARPEST CASE IN GROUP (b): THE DECLARATION IS ALREADY PERFECT AND IT STILL LOST. The prompt is 'On my Ashfall map, put a pin near the top-left labelled Hollow Keep.' world_map_add_marker declares 'put a pin' VERBATIM, along with 'add pin', 'place pin' and 'drop a pin'; its sibling world_map_add_region declares only 'add region', 'draw area', 'map region' — nothing pin-related. Measured: the marker tool is the ONLY answerable tool on that turn, and reps 1-2 called world_map_add_REGION anyway.\n\nThere is no declaration left to write. Whatever is choosing the sibling is not reading the declared vocabulary, so neither a synonym nor a precedence rule can reach it, and any fix that claims to must first explain why the verbatim match did not."
+      },
+      "status": "DIAGNOSIS OPEN, AND THE EVIDENCE IS NOW AT THE BAR. The previous status said 'BELOW THE BAR — three of five concluded at K=3' and instructed a re-measure before any fix. That was true when written and is stale now: ALL TWELVE tools carry K=5 evidence, and re-measuring on its instruction would have sent a whole cycle at work already done.\n\n    composition_arc_edit               proven   called 5/5  \n    composition_entity_override_edit   blocked  called 0/5  \n    composition_generate               blocked  called 0/5  \n    composition_glossary_build         blocked  called 0/5  \n    glossary_create_chapter_link       blocked  called 0/5  \n    glossary_create_evidence           blocked  called 0/5  \n    glossary_deep_research             proven   called 5/5  \n    kg_propose_edge                    blocked  called 0/5  \n    plan_bootstrap_apply               blocked  called 0/5  \n    registry_list_workflows            blocked  called 0/5  \n    settings_provider_inventory        blocked  called 0/5  \n    world_map_add_marker               blocked  called 5/5  \n\n  proven 2/12. The remaining ten split into THREE causes, and they need different fixes:\n  (a) SUBSTITUTED CARD, 6 tools — a sibling stages a card that does a DIFFERENT thing, silently in 4 of 6, once at a WIDER SCOPE. D-SUBSTITUTED-CARD-DOES-A-DIFFERENT-THING. Re-ranking alone cannot fix these: the wrong-action card stays reachable whenever ranking is close.\n  (b) DECLARED TIE, 1 tool — composition_generate, three tools tied at synonym length 13 with no precedence. DQ-T41, owner's call, because it reorders the whole catalogue.\n  (c) THE MODEL IS RIGHT, 2 tools — registry_list_workflows (chose workflow_list, a consolidated duplicate, DQ-T39) and settings_provider_inventory (now answers truthfully and OFFERS the live check). Neither is fixed by making the tool win; both are questions about whether the tool should exist as-is.\n  (d) world_map_add_marker — called 5/5 on evidence named stale.json; a SUPPLIER CHAIN two links deep, already registered as its own finding.\n\nSo the next work on P5 is NOT a re-measure. It is (a), which is the only one of the four that is an engineering defect rather than an owner decision.",
+      "control_findings_2026_08_22": {
+        "answerability": "Measured offline with the platform's own answerable_tools against each tool's OWN recorded prompt: ALL FIVE are answerable, and answerability forces a match onto the wire regardless of the hot-seed budget. So 'surfaced 0/3' for glossary_deep_research is STALE — that row predates cycle 1's 37 declaration widenings.",
+        "hot_seed": "glossary_deep_research (336 tok) is STARVED from the hot seed on every surface and composition_arc_edit (1749 tok, the largest in the set) on studio — so their presence depends ENTIRELY on answerability, which is a much thinner guarantee than 'advertised'.",
+        "real_collisions": "composition_arc_edit TIES composition_arc_create at synonym length 10, and settings_provider_inventory OUTRANKS settings_list_models 11 vs 6 and still lost 3/3 — so for that one, ranking is not the mechanism and the problem statement's 'stated precedence' would not have helped.",
+        "declaration_gap": "settings_provider_inventory.provider_credential_id is described as 'the provider credential whose live model inventory to list (UUID)' and names NO supplier, though settings_list_providers is the only source and takes no arguments. Same class cycle 2 measured at 105 of 467 required arguments."
+      },
+      "moved_in": {
+        "composition_generate": "MOVED IN from P3-NAME-TO-ID 2026-08-23. It is the clearest instance this problem has: a three-way synonym TIE with no declared precedence, measured offline before the live evidence landed. Its worst outcome is also this problem's worst — the sibling that wins carries prose the model wrote itself (D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, open). See also DQ-T35, which asks whether model_ref should be optional with a server-resolved default as 16 of its 19 siblings already declare."
+      },
+      "superseded_statement": {
+        "invariant_candidate": "Two tools that answer the same request must not both be advertised without a stated precedence — and an always-on generic must not displace the domain tool the request names.",
+        "refuted_for": "4 of the 6 tools",
+        "measured_2026_08_23": "Every P5 tool run through the platform's own answerable_tools against its OWN recorded prompt, with the synonym-length ranking read out:\n  composition_arc_edit          set=2  TIED at len 10 with composition_arc_create\n  composition_generate          set=5  TIED at len 13 with book_chapter_create + _save_draft\n  glossary_deep_research        set=2  ranks FIRST (len 6), not tied, not outranked\n  settings_provider_inventory   set=2  ranks FIRST (len 11 vs settings_list_models 6)\n  registry_list_workflows       set=1  ALONE in the answerable set\n  world_map_add_marker          set=1  ALONE in the answerable set\n\nSo for FOUR of six the platform already favours the right tool — it ranks first or is the only answerable tool — and the model picks something else anyway. 'Both advertised without a stated precedence' does not describe them: a precedence rule cannot help a tool that already wins, and shipping one would have been a fix aimed at a mechanism that is not in play."
+      },
+      "split_2026_08_23": {
+        "supersedes": "the earlier a/b split, which rested on the ranking error above",
+        "a_both_advertised_precedence_is_the_question": [
+          "composition_arc_edit",
+          "composition_generate",
+          "glossary_deep_research",
+          "registry_list_workflows",
+          "settings_provider_inventory"
+        ],
+        "b_neither_advertised_reached_by_another_path": [
+          "world_map_add_marker"
+        ],
+        "note": "Group (a) still has three DIFFERENT rival-presence mechanisms — a genuine answerability tie, ALWAYS_ON_CORE, and a consumer-local tool answerability cannot see — so a single precedence rule would have to reach all three or it fixes only the ties. That is the real design question this cycle has to answer, and it is not the one the problem statement asked."
+      },
+      "correction_2026_08_23": "🔴 MY 'REFUTED FOR FOUR OF SIX' IS ITSELF WRONG, AND IT IS THE THIRD TIME TODAY I HAVE MEASURED ONE MECHANISM AND CONCLUDED ABOUT ANOTHER. P5's clause is 'both ADVERTISED without a stated precedence'. I measured the answerability RANKING and declared the clause refuted wherever the tool under test ranked first — but answerability is only ONE of several paths onto the wire, which cycle 2 established and I then ignored.\n\nChecked properly, the rivals ARE advertised, by paths answerability never touches:\n  glossary_deep_research      rival web_search      — in ALWAYS_ON_CORE_NAMES, on EVERY turn\n  registry_list_workflows     rival workflow_list   — CONSUMER-LOCAL, not federated at all\n  settings_provider_inventory rival settings_list_models — answerable on that same prompt\n  composition_arc_edit / composition_generate — genuine ties, as measured\nSo P5's statement HOLDS for five of six, and the 'always-on generic displaces the domain tool' half is exactly right for glossary_deep_research.\n\nTHE ONE REAL EXCEPTION IS world_map_add_marker, and it is a sharper finding than my wrong one: across 103 recorded world surfaces NEITHER world_map_add_marker NOR world_map_add_region is advertised — not once. The model reached the sibling anyway, through the lazy tail (rep 0 called tool_load first) or by naming it and having dispatch execute an unadvertised call, which this platform does by design. 'Both advertised' is false there because NEITHER is.",
+      "refuted_fix_2026_08_23": "🔴 THE MIRROR DECLARATION IS A REFUTED FIX HYPOTHESIS, AND IT IS RECORDED AS ONE RATHER THAN AS A WIN. Reasoning: settings_provider_inventory had been told what it is and is not, and moved 0/5 -> 1/5 called; the tool that actually WINS the request said nothing, so telling settings_list_models what IT is not should close the gap.\n\nMEASURED AFTER DEPLOYING AND VERIFYING IT IN THE LIVE CATALOGUE: 0 of 5 called settings_provider_inventory (down from 1 of 5), and 5 of 5 replies said 'what your configured providers currently offer' (up from 4 of 5). No improvement; if anything marginally worse, though at K=5 that difference is noise. What is NOT noise is the direction: the fix did not work.\n\nsettings_list_models' description now opens 'List the models this account has REGISTERED', states in capitals THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS, explains that a retired model still appears and a new one does not, and names settings_provider_inventory as the tool for the question. The model read that and answered 'here is the breakdown of what your configured providers currently offer' five times out of five.\n\nTHIS IS THE SECOND INSTANCE OF THE SAME SHAPE IN THIS LOOP. Cycle 2 recorded it for world_map_delete: 'THE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR ... The declaration was plainly READ.' Here it did not even move the words. Declaring what a tool is NOT does not stop a model asserting it, and this loop should stop reaching for a declaration as the default remedy in this class.\n\nKEPT, NOT REVERTED, on the same grounds cycle 2 kept its own refuted declaration: the sentence is TRUE and a reader benefits from it. It must simply never be reported as having fixed anything.",
+      "third_fix_attempt_2026_08_23": "THE CORRECTION MOVED FROM THE DECLARATION TO THE RESULT, because two declaration fixes were measured and refuted and a third would have been the same move.\n\n  telling settings_provider_inventory what it IS    0/5 -> 1/5 called\n  telling settings_list_models what it is NOT       1/5 -> 0/5, and 5 of 5 replies still said\n                                                    'what your configured providers currently offer'\n\nThe second is the tell: that description states IN CAPITALS that it is not live inventory and names the right tool, and the model read all of it and made the false claim five times out of five. A model reads a DESCRIPTION when it chooses a tool and reads the RESULT when it composes the answer — and the false statement is made at composition time, about data already in hand.\n\nSo settings_list_models now returns a `note` on every call saying the list is what is REGISTERED, that a retired model still appears in it, and that 'what does my provider offer' belongs to settings_provider_inventory. A different MECHANISM rather than a louder version of the same one, which is the only justification for a third attempt.\n\nDEPLOYING IT BROKE THE OUTPUT CONTRACT FIRST, and the check caught it: adding a field to the Go struct made the tool return `note` while ai-gateway still served the OLD output schema (additionalProperties:false, models only), so the MCP client REJECTED the whole response — 'Additional properties are not allowed'. A payload change is a contract change on BOTH edges. Re-federated and verified live before measuring anything.",
+      "third_fix_attempt_result_2026_08_23": "THE RESULT-LEVEL NOTE WORKED FOR THE ANSWER AND DID NOTHING FOR THE SURFACING, and those turn out to be separable.\n\n  'presented as what the provider currently offers'   pre-fix 9/10   post-fix 0/5\n  'registered in your account' (the true statement)    pre-fix 0/10   post-fix 5/5\n  settings_provider_inventory actually called          pre-fix 1/10   post-fix 0/5\n\nSo the model no longer says the false thing. It says the true thing and then OFFERS to check the live inventory — on a prompt that already asked it to ('Show me what my configured provider actually offers'). The defect that made the answer WRONG is closed; the defect that keeps the tool UNCHOSEN is not, and it was never the same defect.\n\n🔴 AND THE FIX BROKE ITS OWN GATE. answer_expect was none_of:['currently offer'], calibrated on the broken population where that phrase only ever appeared as the false claim. It went RED on 4 of the 5 CORRECT post-fix replies, because the corrected sentence has to name the thing it is not in order to disclaim it: 'These are the models currently REGISTERED in your account. If you want the live inventory of what your providers are currently offering, let me know.' A phrase-level gate calibrated on the broken population marks the very distinction the fix introduces. Replaced with all_of:['registered in your account'] and the separation measured over BOTH populations before adoption (0/10 pre, 5/5 post) — never the other way round.",
+      "status_superseded_2026_08_23": "DIAGNOSIS OPEN — the evidence is BELOW THE BAR and must be re-measured before any fix. Three of five were concluded at K=3 (composition_arc_edit 3/3, glossary_deep_research 0/3, settings_provider_inventory 3/3) and world_map_add_marker at 1/3 called, whose own row says '1/3 does not meet the LIVE bar as a distribution'. The owner's cleared definition is K>=5 live."
+    },
+    {
+      "id": "P3-NAME-TO-ID",
+      "cycle": 3,
       "title": "A refusal names a supplier the turn cannot see",
       "invariant_candidate": "A refusal that instructs the model to call a tool must put that tool on the turn's advertised set. Naming a tool the turn does not carry is an instruction nobody can follow.",
       "false_statement_tools": [
@@ -155,64 +215,6 @@
       "why_thirteen_hypotheses_failed_2026_08_23": "🔴 ITS ~49% WAS TWO DIFFERENT FAILURES ADDED TOGETHER, which is why no single hypothesis could survive. composition_motif_link_edit's 35 measured runs, split by whether the turn emitted any tool call and by error type:\n    upstream error AFTER calls   17    (all 17 had called composition_motif_search)\n    ReadTimeout, ZERO calls      13\n    upstream error, ZERO calls    2\n    clean                         3\n\nPopulation A — 15 runs where the turn produces NOTHING, no call and no text; raising the budget 180s -> 480s did not change it. Population B — 17 runs where the provider fails MID-turn after a search result. A cause that explains one is refuted by the other, and all thirteen hypotheses were tested against the SUM.\n\nTHE 100% IS PARTLY BY CONSTRUCTION: this scenario's first call is refused for its two ids and the refusal arms composition_motif_search, so any turn getting past that refusal calls the search. The corpus-wide correlation is real (73% vs 6%, with a 0% control for motif tools that never call it) but this tool cannot be its evidence.\n\nNOT CONCLUDED ON THIS ANALYSIS. gate.py refuses to conclude a tool whose batch is 5/5 errored — 'a transport failure is not a model result' — and it is right: the split explains the NUMBER, it does not make the runs evidence about the tool. The row keeps its older conclusion and stays the loop's single stale one, visibly.\n\nRefuted for both populations from the corpus rather than guessed: payload size (4,898 bytes), the blank-args parser defect (ZERO overlap in 141 runs), surface size (errored 32.1 vs clean 33.8), context growth (errored 968 bytes vs clean 2,512), turn length (errored median 0 calls vs 2)."
     },
     {
-      "id": "P5-SIBLING-WINS",
-      "cycle": 3,
-      "title": "A sibling tool wins the request the tool was built for",
-      "invariant_candidate": "A request must reach the tool built for it. Where two tools genuinely tie on the platform's own vocabulary, precedence must be declared; where the platform already favours the right tool and the model chooses another, the cause is elsewhere and must be named per tool rather than assumed.",
-      "false_statement_tools": [
-        "settings_provider_inventory"
-      ],
-      "worst_measured": "settings_provider_inventory — the model answered from settings_list_models and presented REGISTERED rows as 'what your providers currently offer'. Registry and live inventory are different sets: a model retired upstream still sits in the registry. The answer is confidently wrong in exactly the case the question was asked to detect. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.",
-      "tools": [
-        "composition_arc_edit",
-        "composition_generate",
-        "glossary_deep_research",
-        "registry_list_workflows",
-        "settings_provider_inventory",
-        "world_map_add_marker"
-      ],
-      "notes": {
-        "registry_list_workflows": "Advertised 5/5 and lost 5/5 to workflow_list, a CONSUMER-LOCAL tool — and answered well. Not a false absence and not the lazy tail.",
-        "glossary_deep_research": "Lost to web_search, which is in ALWAYS_ON_CORE and therefore always present. A generic always-available tool displaced the domain-specific one the request described, and web_search is itself PAID.",
-        "composition_arc_edit": "Its own op enum includes create, so it overlaps composition_arc_create and lost to its specialised sibling. A declaration-overlap finding, not a defect.",
-        "world_map_add_marker": "Called world_map_list and then world_map_add_REGION — the wrong tool of the pair for a request that says 'put a pin'.\n\n✅ VERIFIED 2026-08-23 against the DEPLOYED builder: cycle 1's falsy-required-argument fix reaches this tool. Its required set is ['map_id','label','x','y'] and its prompt asks for a pin 'near the top-left' — which is x=0, y=0. _missing_required_names now returns [] for {x:0, y:0} where the old truthiness test reported BOTH as missing, so the author can finally place a pin on the left edge of a map. The string checks still behave: a blank or absent `label` is correctly reported missing. Its live re-measurement is in the re-baseline batch.\n\n🔴 THE SHARPEST CASE IN GROUP (b): THE DECLARATION IS ALREADY PERFECT AND IT STILL LOST. The prompt is 'On my Ashfall map, put a pin near the top-left labelled Hollow Keep.' world_map_add_marker declares 'put a pin' VERBATIM, along with 'add pin', 'place pin' and 'drop a pin'; its sibling world_map_add_region declares only 'add region', 'draw area', 'map region' — nothing pin-related. Measured: the marker tool is the ONLY answerable tool on that turn, and reps 1-2 called world_map_add_REGION anyway.\n\nThere is no declaration left to write. Whatever is choosing the sibling is not reading the declared vocabulary, so neither a synonym nor a precedence rule can reach it, and any fix that claims to must first explain why the verbatim match did not."
-      },
-      "status": "DIAGNOSIS OPEN, AND THE EVIDENCE IS NOW AT THE BAR. The previous status said 'BELOW THE BAR — three of five concluded at K=3' and instructed a re-measure before any fix. That was true when written and is stale now: ALL TWELVE tools carry K=5 evidence, and re-measuring on its instruction would have sent a whole cycle at work already done.\n\n    composition_arc_edit               proven   called 5/5  \n    composition_entity_override_edit   blocked  called 0/5  \n    composition_generate               blocked  called 0/5  \n    composition_glossary_build         blocked  called 0/5  \n    glossary_create_chapter_link       blocked  called 0/5  \n    glossary_create_evidence           blocked  called 0/5  \n    glossary_deep_research             proven   called 5/5  \n    kg_propose_edge                    blocked  called 0/5  \n    plan_bootstrap_apply               blocked  called 0/5  \n    registry_list_workflows            blocked  called 0/5  \n    settings_provider_inventory        blocked  called 0/5  \n    world_map_add_marker               blocked  called 5/5  \n\n  proven 2/12. The remaining ten split into THREE causes, and they need different fixes:\n  (a) SUBSTITUTED CARD, 6 tools — a sibling stages a card that does a DIFFERENT thing, silently in 4 of 6, once at a WIDER SCOPE. D-SUBSTITUTED-CARD-DOES-A-DIFFERENT-THING. Re-ranking alone cannot fix these: the wrong-action card stays reachable whenever ranking is close.\n  (b) DECLARED TIE, 1 tool — composition_generate, three tools tied at synonym length 13 with no precedence. DQ-T41, owner's call, because it reorders the whole catalogue.\n  (c) THE MODEL IS RIGHT, 2 tools — registry_list_workflows (chose workflow_list, a consolidated duplicate, DQ-T39) and settings_provider_inventory (now answers truthfully and OFFERS the live check). Neither is fixed by making the tool win; both are questions about whether the tool should exist as-is.\n  (d) world_map_add_marker — called 5/5 on evidence named stale.json; a SUPPLIER CHAIN two links deep, already registered as its own finding.\n\nSo the next work on P5 is NOT a re-measure. It is (a), which is the only one of the four that is an engineering defect rather than an owner decision.",
-      "control_findings_2026_08_22": {
-        "answerability": "Measured offline with the platform's own answerable_tools against each tool's OWN recorded prompt: ALL FIVE are answerable, and answerability forces a match onto the wire regardless of the hot-seed budget. So 'surfaced 0/3' for glossary_deep_research is STALE — that row predates cycle 1's 37 declaration widenings.",
-        "hot_seed": "glossary_deep_research (336 tok) is STARVED from the hot seed on every surface and composition_arc_edit (1749 tok, the largest in the set) on studio — so their presence depends ENTIRELY on answerability, which is a much thinner guarantee than 'advertised'.",
-        "real_collisions": "composition_arc_edit TIES composition_arc_create at synonym length 10, and settings_provider_inventory OUTRANKS settings_list_models 11 vs 6 and still lost 3/3 — so for that one, ranking is not the mechanism and the problem statement's 'stated precedence' would not have helped.",
-        "declaration_gap": "settings_provider_inventory.provider_credential_id is described as 'the provider credential whose live model inventory to list (UUID)' and names NO supplier, though settings_list_providers is the only source and takes no arguments. Same class cycle 2 measured at 105 of 467 required arguments."
-      },
-      "moved_in": {
-        "composition_generate": "MOVED IN from P3-NAME-TO-ID 2026-08-23. It is the clearest instance this problem has: a three-way synonym TIE with no declared precedence, measured offline before the live evidence landed. Its worst outcome is also this problem's worst — the sibling that wins carries prose the model wrote itself (D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, open). See also DQ-T35, which asks whether model_ref should be optional with a server-resolved default as 16 of its 19 siblings already declare."
-      },
-      "superseded_statement": {
-        "invariant_candidate": "Two tools that answer the same request must not both be advertised without a stated precedence — and an always-on generic must not displace the domain tool the request names.",
-        "refuted_for": "4 of the 6 tools",
-        "measured_2026_08_23": "Every P5 tool run through the platform's own answerable_tools against its OWN recorded prompt, with the synonym-length ranking read out:\n  composition_arc_edit          set=2  TIED at len 10 with composition_arc_create\n  composition_generate          set=5  TIED at len 13 with book_chapter_create + _save_draft\n  glossary_deep_research        set=2  ranks FIRST (len 6), not tied, not outranked\n  settings_provider_inventory   set=2  ranks FIRST (len 11 vs settings_list_models 6)\n  registry_list_workflows       set=1  ALONE in the answerable set\n  world_map_add_marker          set=1  ALONE in the answerable set\n\nSo for FOUR of six the platform already favours the right tool — it ranks first or is the only answerable tool — and the model picks something else anyway. 'Both advertised without a stated precedence' does not describe them: a precedence rule cannot help a tool that already wins, and shipping one would have been a fix aimed at a mechanism that is not in play."
-      },
-      "split_2026_08_23": {
-        "supersedes": "the earlier a/b split, which rested on the ranking error above",
-        "a_both_advertised_precedence_is_the_question": [
-          "composition_arc_edit",
-          "composition_generate",
-          "glossary_deep_research",
-          "registry_list_workflows",
-          "settings_provider_inventory"
-        ],
-        "b_neither_advertised_reached_by_another_path": [
-          "world_map_add_marker"
-        ],
-        "note": "Group (a) still has three DIFFERENT rival-presence mechanisms — a genuine answerability tie, ALWAYS_ON_CORE, and a consumer-local tool answerability cannot see — so a single precedence rule would have to reach all three or it fixes only the ties. That is the real design question this cycle has to answer, and it is not the one the problem statement asked."
-      },
-      "correction_2026_08_23": "🔴 MY 'REFUTED FOR FOUR OF SIX' IS ITSELF WRONG, AND IT IS THE THIRD TIME TODAY I HAVE MEASURED ONE MECHANISM AND CONCLUDED ABOUT ANOTHER. P5's clause is 'both ADVERTISED without a stated precedence'. I measured the answerability RANKING and declared the clause refuted wherever the tool under test ranked first — but answerability is only ONE of several paths onto the wire, which cycle 2 established and I then ignored.\n\nChecked properly, the rivals ARE advertised, by paths answerability never touches:\n  glossary_deep_research      rival web_search      — in ALWAYS_ON_CORE_NAMES, on EVERY turn\n  registry_list_workflows     rival workflow_list   — CONSUMER-LOCAL, not federated at all\n  settings_provider_inventory rival settings_list_models — answerable on that same prompt\n  composition_arc_edit / composition_generate — genuine ties, as measured\nSo P5's statement HOLDS for five of six, and the 'always-on generic displaces the domain tool' half is exactly right for glossary_deep_research.\n\nTHE ONE REAL EXCEPTION IS world_map_add_marker, and it is a sharper finding than my wrong one: across 103 recorded world surfaces NEITHER world_map_add_marker NOR world_map_add_region is advertised — not once. The model reached the sibling anyway, through the lazy tail (rep 0 called tool_load first) or by naming it and having dispatch execute an unadvertised call, which this platform does by design. 'Both advertised' is false there because NEITHER is.",
-      "refuted_fix_2026_08_23": "🔴 THE MIRROR DECLARATION IS A REFUTED FIX HYPOTHESIS, AND IT IS RECORDED AS ONE RATHER THAN AS A WIN. Reasoning: settings_provider_inventory had been told what it is and is not, and moved 0/5 -> 1/5 called; the tool that actually WINS the request said nothing, so telling settings_list_models what IT is not should close the gap.\n\nMEASURED AFTER DEPLOYING AND VERIFYING IT IN THE LIVE CATALOGUE: 0 of 5 called settings_provider_inventory (down from 1 of 5), and 5 of 5 replies said 'what your configured providers currently offer' (up from 4 of 5). No improvement; if anything marginally worse, though at K=5 that difference is noise. What is NOT noise is the direction: the fix did not work.\n\nsettings_list_models' description now opens 'List the models this account has REGISTERED', states in capitals THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS, explains that a retired model still appears and a new one does not, and names settings_provider_inventory as the tool for the question. The model read that and answered 'here is the breakdown of what your configured providers currently offer' five times out of five.\n\nTHIS IS THE SECOND INSTANCE OF THE SAME SHAPE IN THIS LOOP. Cycle 2 recorded it for world_map_delete: 'THE FIX WAS SHIPPED AND MEASURED, AND IT MOVED THE MODEL'S WORDS BUT NOT ITS BEHAVIOUR ... The declaration was plainly READ.' Here it did not even move the words. Declaring what a tool is NOT does not stop a model asserting it, and this loop should stop reaching for a declaration as the default remedy in this class.\n\nKEPT, NOT REVERTED, on the same grounds cycle 2 kept its own refuted declaration: the sentence is TRUE and a reader benefits from it. It must simply never be reported as having fixed anything.",
-      "third_fix_attempt_2026_08_23": "THE CORRECTION MOVED FROM THE DECLARATION TO THE RESULT, because two declaration fixes were measured and refuted and a third would have been the same move.\n\n  telling settings_provider_inventory what it IS    0/5 -> 1/5 called\n  telling settings_list_models what it is NOT       1/5 -> 0/5, and 5 of 5 replies still said\n                                                    'what your configured providers currently offer'\n\nThe second is the tell: that description states IN CAPITALS that it is not live inventory and names the right tool, and the model read all of it and made the false claim five times out of five. A model reads a DESCRIPTION when it chooses a tool and reads the RESULT when it composes the answer — and the false statement is made at composition time, about data already in hand.\n\nSo settings_list_models now returns a `note` on every call saying the list is what is REGISTERED, that a retired model still appears in it, and that 'what does my provider offer' belongs to settings_provider_inventory. A different MECHANISM rather than a louder version of the same one, which is the only justification for a third attempt.\n\nDEPLOYING IT BROKE THE OUTPUT CONTRACT FIRST, and the check caught it: adding a field to the Go struct made the tool return `note` while ai-gateway still served the OLD output schema (additionalProperties:false, models only), so the MCP client REJECTED the whole response — 'Additional properties are not allowed'. A payload change is a contract change on BOTH edges. Re-federated and verified live before measuring anything.",
-      "third_fix_attempt_result_2026_08_23": "THE RESULT-LEVEL NOTE WORKED FOR THE ANSWER AND DID NOTHING FOR THE SURFACING, and those turn out to be separable.\n\n  'presented as what the provider currently offers'   pre-fix 9/10   post-fix 0/5\n  'registered in your account' (the true statement)    pre-fix 0/10   post-fix 5/5\n  settings_provider_inventory actually called          pre-fix 1/10   post-fix 0/5\n\nSo the model no longer says the false thing. It says the true thing and then OFFERS to check the live inventory — on a prompt that already asked it to ('Show me what my configured provider actually offers'). The defect that made the answer WRONG is closed; the defect that keeps the tool UNCHOSEN is not, and it was never the same defect.\n\n🔴 AND THE FIX BROKE ITS OWN GATE. answer_expect was none_of:['currently offer'], calibrated on the broken population where that phrase only ever appeared as the false claim. It went RED on 4 of the 5 CORRECT post-fix replies, because the corrected sentence has to name the thing it is not in order to disclaim it: 'These are the models currently REGISTERED in your account. If you want the live inventory of what your providers are currently offering, let me know.' A phrase-level gate calibrated on the broken population marks the very distinction the fix introduces. Replaced with all_of:['registered in your account'] and the separation measured over BOTH populations before adoption (0/10 pre, 5/5 post) — never the other way round.",
-      "status_superseded_2026_08_23": "DIAGNOSIS OPEN — the evidence is BELOW THE BAR and must be re-measured before any fix. Three of five were concluded at K=3 (composition_arc_edit 3/3, glossary_deep_research 0/3, settings_provider_inventory 3/3) and world_map_add_marker at 1/3 called, whose own row says '1/3 does not meet the LIVE bar as a distribution'. The owner's cleared definition is K>=5 live."
-    },
-    {
       "id": "P2-FABRICATED-WRITE",
       "cycle": 4,
       "title": "A turn asserts a write it did not make, or invents the material it acts on",
@@ -239,23 +241,15 @@
       "tools": [
         "composition_arc_import_analyze",
         "composition_arc_template_drift",
-        "composition_authoring_run_manage",
         "composition_conformance_run",
         "composition_decompile_arcs",
-        "composition_reference_update",
         "composition_scene_link_edit",
         "kg_add_nodes",
         "kg_ontology_propose",
         "registry_set_skill_enabled",
-        "composition_entity_override_edit",
-        "composition_glossary_build",
         "glossary_create_chapter_link",
-        "glossary_create_evidence",
         "kg_propose_edge",
-        "plan_bootstrap_apply",
-        "composition_arc_apply",
         "composition_derivative_edit",
-        "composition_motif_adopt",
         "jobs_cancel",
         "jobs_pause"
       ],
@@ -318,11 +312,51 @@
       "single_turn_finding_2026_08_23": "🔴 I MOVED THESE ELEVEN OUT AND THE EVIDENCE MOVED THEM BACK. I reclassified them into P5-SIBLING-WINS and a new P14 on 'a sibling owns the card' / 'asks in prose'. Then I looked at the CALL ORDER and the scenarios, and both refute it.\n\nThe card sits on the LAST call in all six, with reads before it, and in five of six that last call is a genuine PREREQUISITE of what was asked — nodes before an edge, compile before apply, the entity before the chapter link, the project before the build. The model is not choosing a rival; it is doing step 1 of 2. And every scenario is approve=None, single-turn, no prior_turns, so the turn ENDS at that first card and step 2 never happens.\n\nSo P4's original statement was right and is now precise: the fixture cannot reach the state the tool needs BECAUSE IT IS SINGLE-TURN AND NEVER APPROVES. 'called 0/5' was never a fact about the model's preference — it is a fact about the harness.\n\nP14-PROSE-CONFIRMATION is WITHDRAWN and D-SUBSTITUTED-CARD-DOES-A-DIFFERENT-THING with it: a card that stages a prerequisite is not doing 'a different thing', it is doing the first thing. I built a problem out of a fixture artefact and the call order is what caught it.\n\nWHAT IS NOW BUILDABLE: these eleven need a fixture that APPROVES the prerequisite card and takes a SECOND turn. The owner's spend policy already permits approving a card whose target is the run's own throwaway fixture, so this is buildable rather than blocked.",
       "approve_fixture_result_2026_08_23": "THE FIXTURE FIX WORKS FOR SOME AND THE PRE-REGISTERED REFUTATION FIRED FOR THE REST — 2 of 6.\n\n  kg_propose_edge               0/5 -> 5/5 called, 5/5 landed   PROVEN\n  glossary_create_chapter_link  0/5 -> 4/5 called                PROVEN\n  plan_bootstrap_apply          0/5 -> 0/5   prerequisite itself fails (no arc)\n  glossary_create_evidence      0/5 -> 0/5   the cited entity is not in the fixture\n  composition_entity_override_edit 0/5 -> 0/5   NAME passed as entity_id — P3's shape\n  composition_glossary_build    0/5 -> 0/5   undiagnosed, and left that way\n\nThe scenario file said before the run: 'a tool still called 0/5 with its prerequisite approved means the approval gate is NOT its block and the P4 reading is wrong for that tool — recorded per tool, not explained away.' Four of six did exactly that. Two of the four turn out to be P4 in the strictest sense — the fixture genuinely cannot reach the state — and one is a name-resolution failure that belongs to P3.",
       "confirm_fixture_result_2026_08_23": "THE PROSE-CONFIRMATION HYPOTHESIS IS REFUTED FOR ALL FIVE, exactly as the scenario file pre-registered: 'still called 0/5 after an explicit yes means the model is not waiting for permission and the prose-question reading is wrong'. All five stayed 0/5.\n\nAnd the refutation is more useful than the hypothesis was. The turn-1 questions are not about permission at all — two are DISAMBIGUATION ('which template?', 'which motif?'), which a bare yes cannot answer and which the model is right to ask; one reports there is nothing to act on; and two lose the thread entirely on the follow-up.\n\nSo D-PROSE-CONFIRMATION-INSTEAD-OF-THE-TOOLS-OWN-CARD, already downgraded to an observation, is now WITHDRAWN. The model was never hand-rolling a confirmation.",
-      "library_debris_2026_08_23": "WHY 'ONE OF' IS AMBIGUOUS: the harness account carries 57 arc templates, 51 of them account-scoped (book_id NULL) and every one test debris — throwaway-loop-skeleton-b15, e2e-*, smoke-apply-*, journey-*, i153.*, deep-smoke-arc-*. Plus 268 user motifs. _purge_arc_templates and _purge_motifs now stop the growth, but the historical backlog remains.\n\nNOT DELETED, deliberately. The standing safety rule permits a destructive arm only when the target was created by the RUN'S OWN throwaway fixture; these are pre-existing objects from other suites, and they carry FK dependents (structure_node, arc_template_translation). Cleaning them is an owner's call, not a side effect of this cycle."
+      "library_debris_2026_08_23": "WHY 'ONE OF' IS AMBIGUOUS: the harness account carries 57 arc templates, 51 of them account-scoped (book_id NULL) and every one test debris — throwaway-loop-skeleton-b15, e2e-*, smoke-apply-*, journey-*, i153.*, deep-smoke-arc-*. Plus 268 user motifs. _purge_arc_templates and _purge_motifs now stop the growth, but the historical backlog remains.\n\nNOT DELETED, deliberately. The standing safety rule permits a destructive arm only when the target was created by the RUN'S OWN throwaway fixture; these are pre-existing objects from other suites, and they carry FK dependents (structure_node, arc_template_translation). Cleaning them is an owner's call, not a side effect of this cycle.",
+      "moved_out": {
+        "glossary_create_evidence": "MOVED to P14-SUPPLIER-NOT-ON-SURFACE 2026-08-23 by the partition rule — c-evidence4, K=5, called 4/5, ZERO errored runs. THE FIXTURE NOW REACHES THE STATE and that is the point of the move: the seed creates the entity AND its `occupation` attribute value, and the seed assertion joins book_attributes to require that code BY NAME, so it cannot pass on the empty state that used to block it. All four calls then failed on \"missing required argument(s): ['attr_value_id']\". The only tool that returns one is glossary_get_entity, which is federated and was advertised in ZERO of the 130 surface snapshots.",
+        "composition_arc_apply": "MOVED to P14-SUPPLIER-NOT-ON-SURFACE 2026-08-23 by the partition rule — c-arcapply, K=5, ZERO errored runs. The rebuilt fixture seeds its OWN arc template (nonced code loop-arc-{run_id}, name 'The {run_word} Ascent', a real system motif in its layout) and NAMES it in the request, with a seed assertion keyed on the run's own nonce. The fixture reaches the state. The model then passed a NAME where arc_id is required, got the id-repair, and guessed composition_arc_suggest - because composition_arc_template_list, the supplier, was on no pass of the wire (established from chat-service's per-pass log on c-arcapply2).",
+        "plan_bootstrap_apply": "MOVED to P14-SUPPLIER-NOT-ON-SURFACE 2026-08-23 by the partition rule — c-r1-recheck, K=5, ZERO errored runs, every scenario moved its store. Requires proposal_id, minted only by plan_bootstrap_propose. From chat-service's own wire log: plan_bootstrap_apply advertised on 21 passes, plan_bootstrap_propose on ZERO. The platform even declares the pairing as data - contracts/agent-runtime-tool-contracts.json holds plan_bootstrap_apply => {proposal_id: plan_bootstrap_propose} - and does not use it to put the supplier on the wire.",
+        "composition_reference_update": "MOVED to P14-SUPPLIER-NOT-ON-SURFACE 2026-08-23 by the partition rule — c-ref3, K=5, called 5/5, ZERO errored runs. The DEEPEST instance: reference_id comes from composition_find_references, which itself refuses for its own missing entity_id. Across all 40 passes of the batch the wire log shows composition_find_references on every pass and glossary_entity_id / glossary_get_entity / glossary_search on NONE. The fixture is not the problem - the model reaches the right supplier and it is unusable.",
+        "composition_authoring_run_manage": "MOVED to P14-SUPPLIER-NOT-ON-SURFACE 2026-08-23 by the partition rule — rebaseline, called 4/5. Refuses with 'op=create requires plan_run_id, budget_usd, and pause_after_each_unit' while its inputSchema declares required=['op','book_id'] and all three of those OPTIONAL with default null and NO description. plan_run_id has no supplier named anywhere. NOTE: budget_usd and pause_after_each_unit have no supplier BY NATURE - they are the author's decisions - which is filed separately as D-A-REQUIRED-ARGUMENT-ONLY-THE-AUTHOR-CAN-SUPPLY-HAS-NO-ASK-PATH. It is placed here because the refusal that blocks it is an id one; if the owner splits that defect out, this tool moves again.",
+        "composition_entity_override_edit": "MOVED to P5-SIBLING-WINS 2026-08-23 by the partition rule — c-r1-recheck, K=5, ZERO errored runs, store moved 5/5. The turn completes and the fixture is fine. answerable_tools picks ['composition_entity_override_add', 'composition_entity_override_edit'] for the request - the two override tools and nothing else - and the model ran glossary_entity_set_attributes instead, writing the SHARED entity rather than a book-scoped override (glossary_entities and entity_revisions moved 5/5).",
+        "composition_glossary_build": "MOVED to P5-SIBLING-WINS 2026-08-23 by the partition rule — c-r1-recheck, K=5, ZERO errored runs, store moved 5/5. Its synonyms contain the request almost verbatim ('build the knowledge graph', 'extract the cast from my story') and R1 picks it. The model ran glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input on 5 of 5 runs. Note against P9: glossary_adopt_standards is intent-gated and was CALLED here, so the setup gate was OPEN on those turns - the tool that could not be reached was the un-gated one.",
+        "composition_motif_adopt": "MOVED to P15-TRANSPORT-STALL 2026-08-23 by the partition rule — c-adopt3, K=5. The fixture was rebuilt to name the built-in trope 'Face-Slap Reversal' verbatim, and it works: on 2 of 5 runs the model ran composition_motif_search -> composition_motif_adopt with a real motif_id and got ok:true with a well-formed confirm_token. The other 3 died with 'upstream sent \"error\" with no error message' immediately after composition_motif_search. Its old P4 reason ('an unanswerable prompt, and the model is right') is refuted by the same run."
+      },
+      "status": "CLEARED 2026-08-23. All 21 tools are accounted for: 13 reached `proven`, and the remaining 8 were re-run LIVE at K>=5 with a fixture that DOES reach the tool's state - which is this problem's whole invariant - and each is now blocked on a different, named cause, so each moves. Three of the eight needed their fixture rebuilt first, and those rebuilds are the cycle's work: glossary_create_evidence now seeds an attribute VALUE (asserted by code, not by count), composition_arc_apply seeds and NAMES its own arc template, composition_motif_adopt names the built-in trope verbatim. The other five never had a fixture problem at all.",
+      "cleared_note": "WHAT THIS DOES NOT COVER, and it is most of what remains.\n\n1. It is a HARNESS invariant, so clearing it fixes no product defect. Every one of the eight tools is still blocked; they are blocked for reasons that are now NAMED instead of hidden behind a fixture that could not reach the state.\n\n2. It does not prove the fixtures are RIGHT, only that they reach the tool. A fixture can reach a state and still measure the wrong thing - the same day this cleared, a falsifier on glossary_create_evidence had to be replaced because its CONTROL ('the fixture has no attribute values') was invalidated by the fixture rebuild and would have excused the very failure the rebuild existed to expose.\n\n3. Two of the eight moved to a problem that cannot currently be worked: P15-TRANSPORT-STALL is blocked on LM Studio's server logs, off since 2026-08-04.\n\n4. It says nothing about tools OUTSIDE the denominator whose fixtures may be equally unable to reach their state. The 65 were partitioned from the predecessor loop's blocked set; a tool that was PROVEN there with a weak fixture was never re-examined."
+    },
+    {
+      "id": "P14-SUPPLIER-NOT-ON-SURFACE",
+      "cycle": 6,
+      "title": "A tool requires an opaque id and the tool that returns it is not on the surface",
+      "invariant_candidate": "A tool advertised to the model must have every id it requires obtainable from that same surface - TRANSITIVELY. Advertising a write whose supplier is absent offers a move that cannot be made.",
+      "status": "OPEN - opened 2026-08-23 by the P4-PRECONDITION partition move. Five tools, each re-run at K>=5 with a fixture that reaches the state and a named missing supplier.",
+      "retired_hypotheses": [],
+      "false_statement_tools": [],
+      "cross_refs": [
+        "D-THE-LOOPS-DOMINANT-FAILURE-IS-AN-ID-THE-MODEL-CANNOT-GET",
+        "D-THE-ONLY-SUPPLIER-OF-attr_value_id-IS-NEVER-ADVERTISED",
+        "D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE"
+      ],
+      "dq": [
+        "DQ-T34"
+      ],
+      "diagnosis": null,
+      "moved_out": {},
+      "cleared_note": null,
+      "worst_measured": "Across ALL evidence on disk, a required argument the model could not supply is 48% of every tool-call failure with world_* excluded entirely (779 of 1030 including them, 25 distinct tools). The guarantee that puts a tool on the wire, R1 answerability, matches the tool the user's WORDS name and carries nothing that tool needs - it stops at depth 1, and composition_reference_update fails at depth 2.",
+      "tools": [
+        "glossary_create_evidence",
+        "composition_arc_apply",
+        "plan_bootstrap_apply",
+        "composition_reference_update",
+        "composition_authoring_run_manage"
+      ]
     },
     {
       "id": "P6-DESCRIBE-NOT-RECORD",
-      "cycle": 6,
+      "cycle": 7,
       "title": "The model describes the answer instead of recording it",
       "invariant_candidate": "When the request names an artefact the platform can STORE, prose about it is not an answer.",
       "false_statement_tools": [],
@@ -343,7 +377,7 @@
     },
     {
       "id": "P7-FALSE-ABSENCE",
-      "cycle": 7,
+      "cycle": 8,
       "title": "The write side confirms and the read that surfaces it returns nothing",
       "invariant_candidate": "A store that accepts a write must have a read that can find it, or the write must refuse.",
       "false_statement_tools": [],
@@ -361,7 +395,7 @@
     },
     {
       "id": "P8-ANSWERABILITY",
-      "cycle": 8,
+      "cycle": 9,
       "title": "The answerability matcher needs a contiguous phrase",
       "invariant_candidate": "A declared synonym must match the sentence a person types, not only the phrase a developer wrote.",
       "false_statement_tools": [],
@@ -378,7 +412,7 @@
     },
     {
       "id": "P9-INTENT-GATE",
-      "cycle": 9,
+      "cycle": 10,
       "title": "The world-setup intent gate shuts on the concrete request",
       "invariant_candidate": "A gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.",
       "false_statement_tools": [],
@@ -391,7 +425,7 @@
     },
     {
       "id": "P10-TOOL-LOAD",
-      "cycle": 10,
+      "cycle": 11,
       "title": "tool_load is not used to read a schema",
       "invariant_candidate": "When the author asks what a tool REQUIRES, the answer must come from the contract, not from a plausible neighbouring read.",
       "false_statement_tools": [],
@@ -402,7 +436,7 @@
     },
     {
       "id": "P11-DISTRIBUTION",
-      "cycle": 11,
+      "cycle": 12,
       "title": "Surfaced, occasionally chosen — and the costly half of the enum never came up",
       "invariant_candidate": "K>=3 as a DISTRIBUTION is the bar; a tool chosen 3 times in 15 is not proven by the 3.",
       "false_statement_tools": [],
@@ -413,7 +447,7 @@
     },
     {
       "id": "P12-RAIL-PINNED-TURN",
-      "cycle": 12,
+      "cycle": 13,
       "title": "A rail-pinned turn never emits an assistant message",
       "invariant_candidate": "A turn must emit an assistant message. A rail that drives itself to exhaustion is still a turn the author is waiting on.",
       "status": "DIAGNOSED — the mechanism is named and proven by a control; the FIX is not written.",
@@ -428,7 +462,7 @@
     },
     {
       "id": "P13-SILENT-TURN",
-      "cycle": 13,
+      "cycle": 14,
       "title": "The turn produces no user-visible text, with no card and no error",
       "invariant_candidate": "A turn that says nothing is not a completed turn.",
       "status": "OPEN — recording fixed, ROOT CAUSE IDENTIFIED (a stray `<tool_call|>` delimiter), cause not fixed. See D-SILENT-TURN-NO-CARD-NO-PROSE.",
@@ -439,6 +473,33 @@
       "measured": "memory_timeline surfaced 5/5 and was CALLED 5/5 — the tool worked — and 2 of the 5 turns produced `<EMPTY REPLY, no card>`. The author asked what happened first in their book and got nothing back, twice in five tries, with no error to see.",
       "history": "D-SILENT-TURN-NO-CARD-NO-PROSE was measured across 21 runs and 8 tools in the predecessor loop. Only the RECORDING is fixed (outcome=failed rather than completed); the author still sees a blank reply.",
       "recurrence_2026_08_23": "MEASURED AGAIN, on a tool outside this problem's list. composition_motif_link_edit, batch c-motiflink2, rep0 - the one run of five the transport stall did not kill: TOOL_CALL_START/ARGS/END/RESULT once each, a REASONING block, RUN_FINISHED, status=success, and ZERO TEXT_MESSAGE_* events. No card, no error, nothing said to the author. The tool had been refused for missing ids and its supplier armed.\n\nThis problem is reported CLEARED by problem_remaining.py because its single tool (memory_timeline) reads proven, while its own status says the cause is not fixed. See D-THE-LOOPS-OWN-PROGRESS-METRIC-CLEARS-A-PROBLEM-THE-DEFINITION-DOES-NOT."
+    },
+    {
+      "id": "P15-TRANSPORT-STALL",
+      "cycle": 15,
+      "title": "The provider fails mid-generation on the pass after a tool result",
+      "invariant_candidate": "A tool cannot be adjudicated on a turn the transport killed. Either the stall is fixed, or its tools are stated as unmeasurable and why.",
+      "status": "OPEN and BLOCKED ON EXTERNAL VISIBILITY - opened 2026-08-23 by the P4-PRECONDITION partition move. The provider is LM Studio at host.docker.internal:1234 and its server logs have not been written since 2026-08-04, so the only place the reason exists is not being recorded.",
+      "retired_hypotheses": [
+        "payload size",
+        "blank-args parser defect",
+        "surface size",
+        "context growth",
+        "turn length",
+        "model idle-unload (tested 2026-08-23: predicts LONGER pass gaps fail; measured the opposite ordering - died at 5.2s/9.5s/15.6s, survived at 16.2s/18.1s; n=5, so not supported rather than refuted with a direction)"
+      ],
+      "false_statement_tools": [],
+      "cross_refs": [
+        "D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH"
+      ],
+      "dq": [],
+      "diagnosis": "A CONTROLLED A/B INSIDE ONE BATCH (c-adopt3, K=5, one scenario, one query): 3 runs died, 2 did not, and everything the platform sends was identical. composition_motif_search returned 532 bytes, byte-identical, from identical args, in all five. provider-registry logged 'chat context preflight' for pass 1 (14402 tok) AND pass 2 (14556 tok) in ALL five runs, so the failing request is built and IS sent; clean runs then log pass 3 (14723) and a title call, dying runs log neither. Same input, same size, same tool result, different outcome - the failure is in GENERATION on the pass whose job is to emit the next tool call.",
+      "moved_out": {},
+      "cleared_note": null,
+      "worst_measured": "It gates cycle 2. composition_motif_link_edit is P3-NAME-TO-ID's last tool and cannot be adjudicated: re-run at K=5 (c-motiflink2) it lost 4 of 5 runs to this stall, and gate.py correctly refuses to conclude ANY state while the turn is unproven.",
+      "tools": [
+        "composition_motif_adopt"
+      ]
     }
   ],
   "deferred_questions_backlog": {
@@ -526,5 +587,6 @@
     "why_it_matters": "A `blocked` carried from an older batch says nothing about how the tool behaves now, and two of these have no evidence file whatsoever. The per-cycle counter cannot see the difference, which is the same shape as the defect this loop opened with: a progress number that agrees with itself. Three of the five are being re-run for a transport-clean batch; settings_provider_inventory cannot be closed by a re-run because its blocker is a REAL, reproduced false statement, and composition_motif_link_edit cannot because its failure rate is ~49% and thirteen hypotheses for it are refuted.",
     "recommendation": "gate.py audit should refuse a conclusion whose evidence_file predates the problem's own re-measurement, or is empty. Not implemented here: it would change the loop's evidence standard while that standard is blocking my own cycles, which is the same reason DQ-T40 was registered rather than acted on."
   },
-  "partition_move_2026_08_23": "ELEVEN TOOLS MOVED OUT OF P4-PRECONDITION on measured cause, under this file's own denominator_rule: 'If a re-run moves a tool to a different problem, it moves.' All eleven read surfaced 5/5, ZERO errors, called 0/5 across 75 runs — the fixture reaches the state fine, so 'the fixture cannot reach the state the tool needs' was never their cause.\n\n  6 -> P5-SIBLING-WINS. A confirm card IS pending on every run and a SIBLING owns it, never the tool under test (kg_add_nodes, plan_compile, glossary_propose_entities, ...). 30/30.\n  5 -> P14-PROSE-CONFIRMATION (new). The turn ends ASKING IN PROSE with ZERO cards. 45 runs.\n\nThe denominator did not move: 65 before, 65 after, and problem_remaining.py's MECE check passed. The ORDERING did move, and the guard caught my placeholder cycle numbers rather than my noticing them — P5 rises to cycle 2 on 12 tools and P4 falls to 10. Cycle numbers here are the ordering rule's OUTPUT, recomputed, never typed.\n\nI first recorded this as a recommendation for the owner. That was over-deferring: the rule above is the contract's, and a measured cause that moves a tool moves it. What IS the owner's is what to DO about P14, not whether these eleven belong where their evidence puts them."
+  "partition_move_2026_08_23": "ELEVEN TOOLS MOVED OUT OF P4-PRECONDITION on measured cause, under this file's own denominator_rule: 'If a re-run moves a tool to a different problem, it moves.' All eleven read surfaced 5/5, ZERO errors, called 0/5 across 75 runs — the fixture reaches the state fine, so 'the fixture cannot reach the state the tool needs' was never their cause.\n\n  6 -> P5-SIBLING-WINS. A confirm card IS pending on every run and a SIBLING owns it, never the tool under test (kg_add_nodes, plan_compile, glossary_propose_entities, ...). 30/30.\n  5 -> P14-PROSE-CONFIRMATION (new). The turn ends ASKING IN PROSE with ZERO cards. 45 runs.\n\nThe denominator did not move: 65 before, 65 after, and problem_remaining.py's MECE check passed. The ORDERING did move, and the guard caught my placeholder cycle numbers rather than my noticing them — P5 rises to cycle 2 on 12 tools and P4 falls to 10. Cycle numbers here are the ordering rule's OUTPUT, recomputed, never typed.\n\nI first recorded this as a recommendation for the owner. That was over-deferring: the rule above is the contract's, and a measured cause that moves a tool moves it. What IS the owner's is what to DO about P14, not whether these eleven belong where their evidence puts them.",
+  "ordering_recomputed_2026_08_23": "Cycle numbers RECOMPUTED with problem_remaining.py's own order_key after the P4-PRECONDITION partition move opened P14-SUPPLIER-NOT-ON-SURFACE and P15-TRANSPORT-STALL. Not hand-typed - the ordering rule says so explicitly, and the first version of this file had them wrong because they were typed. P5-SIBLING-WINS now precedes P3-NAME-TO-ID because it gained two tools in the move."
 }
