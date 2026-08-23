@@ -1709,19 +1709,27 @@ make the critic useless: clause 2 passes, the verification pass removes real fal
 (the invented-clause verdict, 3/3), and the OFF switch and verifier role are shipped and
 user-controllable.
 
-## 13 · The SOAK grant would point dev's graph at an EMPTY store — PO DECISION OWED (T54d, 2026-08-24)
+## 13 · The SOAK grant would point dev's graph at an EMPTY store — DECIDED: option 2, BUILT (T54d/T54e, 2026-08-24)
 
 **Measured on the real stack (rule 1), reads only (rule 6).**
 
 ```
-dev Neo4j (7688)        Entity 5161 · Event 1186 · Fact 404 · ExtractionSource 172
+dev Neo4j (7688)        Entity 5161 · Event 1186 · Passage 1051 · Fact 404
+                        ExtractionSource 172 · EntityStatus 35 · Chapter 21 · Book/Part/Scene 3
                         EVIDENCED_BY 2813 · RELATES_TO 1144 · ABOUT 255 · HAS_CHILD 33
+                        CAUSES 2 · PRECEDES 2          == 8 033 nodes / 4 249 relationships
 dev AGE (knowledge-pg)  1 graph registered, 0 graphs with entities, 0 entities
 infra/.env:17           KNOWLEDGE_GRAPH_BACKEND=age
 running container       pre-T54 image: has `neo4j_repos`, NO graph_backend.py, NO age_pool.py
                         startup log shows ONLY "Neo4j driver initialised" — no "AGE pool ready"
-migration Neo4j -> AGE  none in the tree
+migration Neo4j -> AGE  none in the tree  ->  BUILT at T54e
 ```
+
+⚠️ **T54d's own census was wrong and T54e's batch measurement corrected it.** T54d named
+**4 node families and 4 relationship types**; the graph holds **10 and 6**. The 4 249
+relationship total was right, so the error was invisible in the number that got quoted. A
+migration written from that inventory would have silently left 1 111 Passage/EntityStatus/
+structural nodes behind — which is why rule 8 measures the batch before building it.
 
 **Why dev works today, and why that is the trap.** The running container predates the backend
 flip: it knows one store and it is the one with the data. `infra/.env` already declares `age`.
@@ -1734,24 +1742,55 @@ takes a backend-following session and the glossary is their source. **Events, Fa
 relationships are extraction output with no projection and no migration.** They would not be
 lost from Neo4j, but they would be unreadable by a service pointed at AGE.
 
-**DECISION OWED — the GRANT's premise does not hold, so it is not exercised.** Three options,
-none of which an agent may pick unilaterally because each changes what a running deployment can
-see:
+**DECIDED 2026-08-24 — option 2, and it is BUILT (T54e).** The three candidates were:
 
-1. **Pin dev to `neo4j`** until a migration exists — one line in `infra/.env`, and the flip waits
-   on the data rather than the code.
-2. **Write the Neo4j → AGE migration** for Event/Fact/relationship, then flip. This is the only
-   option that makes the declared config true.
-3. **Re-extract into AGE** — correct by construction and the most expensive; it also re-spends
-   the LLM budget that produced 1,186 events.
+1. **Pin dev to `neo4j`** — one line, but it re-opens §9.2's DDL-exit condition (the
+   `backend declarations 0/0 non-age` ratchet goes to 1) and makes the code's default a lie on
+   the only deployment that has data. It fixes the symptom by lowering the claim.
+2. **Write the Neo4j → AGE migration** — the only option that makes the declared config true,
+   and the only one that lets T25's last step (deleting the entity DDL, gated on *"the last
+   deployment leaves the Neo4j backend"*) ever become reachable. **Chosen.**
+3. **Re-extract into AGE** — cheapest to write, most expensive to run, and it discards the
+   provenance in `ExtractionSource`/`EVIDENCED_BY` unless extraction replays from the same
+   sources. It also re-spends the LLM budget that produced 1 186 events.
+
+`app/db/migrations/neo4j_to_age.py`, dry-run by default in the house style of
+`recanon_honorifics`. Two rules carry it, both forced by measurement rather than design taste:
+
+* **temporals become epoch millis**, because `cypher_dialect` renders `{NOW}` as `datetime()`
+  on Neo4j and `timestamp()` on AGE — one property, two types — and `graph_repos/entities.py:264`
+  orders on it;
+* **embedding properties are dropped, counted and reported**, because vectors live in pgvector
+  under this architecture (§3.3) and a second writable copy is worse than none.
+
+**Two things the REAL data refuted, which no fixture would have.** Running it against iso's
+extraction output rather than a seeded graph broke it twice, and both are now rules with tests:
+
+```
+1  an unscoped ExtractionSource cited by a scoped Entity   16 edges on iso, 0 on dev
+   -> ADOPTED into the referrer's graph (one referrer each, measured); >1 referrer RAISES
+2  two RELATES_TO between the SAME pair collapsing to one  183 such pairs on dev, worst 10
+   -> the relationship MERGE keys on `id`; RELATES_TO is the only type that has one, and the
+      only type with parallel edges — the same list twice, which is why the id IS the key
+```
+
+Defect 2 would have dropped **at least 183 relationships on dev with every node count intact**;
+`verify`'s `MISSING` vs `EXTRA` split is the only thing that reported it.
 
 **What this does NOT retract.** T54's code is right and iso-proven: one engine-agnostic layer,
 both halves reading the same store, `DEFAULT_BACKEND = "age"`. §9.2's DDL reasoning stands. The
 gap is not in the architecture — it is that a declared deployment's data never moved, and
 nothing in the tree would have said so.
 
+**Still owed to the PO, and it is now ONE thing, not three.** Running `--apply` against dev
+writes to a non-throwaway store, which rule 6 reserves and the GRANTS do not cover. The code is
+proven; the execution is a decision. Until it runs, the SOAK grant stays unexercised — restarting
+`knowledge-service` before the migration still points every graph read at an empty store.
+
 **Retry/registration:** blocks the SOAK grant. `soak-armed-gate` verifies dual-write ARMING; it
-does not and cannot verify that the store being read has the data.
+does not and cannot verify that the store being read has the data — and nothing else in the tree
+does either. That absence is the reusable finding: a cutover gate that checks arming and not
+CONTENT reads green on an empty destination.
 
 ## How this file is kept honest
 

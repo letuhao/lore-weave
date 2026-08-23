@@ -81,10 +81,20 @@ ADAPTER_DIRS = (
 
 # Documented non-adapter exceptions. Each needs a REASON, not just a path.
 EXEMPT_FILES = {
-    # The global schema (constraints + indexes + vector indexes) applied at startup.
-    # graph_repos/__init__.py already names this as the one documented exception: it runs
-    # before any adapter exists and owns DDL rather than queries.
-    os.path.join(SCAN_ROOT, "db", "neo4j_schema.py"): "startup schema DDL, pre-dates any adapter",
+    # ⚰️ `db/neo4j_schema.py` WAS here for "startup schema DDL, pre-dates any adapter". The
+    # stale-exemption check added with the T54e entry below reported it on its first run and
+    # the report was right: that module carries ZERO Cypher — it is a RUNNER that loads the
+    # `neo4j_schema.cypher` companion and splits it on `;`. The DDL moved to the .cypher file,
+    # which this gate does not scan at all, and the exemption had been standing permission for
+    # a file that needed none. Removed 2026-08-24; if a query is ever written there it now
+    # fails like any other.
+    # T54e. The ONE file whose purpose is to be engine-aware on BOTH sides: it reads a Neo4j
+    # graph and writes an AGE one, keyed per label, so its Cypher cannot move into
+    # `graph_repos` without the neutral layer growing a "migrate from the other engine"
+    # operation that only this script would ever call. Exempt rather than BASELINEd because
+    # baseline means "debt T17 will clear" and this is not debt — it is the seam itself.
+    os.path.join(SCAN_ROOT, "db", "migrations", "neo4j_to_age.py"):
+        "engine-to-engine migration; owns Cypher for BOTH engines by definition (T54e)",
 }
 
 # Files that still carry Cypher when this gate shipped (2026-08-10). T17 empties this.
@@ -166,18 +176,74 @@ def _candidate_files(staged_only: bool) -> list[str]:
     return files
 
 
+def stale_excusals(offenders, exempt_still_using, baseline, exempt) -> list[str]:
+    """Excusals with nothing left to excuse — from BOTH lists.
+
+    🔴 **`EXEMPT_FILES` was checked for nothing until 2026-08-24.** The baseline half already
+    existed with the reason spelled out in the gate's own failure text — *"a stale entry
+    re-grants permission silently"* — and the exemption half, which grants a STRONGER
+    permission (permanent, not "T17 will clear it"), had no such check at all. It found a real
+    one on its first run: `db/neo4j_schema.py` was exempt as *"startup schema DDL"* and carries
+    zero Cypher, because the DDL had long since moved to the `.cypher` companion the gate does
+    not scan.
+
+    Split on purpose: never `staged_only`. A staged run sees a fraction of the tree, so every
+    untouched excusal would look stale and the gate would fail every partial commit.
+    """
+    out = sorted(b for b in baseline if b not in offenders)
+    out += sorted(f"{rel} (EXEMPT)" for rel in exempt if rel not in exempt_still_using)
+    return out
+
+
+def _selftest() -> int:
+    """Cases the repo's own state cannot supply — a hand-bite is invisible to CI."""
+    a, b, c = "a.py", "b.py", "c.py"
+    cases = [
+        ("a baseline file that still carries Cypher is NOT stale",
+         stale_excusals({a}, set(), {a}, {}), []),
+        ("a baseline file with nothing left IS stale",
+         stale_excusals(set(), set(), {a}, {}), [a]),
+        ("an EXEMPT file that still carries Cypher is NOT stale",
+         stale_excusals(set(), {b}, set(), {b: "reason"}), []),
+        ("an EXEMPT file with nothing left IS stale — the case that found neo4j_schema.py",
+         stale_excusals(set(), set(), set(), {b: "reason"}), [f"{b} (EXEMPT)"]),
+        ("both lists report independently",
+         stale_excusals(set(), set(), {a}, {b: "r"}), [a, f"{b} (EXEMPT)"]),
+        ("an offender that is neither baselined nor exempt does not appear here",
+         stale_excusals({c}, set(), set(), {}), []),
+        ("an EXEMPT file is never reported merely because it is not an OFFENDER",
+         stale_excusals(set(), {b}, set(), {b: "r"}), []),
+    ]
+    failures = 0
+    print("graph-port-gate - selftest (offline)")
+    for label, got, want in cases:
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}" + ("" if ok else f"  got={got} want={want}"))
+    print(chr(10) + "  all checks passed" if not failures else chr(10) + f"  {failures} FAILED")
+    return 1 if failures else 0
+
+
 def main(argv: list[str]) -> int:
+    if "--selftest" in argv:
+        return _selftest()
     staged_only = "--staged" in argv
     listing = "--list" in argv
 
     offenders: dict[str, list[tuple[int, str]]] = {}
+    exempt_still_using: set[str] = set()
     scanned = 0
     for path in _candidate_files(staged_only):
         rel = _norm(path)
-        if _is_adapter(rel) or rel in EXEMPT_FILES:
+        if _is_adapter(rel):
+            continue
+        found = violations_in(path)
+        if rel in EXEMPT_FILES:
+            # Scanned anyway, so a stale exemption can be reported below. Not an offender.
+            if found:
+                exempt_still_using.add(rel)
             continue
         scanned += 1
-        found = violations_in(path)
         if found:
             offenders[rel] = found
 
@@ -196,7 +262,7 @@ def main(argv: list[str]) -> int:
     # slipping backwards without anyone touching the list.
     stale: list[str] = []
     if not staged_only:
-        stale = sorted(b for b in BASELINE if b not in offenders)
+        stale = stale_excusals(offenders.keys(), exempt_still_using, BASELINE, EXEMPT_FILES)
 
     if not new and not stale:
         print(f"[graph-port-gate] PASS — {scanned} file(s) scanned outside adapter dirs; "
@@ -207,13 +273,14 @@ def main(argv: list[str]) -> int:
         for line, token in found[:5]:
             print(f"{rel}:{line}: Cypher outside an adapter — {token.strip()!r}")
     for rel in stale:
-        print(f"{rel}: baselined for Cypher but has none left — DELETE it from BASELINE in "
+        which = "EXEMPT_FILES" if rel.endswith("(EXEMPT)") else "BASELINE"
+        print(f"{rel}: excused for Cypher but has none left — DELETE it from {which} in "
               f"scripts/graph-port-gate.py (a stale entry re-grants permission silently)")
 
     print(
         f"\n[graph-port-gate] FAIL — {len(new)} file(s) with new Cypher outside "
         f"{' / '.join(ADAPTER_DIRS)}"
-        + (f", {len(stale)} stale baseline entr(y/ies)" if stale else "") + ".\n"
+        + (f", {len(stale)} stale excusal(s)" if stale else "") + ".\n"
         "Cypher belongs in an adapter so the graph engine can be swapped and the fakes can\n"
         "stand in for it. Move the query into app/db/graph_repos/ (the Neo4j adapter) and\n"
         "call it from here. If this file genuinely owns DDL that predates any adapter, add\n"

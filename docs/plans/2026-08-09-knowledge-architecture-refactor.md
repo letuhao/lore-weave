@@ -23367,6 +23367,169 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ---
   ---
   ---
+  ### ✅ T54e 2026-08-24 — **the Neo4j → AGE migration: §13 decided as option 2, and the REAL data refuted the design twice**
+
+  ```
+  NEW  app/db/migrations/neo4j_to_age.py                    planner + property policy + apply
+       tests/unit/test_neo4j_to_age_migration.py            23 tests
+       tests/integration/db/test_neo4j_to_age_migration_live.py   7 tests, two live engines
+  knowledge unit 4427 · DB integration 711 (+7)
+  ```
+
+  🎯 **§13 is decided, not deferred: option 2, built.** T54d ended with three options and a
+  decision owed. Pinning dev to `neo4j` fixes the symptom by lowering the claim — it re-opens
+  §9.2's DDL-exit condition and makes `DEFAULT_BACKEND = "age"` a lie on the only deployment
+  that holds data. Re-extraction discards the provenance in `ExtractionSource`/`EVIDENCED_BY`.
+  The migration is the only option that makes the declared config true, and it is also the only
+  thing that can ever make **T25's last step** reachable: the entity DDL's exit is gated on
+  *"the last deployment leaves the Neo4j backend"*, and T54d proved dev cannot leave it.
+
+  📊 **MEASURE THE BATCH BEFORE BUILDING IT (rule 8) — and it corrected T54d's own census.**
+
+  ```
+  projects                  433  ->  433 AGE graphs, plus g_shared
+  nodes                   8 033  across 10 labels        T54d named 4
+  relationships           4 249  across 6 types          T54d named 4
+  cross-project edges         0  of 4 249                graph-per-project is EXPRESSIBLE
+  unscoped nodes             24  structural + 4 Facts
+  ZONED DATETIME         16 519  node values + ~8 100 relationship values
+  natural keys           10/10   count(*) == count(DISTINCT key), so MERGE is idempotent
+  ```
+
+  T54d's **4 249 relationship total was right**, which is exactly why the label error survived
+  being quoted: the number that got checked was the one that was correct. A migration written
+  from that inventory leaves 1 111 Passage/EntityStatus/structural nodes behind.
+
+  🔴 **The `ZONED DATETIME` row killed the naive copier.** `cypher_dialect` renders `{NOW}` as
+  `datetime()` on Neo4j and `timestamp()` on AGE — **one property, two types** — which T63
+  measured and wrote down. Confirmed again on the live stores:
+
+  ```
+  dev Neo4j   Entity.created_at   2026-06-27T05:18:31.870Z   ZONED DATETIME
+  iso AGE     Entity.created_at   1787400064349              INTEGER (epoch millis)
+  ```
+
+  A copier that carried the ZonedDateTime across leaves a migrated graph sorting ISO strings
+  against the integers every later write produces — and `graph_repos/entities.py:264` is a live
+  reader of `ORDER BY prior.created_at`. So temporals convert, and **strings do not**:
+  `event_date_iso` is an in-world date, and parsing it would rewrite a bi-temporal value with
+  nothing downstream reporting an error.
+
+  ⚖️ **Embedding properties are dropped, COUNTED and reported.** Vectors live in pgvector under
+  this architecture (§3.3, T25 ③, T25s); a second writable copy is worse than none. 718 dropped
+  on the iso run, itemised by property in the report — a migration that quietly loses a
+  property is indistinguishable from one that ran correctly.
+
+  🔬 **THE REAL DATA REFUTED THE DESIGN TWICE, and a seeded fixture would have found neither.**
+  The unit tests were green and the 6 live tests were green against a hand-written source graph.
+  Running the same code against **iso's actual extraction output** broke it immediately, twice:
+
+  ```
+  ① CrossProjectEdge: EVIDENCED_BY spans 'p-69e5c69469e1' -> None
+     iso   16 edges from a scoped Entity to an UNSCOPED ExtractionSource; 20 of 27 unscoped
+     dev    0 such edges; all 172 sources carry project_id
+     -> the refusal was RIGHT (it lost nothing and said so) and the rule was too narrow.
+        An ExtractionSource is evidence FOR an entity and has no independent existence, so it
+        is ADOPTED into the referrer's graph. Measured: every adopted source has exactly ONE
+        referrer, and 4 orphans have none and stay shared. Two referrers still RAISES.
+        Adoption also TIGHTENS tenancy: in g_shared every project could read it.
+
+  ② MISSING .../RELATES_TO: destination 11, source 12
+     -> two distinct relationships between the SAME pair collapsing into one.
+        parallel edges between a pair    RELATES_TO only — 183 pairs on dev, worst 10
+        rel types carrying an `id`       RELATES_TO only — 1 144 of 1 144
+        The two lists are the same list. The type that can repeat between a pair is the one
+        given an identity, so the `id` IS the merge key.
+  ```
+
+  ⛔ **② would have dropped at least 183 relationships on dev with every node count intact.**
+  The only thing that reported it was `verify` counting the destination — and only after
+  `verify` was taught to say **MISSING** vs **EXTRA**, which it learned from its own first
+  false alarm (`g_shared/Book: 6 != 1` was six test fixtures accumulating, not a lost row).
+
+  🧪 **BITES — by line number, red for the right reason, restored.**
+
+  ```
+  A  171  return native.isoformat()      (carry Neo4j's ISO form across)
+         RED  assert '2026-06-27T05:18:31.870000+00:00' == 1782537511870
+  B  282  if False:                      (stop refusing a cross-project edge)
+         RED  Failed: DID NOT RAISE <class '...CrossProjectEdge'>
+  C  201  pass                           (drop the embedding, do not count it)
+         RED  assert 0 == 2   +  "embedding props DROPPED     0" in the report
+  D  LIVE, 214  return str(value)        (write the ISO form to a REAL AGE)
+         RED  created_at came back as str: '2026-08-23T23:30:36.836000000+00:00'
+  ```
+
+  📐 **A DERIVED test wrote two entries of `LABEL_KEYS`, and the census could not have.**
+  `test_every_label_the_SCHEMA_constrains_has_a_migration_key` parses the uniqueness constraints
+  out of `neo4j_schema.cypher` and went red on **`Project` and `Session`** — both declared, both
+  with **zero** nodes on dev, so no census names them and the first deployment holding one meets
+  `UnkeyedLabel` part-way through a migration. The schema is the authority on what a knowledge
+  graph MAY contain; a census is what one of them happens to hold today.
+
+  ⚠️ **The empty destination is a PRECONDITION, and the fixture now establishes it rather than
+  hoping for it** — behind the same `_guard_throwaway` the rest of `tests/integration/db` uses,
+  because establishing it means dropping every graph in the database. The guard was itself run
+  against a non-throwaway name and refused:
+
+  ```
+  RuntimeError: REFUSING: TEST_AGE_DSN database 'loreweave_knowledge' is not a throwaway DB
+  ```
+
+  🔻 **`graph-port-gate` refused this file, was RIGHT to, and the exemption it asked for
+  exposed a hole in the gate itself.** Cypher belongs in an adapter — but this is the one file
+  whose purpose is to be engine-aware on **both** sides, so it cannot move into `graph_repos`
+  without the neutral layer growing a *"migrate from the other engine"* operation only this
+  script would call. Exempt, not BASELINEd: baseline means *"debt T17 will clear"* and this is
+  the seam, not debt. Then, reading the gate to add the entry:
+
+  ```
+  BASELINE      checked for staleness — "a stale entry re-grants permission silently"
+  EXEMPT_FILES  checked for NOTHING — and it grants the STRONGER permission (permanent)
+  ```
+
+  The stale-exemption check added here fired on its **first run**, on an entry I did not write:
+  `db/neo4j_schema.py`, exempt as *"startup schema DDL, pre-dates any adapter"*, carries **zero**
+  Cypher — it is a RUNNER that loads the `neo4j_schema.cypher` companion, and the gate does not
+  scan `.cypher` at all. Standing permission for a file that needed none. Removed; a query
+  written there now fails like any other. The gate gained its first `--selftest` (7 cases) since
+  a hand-bite is invisible to CI, and **BITE E** blanked the new half by line number:
+
+  ```
+  194  out += []
+       FAIL  an EXEMPT file with nothing left IS stale — the case that found neo4j_schema.py
+       FAIL  both lists report independently   got=['a.py'] want=['a.py', 'b.py (EXEMPT)']
+  ```
+
+  **QC (a) gates:** all repo gates green, `graph-port-gate --selftest` 7/7; `port-adoption-gate` **unchanged on every reading**
+  (54/54 binders, 19 GraphStore floor, 0/0 engine-named binders, 0/0 non-`age` declarations) —
+  a one-shot migration is not repo or service code and moves no ratchet. Four plan gates green.
+  **QC (b) live smoke:** the 7 integration tests ARE the smoke — a real Neo4j 2026.03 and a real
+  `loreweave/postgres-knowledge:18` with AGE, both throwaways (rule 6), three consecutive clean
+  runs. `knowledge-service` unit **4427 passed**, DB integration **711 passed / 312 skipped**.
+  **QC (c) real data:** the run below, against iso's real extraction output — **not** a fixture.
+
+  ```
+  == DRY RUN (source: iso Neo4j, real extraction output) ==
+  graphs        368
+  nodes         1475
+  relationships 252
+  temporals -> epoch millis   3569
+  embedding props DROPPED     718
+      embedding_1024       716
+      summary_embedding    2
+
+  == APPLIED in 9.4s ==      verify: CLEAN
+  == RE-RUN in 11.7s ==      verify: CLEAN     (idempotent on real data)
+  ```
+
+  ⛔ **What is still owed, and it is ONE thing rather than three.** Running `--apply` against
+  **dev** writes to a non-throwaway store, which rule 6 reserves and the GRANTS do not cover.
+  The code is proven; the execution is a PO decision. Until it runs, the SOAK grant stays
+  unexercised — restarting `knowledge-service` still points every graph read at an empty store.
+  Recorded in §13.
+
+  ---
   ### 🔻 T54d 2026-08-24 — **the live run answers the GOAL's own question: dev is DECLARED on AGE and its AGE store is EMPTY**
 
   ```
