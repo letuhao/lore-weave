@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 69 of 112 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 70 of 113 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (27/37) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (27/37) · `T25` (16/23) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -9127,6 +9127,74 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
+  ---
+  ### ✅ T33c 2026-08-23 — **T33's OWN bite, run live: edges non-zero and the DAG acyclic — with the detector proven able to fail**
+
+  ```
+  T33's bite: "run over the corpus -> edge count non-zero AND the graph acyclic"
+
+  real stack (rule 1)   CAUSES 2 · PRECEDES 2                  -> non-zero ✅
+                        nodes on a cycle: 0                    -> acyclic ✅
+  planted control (iso) a hand-built 3-node cycle              -> detector reports 3 ✅
+                        probe removed, re-measured             -> 0, leftover 0
+  ```
+
+  🔴 **I had been answering the wrong question, and the correction is the reason this row moved.**
+  I read T33a's *"those two writes are the live run"* — which is about the plan's remaining rows
+  in general — as T33's own criterion. It is not. T33 is **world order as a partial order over
+  event entities** (§D0.1/D8), and its bite is the corpus run over `causes | precedes` plus
+  acyclicity. Measured above, on live data.
+
+  ⚖️ **`acyclic` on 4 edges is nearly unfalsifiable, so it was validated on a case it was NOT
+  derived from (rule 3).** A hand-built 3-node cycle was planted on the ISOLATED stack and the
+  same detector reported **3**; the probe was then deleted and the graph re-measured at **0**
+  with no leftovers. Without that arm, `0` is indistinguishable from a query that finds nothing
+  because it cannot.
+
+  📐 **The guard is REAL and WIRED, checked rather than assumed:** `drop_cycles` refuses any edge
+  whose target can already reach its source; `infer_causal_edges` applies it before returning;
+  the one route that writes edges writes only what that returns. `merge_causal_edges` — the only
+  `MERGE (a)-[:CAUSES|PRECEDES]->(b)` in the tree — has exactly **one** caller.
+
+  🎯 **What was NOT protected is the shape, and the guard's own docstring says so:**
+
+  ```
+  "Today every edge runs strictly forward in reading order, so the graph is a DAG by
+   construction and this refuses nothing... The day that filter is relaxed the guarantee
+   disappears SILENTLY — a cyclic world order answers 'did A happen before B' with yes in
+   both directions, and nothing errors."
+  ```
+
+  A second caller of `merge_causal_edges` that skipped `infer_causal_edges` is exactly that. The
+  new test **derives** the callers rather than trusting there is still one, and asserts the
+  second link too — every caller could route through `infer_causal_edges` while that function had
+  quietly stopped calling `drop_cycles`, and the caller-scan alone would pass.
+
+  🧪 **BITE 14 — append a rogue writer that skips the producer:**
+
+  ```
+  AssertionError: [('routers\internal_extraction.py', '_rogue_world_order_write')] write
+  world-order edges without producing them through `infer_causal_edges`, which is the only
+  thing that applies `drop_cycles`.
+  ```
+
+  ✅ **And the scan itself is validated on a case it was not derived from:** both assertions are
+  satisfied by a codebase with ONE correct caller, which is what this repo has — a scan that
+  could not see a bad one would pass identically. `test_the_scan_would_FIND_an_unguarded_writer`
+  builds the bad case in a temp dir and requires the scan to fail on it.
+
+  ⛔ **Coverage stays LOW and stays a finding, not a blocker** — 4 edges over 1186 events. The row
+  already records this, and §4.3 routes coverage to `QC-6` deliberately.
+
+  **QC (a) gates:** four plan gates green; `knowledge-service` **4712 passed, 716 skipped** with
+  `TEST_AGE_DSN` set. The two `test_coaching_gate1.py` failures are the pre-existing pair proven
+  at `HEAD` in A15.
+  **QC (b) live smoke:** N/A for a service seam — no service code changed. The live half is the
+  DAG measurement itself, taken against the real stack's Neo4j and the isolated one.
+  **QC (c) real data:** the edge counts and cycle counts are `cypher-shell` reads on
+  `infra-neo4j-1`; the planted control was written to `lw-iso-neo4j-1` under a distinct
+  `_T33Probe` label and **deleted**, verified `leftover 0`.
+
   ---
   ### 📊 T33b 2026-08-23 — **the live run, measured DURABLY: the soak has genuinely never carried a passage**
 
