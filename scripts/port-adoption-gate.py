@@ -349,6 +349,37 @@ def selftest() -> int:
               f"not class (d); that is the exact error the stale hand count made")
         ok = False
 
+    # ── T25/§9.2 — the backend-declaration scan, validated on cases it did not come from ──
+    if scan_backend_declarations({"infra/.env": "KNOWLEDGE_GRAPH_BACKEND=neo4j\n"}) != [
+            ("infra/.env", "neo4j")]:
+        print("  FAIL — an explicit `neo4j` declaration was not reported; the check that "
+              "guards §9.2's DDL-exit condition cannot see the thing it exists for")
+        ok = False
+
+    if scan_backend_declarations({"infra/.env": "KNOWLEDGE_GRAPH_BACKEND=age\n"}):
+        print("  FAIL — an `age` declaration was reported as non-age; the check would be "
+              "unsatisfiable and the ratchet meaningless")
+        ok = False
+
+    # The compose form declares by its DEFAULT — what a deployment setting nothing receives.
+    compose_bad = "      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-neo4j}" + chr(10)
+    if scan_backend_declarations({"infra/docker-compose.yml": compose_bad}) != [
+            ("infra/docker-compose.yml", "neo4j")]:
+        print("  FAIL — a compose interpolation defaulting to `neo4j` was not reported. The "
+              "variable is ABSENT in that deployment, so the default IS the declaration")
+        ok = False
+
+    compose_ok = "      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-age}" + chr(10)
+    if scan_backend_declarations({"infra/docker-compose.yml": compose_ok}):
+        print("  FAIL — the real compose line (defaulting to `age`) was reported as non-age")
+        ok = False
+
+    # A file that never mentions it is not a declaration, and must not be invented as one.
+    if scan_backend_declarations({"infra/other.yml": "SOME_OTHER_VAR: neo4j" + chr(10)}):
+        print("  FAIL — a different variable whose VALUE is 'neo4j' was scored as a backend "
+              "declaration")
+        ok = False
+
     # The MAX_CLASS_A ratchet, proven in CI rather than by hand. A hand-bite shows the check
     # can go red once; this shows it goes red for the reason claimed -- a module importing a
     # domain constant THROUGH the repo layer, which is the only way to re-enter class (a).
@@ -1045,6 +1076,56 @@ def scan_neo4j_only_guards(sources=None) -> tuple[list[str], list[str]]:
     return sorted(unguarded), stale
 
 
+# ── T25 residue: §9.2's DDL-exit condition, made checkable ───────────────────────────────
+#
+# §9.2 decided the ENTITY vector DDL "stays until no deployment can take the Neo4j entity
+# path", and called that "mechanical and already written down in `read_scopes`". It is
+# mechanical — but nothing measured it, so the condition sat as prose and T25's residue could
+# not be evaluated by anyone reading the plan.
+#
+# It reduces to configuration. `read_scopes` gives entity reads to Postgres only when an
+# anchor-score resolver exists, and the provider supplies one ONLY when
+# `configured_backend() == "age"`. So a deployment takes the Neo4j entity path exactly when
+# its backend is not `age`. That is a property of the declarations in this repo, and it is
+# derivable.
+
+#: Where a deployment DECLARES its backend. Globs, not a hand-list: a new compose file or env
+#: template must be scanned by existing on disk, not by someone remembering to add it here.
+_BACKEND_DECL_GLOBS = ("infra/*.env", "infra/.env", "infra/.env.*", "infra/*.yml",
+                       "infra/*.yaml", "docker-compose*.yml")
+
+MAX_NON_AGE_BACKEND_DECLARATIONS = 0
+
+
+def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
+    """`(where, value)` for every declaration that is NOT `age`.
+
+    A `${KNOWLEDGE_GRAPH_BACKEND:-age}` interpolation counts as its DEFAULT, because that is
+    what a deployment setting nothing receives — the compose file is the declaration in that
+    case, not the absent variable.
+    """
+    import glob as _glob
+
+    if sources is None:
+        sources = {}
+        for pat in _BACKEND_DECL_GLOBS:
+            for path in _glob.glob(os.path.join(ROOT, pat)):
+                try:
+                    sources[os.path.relpath(path, ROOT).replace(os.sep, "/")] = open(
+                        path, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+    bad: list[tuple[str, str]] = []
+    for where, text in sorted(sources.items()):
+        for m in re.finditer(
+                r"KNOWLEDGE_GRAPH_BACKEND\s*[:=]\s*[\"']?(?:\$\{KNOWLEDGE_GRAPH_BACKEND"
+                r":-)?([A-Za-z0-9_]+)", text):
+            value = m.group(1).strip().lower()
+            if value != "age":
+                bad.append((where, value))
+    return bad
+
+
 def scan_procedures(sources=None) -> dict:
     """`{module: {family: count}}` for Neo4j server-side procedures and admin commands.
 
@@ -1637,6 +1718,24 @@ def main() -> int:
     else:
         print(f"[port-adoption-gate] Neo4j-only dialect {dsites}/{MAX_NEO4J_DIALECT_SITES} in "
               f"the repo layer — §10.1's second path to class (d) zero")
+    # ── T25 residue: §9.2's DDL-exit condition, as a number ────────────────────────────
+    non_age = scan_backend_declarations()
+    if len(non_age) > MAX_NON_AGE_BACKEND_DECLARATIONS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(non_age)} deployment declaration(s) "
+              f"select a backend other than `age`: {non_age}{chr(10)}")
+        print("  §9.2 keeps the ENTITY vector DDL until no deployment can take the Neo4j")
+        print("  entity path, and this is that condition. A non-`age` backend gets no")
+        print("  anchor-score resolver, so `read_scopes` drops `entity` from the primary and")
+        print("  entity reads fall to Neo4jVectorStore -> `entity_embeddings_*`. T25t measured")
+        print("  the consequence of deleting the DDL under exactly that config: 52U00 /")
+        print("  ProcedureCallFailed. Either keep the declaration and keep the DDL, or move")
+        print("  the deployment to `age`.")
+        return 1
+    print(f"[port-adoption-gate] backend declarations {len(non_age)}/"
+          f"{MAX_NON_AGE_BACKEND_DECLARATIONS} non-`age` — §9.2's DDL-exit condition holds for "
+          f"every DECLARED deployment; `neo4j` stays SELECTABLE for the T43 harness and the "
+          f"two benchmarks, which are declared evaluation-only")
+
     # ── A19: those sites must REFUSE by name, not leak a SQL parse error ───────────────
     unguarded, stale_exempt = scan_neo4j_only_guards()
     if stale_exempt:

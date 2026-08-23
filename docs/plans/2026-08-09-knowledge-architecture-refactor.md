@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 71 of 114 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 72 of 115 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (28/38) · `T25` (16/23) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (28/38) · `T25` (17/24) · `T33` (3/4) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6823,6 +6823,74 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25v 2026-08-23 — **§9.2's DDL-exit condition was PROSE; it is now a number**
+
+  ```
+  [port-adoption-gate] backend declarations 0/0 non-`age`
+  ```
+
+  📐 **§9.2 decided the entity DDL "stays until no deployment can take the Neo4j entity path",
+  and called that "mechanical and already written down in `read_scopes`".** It is mechanical —
+  but nothing measured it, so T25's residue could not be evaluated by anyone reading the plan.
+  It reduces to configuration, and the reduction is exact:
+
+  ```
+  provider:     an anchor-score resolver is supplied ONLY when configured_backend() == "age"
+  read_scopes:  no resolver  ->  `entity` leaves the primary scope
+  consequence:  entity reads fall to Neo4jVectorStore -> entity_embeddings_*
+  therefore:    a deployment takes the Neo4j entity path exactly when its backend is not `age`
+  ```
+
+  🎯 **Derived from the repo's own declarations, by glob — not a hand-list:**
+
+  ```
+  files matched by the globs        9
+  of which declare the variable     3
+    infra/.env                      age
+    infra/.env.example              age
+    infra/docker-compose.yml        ${KNOWLEDGE_GRAPH_BACKEND:-age}
+  code default (graph_backend.py)   age
+  ```
+
+  ⚠️ **A compose interpolation is scored by its DEFAULT**, because that is what a deployment
+  setting nothing receives — in that case the compose file *is* the declaration, not the absent
+  variable. Pinned by a selftest case, along with its inverse.
+
+  🔴 **`0` from an empty scan is the vacuous case, so the file count was checked first.** Nine
+  files matched and three carry the variable; a glob that had matched nothing would have printed
+  the same `0` and meant nothing at all.
+
+  ⚖️ **What this does NOT claim.** `neo4j` stays **selectable**, deliberately — T43's shadow
+  harness compares the engines and the two benchmarks are the only things that can, which is why
+  `adapter-selectability-gate` declares them evaluation-only. So the DDL does not go today. What
+  changes is that §9.2's condition is now checked on every gate run instead of being re-argued:
+  **every DECLARED deployment is on `age`**, and the day one is not, the gate says so and names
+  the file.
+
+  🧪 **BITE 17 — flip the real `infra/.env` declaration, by line number:**
+
+  ```
+  [port-adoption-gate] FAIL — 1 deployment declaration(s) select a backend other than `age`:
+  [('infra/.env', 'neo4j')]
+  EXIT=1
+  ```
+
+  Restored; `git diff --stat infra/.env` is empty, so the file came back byte-identical.
+
+  ✅ **Five selftest cases, none of them the repo's current state** (rule 3): an explicit
+  `neo4j` is reported · an `age` is not · a compose default of `neo4j` IS reported · the real
+  compose line is not · and a DIFFERENT variable whose *value* happens to be `neo4j` is not
+  scored as a backend declaration.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` green with five new
+  cases and the new ratchet at `0/0`.
+  **QC (b) live smoke:** N/A — no service code changed. The behaviour this condition guards was
+  measured live by T25t (bite 27: dropping `entity_embeddings_1024` on iso turned a 5-hit query
+  into `52U00 / ProcedureCallFailed`).
+  **QC (c) real data:** the declaration census is read off the repo's own deployment files, and
+  the file count was verified non-zero before the verdict was believed.
+
   ---
   ### ✅ T25u 2026-08-23 — **④ takes the EVENT index: "entity/event stays" was true of one half**
 
