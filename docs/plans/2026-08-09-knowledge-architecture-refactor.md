@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 79 of 122 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 80 of 123 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (2/3) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (3/4) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,77 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48b 2026-08-23 — **the suite is GREEN: 5469 passed, 9 skipped, 0 failed** — and the two reds were stale tests, not bugs
+
+  ```
+  session start   4748 passed ·  728 skipped ·  2 FAILED
+  T48a            5157 passed ·  319 skipped ·  2 FAILED
+  now             5469 passed ·    9 skipped ·  0 FAILED
+  ```
+
+  🎯 **T48's first criterion is *every task fully implemented*, and its instrument is the suite.**
+  For twenty cycles I reported those two failures as "pre-existing, proven at `HEAD`" and moved
+  on — which was true and, as a stopping point, wrong. With every database present they were the
+  only red left, so they stopped being someone else's problem and became the thing between T48
+  and a meaningful re-run.
+
+  🔴 **Both were the SAME shape: a widened SoT and a test still asserting the narrow one.**
+
+  ```
+  FactType was ONE Literal; `:Fact` gained the story extractor's vocabulary and it became
+    Union[Literal[memory…], Literal[story…]]
+  -> get_args() now returns the two LITERAL TYPES, not the member strings, so
+     `"commitment" in get_args(FactType)` is False against a registry that carries it
+  ```
+
+  And the second, from the adapter's own comment dated **2026-08-11**: *"MEMORY_FACT_TYPES
+  specifically. `:Fact` gained the story extractor's vocabulary, but this enum advertises what
+  the pending-facts INBOX accepts, and that path stayed memory-only."* The test asserted
+  `set(_PROPOSE_FACT_TYPES) == set(FACT_TYPES)` — **demanding the drift the code had
+  deliberately decided against.**
+
+  ⚖️ **Rule 13 — which side is wrong, from the workload.** `FACT_TYPES` carries all ten;
+  `MEMORY_FACT_TYPES` carries six; the enum derives from the second **by a recorded decision**.
+  The code is right in both cases and the tests encode a superseded shape. Repaired, not deleted.
+
+  🔧 **Both repairs are STRONGER than what they replace, because a stale test is not fixed by
+  loosening it:**
+
+  ```
+  _literal_members()  flattens a Literal OR a union of them — plus an assertion that a type
+                      NOT carrying "commitment" comes back without it, or the flattener could
+                      pass by returning everything
+  the enum test       asserts == MEMORY_FACT_TYPES *and* that no STORY type is advertised —
+                      the narrowing is the point, so it gets its own assertion
+  ```
+
+  🧪 **BITE 33 FAILED TO BITE, and the reason matters.** Removing `"commitment"` left all seven
+  green — because the line I mutated was a **comment**. The real Literal lives in
+  `app/domain/fact_types.py`; `facts.py` re-exports it (*"so every existing importer keeps
+  working and there is still ONE definition"*). Redone against the definition:
+
+  ```
+  BITE 33  'commitment' out of the SoT Literal        2 failed, 5 passed
+  BITE 34  a STORY type advertised on the memory inbox
+    AssertionError: assert {'causal', 'c...ference', ...} == {'commitment'..., 'statement'}
+  ```
+
+  ⚠️ **Why this went unseen for weeks, which is the reusable part.** These two ran on every
+  invocation — but the file they live in was red while **728 other tests were dark** (T48a). A
+  suite with a standing red and a large silent skip set trains its reader to scroll past the
+  summary line, and both halves of that are what let a widened SoT and a deliberate narrowing
+  sit against tests that contradicted them.
+
+  **QC (a) gates:** four plan gates green; `test-env-registry-gate` OK. `knowledge-service`
+  **5469 passed, 9 skipped, 0 failed** — the remaining nine are the seven opt-in
+  `--run-quality` evals (they spend on a provider) and two comparisons with nothing recorded to
+  compare.
+  **QC (b) live smoke:** the run used all four databases — throwaway Postgres ×2 (7995, 7996),
+  throwaway `neo4j:2026.03-community` (7690), and the isolated AGE knowledge-pg. All three
+  throwaways removed afterwards; `docs/dev/TEST_DATABASES.md` carries the commands.
+  **QC (c) real data:** every figure above is a real run of the whole suite, not a subset.
+
   ---
   ### ✅ T48a 2026-08-23 — **409 more tests RUN, and the Neo4j reference implementation honours every rule A24–A28 added**
 
