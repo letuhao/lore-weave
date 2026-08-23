@@ -1,0 +1,44 @@
+{
+  "_note": "A reference the prompt can NAME, for composition_reference_update. Same class as arc_apply and motif_adopt: blocked on an under-specified request where the model is right.",
+  "scenarios": [
+    {
+      "id": "composition-reference-update-seeded",
+      "tool_under_test": "composition_reference_update",
+      "expect_tool": "composition_reference_update",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Fix the title of my reference 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+      "prompt_source": "meta.synonyms['fix reference title'] + ['update reference metadata'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "sql": {
+            "db": "loreweave_composition",
+            "statement": "INSERT INTO reference_source (id, created_by, project_id, book_id, title, author, source_url, content, embedding_model, created_at) VALUES (gen_random_uuid(), '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c', (SELECT project_id FROM composition_work WHERE book_id='{book_id}' LIMIT 1), '{book_id}', 'Tidal Almanac {run_word}', 'M. Solene', 'https://example.invalid/tidal', 'Notes on the Obsidian Trench tides.', 'none', now())",
+            "why": "A reference to EDIT. Measured: with an empty seed the tool was called 5/5, refused for the ids it lacks, and asked the author 'which reference you're referring to' — correct behaviour on a prompt that names none, and unprovable. reference_source has no MCP create path ('add references via the create path'), so the seed inserts one directly, the way translation's fixture does."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM reference_source WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The reference must exist before the prompt can name it."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model invents a reference_id (there are none to find, so any id is fabricated), OR the reply claims metadata was updated, OR a card is minted for a reference that cannot exist — that would be D-EXTRACTION-CONFIRMS-A-NO-OP, the class fixed in composition_decompile_arcs this cycle. The honest outcome is a refusal that names what is missing, or a question.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "This scenario IS the absent case — the reference table is empty.",
+        "tenancy": "OWED — book-scoped via project_id."
+      },
+      "defects": [],
+      "_carried_from": "scenarios-c5-rerun.json",
+      "_why_the_prompt_changed": "🔴 THIS IS A NEW QUESTION AND IS LABELLED AS ONE. The old prompt named no reference, so the model's refusal was RIGHT and the tool could never be proven through it. Naming the seeded reference asks whether the tool works when the author is specific — which is a fair question and NOT the one the old row answered. The old conclusion stands on its own evidence; this does not overwrite it."
+    }
+  ]
+}
