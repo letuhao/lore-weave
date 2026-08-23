@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 62 of 105 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 63 of 106 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (20/30) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (21/31) · `T25` (16/23) · `T33` (2/3) · `QC-5` (23/47) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,88 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A17 2026-08-23 — **CJK search was permanently dead on the DEFAULT backend, reported as an outage**
+
+  ```
+  measured on iso, before:  find_passages_by_fulltext(age_session, …)
+                            -> PostgresSyntaxError: syntax error at or near "."
+  the caller recorded:      degraded["cjk_lexical"] = "unavailable"
+  which is ALSO what it records when Neo4j is simply DOWN
+  ```
+
+  🔴 **A16's defect class, applied to a path that reaches users.** A16 fixed `purge_project`,
+  where the opaque failure only reached a log line. This is the same shape one layer up:
+  `CALL db.index.fulltext.queryNodes` is Neo4j-only, and `search/retriever.py` calls it on
+  `neo4j_session()` — which since T54c follows the **configured** backend, AGE by default. So on
+  a default deployment the CJK lexical leg could never succeed, and said so in the vocabulary of
+  a transient fault.
+
+  📐 **Measured the batch first (rule 8), and it killed most of it.** Three repo functions reach
+  those procedures; only one is a leak:
+
+  ```
+  find_entities_by_vector    called ONLY by Neo4jVectorStore + benchmarks   engine-scoped ✅
+  find_passages_by_vector    called ONLY by Neo4jVectorStore + benchmarks   engine-scoped ✅
+  find_passages_by_fulltext  called by search/retriever.py on a BACKEND-FOLLOWING session  ⛔
+  ```
+
+  The two vector readers are reached through the Neo4j adapter, which is engine-scoped by
+  construction — nothing to fix. Guarding all three would have looked thorough and changed
+  nothing but the diff size.
+
+  ⚖️ **`"unavailable"` was the odd one out, and its own file says so.** Every other key this
+  retriever sets names a reason:
+
+  ```
+  degraded["lexical"]   = "book_service_unavailable"
+  degraded["semantic"]  = "not_indexed" | "unsupported_dim" | "embed_unavailable"
+                          | "embedding_dim_mismatch"
+  degraded["cjk_lexical"] = "unavailable"          <- permanent gap and outage, one word
+  ```
+
+  A permanent capability gap and a down database now report `"unsupported_engine"` and
+  `"unavailable"` respectively. One is actionable by a deploy, the other by a page; a single
+  label made neither actionable.
+
+  🔧 **One home, not two.** A16 shipped `require_index_admin`; fulltext is a different capability
+  with the same shape, so rather than a second near-identical guard it became
+  `require_neo4j_only(session, operation, capability)`. A16's four assertions — the operation
+  name, the engine, `§3.1`, and `"Neo4j-only capability"` — still hold through the
+  generalisation, which is what proves the rename did not quietly change the contract.
+
+  🧪 **Two bites, and the second is the interesting one.**
+
+  ```
+  BITE 4  drop the guard from find_passages_by_fulltext
+          Failed: DID NOT RAISE <class 'NotImplementedError'>
+  BITE 5  widen `except NotImplementedError` -> `except Exception` in the retriever
+          AssertionError: assert 'unsupported_engine' == 'unavailable'
+  ```
+
+  **Bite 5 fails on the OUTAGE case, not the gap case.** Widening the catch does not stop the gap
+  being labelled — it makes a real Neo4j outage report as `unsupported_engine`, collapsing the
+  two in the opposite direction. That is the failure a test asserting only the happy path would
+  have missed entirely, which is why the test runs both arms through the same code and compares
+  them.
+
+  ✅ **Control arm (rule 3):** `test_fulltext_search_is_NOT_refused_on_neo4j` — a guard that
+  refuses everything satisfies every refusal assertion here while silently killing CJK search on
+  the engine that CAN do it.
+
+  ⚠️ **A scope claim moved with the code.** The gate printed *"Neo4j procedures 6/6 — the VECTOR
+  layer only"*, and one of the two `passages` sites is **fulltext**, not vector. Corrected in
+  this commit rather than left as a sentence that is 5/6 true.
+
+  **QC (a) gates:** four plan gates green; `port-adoption-gate --selftest` green, AGE coverage
+  holding at **118/119** with the procedure-scope sentence corrected in the same commit.
+  `knowledge-service` **4689 passed, 716 skipped** with `TEST_AGE_DSN` set. The two
+  `test_coaching_gate1.py` failures are the pre-existing pair proven at `HEAD` in A15.
+  **QC (b) live smoke:** `knowledge-service` **REBUILT** on `lw-iso`; the same call that returned
+  `PostgresSyntaxError` now returns the named refusal, read out of the running container.
+  **QC (c) real data:** the before/after pair are real calls against the live AGE graph on the
+  default backend.
+
   ---
   ### ✅ T17 A16 2026-08-23 — **project delete reported an orphaned graph that was not orphaned, on the DEFAULT backend**
 

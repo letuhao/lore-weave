@@ -1479,7 +1479,8 @@ def main() -> int:
               f"(rule 5).{chr(10)}")
         return 1
     print(f"[port-adoption-gate] Neo4j procedures {n_proc}/{MAX_VECTOR_PROCEDURE_SITES} — "
-          f"the VECTOR layer only ({detail}); §3.1 moves it to Postgres. These sites are "
+          f"the VECTOR layer plus ONE fulltext reader ({detail}); §3.1 moves them to Postgres. "
+          f"These sites are "
           f"why `find_entities_by_vector` is unproven on AGE: a "
           f"Neo4j-only capability, not a gap in the proof. NOT `set_entity_embedding`, "
           f"which reaches no procedure and was proven at T91.")

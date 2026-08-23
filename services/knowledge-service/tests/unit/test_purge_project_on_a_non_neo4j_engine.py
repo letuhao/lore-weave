@@ -111,3 +111,47 @@ async def test_a_REAL_index_failure_still_propagates():
 
     with pytest.raises(RuntimeError, match="index admin unavailable"):
         await purge_project(_Boom("neo4j", counts=3), "0" * 8 + "-0000-0000-0000-" + "0" * 12)
+
+
+# ── fulltext search: the same capability gap, but this one reaches USERS ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_fulltext_search_refuses_by_name_on_a_non_neo4j_session():
+    """`CALL db.index.fulltext.queryNodes` is Neo4j-only, and this path is NOT engine-routed.
+
+    The two vector readers are reached only through `Neo4jVectorStore`, which is engine-scoped
+    by construction. `find_passages_by_fulltext` is different: `search/retriever.py` calls it on
+    a `neo4j_session()`, which since T54c follows the CONFIGURED backend — AGE by default. So on
+    a default deployment it ran and raised `PostgresSyntaxError: syntax error at or near "."`,
+    measured on iso.
+    """
+    from app.db.neo4j_repos.passages import find_passages_by_fulltext
+
+    with pytest.raises(NotImplementedError) as exc:
+        await find_passages_by_fulltext(
+            _Session("age"), user_id="u", project_id="p", query="q",
+            source_type="chapter", limit=5, include_drafts=False,
+        )
+    msg = str(exc.value)
+    assert "find_passages_by_fulltext" in msg
+    assert "fulltext search" in msg, "the refusal must name the CAPABILITY, not just the caller"
+    assert "'age'" in msg and "§3.1" in msg
+
+
+@pytest.mark.asyncio
+async def test_fulltext_search_is_NOT_refused_on_neo4j():
+    """Control arm — a guard that refuses everything would silently kill CJK search on Neo4j."""
+    from app.db.neo4j_repos.passages import find_passages_by_fulltext
+
+    session = _Session("neo4j")
+    try:
+        await find_passages_by_fulltext(
+            session, user_id="u", project_id="p", query="q",
+            source_type="chapter", limit=5, include_drafts=False,
+        )
+    except NotImplementedError:  # pragma: no cover - the assertion below is the point
+        pytest.fail("a Neo4j session must reach the driver, not the refusal")
+    except Exception:
+        pass  # the stub session is not a real driver; only the REFUSAL is under test here
+    assert session.ran, "the Neo4j path must actually issue a query"

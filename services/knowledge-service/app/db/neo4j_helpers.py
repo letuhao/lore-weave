@@ -46,7 +46,7 @@ __all__ = [
     "parse_summary_index_name",
     "list_summary_vector_indexes",
     "drop_summary_index",
-    "require_index_admin",
+    "require_neo4j_only",
 ]
 
 
@@ -117,7 +117,9 @@ def assert_user_id_param(cypher: str) -> None:
 
 
 
-def require_index_admin(session: CypherSession, operation: str) -> None:
+def require_neo4j_only(
+    session: CypherSession, operation: str, capability: str = "index administration",
+) -> None:
     """Refuse an INDEX-ADMIN command on any engine that has no such command (rule 9).
 
     `SHOW VECTOR INDEXES`, `CREATE VECTOR INDEX` and `DROP INDEX` are Neo4j index administration,
@@ -136,11 +138,11 @@ def require_index_admin(session: CypherSession, operation: str) -> None:
     engine = engine_of(session)
     if engine != "neo4j":
         raise NotImplementedError(
-            f"vector_indexes.{operation} — index administration is a Neo4j-only capability and "
-            f"this session speaks {engine!r}. There are no per-project summary vector indexes "
-            f"on {engine!r} to list, create or drop: §3.1 moves the vector layer to Postgres, "
-            f"where they are per-dim TABLES. Callers that must tolerate this should catch "
-            f"NotImplementedError explicitly rather than swallowing every exception."
+            f"{operation} — {capability} is a Neo4j-only capability and this session speaks "
+            f"{engine!r}, which has no such command: §3.1 moves the vector and passage layers "
+            f"to Postgres, where the equivalents are tables and SQL indexes. Callers that must "
+            f"tolerate this should catch NotImplementedError EXPLICITLY — a bare `except` here "
+            f"also swallows a real Neo4j failure and reports the two identically."
         )
 
 

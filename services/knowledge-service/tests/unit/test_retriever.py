@@ -518,3 +518,45 @@ def test_passage_to_hit_surface_reflects_canon_flag():
     )
     assert passage_to_hit(PassageSearchHit(passage=canon_p, raw_score=0.9))["surface"] == "canon"
     assert passage_to_hit(PassageSearchHit(passage=draft_p, raw_score=0.9))["surface"] == "draft"
+
+
+@pytest.mark.asyncio
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+async def test_cjk_leg_reports_an_ENGINE_GAP_differently_from_an_OUTAGE(embed, find,
+                                                                       _stub_cjk_leg):
+    """A permanent capability gap must not wear an outage's label.
+
+    `CALL db.index.fulltext.queryNodes` is Neo4j-only and this leg runs on `neo4j_session()`,
+    which since T54c follows the configured backend — AGE by default. So on a default
+    deployment the leg raised `PostgresSyntaxError` and was recorded as
+    `cjk_lexical: "unavailable"`, which is what a Neo4j that happened to be DOWN also reports.
+    One is permanent and one is transient; a single label for both means neither can be acted
+    on. Every other key in this dict already says why (`not_indexed`, `unsupported_dim`,
+    `embed_unavailable`).
+    """
+    embed.return_value = [0.1] * 1024
+    find.return_value = []
+    book, emb, rr = _clients(lex_hits=[])
+
+    _stub_cjk_leg.side_effect = NotImplementedError(
+        "passages.find_passages_by_fulltext — fulltext search is a Neo4j-only capability"
+    )
+    gap = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+
+    _stub_cjk_leg.side_effect = RuntimeError("neo4j: connection refused")
+    outage = await run_hybrid_search(
+        user_id=_USER, book_id=_BOOK, query="姜子牙", project=_project(),
+        book_client=book, embedding_client=emb, reranker_client=rr, rerank=False,
+    )
+
+    assert gap.degraded["cjk_lexical"] == "unsupported_engine"
+    assert outage.degraded["cjk_lexical"] == "unavailable"
+    assert gap.degraded["cjk_lexical"] != outage.degraded["cjk_lexical"], (
+        "the whole point: an engine that CANNOT do fulltext and an engine that is DOWN must "
+        "not produce the same marker"
+    )

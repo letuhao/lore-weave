@@ -22,7 +22,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.neo4j_helpers import CypherSession, require_neo4j_only, run_read, run_write
 
 __all__ = [
     "count_passages_by_source_types",
@@ -901,6 +901,7 @@ async def find_passages_by_fulltext(
     matter). A blank query (or one that escapes to empty) returns []. Best-effort
     at the call site — the retriever treats any failure as a degraded lexical leg.
     """
+    require_neo4j_only(session, "passages.find_passages_by_fulltext", "fulltext search")
     if limit <= 0:
         raise ValueError(f"limit must be positive, got {limit}")
     if oversample_factor < 1:

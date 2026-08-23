@@ -347,6 +347,16 @@ async def run_hybrid_search(
                     limit=limit,
                     include_drafts=(surface == "all"),
                 )
+        except NotImplementedError:
+            # A PERMANENT capability gap, not an outage. `CALL db.index.fulltext.queryNodes`
+            # is Neo4j-only, and since T54 the default backend is AGE — so on a default
+            # deployment this path can never succeed. Reporting it as "unavailable" made a
+            # permanent gap indistinguishable from a Neo4j that happened to be down, and every
+            # other key in this dict already says WHY (`not_indexed`, `unsupported_dim`,
+            # `embed_unavailable`). §3.1 moves the passage layer to Postgres, which is where a
+            # working CJK lexical path will come from.
+            degraded["cjk_lexical"] = "unsupported_engine"
+            return []
         except Exception:
             degraded["cjk_lexical"] = "unavailable"
             return []
