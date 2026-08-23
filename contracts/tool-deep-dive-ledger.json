@@ -3490,13 +3490,6 @@
         "candidate_fix": "Put the tool's own one-line description on the approval card. The payload already carries `tool`; the frontend has no catalogue to look it up in, so the description would have to ride the pending payload. Small, testable, and it addresses the measured gap directly — but it changes the approval surface, so it is written down as a candidate rather than shipped mid-cycle."
       }
     },
-    "D-PROSE-CONFIRMATION-INSTEAD-OF-THE-TOOLS-OWN-CARD__OBSERVATION": {
-      "status": "DOWNGRADED to an observation 2026-08-23 — unmeasurable under a single-turn fixture",
-      "what": "The model calls the tool's lookup supplier, then asks the user for permission IN PROSE and ends the turn with NO pending card. composition_arc_apply 5/5, composition_motif_adopt 5/5, jobs_cancel 15/15, jobs_pause 12/15, composition_derivative_edit 4/5.",
-      "why_it_matters": "The turn looks careful and correct — it even sounds like good manners — and nothing is staged. The platform has a real approval card for exactly this moment and it never engages, so a user who answers 'yes' is answering a question no mechanism is holding. It is invisible to an error-rate check: zero errors on all 45 runs.",
-      "not_the_recorded_cause": "These tools were blocked under P4-PRECONDITION, 'the fixture cannot reach the state the tool needs'. Surfacing is 5/5 and errors are 0/5; the fixture reaches the state fine.",
-      "why": "The five tools do end by asking in prose with no card. But the scenario is single-turn with no prior_turns, so nothing can answer the question and whether the model would act on turn 2 was never measured. Calling it a defect asserted the counterfactual the fixture cannot produce."
-    },
     "D-SUPPLIER-RETURNS-COUNTS-NOT-THE-IDS-ITS-SUCCESSOR-NEEDS": {
       "status": "OPEN — measured 2026-08-23, root cause verified in source",
       "what": "kg_add_nodes returns {nodes_created, nodes_existing, entities_seen, skipped} and NO node ids (graph_schema_tools.py:2125). Its successor kg_propose_edge REQUIRES source_entity_id and target_entity_id. So the documented chain cannot be walked: the step that creates the endpoints does not tell the caller what they are.",
@@ -3534,6 +3527,19 @@
       "what": "kg_add_nodes' `kind` enum is character|location|organization|concept|item. The model sends 'person' for a human being — the ordinary English word — and every call is rejected: \"Input should be 'character', 'location', ... (you sent 'person')\". Both failing runs died here: the nodes are never created, so the edge can never resolve, and the model retried four times without recovering.",
       "note": "The error message is GOOD — it names the value sent and lists the alternatives — and the model still could not use it. A rejection the model cannot act on is a rejection that costs the turn, however well worded.",
       "measured_by": "docs/eval/toolloop/2026-08-14/p4-ctxid-raw.json rep0, rep4"
+    },
+    "D-AFFIRMATIVE-FOLLOW-UP-LOSES-THE-PRIOR-INTENT": {
+      "status": "OPEN — measured 2026-08-23, 10 runs across 2 tools",
+      "what": "A bare affirmative on the next turn is treated as a NEW request rather than as consent to the pending one. Turn 1: the model lists the author's jobs and asks whether to cancel/pause. Turn 2, 'Yes, go ahead and do it.': it calls workflow_load, glossary_list_system_standards, glossary_adopt_standards and glossary_task_provide_input, and answers 'I've started setting up the foundation for your book.' The author asked to cancel a job.",
+      "why_it_matters": "It is not a no-op. The store moved on 5 of 5 runs for each tool — standards were adopted and workflow state advanced — so an author who says yes to one thing gets a different thing DONE, and is told so in a sentence that sounds like progress.",
+      "measured_by": "docs/eval/toolloop/2026-08-14/p4-confirm-raw.json (jobs_cancel, jobs_pause, K=5 each)"
+    },
+    "D-PROSE-CONFIRMATION-INSTEAD-OF-THE-TOOLS-OWN-CARD__WITHDRAWN": {
+      "status": "WITHDRAWN 2026-08-23 — refuted by its own pre-registered test",
+      "what": "The model calls the tool's lookup supplier, then asks the user for permission IN PROSE and ends the turn with NO pending card. composition_arc_apply 5/5, composition_motif_adopt 5/5, jobs_cancel 15/15, jobs_pause 12/15, composition_derivative_edit 4/5.",
+      "why_it_matters": "The turn looks careful and correct — it even sounds like good manners — and nothing is staged. The platform has a real approval card for exactly this moment and it never engages, so a user who answers 'yes' is answering a question no mechanism is holding. It is invisible to an error-rate check: zero errors on all 45 runs.",
+      "not_the_recorded_cause": "These tools were blocked under P4-PRECONDITION, 'the fixture cannot reach the state the tool needs'. Surfacing is 5/5 and errors are 0/5; the fixture reaches the state fine.",
+      "why": "An explicit 'Yes, go ahead and do it.' left all five tools at called 0/5. The turn-1 questions were disambiguation ('which template?'), an honest report of nothing to act on, or a lost thread — never a hand-rolled permission prompt."
     }
   },
   "deferred_questions": {
