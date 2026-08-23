@@ -290,5 +290,12 @@
         "unverified": 1
       }
     ]
+  },
+  "plant_validity_check": {
+    "question": "is the plant INERT on some drafts? A name swap only contradicts R1 where the draft attributes the trap to the antagonist — if it does not, the planted arm is indistinguishable from the control BY CONSTRUCTION and the failure would be the plant's, not the critic's",
+    "method": "for each draft, does a betrayal/trap term appear within 400 chars of the antagonist's name",
+    "result": "ACTIVE on all 8 drafts (near-hits 1,4,5,4,3,2,3,3)",
+    "calibration": "a first, sentence-level version of this proxy said INERT on all 8 — and was WRONG, because C34 had already proved the plant works on 01a02d23 (4/4 R1 findings with correct reasons). The betrayal claim spans sentences. The widened proxy agrees with that known case; the narrow one contradicted it.",
+    "conclusion": "the plant is not the cause. 1a's failure is the critic's false-positive floor."
   }
 }
