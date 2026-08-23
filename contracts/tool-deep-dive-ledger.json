@@ -2800,9 +2800,9 @@
   },
   "memory_forget": {
    "state": "blocked",
-   "cycle": "batch-41 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a supplier that CANNOT answer — not the model, not the tool. Re-measured K=5: SURFACED 5/5, CALLED 0/5. The model made zero tool calls and said 'Since I have no record of the Obsidian Trench in your project's memory or manuscript, I cannot forget a fact that isn't currently stored'.\n\n🔴 IT WAS RIGHT AND THE STORE PROVES BOTH HALVES. The seed stored TWO facts (neo4j Fact.project = 2 before and after), so they exist. But memory_search(query='Obsidian Trench') returns {hits: [], total: 0, degraded: {semantic: 'not_indexed'}} — a fact stored by memory_remember is NOT findable until the project is indexed, and memory_forget's own description says to use only a fact_id seen in an earlier tool result. Its single supplier returns nothing, so the tool is unreachable BY DESIGN. D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED, twin of D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ.\n\nBoundary EXERCISED and sound: an absent fact_id returns a truthful no-op ({invalidated:false, reason:'no matching fact found'}), a foreign one behaves identically, and empty refuses by name.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
+   "cycle": "batch-40 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-memory.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 1/5, owning store moved on 1/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED ON A MEASURED DEFECT, with LIVE now SOUND. Its 5/5 'transport errors' were a SEED failure — memory_remember's per-session cap, spent permanently because the harness sent one fixed session id for every seeded call ever made. Fixed; the tool now reads called 5/5 with zero errors.\n\nReachable, it fails idempotency against its own store: a repeat forget re-stamps valid_until on an already-invalidated fact, moving when it stopped being true, while answering {'invalidated': true} both times. A tool that rewrites the temporal record on a repeat is not shippable.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-memory.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3653,6 +3653,19 @@
    "status": "OPEN — measured 2026-08-23",
    "what": "fe_runner measures the LAST turn (`turns = [prompt, *follow_ups]`), so editing `prompt` on a scenario that declares follow_ups changes a turn nobody reads. Measured today: I rewrote catalog_get_book's and translation_job_control's prompts to ask for the tool's real action, and the MEASURED turns were still their follow-ups — 'Open the first one and show me its detail.' and 'Cancel that job.' The edit was inert and the run looked like a refutation of it.",
    "how_to_see_it": "The recorded run's own `prompt` field is the MEASURED turn, and it did not match what I wrote. Compare it against the scenario's `prompt` before reading any result: they differ exactly when follow_ups exist. jobs_cancel/jobs_pause have none, which is why the same edit worked there — 0/5 -> 5/5."
+  },
+  "D-FORGET-RESTAMPS-VALID-UNTIL-AND-REWRITES-HISTORY": {
+   "status": "OPEN — PROVEN against the owning store, 2026-08-23",
+   "what": "memory_forget re-stamps a Fact's `valid_until` on EVERY call and reports {'invalidated': true} each time. Measured in Neo4j directly:\n    before a repeat call : valid_until = 2026-08-23T07:52:12.211Z\n    after                : valid_until = 2026-08-23T07:54:29.154Z\nThe fact was already invalidated. The second call moved WHEN it stopped being true.",
+   "why_it_matters": "valid_until is the temporal record — the moment the fact ceased to hold. Re-stamping it means a fact invalidated at 07:52 now claims it was valid until 07:54, so any as-of query in that window returns a fact the author had already retracted. This is the exact case the idempotency bar names: a second call 'must not corrupt what the first call wrote'.",
+   "the_response_cannot_reveal_it": "Both calls answer {'invalidated': true}, identical. A caller cannot tell a real invalidation from a re-stamp, and the tool DOES have a false form — an absent fact_id correctly answers {'invalidated': false, 'reason': 'no matching fact found'} — so the honest answer exists and is not used here.",
+   "measured_by": "direct Neo4j read before/after a repeat memory_forget, 2026-08-23"
+  },
+  "D-IDEMPOTENCY-PROBE-IS-BLIND-TO-NEO4J-OWNED-TOOLS": {
+   "status": "OPEN — instrument limit, measured 2026-08-23",
+   "what": "idempotency_probe compares store_snapshot before/after, and store_snapshot reads POSTGRES. For a tool whose owning store is Neo4j it therefore compares two empty pictures and reports 'STRICTLY IDEMPOTENT — the second call touched nothing at all'.",
+   "measured_consequence": "It printed exactly that for memory_forget, which re-stamps valid_until on every call. The verdict was not merely unproven — it was the OPPOSITE of the truth, and only a direct Neo4j read found it. The probe's own '⚠ the first call changed nothing either' guard fired, which is the signal that saved it: on a Neo4j-owned tool that warning means the instrument is blind, not that the tool is quiet.",
+   "fix_direction": "Either extend store_snapshot with a Neo4j axis, or have the probe REFUSE a verdict for tools whose owning store it cannot read — a named refusal beats a confident wrong answer, which is the rule the whole gate is built on."
   }
  },
  "deferred_questions": {
@@ -4212,8 +4225,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 77,
-  "defects_other": 38
+  "defects_total": 79,
+  "defects_other": 40
  },
  "observations": [
   {
