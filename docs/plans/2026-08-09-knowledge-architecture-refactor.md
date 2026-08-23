@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 94 of 137 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 95 of 138 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (28/52) · `T48` (10/11) · `T49` (1/1)
+**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (29/53) · `T48` (10/11) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11243,6 +11243,76 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C36 2026-08-24 — **span containment: built, measured, REMOVED — and the measurement is the deliverable**
+
+  ```
+  offline validation, 16 stored violations   14 spans present · 2 absent, both already false
+  LIVE clean arm    raw=2  kept=0  3/3        both false positives dropped   <- looked like a win
+  LIVE planted arm  raw=4  kept=0             ALL FOUR dropped by CONTAINMENT <- 0 recall
+  after the revert  planted kept 4/4 and 2/3 · clean kept 1, unverified 1
+  composition 3808 -> 3809 passed, 403 skipped, 0 failed
+  ```
+
+  📐 **C35 left a named next unit and this is it.** The verdict the semantic verifier KEPT quoted
+  a sentence with a different character's name substituted into it — a fabrication a model asked
+  *"does this span contradict the rule"* cannot catch, because it is handed the fabricated span
+  as fact. Containment is the obvious answer: a span the judge quotes must be in the passage.
+
+  🎯 **It validated, and the validation was on the wrong distribution.** Across the 16 stored
+  violations 14 spans are literally present and the 2 absent were already adjudicated false or
+  unattributable — zero false drops. On the live CLEAN arm it dropped both false positives, 3/3.
+  Then the control arm spoke:
+
+  <!-- doc-language-gate: ok -- the judge's paraphrase IS the evidence; translating it would hide that it is not a quotation -->
+  ```
+  planted #1  raw=4  kept=0   ALL dropped, and every drop is CONTAINMENT:
+      "quoted a span that does not appear in the passage — Hắn bước đi như thể hắn vừa đi dạo…"
+  ```
+  <!-- doc-language-gate: end -->
+
+
+  The planted arm contains a **real** R1 violation by construction, and this route's judge
+  **paraphrases** its spans (*"He walked as if he had just strolled in…"*) rather than quoting
+  them. So containment scores **0 recall** here — the identical failure C31 measured for the
+  span-only verifier, reached from the opposite direction. The 16-violation census came from the
+  **authoring** path and did not generalise to this route, which is rule 3 catching a detector
+  validated on one distribution and deployed against another.
+
+  ⚖️ **Fuzzy matching does not rescue it, and that is why it was removed rather than softened.**
+  C35's fabrication shares every token with the real sentence **except the name**; a paraphrase
+  shares most of them too. Overlap cannot separate the two, so a threshold would be a dial with
+  no honest setting. Removed, with the measurement left where the code was.
+
+  🧪 **The bite guards the REMOVAL, which is the unusual part.**
+
+  ```
+  BITE Q  reintroduce containment
+          × test_a_PARAPHRASED_span_still_reaches_the_verifier  (+ the wiring tests)
+  ```
+
+  A reverted feature usually leaves nothing to test. What is left here is the PROPERTY the
+  feature destroyed — a paraphrased span must still reach the semantic check — and that is worth
+  a test precisely because the next reader will have the same obvious idea I did.
+
+  📌 **A smaller thing the check found on its way out.** Six fixtures in
+  `test_critic_verifier.py` quoted `"some span"` against a passage of `"p"` — a span their own
+  passage never contained, which is input no judge produces. Containment refused them and the
+  fixtures are now realistic. That correction survives the revert.
+
+  ⚠️ **Where this leaves QC-5's precision, live and honestly.** On the real chapter the semantic
+  verifier drops **1 of 2** false positives (the invented-clause R5, 3/3) and keeps one whose
+  span is fabricated; the planted arm keeps its true findings. So the pass halves the noise
+  without costing recall — measured, on a rebuilt image, through the route the studio uses. The
+  fabricated-span class remains open and now has a **negative** result attached to the first
+  idea for closing it, which is worth more than an untried suggestion.
+
+  **QC (a) gates:** four plan gates green; `composition-service` **3809 passed, 403 skipped, 0
+  failed**.
+  **QC (b) live smoke:** the four-row table above, against a REBUILT image — and the planted arm
+  is what killed the batch, so the live control did the work the offline validation could not.
+  **QC (c) real data:** the ten critique responses across the three builds, with every drop
+  carrying the mechanism that made it.
   ---
   ### ✅ QC-5 C35 2026-08-24 — **one comma restored the verdict, and the LIVE clean arm is measurable at last**
 

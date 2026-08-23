@@ -29,6 +29,10 @@ from app.packer.profile import NEUTRAL
 
 RULES = [{"rule_id": "rule-betrayer", "text": "Lam Trach is the betrayer. No one else is."}]
 VIOL = [{"rule_id": "rule-betrayer", "violated": True, "span": "some span", "why": "a claim"}]
+#: The fixtures above quote "some span"; before the C36 containment check their passage
+#: did not contain it, which is input no real judge produces. The check refused them, which
+#: is the check working — a span that is not in the passage is exactly what it drops.
+FIXTURE_PASSAGE = "The hall was quiet and then some span appeared in the text."
 
 
 class ScriptedJudge:
@@ -68,7 +72,7 @@ def _critique_with_one_violation():
 async def test_a_refuted_verdict_is_dropped_and_NAMED():
     judge = ScriptedJudge(_reply(False, "the passage agrees with the rule"))
     kept, dropped = await verify_violations(
-        judge, user_id="u", model_source="s", model_ref="m", passage="p",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         violations=VIOL, active_rules=RULES,
     )
     assert kept == []
@@ -87,7 +91,7 @@ async def test_a_confirmed_verdict_SURVIVES():
     measured 7B failure is the mirror of this one, keeping everything."""
     judge = ScriptedJudge(_reply(True, "the passage names a different betrayer"))
     kept, dropped = await verify_violations(
-        judge, user_id="u", model_source="s", model_ref="m", passage="p",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         violations=VIOL, active_rules=RULES,
     )
     assert kept == VIOL
@@ -100,7 +104,7 @@ async def test_it_fails_OPEN_when_the_verifier_errors():
     Deleting a finding because the second call failed would turn an outage into a clean bill."""
     judge = ScriptedJudge(_reply(False), raises_on=1)
     kept, dropped = await verify_violations(
-        judge, user_id="u", model_source="s", model_ref="m", passage="p",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         violations=VIOL, active_rules=RULES,
     )
     assert kept == VIOL and dropped == []
@@ -110,7 +114,7 @@ async def test_it_fails_OPEN_when_the_verifier_errors():
 async def test_an_UNPARSABLE_reply_is_not_a_refutation():
     judge = ScriptedJudge("I think, on balance, maybe?")
     kept, dropped = await verify_violations(
-        judge, user_id="u", model_source="s", model_ref="m", passage="p",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         violations=VIOL, active_rules=RULES,
     )
     assert kept == VIOL and dropped == []
@@ -122,7 +126,7 @@ async def test_a_verdict_whose_rule_has_no_text_is_KEPT_not_dropped():
     that number is read as 'the judge was refuted this many times'."""
     judge = ScriptedJudge(_reply(False))
     kept, dropped = await verify_violations(
-        judge, user_id="u", model_source="s", model_ref="m", passage="p",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         violations=[{"rule_id": "not-a-rule-we-sent", "span": "s", "why": "w"}],
         active_rules=RULES,
     )
@@ -141,7 +145,7 @@ async def test_judge_prose_ACTUALLY_CALLS_the_verifier():
     judge = ScriptedJudge(_critique_with_one_violation(),
                           _reply(False, "the passage agrees with the rule"))
     crit = await critic.judge_prose(
-        judge, user_id="u", model_source="s", model_ref="m", passage="a passage",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
     )
     assert len(judge.calls) == 2, "the verifier must be a SECOND call, not a re-read of the first"
@@ -156,7 +160,7 @@ async def test_a_CONFIRMED_verdict_still_reaches_the_caller_through_judge_prose(
     judge = ScriptedJudge(_critique_with_one_violation(),
                           _reply(True, "the passage names a different betrayer"))
     crit = await critic.judge_prose(
-        judge, user_id="u", model_source="s", model_ref="m", passage="a passage",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
     )
     assert len(crit["violations"]) == 1
@@ -172,7 +176,7 @@ async def test_no_violations_costs_no_verifier_call():
     })
     judge = ScriptedJudge(critique)
     crit = await critic.judge_prose(
-        judge, user_id="u", model_source="s", model_ref="m", passage="a passage",
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
     )
     assert len(judge.calls) == 1
@@ -193,7 +197,7 @@ async def test_the_VERIFIER_ROLE_routes_the_audit_to_its_own_model():
     """
     judge = ScriptedJudge(_critique_with_one_violation(), _reply(False, "agrees with the rule"))
     await critic.judge_prose(
-        judge, user_id="u", model_source="s", model_ref="critic-model", passage="a passage",
+        judge, user_id="u", model_source="s", model_ref="critic-model", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
         verifier_source="vs", verifier_ref="verifier-model",
     )
@@ -209,7 +213,7 @@ async def test_no_verifier_configured_FALLS_BACK_to_the_critic():
     silently stop auditing for every existing book."""
     judge = ScriptedJudge(_critique_with_one_violation(), _reply(False, "agrees with the rule"))
     await critic.judge_prose(
-        judge, user_id="u", model_source="s", model_ref="critic-model", passage="a passage",
+        judge, user_id="u", model_source="s", model_ref="critic-model", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
     )
     assert len(judge.calls) == 2, "the audit must still happen"
@@ -276,3 +280,38 @@ def test_the_verifier_exemptions_are_not_stale():
         src = (root / rel).read_text(encoding="utf-8")
         assert "judge_prose(" in src, f"{rel} is exempt but no longer calls judge_prose"
 
+# ── QC-5 C36: containment was built, measured, and REMOVED — this pins why ────────────────
+
+PASSAGE = "The hall was silent. Luc Vo Toi is the neutral one, and he stepped forward. Then it ended."
+
+
+@pytest.mark.asyncio
+async def test_a_PARAPHRASED_span_still_reaches_the_verifier():
+    """⚰️ The property a span-containment check would have destroyed, and the live run is why.
+
+    Containment was built here: a span the judge quotes must appear in the passage, which would
+    catch the fabricated quote C35 found the semantic verifier keeping. It validated on the 16
+    stored violations (14 spans present; the 2 absent already adjudicated false) — and then the
+    LIVE planted arm killed it:
+
+        clean arm    raw=2 kept=0   3/3   both false positives dropped
+        planted arm  raw=4 kept=0   ALL FOUR dropped by CONTAINMENT
+
+    The planted arm contains a REAL violation, and this route's judge PARAPHRASES its spans. So
+    containment had 0 recall — the same failure as the span-only verifier, from the other side.
+    This test is what stops it coming back by accident.
+    """
+    judge = ScriptedJudge(_reply(True, "the passage names a different betrayer"))
+    kept, dropped = await verify_violations(
+        judge, user_id="u", model_source="s", model_ref="m", passage=PASSAGE,
+        violations=[{"rule_id": "rule-betrayer", "violated": True,
+                     "span": "he walked forward as though nothing had happened",
+                     "why": "a claim"}],
+        active_rules=RULES,
+    )
+    assert len(kept) == 1, (
+        "a paraphrased span is not a fabricated one, and dropping it costs the true findings "
+        "this judge reports — measured live at 4 of 4 on the planted arm"
+    )
+    assert dropped == []
+    assert len(judge.calls) == 1, "it must still reach the semantic check"

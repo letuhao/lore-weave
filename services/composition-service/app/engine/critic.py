@@ -343,6 +343,24 @@ async def verify_violations(
     kept: list[dict[str, Any]] = []
     dropped: list[str] = []
     for v in violations:
+        # ⚰️ **SPAN CONTAINMENT was built here and MEASURED OUT (C36).** The idea: a span the
+        # judge quotes must appear in the passage, which would catch the fabricated quote C35
+        # found the semantic verifier keeping (a sentence with a different character's name
+        # substituted in, 3/3). It was validated on the 16 stored violations — 14 spans present,
+        # the 2 absent already adjudicated false — and then the LIVE planted arm killed it:
+        #
+        #     clean arm    raw=2 kept=0   3/3   both false positives dropped
+        #     planted arm  raw=4 kept=0   ALL FOUR dropped by CONTAINMENT
+        #
+        # The planted arm contains a REAL violation, and this route's judge PARAPHRASES its
+        # spans ("He walked as if he had just strolled in…") rather than quoting them. So
+        # containment has 0 recall here — the same failure as the span-only verifier, arrived at
+        # from the other side. The 14/16 census came from the AUTHORING path and did not
+        # generalise, which is rule 3 catching a detector validated on one distribution.
+        #
+        # Fuzzy overlap does not rescue it: C35's fabrication shares every token with the real
+        # sentence except the name. Do not rebuild this without a way to tell a paraphrase from
+        # a substitution.
         rule_text = by_id.get(str(v.get("rule_id")), "")
         if not rule_text:
             # Nothing to audit against. `map_rule_tokens` already refuses unattributable
