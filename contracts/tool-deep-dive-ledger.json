@@ -3473,6 +3473,12 @@
       "not_the_two_known_causes": "The dead fixture is repaired and the endpoints are active; the refusal now returns the dropped name. Neither removes this. The runs that DO produce calls show link_edit -> motif_search -> ... and die differently, with RUN_ERROR.",
       "consequence": "By the gate's own rule a transport-dead turn is not evidence in either direction, so this tool cannot be concluded on any of these batches and P3-NAME-TO-ID cannot be CLEARED. Recording the condition rather than re-running: four K=5 batches (c2-motif7/8/9 and the stopped control) reproduced the same shape, and a fifth would too.",
       "not_chased_further": "Deliberate. Each K=5 costs ~25 minutes and returns the same shape, and the next honest step is a provider-side investigation (LM Studio /v1/responses under a 35-tool surface), which is a different piece of work from this loop's tool-resolution question."
+    },
+    "D-PROSE-CONFIRMATION-INSTEAD-OF-THE-TOOLS-OWN-CARD": {
+      "status": "OPEN — measured, 5 tools / 45 runs, zero errors",
+      "what": "The model calls the tool's lookup supplier, then asks the user for permission IN PROSE and ends the turn with NO pending card. composition_arc_apply 5/5, composition_motif_adopt 5/5, jobs_cancel 15/15, jobs_pause 12/15, composition_derivative_edit 4/5.",
+      "why_it_matters": "The turn looks careful and correct — it even sounds like good manners — and nothing is staged. The platform has a real approval card for exactly this moment and it never engages, so a user who answers 'yes' is answering a question no mechanism is holding. It is invisible to an error-rate check: zero errors on all 45 runs.",
+      "not_the_recorded_cause": "These tools were blocked under P4-PRECONDITION, 'the fixture cannot reach the state the tool needs'. Surfacing is 5/5 and errors are 0/5; the fixture reaches the state fine."
     }
   },
   "deferred_questions": {
