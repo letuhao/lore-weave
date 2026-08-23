@@ -2257,9 +2257,9 @@
   },
   "composition_entity_override_edit": {
    "state": "blocked",
-   "cycle": "batch-41 (2026-08-14)",
-   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/rebaseline.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, re-measured 2026-08-23 at K=5: SURFACED 5/5 with ZERO errors and CALLED 0/5. Surfacing is FIXED and is no longer the cause — the tool is on the wire and the model sees it. A PRECONDITION CHAIN, and the scenario's premise was wrong — the tool said so: 'NOT_A_DERIVATIVE — overrides exist only on a dị bản'. An entity override exists only on a what-if derivative, never on the canonical Work, so the fixture is asking for something that cannot exist where it is looking.\n\nThis is P4-PRECONDITION's category: the fixture cannot reach the state the tool needs. Not a tool defect, and no longer a surfacing failure.",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/rebaseline.json",
+   "cycle": "batch-40 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-override2.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 5/5, owning store moved on 5/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED ON TOOL SELECTION, with the argument-repair cause MEASURED AND REMOVED — and it did not move the tool.\n\nIts recorded cause was that the model passes entity_id='Aldric Vane', a NAME, and is refused. A fix for exactly that shipped this morning and, measured here for the first time, had NEVER RUN: glossary_propose_entity_edit is a FRONTEND tool and that branch returns above the whole repair chain. Ported (D-ARGUMENT-REPAIR-CHAIN-IS-BACKEND-ONLY), and it now fires 9 times per batch with the name handed back in the refusal.\n\nStill 0/5. The model reads the ontology, tries glossary_propose_entity_edit, is repaired, searches, and ends at glossary_entity_set_attributes — the GLOBAL attribute write — while the request says 'IN THIS BOOK Aldric Vane should be a cartographer'. composition_entity_override_edit is the book-local tool and is never reached. That is a sibling winning a request it answers at the wrong SCOPE, which is P5's shape rather than P4's.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/c-override2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
   },
@@ -3692,6 +3692,14 @@
    "it_is_P9s_invariant_inverted": "P9 reads 'a gate must open on WHAT THE REQUEST ASKS FOR, not on the vocabulary it happens to use.' The recorded failures are the gate SHUTTING on a real setup request; this is the same defect in the other direction — opening on a work of fiction's proper noun. One keyword list produces both.",
    "measured": "Across 186 distinct corpus prompts the gate opens on 11. At least one of those 11 is a pure prose request, matched on 'codex' in a chapter title. Widening the markers to fix the SHUT-side failures would enlarge this side too, which is why the fix is not a longer list.",
    "measured_by": "_is_world_setup_intent() over every scenario prompt in scripts/toolloop/"
+  },
+  "D-ARGUMENT-REPAIR-CHAIN-IS-BACKEND-ONLY": {
+   "status": "FIXED for the id arm 2026-08-23; the DIVERGENCE itself remains",
+   "what": "chat-service's frontend-tool branch returns ABOVE the backend dispatch, where the whole argument-repair chain lives. A frontend tool therefore got no non-identifier drop, no name-repair, no field-name-prefix strip, no int-to-string coercion, no single-element unwrap.",
+   "how_it_was_found": "By re-running a fix I had shipped and never measured. composition_entity_override_edit at K=5: the model called glossary_propose_entity_edit with entity_id='Aldric Vane' on all five runs and the name-repair sentence fired ZERO times. The tool is a FRONTEND tool.",
+   "it_is_the_third_instance": "The file already records two others: the context-id injector missed this branch (D-FE-TOOL-CONTEXT-IDS — a weak model transcribing an invented book_id, 'mình sẽ sử dụng một ID giả định'), and CP-5.3's resolver became unreachable through it (DQ-5). Each repair has been hand-ported the run AFTER it was found missing. That pattern is the defect; porting one arm does not end it.",
+   "verified_working": "After the port: the drop fires with its value logged — \"dropped non-identifier value(s) ['entity_id'] from FRONTEND tool glossary_propose_entity_edit; values={'entity_id': 'Aldric Vane'}\" — 9 times in the batch where it fired 0 before, and the refusal now reads \"required: missing properties: ['entity_id'] You passed a NAME where an id is required (entity_id='Aldric Vane')\". The model's next call is a real glossary_search.",
+   "what_it_did_NOT_fix": "composition_entity_override_edit is still called 0/5. The repair changes what the model is TOLD, not which tool it picks — it stays in the glossary family and ends at glossary_entity_set_attributes. Recorded as a measured non-result rather than credited."
   }
  },
  "deferred_questions": {
@@ -4251,8 +4259,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 82,
-  "defects_other": 43
+  "defects_total": 83,
+  "defects_other": 44
  },
  "observations": [
   {
