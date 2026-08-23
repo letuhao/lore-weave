@@ -5031,6 +5031,12 @@ class _MotifLinkEditArgs(ForbidExtra):
     ),
     meta=require_meta(
         "A", "user",
+        # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE — `book_id` here is NOT a scope,
+        # it selects a different endpoint rule (own motifs vs this book's shared graph). A
+        # consumer that backfills a missing context id must leave it alone: measured 2026-08-24,
+        # chat-service filled the omitted id, this tool refused, its refusal said to call again
+        # WITHOUT book_id, and the runtime put it back — the remedy was unfollowable.
+        mode_selecting_args=["book_id"],
         synonyms=["link motifs", "connect motifs", "add motif edge", "unlink motifs",
                   "remove motif edge", "compose pattern", "set succession", "mark variant"],
         tool_name="composition_motif_link_edit",

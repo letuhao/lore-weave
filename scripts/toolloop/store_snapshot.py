@@ -314,6 +314,36 @@ def _model_counts(user_model_id: str) -> dict:
     return out
 
 
+def _motif_link_counts(book_id: str) -> dict:
+    """🔴 `motif_link` IS KEYED BY MOTIF, SO NO SWEEP IN THIS FILE HAS EVER SEEN IT.
+
+    Its columns are (id, from_motif_id, to_motif_id, kind, ord, created_at) — no `book_id`, no
+    `chapter_id`, no `project_id`. `snapshot` sweeps exactly those three keys, so for
+    `composition_motif_link_edit` the DATA bar's "store unchanged" was VACUOUS in the same way
+    `_world_counts` describes for the world/map family: it was not looking at the store the tool
+    writes.
+
+    Measured 2026-08-24 (batch c-motiflink8, K=5, zero errored runs): the tool was called 5/5 and
+    returned `{"id": "01a030c0-7bbc-70d1-b142-ecbc86db0d8e", "kind": "precedes", …}` — the edge
+    landed, and `store_diff` was `{}` for four of the five runs.
+
+    SCOPED THROUGH THE RUN'S OWN MOTIFS, not through the owner. `_world_counts` already recorded
+    why: an owner-wide sweep folds in the account's unrelated rows and destroys the attribution
+    per-scenario fixtures exist to provide. A link counts here iff BOTH endpoints are motifs
+    carrying this run's `book_id`, which the scenario's seed sets.
+    """
+    rows = _psql("loreweave_composition", (
+        "select count(*)::text from motif_link l "
+        "join motif f on f.id = l.from_motif_id "
+        "join motif t on t.id = l.to_motif_id "
+        f"where f.book_id = '{book_id}' and t.book_id = '{book_id}';"
+    ))
+    n = int(rows[0]) if rows and str(rows[0]).strip().isdigit() else 0
+    # Empty tables are omitted everywhere else in this file, so that a table APPEARING in the
+    # diff is itself the signal. Same rule here.
+    return {"loreweave_composition.motif_link": {"rows": n, "latest": "-"}} if n else {}
+
+
 def snapshot(book_id: str, project_id: str | None = None,
              world_id: str | None = None, chapter_id: str | None = None,
              user_model_id: str | None = None) -> dict:
@@ -364,6 +394,7 @@ def snapshot(book_id: str, project_id: str | None = None,
             proj_t = [t for t in _scoped_tables(db, "project_id") if t not in seen]
             for k, v in _counts(db, proj_t, "project_id", project_id).items():
                 snap[f"{db}.{k}"] = v
+    snap.update(_motif_link_counts(book_id))
     if world_id:
         snap.update(_world_counts(world_id))
     if user_model_id:

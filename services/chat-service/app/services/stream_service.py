@@ -2128,7 +2128,26 @@ def _inject_context_ids(
     _meta = fn.get("_meta") or {}
     ambient_book = bool(_meta.get("ambient_book"))
     ambient_project = bool(_meta.get("ambient_project"))  # composition: resolve project_id from X-Project-Id
+    # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE — arguments whose ABSENCE IS
+    # MEANINGFUL. This whole function rests on an assumption that is true of almost every tool
+    # and not of all of them: that a context id merely SCOPES the call, so supplying one the
+    # model forgot can only help. For a tool where the id selects a different code path, filling
+    # it changes what the tool DOES, and the model cannot undo it.
+    #
+    # Measured 2026-08-24 on composition_motif_link_edit, whose `book_id` switches it from "link
+    # two motifs you own" to "link two motifs SHARED into that book": the model omitted it, this
+    # function put it back, the tool refused because the caller's private motifs are not shared,
+    # and its refusal said to call again WITHOUT book_id. The model did exactly that — and the
+    # id was injected again. Both runs then died on the repeat-breaker. The remedy a refusal
+    # names has to be reachable, or it is worse than no remedy at all.
+    _mode_args = _meta.get("mode_selecting_args")
+    _no_fill = {a for a in _mode_args if isinstance(a, str)} if isinstance(
+        _mode_args, (list, tuple)) else set()
     for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
+        if key in _no_fill:
+            # The tool declares this argument mode-selecting: absent means something. Never
+            # supply it, and never correct one the model supplied — both are the model's call.
+            continue
         if key == "book_id" and ambient_book:
             # ambient_book: book_id resolves from X-Book-Id server-side; the model shouldn't
             # pass it. But a weak model DOES — and on a studio turn it invents a well-formed

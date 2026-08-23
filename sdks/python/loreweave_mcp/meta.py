@@ -69,6 +69,14 @@ def validate_tool_meta(meta: dict[str, Any] | None, *, tool_name: str = "") -> N
                 f"_meta.undo_hint{label} must be a dict with at least a 'tool' key"
             )
 
+    msa = meta.get("mode_selecting_args")
+    if msa is not None and not (
+        isinstance(msa, (list, tuple)) and all(isinstance(a, str) for a in msa)
+    ):
+        raise MetaValidationError(
+            f"_meta.mode_selecting_args{label} must be a list of argument names"
+        )
+
     synonyms = meta.get("synonyms")
     if synonyms is not None and not (
         isinstance(synonyms, (list, tuple))
@@ -87,6 +95,7 @@ def require_meta(
     paid: bool = False,
     ambient_book: bool = False,
     ambient_project: bool = False,
+    mode_selecting_args: list[str] | None = None,
     visibility: str | None = None,
     superseded_by: str | None = None,
     tool_name: str = "",
@@ -104,6 +113,15 @@ def require_meta(
     (e.g. web search) stays tier ``R`` and remains callable in ``ask`` mode, but must
     clear a SPEND gate — never a write gate. Do not coerce a tool to ``A``/``W``
     merely because it costs money.
+
+    ``mode_selecting_args=["book_id"]`` names arguments whose ABSENCE IS MEANINGFUL —
+    supplying one selects a different code path, not merely a different scope. A consumer
+    that backfills known context ids (chat-service's ``_inject_context_ids``) must skip
+    these: filling one changes what the tool does. Measured 2026-08-24 on
+    ``composition_motif_link_edit``, whose ``book_id`` switches it from "link two motifs
+    you own" to "link two motifs shared into that book" — the runtime filled the omitted
+    id, the tool refused, its refusal said to call again WITHOUT it, and the runtime put
+    it back, so the remedy could never be followed.
 
     ``visibility="legacy"`` DEPRECATES the tool (CAT-4, mirrors the Go kit's
     ``WithVisibility``): it stays registered + callable, but is EXCLUDED from the
@@ -126,6 +144,12 @@ def require_meta(
     # from the envelope (X-Book-Id / X-Project-Id) when the model omits it (resolve_book_scope /
     # resolve_project_scope). The chat-service surface builder reads these to drop the id from
     # `required`; only set on a tool that ACTUALLY resolves it (migration atomicity).
+    # An argument whose ABSENCE is semantically meaningful: a consumer that helpfully fills a
+    # missing context id must NOT fill this one, because supplying it selects a different code
+    # path rather than merely scoping the same one. See
+    # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE.
+    if mode_selecting_args:
+        meta["mode_selecting_args"] = list(mode_selecting_args)
     if ambient_book:
         meta["ambient_book"] = True
     if ambient_project:
