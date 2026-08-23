@@ -67,7 +67,13 @@ def confirm(auth: Auth, tool_name: str, token: str, *,
     body: dict = {"confirm_token": token}
     if enabled_ops is not None:
         body["enabled_ops"] = enabled_ops
-    path = f"/v1/{domain}/actions/confirm"
+    # 🔴 THE PATH SEGMENT IS NOT ALWAYS THE DOMAIN. knowledge-service mounts its actions router at
+    # `/v1/kg/actions` (kg_actions.py: APIRouter(prefix="/v1/kg/actions")), so `/v1/knowledge/...`
+    # 404s for EVERY kg_* tool. Measured 2026-08-23 while redeeming a kg_ontology_propose token:
+    # both attempts returned 404 and the only reason it was visible is that the caller recorded the
+    # status instead of treating a failed redemption as "the tool wrote nothing".
+    _PATH_SEG = {"knowledge": "kg"}
+    path = f"/v1/{_PATH_SEG.get(domain, domain)}/actions/confirm"
 
     # 1) gateway edge, Bearer JWT (auth path under test)
     for base, headers in (
