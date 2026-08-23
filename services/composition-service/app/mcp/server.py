@@ -101,7 +101,7 @@ from app.db.repositories.structure_templates import (
     StructureTemplateVersionConflict,
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
-from app.db.repositories.motif_repo import MotifRepo
+from app.db.repositories.motif_repo import EndpointsOwnedNotShared, MotifRepo
 from app.engine.exit_state import merge_authored_exit_state
 from app.engine.library_translate import (
     LANGUAGE_NAMES, MAX_ITEMS_PER_JOB, TRANSLATABLE_KINDS,
@@ -4634,6 +4634,19 @@ async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateA
             tc.user_id, _uuid(args.from_motif_id, "from_motif_id"), _uuid(args.to_motif_id, "to_motif_id"), args.kind,
             ord=args.ord, book_id=bid,
         )
+    except EndpointsOwnedNotShared:
+        # D-AN-OPTIONAL-ARG-SWITCHES-THE-MODE-AND-THE-REFUSAL-HIDES-IT — the ONE miss with a
+        # remedy, so name it. `book_id` silently switches this tool from "two motifs you own" to
+        # "two motifs shared into that book", and a caller that passed the ambient book over its
+        # own motifs cannot tell that from H13's "not found or not accessible" — measured
+        # 2026-08-24, the model had just listed both ids and had nowhere to go from that message.
+        # Ordered BEFORE the LookupError arm it subclasses; every other miss still falls through
+        # to the uniform refusal, so the no-existence-oracle property is unchanged.
+        return {"success": False, "error": (
+            "both motifs are YOUR OWN and are not shared into this book, so the book-scoped form "
+            "cannot link them. Call composition_motif_link_edit again WITHOUT book_id to link two "
+            "motifs you own."
+        )}
     except LookupError:
         # an endpoint isn't in the required scope (your own, or this book's shared tier) → deny.
         raise uniform_not_accessible()
@@ -4994,7 +5007,17 @@ class _MotifLinkEditArgs(ForbidExtra):
     kind: Literal["composed_of", "precedes", "variant_of"] | None = None  # create
     ord: int | None = None            # create
     link_id: str | None = None        # delete
-    book_id: str | None = None        # both (shared-tier variant)
+    # 🔴 LEFT BARE BESIDE THE TWO IDS ABOVE, AND IT SELECTS A DIFFERENT ENDPOINT RULE. The comment
+    # on from/to_motif_id says a bare annotation gives the model nothing to read; this one is worse
+    # than silent, because supplying it CHANGES WHAT THE TOOL ACCEPTS. Measured 2026-08-24:
+    # the model resolved both motifs correctly, passed the ambient book_id out of habit, and the
+    # call was refused because its own private motifs are not book_shared.
+    book_id: Annotated[str | None, Field(default=None, description=(
+        "OMIT THIS to link two motifs YOU OWN — that is the usual case, and passing a book_id you "
+        "were merely given will refuse the call. Supply it ONLY to link two motifs that are "
+        "already SHARED into that book's graph: with book_id, BOTH endpoints must be shared in "
+        "that same book, and your own private motifs do not qualify."
+    ))] = None  # both (shared-tier variant)
 
 
 @mcp_server.tool(
