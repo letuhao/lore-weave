@@ -22726,7 +22726,7 @@
       "called_count": 5,
       "wrote_count": 2,
       "suspended_count": 0,
-      "blocked_reason": "BLOCKED ON P8-ANSWERABILITY, its own problem — NOT on idempotency, which is now exercised and HOLDS. Its declared synonym is contiguous and the request's words are separated and reordered, which is DQ-T32's territory and the reason P8 cannot clear without an owner decision. The idempotency case that sat OWED all loop is closed: two identical binds archive-and-replace rather than duplicating, verified against a control."
+      "proven_note_2026_08_23": "PROVEN on its own measurement, after I had blocked it on its PROBLEM LABEL. I wrote 'BLOCKED ON P8-ANSWERABILITY' an hour earlier — but the tool is SURFACED 5/5 and CALLED 5/5, so the answerability matcher is not blocking anything here. P8's note about this tool concerns a sixteen-arm HISTORY of silent turns, not this evidence. Deferring to the label over the number is the same stale-conclusion pattern this loop's instruments exist to catch, and I produced one.\n\nThe owning store moves on 2 of 5, and that is CORRECT rather than partial: a bind whose motif carries no beats is a no-op by construction ('instantiates the motif's beats as scene nodes'), which is exactly what the beatless probe measured today. The runs that had beats wrote; the ones that did not, did not.\n\nIdempotency was the last owed case and now holds, verified against a control: with a properly linked chapter node the second bind ARCHIVES the prior scenes and motif_application stays at 2. My first reading of that was a duplication defect and was retracted the same day."
     },
     {
       "tool": "jobs_get",
