@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 81 of 124 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 82 of 125 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (4/5) · `T49` (1/1)
+**OPEN:** `T17` (32/42) · `T25` (18/25) · `T33` (3/4) · `QC-5` (23/47) · `T48` (5/6) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -22318,6 +22318,56 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48d 2026-08-23 — **the two recipes I marked "NOT yet run" now are, and a BUILD ARTIFACT is the other way a suite goes dark**
+
+  ```
+  campaign-service          184 passed,  20 skipped  ->   204 passed,   0 skipped
+  lore-enrichment-service  1261 passed, 162 skipped  ->  1421 passed,   2 skipped
+  ```
+
+  📐 **T48c recorded two recipes as "recorded, NOT yet run" and said the run was owed.** It is
+  paid here: `+20` and `+142` tests from the two Postgres containers, then `+18` more from two
+  Rust binaries. No defects — which, after T25x found one behind exactly this kind of skip, is
+  the answer and not a formality.
+
+  🔴 **18 of lore-enrichment's skips were not an env var at all.** They wanted
+  `progression-pin` / `progression-validate`, and **the pair builds in 7.31s.** Same darkness,
+  different cause — and invisible to a gate that only looked for `TEST_*`. One of those skips
+  argues its own case well enough to quote:
+
+  ```
+  "treating 'no validator' as 'nothing to validate' would admit every candidate on a host
+   where the build failed."
+  ```
+
+  🧪 **BITE 36 WALKED THROUGH TWO VERSIONS OF MY OWN CHECK, and both failures are the finding.**
+
+  ```
+  1st  normalised to the first three words -> every `cargo build -p …` became the SAME
+       string, so a brand-new crate was "documented" by an unrelated entry.   EXIT=0
+  2nd  keep the target -> `cargo build ruleset-loader`, but the REGISTRY spells
+       `cargo build -p ruleset-loader`, so the real entry read as undocumented
+  3rd  normalise BOTH sides
+       FAIL — not documented: ['cargo build brand-new-crate']                 EXIT=1
+  ```
+
+  **A check that cannot tell two requirements apart cannot report a missing one** — the first
+  version was unfalsifiable for every cargo command in the repo, and only the bite showed it.
+  Two selftest cases now pin both halves: two crates are two requirements, and a `-p` in the doc
+  still satisfies the normalised form.
+
+  ⚖️ **Why "no defects" is worth the cycle.** Four services are now proven rather than assumed:
+  `composition` 400, `campaign` 204, `lore-enrichment` 1421, `knowledge` 5469. Before this run
+  every one of those numbers was smaller and the difference was invisible — the suites reported
+  green while 728 + 403 + 20 + 162 tests never executed.
+
+  **QC (a) gates:** four plan gates green; `test-env-registry-gate --selftest` **7/7** with the
+  two new cases; `gate-wiring-gate` 112 gates, all wired or exempt.
+  **QC (b) live smoke:** two more throwaway `postgres:18-alpine` (7998, 7999) and a real
+  `cargo build`. All containers removed.
+  **QC (c) real data:** every before/after pair above is a measured run of that service's suite.
+
   ---
   ### ✅ T48c 2026-08-23 — **the registry gate was scoped to the service that motivated it; composition-service had 403 dark tests**
 

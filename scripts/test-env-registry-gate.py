@@ -35,6 +35,12 @@ REGISTRY = os.path.join(ROOT, "docs", "dev", "TEST_DATABASES.md")
 _SKIP = re.compile(r"pytest\.skip\(\s*f?[\"']([^\"']{0,200})", re.S)
 _VAR = re.compile(r"\bTEST_[A-Z][A-Z0-9_]*\b")
 
+#: The OTHER way a suite goes dark: a missing BUILD ARTIFACT rather than a missing
+#: variable. Measured 2026-08-23 — 18 lore-enrichment tests skipped for want of
+#: `progression-pin`/`progression-validate`, and the binaries take **7.31s** to build.
+#: Same invisibility, different cause, so the registry owes the command either way.
+_BUILD = re.compile(r"(cargo build[^\"']{0,80}|npm run build[^\"']{0,60}|go build[^\"']{0,60})")
+
 MAX_UNDOCUMENTED_TEST_VARS = 0
 
 
@@ -58,6 +64,16 @@ def scan(tests_root: str | None = None, registry_text: str | None = None):
                     continue
                 for msg in _SKIP.findall(src):
                     named |= set(_VAR.findall(msg))
+                    # A build command counts as a requirement too. ⚠️ Normalised to
+                    # `<tool> <verb> <TARGET>` — the target is what carries the IDENTITY.
+                    # The first version kept the first three words, which for cargo is
+                    # `cargo build -p` for EVERY package: BITE 36 added a skip naming a
+                    # brand-new crate and the gate passed, because one cargo build was
+                    # indistinguishable from another. A check that cannot tell two
+                    # requirements apart cannot report a missing one.
+                    for b in _BUILD.findall(msg):
+                        words = [w for w in b.split() if w not in ("-p", "--bin")]
+                        named.add(" ".join(words[:3]))
     if registry_text is None:
         try:
             registry_text = open(REGISTRY, encoding="utf-8", errors="replace").read()
@@ -69,9 +85,13 @@ def scan(tests_root: str | None = None, registry_text: str | None = None):
     # is a substring of the other. That is the SAME defect `conftest` records for T42a
     # — a guard matching `":7688"` as a substring sailed past `localhost:27688` — in
     # the opposite direction.
+    # The registry is normalised the SAME way before matching, so `cargo build -p foo` in
+    # the document satisfies the `cargo build foo` a skip message normalises to. Matching
+    # raw text would make the gate depend on whether the doc spelled the flag.
+    flat = " ".join(w for w in registry_text.split() if w not in ("-p", "--bin"))
     missing = sorted(
         v for v in named
-        if not re.search(r"\b" + re.escape(v) + r"\b(?![A-Z0-9_])", registry_text)
+        if not re.search(r"\b" + re.escape(v) + r"\b(?![A-Z0-9_])", flat)
     )
     return sorted(named), missing
 
@@ -128,6 +148,27 @@ def selftest() -> int:
         print("  FAIL — a skip naming NO variable was scored as env-gated"); ok = False
     else:
         print("  PASS  a skip that names no variable is ignored")
+
+    # A BUILD ARTIFACT is a requirement too, and two different crates must not collapse into
+    # one. BITE 36 walked through the first version twice: normalising to the first three
+    # words made every `cargo build -p …` the same string, so a brand-new crate was
+    # "documented" by an unrelated entry.
+    d3 = _mk('pytest.skip("build it with `cargo build -p other-crate --bin x`")\n')
+    if scan(d3, "cargo build -p ruleset-loader --bin progression-pin")[1] != [
+            "cargo build other-crate"]:
+        print("  FAIL — one cargo build was treated as documenting another; the normalisation "
+              "has dropped the TARGET, which is the only part carrying identity")
+        ok = False
+    else:
+        print("  PASS  two different crates are two different requirements")
+
+    # …and the documented one is satisfied even though the doc spells the `-p` flag.
+    if scan(d3, "cargo build -p other-crate --bin x")[1]:
+        print("  FAIL — a documented build command was reported; the registry side is not "
+              "being normalised the same way as the skip message")
+        ok = False
+    else:
+        print("  PASS  `-p` in the doc still satisfies the normalised requirement")
 
     # The real tree must be clean, and this is the arm that would catch the registry going
     # stale after a new suite lands.
