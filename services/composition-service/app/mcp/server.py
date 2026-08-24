@@ -8795,10 +8795,29 @@ class _GlossaryBuildArgs(ForbidExtra):
     ]
     # book_id OPTIONAL (ambient_book) — omitted inside a studio, resolves from X-Book-Id.
     book_id: str | None = None
-    run_id: str | None = None                       # every op except `start`
-    source_text: str | None = None                  # op=start (required)
-    model_ref: str | None = None                    # op=start (required — a user-model UUID)
-    model_source: str = "user_model"
+    run_id: Annotated[str | None, Field(description=(
+        "The run this call belongs to, from op=start's result. Required by every op EXCEPT "
+        "`start`. Never invent one: if you have no run_id, the op you want is `start`."
+    ))] = None
+    # 🔴 THESE THREE CARRIED NO DESCRIPTION AT ALL, and op=start REQUIRES two of them.
+    # Measured 2026-08-25: once the tool finally started being selected (6 of 15 runs), every
+    # single call failed with "model_ref is required for op=start" — the model chose the right
+    # tool, chose the right op, invented no run_id, and could not complete, because the argument
+    # it was missing described neither what it is nor where to get one. IN-4: a constraint lives
+    # in the schema, not only in the tool's prose.
+    source_text: Annotated[str | None, Field(description=(
+        "The story, notes or premise to build FROM — paste the user's prose here. Required for "
+        "op=start. This tool reads what you hand it; it does not read the book's chapters."
+    ))] = None
+    model_ref: Annotated[str | None, Field(description=(
+        "REQUIRED for op=start: the UUID of a model to build with. Get one from "
+        "`settings_list_models` and pass its `user_model_id` — that field IS this value. Never "
+        "pass a name or the string 'default'; it must be UUID-shaped."
+    ))] = None
+    model_source: Annotated[str, Field(description=(
+        "Where model_ref comes from. Leave as 'user_model' — that is what settings_list_models "
+        "returns."
+    ))] = "user_model"
     # OMIT to write in the BOOK's own language. The default was "vi" — the POC's language,
     # hardcoded at this boundary — so every build wrote Vietnamese into every book (measured
     # 2026-08-25 against an original_language='en' fixture). It must be None, not another
