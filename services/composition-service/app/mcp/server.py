@@ -3001,6 +3001,41 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     # the gated Work's project (the same project-scope guard the other by-id
     # handlers apply). The CHAPTER target is validated at confirm by the engine
     # (it needs book-service to resolve the chapter sort/plan).
+    if not has_scene:
+        # 🔴 THE CHAPTER TARGET WAS VALIDATED NOWHERE AT PROPOSE, and the comment that used to sit
+        # here said so deliberately: "The CHAPTER target is validated at confirm by the engine (it
+        # needs book-service to resolve the chapter sort/plan)." Measured 2026-08-24 over MCP,
+        # each of these MINTED A COST-BEARING CARD: a chapter_id that does not exist, and a
+        # chapter belonging to a DIFFERENT book. Approve-then-fail on the most expensive tool on
+        # the platform — the same sentence D-UNDECLARED-REF wrote about this tool's model_ref.
+        #
+        # I had filed the fix as an owner decision (DQ-T42) on the grounds that existence needs
+        # book-service, which would make it a choice about fail-open vs fail-closed during an
+        # outage. That premise was wrong. The engine's own chapter path opens with:
+        #
+        #     scenes = await outline.scenes_for_chapter(project_id, chapter_id)
+        #     if not scenes:
+        #         raise HTTPException(400, {"code": "NO_CHAPTER_PLAN", ...})
+        #
+        # so a chapter with no scene plan cannot be generated AT ALL. Non-empty scenes is a
+        # necessary precondition of the operation, the query is LOCAL to this service, and it is
+        # scoped by project_id — so there is no cross-service degrade to decide. It refuses
+        # exactly what the confirm would refuse, one stage earlier and before the author is asked
+        # to approve a spend.
+        #
+        # Both failing bars fall to the same predicate: a chapter that does not exist has no
+        # scenes in this project, and another book's chapter has no scenes in THIS project.
+        # Read `args.chapter_id`, not the `target_id` alias: test_uuid_errors_name_the_field
+        # asserts every site NAMES the field it READS, and it caught this one naming "chapter_id"
+        # while reading target_id. Reading the real argument is both what the guard wants and
+        # what makes the error message true for the caller.
+        _scenes = await OutlineRepo(get_pool()).scenes_for_chapter(
+            pid, _uuid(args.chapter_id, "chapter_id"))
+        if not _scenes:
+            raise ValueError(
+                "chapter has no scene plan in this Work — nothing to generate from. Either the "
+                "chapter belongs to a different book, or it has not been decomposed yet: run the "
+                "decompose step first, or pass outline_node_id to generate a single scene.")
     if has_scene:
         outline = OutlineRepo(get_pool())
         node = await outline.get_node(_uuid(target_id, "target_id"))

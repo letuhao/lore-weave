@@ -1740,14 +1740,23 @@ async def test_generate_chapter_mints_confirm_token():
     from loreweave_mcp import verify_confirm_token
     from app.config import settings
 
+    # A chapter target now requires a SCENE PLAN at propose — the engine refuses
+    # NO_CHAPTER_PLAN without one, so minting a card for a chapter that has none was
+    # approve-then-fail (see test_generate_refuses_a_chapter_with_no_scene_plan). This test is
+    # about the TOKEN, so it stubs a chapter that has a plan; the absent case has its own file.
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    _outline = MagicMock()
+    _outline.return_value.scenes_for_chapter = AsyncMock(return_value=[MagicMock(parent_id=None)])
     async with _patched(grant_level=2):
-        res = await srv.composition_generate(
-            _Ctx(),
-            srv._GenerateArgs(
-                project_id=str(PROJECT), chapter_id=str(CHAPTER),
-                model_source="user_model", model_ref=str(MODEL_REF), guide="dark tone",
-            ),
-        )
+        with patch.object(srv, "OutlineRepo", _outline):
+            res = await srv.composition_generate(
+                _Ctx(),
+                srv._GenerateArgs(
+                    project_id=str(PROJECT), chapter_id=str(CHAPTER),
+                    model_source="user_model", model_ref=str(MODEL_REF), guide="dark tone",
+                ),
+            )
     assert res["descriptor"] == "composition.generate"
     assert res["domain"] == "composition"
     claims = verify_confirm_token(settings.confirm_token_signing_secret, res["confirm_token"])

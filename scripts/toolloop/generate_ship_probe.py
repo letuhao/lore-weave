@@ -52,10 +52,30 @@ try:
                                           model_ref=REAL_MODEL, chapter_id=a.chapter_id)
     out["tenancy_foreign_project"]["asked"] = "book A's chapter against book B's project"
 
+    # 🔴 THE CONTROL NEEDS A CHAPTER THAT CAN ACTUALLY BE GENERATED. Since 2026-08-24 a chapter
+    # target is refused at propose unless it has a SCENE PLAN — the precondition the engine
+    # itself enforces (NO_CHAPTER_PLAN). A fresh fixture chapter has none, so without this seed
+    # every case refuses and the probe cannot tell "correctly strict" from "broken".
+    try:
+        m.call("composition_outline_node_create", {
+            "project_id": a.project_id, "kind": "scene", "chapter_id": a.chapter_id,
+            "title": "The black stair", "goal": "Aldric reaches the codex",
+            "synopsis": "He climbs as the storm breaks."})
+        out["_seeded_scene"] = "ok"
+    except MCPToolError as e:
+        out["_seeded_scene"] = f"FAILED: {str(e)[:200]}"
+
     g = call(**base, chapter_id=a.chapter_id)
-    g["asked"] = "a VALID propose — must mint a confirm_token and RUN NOTHING"
+    g["asked"] = ("a VALID propose, on a chapter that HAS a scene plan — must mint a "
+                  "confirm_token and RUN NOTHING. This is the control: without it, the refusals "
+                  "above would look identical to a tool that refuses everything.")
     g["minted_token"] = "confirm_token" in (g.get("detail") or "")
     out["gate"] = g
+
+    out["still_refused_without_a_plan"] = call(**base, chapter_id=b.chapter_id)
+    out["still_refused_without_a_plan"]["asked"] = (
+        "book B's chapter, which has no scene plan — still refused, so the seed did not simply "
+        "disable the check")
 finally:
     for fx in (a, b):
         if fx:
