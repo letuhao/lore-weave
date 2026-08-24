@@ -131,6 +131,20 @@ class TestTheDispatchSiteActuallyDoesIt:
     """The half that makes the rest matter: a helper nobody calls is a mechanism that never
     runs, and this loop has shipped one of those before."""
 
+    # 🔴 THESE USED TO SLICE A CHAR WINDOW AFTER THE MARKER, AND IT BROKE TWICE ON EDITS
+    # NEARBY — each time tempting a widen-without-reading, which is how a window ends up
+    # covering the whole file and asserting nothing. The block is now delimited STRUCTURALLY,
+    # from the marker to the `working.append` that ends the dispatch step, so it grows with the
+    # code instead of against it.
+    @staticmethod
+    def _block(marker: str) -> str:
+        src = TestTheDispatchSiteActuallyDoesIt._src()
+        i = src.find(marker)
+        assert i != -1, f"{marker!r} is gone from stream_service"
+        j = src.find('working.append({', i)
+        assert j > i, "the dispatch step's end marker moved"
+        return src[i:j]
+
     @staticmethod
     def _src() -> str:
         import inspect
@@ -142,10 +156,7 @@ class TestTheDispatchSiteActuallyDoesIt:
     def test_the_dispatch_result_still_resolves_AND_arms(self):
         """Resolving names without arming them is the original bug in miniature, so both halves
         are asserted in the same block."""
-        src = self._src()
-        i = src.find("D-A-DOMAIN-REFUSAL-NAMES-A-TOOL-AND-ARMS-NOTHING")
-        assert i != -1, "the defect id is no longer traceable from the code"
-        block = src[i:i + 2600]
+        block = self._block("D-A-DOMAIN-REFUSAL-NAMES-A-TOOL-AND-ARMS-NOTHING")
         assert "_tools_named_in_refusal(" in block, "it no longer resolves names"
         assert "_arm_tools(" in block, "it resolves names and arms nothing"
         assert "[SYSTEM] " in block, (
@@ -157,10 +168,7 @@ class TestTheDispatchSiteActuallyDoesIt:
         """The actual defect, asserted where it lived. An earlier version of this test counted
         CALL SITES and passed against the unfixed tree — the second site already existed, so the
         count was never the defect. What was wrong is the CONDITION."""
-        src = self._src()
-        i = src.find("D-FJ-4 — ARM THE TOOLS THE REFUSAL NAMED")
-        assert i != -1, "the D-FJ-4 arming site moved"
-        block = src[i:i + 2200]
+        block = self._block("D-FJ-4 — ARM THE TOOLS THE REFUSAL NAMED")
         assert 'tool_payload.get("success") is False' in block, (
             "the dispatch arming still fires only on an envelope error, so a tool that reports "
             "its refusal in the result body arms nothing"

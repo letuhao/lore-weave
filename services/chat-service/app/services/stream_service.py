@@ -7355,12 +7355,54 @@ async def _stream_with_tools(
                 _refusal_text = ""
                 if not ok:
                     _refusal_text = str(envelope.get("error") or "")
-                elif isinstance(tool_payload, dict) and tool_payload.get("success") is False:
+                # 🔴 AND IF THE ENVELOPE'S `error` IS EMPTY, THE TEXT IS IN THE PAYLOAD. Measured
+                # 2026-08-24 (c-override-diag): composition_entity_override_edit refused twice
+                # with NOT_A_DERIVATIVE — the text is in chat_messages.tool_calls, so it exists —
+                # and produced NO line from the diagnostic below, which fires whenever
+                # `_refusal_text` is non-empty. The only way through is an empty `_refusal_text`,
+                # so `envelope["error"]` was not where that sentence lived. Reading only that one
+                # field is why D-FJ-4 armed nothing for this shape long before I touched it.
+                if not _refusal_text and isinstance(tool_payload, dict) and (
+                        not ok or tool_payload.get("success") is False):
                     _refusal_text = str(tool_payload.get("error") or "")
+                if not _refusal_text and isinstance(tool_payload, dict) and (
+                        "error" in tool_payload or tool_payload.get("success") is not None):
+                    # A payload that CARRIES an error the arming path did not read. This is the
+                    # exact blind spot two diagnostic runs could not see into from outside:
+                    # composition_entity_override_edit's NOT_A_DERIVATIVE is present in
+                    # chat_messages.tool_calls and produced no line here, so the text is in the
+                    # payload under a shape this branch does not match. Log the shape, once, so
+                    # the next reader does not have to guess it either.
+                    logger.info(
+                        "%s returned an error payload the arming path did not read: ok=%s "
+                        "keys=%s success=%r",
+                        c["name"], ok, sorted(tool_payload)[:8], tool_payload.get("success"),
+                    )
+                if not ok and not _refusal_text:
+                    # A failure with no readable text anywhere. Nothing can be armed from it, and
+                    # the model gets a refusal it cannot act on either — worth seeing.
+                    logger.info(
+                        "%s failed with no readable refusal text (envelope keys=%s, payload=%s)",
+                        c["name"], sorted(envelope.keys())[:6], type(tool_payload).__name__,
+                    )
+                # 🔴 THIS PATH USED TO BE SILENT WHEN IT DID NOTHING, AND THAT COST A WHOLE CYCLE.
+                # Measured 2026-08-24 (c-override13): the arming log line never appeared, and from
+                # outside the process there was no way to tell WHICH of four things was true —
+                # the branch was not reached, the text was empty, the named tool was absent from
+                # cat_index, or it was already active. Each has a different fix. A mechanism that
+                # logs only its successes cannot be diagnosed when it stops succeeding.
                 if _refusal_text and discovery:
                     _recovery = _tools_named_in_refusal(
                         _refusal_text, cat_index, active_tool_names,
                         exclude=c["name"])
+                    if not _recovery:
+                        logger.info(
+                            "%s refused and nothing was armed: refusal=%d chars, "
+                            "cat_index=%d tool(s), active=%d, names_in_text=%s",
+                            c["name"], len(_refusal_text), len(cat_index or {}),
+                            len(active_tool_names or ()),
+                            sorted(n for n in (cat_index or {}) if n in _refusal_text)[:5],
+                        )
                     if _recovery:
                         _arm_tools(
                             _recovery, active_tool_names=active_tool_names,

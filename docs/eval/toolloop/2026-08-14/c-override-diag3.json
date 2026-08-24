@@ -1,0 +1,209 @@
+{
+  "batch": "c-override-diag3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_entity_override_edit",
+      "scenario": "composition-entity-override-edit-on-a-derivative",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the BOOK-level glossary entity changes (glossary_entities / entity_revisions move) - that is the sibling's write and the prompt explicitly forbids it - OR an override lands with no confirm card (Tier A).\n\nCONTROL: the override's own table is loreweave_composition.entity_override, keyed on work_id. A run that moves THAT and leaves the glossary alone is the tool doing its job; a run that moves the glossary is the sibling winning, which is the thing being measured.",
+      "answer_expect": null,
+      "falsifier_sha": "15d28e16076183ef",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+        "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a03169-b86c-73f8-9f28-b96e32e99a3e",
+          "session_id": "01a03169-ebdd-7cfb-8b8d-51eb4cda4302",
+          "prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "scenario_prompt": "Override entity field — in the what-if derivative only, Aldric Vane should be a cartographer, not a soldier. Leave the book's canonical glossary entry as it is.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_entity_override_edit",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_package_tree",
+            "glossary_get_entity",
+            "glossary_search"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_entity_override_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:48.056113+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:48.056113+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.76389+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:48.04213+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.366963+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:48.056113+00"
+              },
+              "loreweave_composition.divergence_spec": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:48.056113+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:47.673001+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-24 01:36:47.76389+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 2,
+                "latest": "2026-08-24 01:36:48.04213+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 1,
+                "latest": "2026-08-24 01:37:00.485244+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 01:37:00.485244+00"
+              }
+            }
+          },
+          "answer": "I've attempted to apply the override for Aldric Vane, but I encountered a technical issue: the project ID you provided (`what-if-derivative-0-30bfd1ee`) is being recognized as the book's canonical work, and overrides can only be applied to a \"dị bản\" (a derivative work).\n\nTo fix this, I need to find the correct project ID for your specific derivative. I'll check the list of all versions of this book to find the one that isn't the canonical version.\n\nI've run into a bit of a roadblock. I tried to apply the override to the project ID you provided, but the system is telling me that ID belongs to the book's main (canonical) version, and overrides are only allowed on \"dị bản\" (derivative) versions.\n\nI've also checked the book's main project, but it doesn't seem to have any active derivative versions listed in the outline.\n\nCould you please provide the correct project ID for the \"what-if\" derivative you are working on? Once I have that, I can immediately set Aldric Vane as a cartographer for that version only."
+        }
+      ],
+      "surfaced_count": 1,
+      "called_count": 1,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}
