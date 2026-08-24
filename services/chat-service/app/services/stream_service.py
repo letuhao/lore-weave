@@ -634,6 +634,16 @@ def _tool_list_include_deprecated(args_obj: dict) -> bool:
 # and cap the interventions so a persistent loop ends HONESTLY, never a hang.
 REASONING_LOOP_INTERVENTION_CAP = 2
 
+# D-SILENT-TURN-NO-CARD-NO-PROSE — the SAME shape as the loop above, degenerate in ONE pass
+# rather than across several, which is why ReasoningLoopDetector never trips on it: the model
+# emits reasoning-channel content and no call and no prose. Measured, that content is exactly
+# 12 characters, the literal `<tool_call|>`, and the correlation is clean — every turn producing
+# PROSE has reasoning_length 0; every silent finish_reason='stop' turn has reasoning_length 12.
+# So the remedy already chosen above (abort, steer, reasoning OFF for the retry, capped) targets
+# exactly this turn's correlate. ONE intervention, not two: a second degenerate pass in the same
+# turn is evidence the retry is not working, and the honest end is to stop rather than churn.
+DEGENERATE_PASS_INTERVENTION_CAP = 1
+
 # P-1 step-runner — the per-turn cap on how many times the server re-drives the rail after the
 # model stops. The vision-to-book rail is 11 steps and a few are already done on the assent
 # turn, so ~8 covers a full drive-through; a per-STEP cap of 2 (rail_twice_nudged) bounds a
@@ -3671,6 +3681,8 @@ async def _stream_with_tools(
         # immediately re-enter the same deliberation loop.
         reasoning_loop_interventions = 0
         _suppress_reasoning_next_pass = False
+        # D-SILENT-TURN-NO-CARD-NO-PROSE — same counter shape, its own budget.
+        degenerate_pass_interventions = 0
         # The rail's own step tools (across all pinned rails) — the "a rail step actually
         # succeeded this turn" gate that keeps the driver SILENT on pure-conversation turns.
         _rail_all_step_tools: set[str] = set()
@@ -4446,6 +4458,31 @@ async def _stream_with_tools(
                     ("".join(text_parts) + "".join(reasoning_parts))[:64],
                     model_ref, session_id, iteration,
                 )
+                if degenerate_pass_interventions < DEGENERATE_PASS_INTERVENTION_CAP:
+                    degenerate_pass_interventions += 1
+                    # The model INTENDED a call — it emitted the opening delimiter for one. Steer
+                    # it to make the call plainly, and force reasoning off for the retry, exactly
+                    # as D-REASONING-LOOP does for the same trigger shape.
+                    working.append({
+                        "role": "user",
+                        "content": (
+                            "[SYSTEM DIRECTIVE] Your last reply was empty — the tool call did "
+                            "not come through. Do not explain. Either CALL the tool you were "
+                            "about to call, with the arguments you already have, or answer the "
+                            "user directly in one short message."
+                        ),
+                    })
+                    rail_drove_this_turn = True
+                    _suppress_reasoning_next_pass = True
+                    logger.info(
+                        "D-SILENT-TURN: retrying the degenerate pass with reasoning OFF "
+                        "(session=%s iteration=%s)", session_id, iteration,
+                    )
+                    continue
+                # Cap reached. Fall through: the turn ends and the silent-turn guard below
+                # records it `failed`. Deliberately NOT a fabricated reply — putting words in the
+                # assistant's mouth here is the mistake this loop keeps finding elsewhere, and
+                # what the author should SEE is DQ-T33, still the owner's.
 
             if not tool_frags and not leaked_calls:
                 # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
