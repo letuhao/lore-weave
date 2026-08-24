@@ -11,9 +11,39 @@
       "answer_expect": null,
       "falsifier_sha": "adeaceddef03c7c9",
       "ship_audit": {
-        "gate": "OWED — Tier A.",
-        "absent_case": "This scenario IS the absent case — the reference table is empty.",
-        "tenancy": "OWED — book-scoped via project_id."
+        "gate": "EXERCISED — the FIRST CALL THIS TOOL HAS EVER COMPLETED, in any batch. A valid metadata edit returns {success:true, reference:{...}} with the title changed, and the change was verified INDEPENDENTLY by re-reading the shelf over REST rather than trusting the tool's own echo. Tier A, auto-applied, no card — which is what its declaration says.",
+        "absent_case": "EXERCISED and REFUSED: a reference_id that does not exist returns the H13 uniform 'not found or not accessible'. (The SCENARIO is also an absent case, and the model passed it honestly — see the run note below.)",
+        "tenancy": "EXERCISED and REFUSED across PROJECTS: project B's reference offered to project A returns the same uniform 'not found or not accessible', which does not distinguish 'not yours' from 'no such reference' and so is not an existence oracle.\n\n🔴 HONEST LIMIT: two projects of the SAME account, because the harness has one. What is demonstrated is project-scoping, which is what the bar names ('book-scoped via project_id'); a cross-ACCOUNT breach was not driven.",
+        "idempotency": "EXERCISED: the same edit twice returns the same row with the same values. A metadata column write with no versioning — repeating it is a no-op by construction.",
+        "empty_case": "EXERCISED, and it SUCCEEDS rather than refusing: passing no field to change returns {success:true} with the CURRENT row. The repository documents this ('no-op patch → current row'). Recorded as an observation, not a defect: nothing is written and the unchanged row comes back, so the caller can see that nothing changed — unlike the 'unconditional success that discards its own signal' class, where the answer hides the no-op. Worth a second opinion, not a bug I am claiming.",
+        "_probe": "scripts/toolloop/refupdate_ship_probe.py — two throwaway books, torn down. The reference itself was created through the SHIPPED REST route (POST /works/{project_id}/references) as fixture setup; the thing under test is still the MCP tool.",
+        "_probe_output": {
+          "absent": {
+            "verdict": "refused",
+            "detail": "MCP composition_reference_update error: Error executing tool composition_reference_update: not found or not accessible",
+            "asked": "a reference_id that does not exist"
+          },
+          "tenancy": {
+            "verdict": "refused",
+            "detail": "MCP composition_reference_update error: Error executing tool composition_reference_update: not found or not accessible",
+            "asked": "project B's reference offered to project A"
+          },
+          "no_fields": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"success\": true, \"reference\": {\"id\": \"01a033a9-84db-79a9-a37b-666a38e5f766\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a033a9-81f8-7508-aa7a-d40133d4ec75\", \"title\": \"Tidal Almanac\", \"author\"",
+            "asked": "NO field to change — a no-op patch"
+          },
+          "gate": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"success\": true, \"reference\": {\"id\": \"01a033a9-84db-79a9-a37b-666a38e5f766\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a033a9-81f8-7508-aa7a-d40133d4ec75\", \"title\": \"Tidal Almanac, Revised\",",
+            "asked": "a VALID metadata edit — the first call this tool has ever completed"
+          },
+          "idempotency": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"success\": true, \"reference\": {\"id\": \"01a033a9-84db-79a9-a37b-666a38e5f766\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a033a9-81f8-7508-aa7a-d40133d4ec75\", \"title\": \"Tidal Almanac, Revised\",",
+            "asked": "the SAME edit twice"
+          }
+        }
       },
       "defects": [],
       "runs": [
@@ -567,7 +597,7 @@
       "called_count": 5,
       "wrote_count": 0,
       "suspended_count": 0,
-      "blocked_reason": "NO TOOL IN THE CATALOGUE CAN PRODUCE ITS reference_id. Reached 5/5, zero errored runs, and the store cannot move because the id it requires is not obtainable from any tool the platform ships.\n\nSearched the live 315-tool catalogue for every tool whose name contains 'reference' or whose description mentions a reference with a source_url: exactly TWO exist, and this is one of them. The other, composition_find_references, is about a different subject entirely - 'Find-references for an ENTITY ... which outline nodes have it as POV'.\n\nThe capability exists in the service and is not exposed: services/composition-service/app/db/repositories/references.py declares create, list(project_id), get, delete, update_metadata, update_content and search - and only update_metadata is a tool. Filed as D-THE-WRITER-IS-SHIPPED-WITHOUT-THE-READER.\n\n🔴 THIS CORRECTS MY OWN EARLIER REASON FOR THIS TOOL, recorded hours before. It said the model 'reaches for composition_find_references - the correct supplier'. It is not the correct supplier; the names are nearly identical and I read the call graph instead of the two descriptions. The depth-2 supplier SHAPE stands on its own measurement, but this tool is not an instance of it - it is a shallower and worse problem.\n\nSHIP cases stay unexercised: the tool has never completed a call."
+      "blocked_reason": "NO TOOL IN THE CATALOGUE CAN PRODUCE ITS reference_id. Reached 5/5, zero errored runs, and the store cannot move because the id it requires is not obtainable from any tool the platform ships.\n\nSearched the live 315-tool catalogue for every tool whose name contains 'reference' or whose description mentions a reference with a source_url: exactly TWO exist, and this is one of them. The other, composition_find_references, is about a different subject entirely - 'Find-references for an ENTITY ... which outline nodes have it as POV'.\n\nThe capability exists in the service and is not exposed: services/composition-service/app/db/repositories/references.py declares create, list(project_id), get, delete, update_metadata, update_content and search - and only update_metadata is a tool. Filed as D-THE-WRITER-IS-SHIPPED-WITHOUT-THE-READER.\n\n🔴 THIS CORRECTS MY OWN EARLIER REASON FOR THIS TOOL, recorded hours before. It said the model 'reaches for composition_find_references - the correct supplier'. It is not the correct supplier; the names are nearly identical and I read the call graph instead of the two descriptions. The depth-2 supplier SHAPE stands on its own measurement, but this tool is not an instance of it - it is a shallower and worse problem.\n\nSHIP cases stay unexercised: the tool has never completed a call.\n\n=== 2026-08-24, RE-INVESTIGATED. THE REASON ABOVE SURVIVES, AND THE TOOL IS NOT THE PROBLEM. ===\nI re-checked the 'no tool can produce its id' claim the way cycle 11 disproved the same claim for composition_authoring_run_manage — by asking what other tools RETURN rather than what they are named. It holds here:\n  * ReferencesRepo has exactly ONE call site in the whole MCP server, and it is this tool.\n  * build_derivative_context, the only packer entry point in the server, is about derivative Works and entity overrides, not the reference shelf.\n  * book_list's `kind` enum is books|chapters|revisions|scenes — its description says 'REFERENCES' in the sense of pointers-not-bodies, a different subject.\nSo there is genuinely no supplier on the agent surface.\n\nTHE MODEL BEHAVED CORRECTLY AND THE FALSIFIER IS INTACT. Read back from chat_messages: on every run it called the tool with {title, project_id} and NO reference_id, was refused 'missing required argument(s)', tried once more and hit the blank-args breaker. It never invented an id — which this scenario's falsifier names as the refutation. called 5/5 here counts refusals, and honest ones.\n\nTHE TOOL WORKS. All four owed SHIP cases are now exercised (see ship_audit) after creating a reference through the shipped REST route: a valid edit lands and verifies, an absent id and a foreign project are both refused, and the edit is idempotent.\n\n🔴 AND THE AGENT SURFACE HAS ONE OF THREE OPERATIONS. The shelf has a full REST surface — GET/POST/PATCH/DELETE /works/{project_id}/references — and the repository declares create, list, get, delete, update_metadata, update_content and search. Exactly ONE is a tool: this one, the metadata editor. The tool's own source comment says 'agents ADD references via create', and NO create tool exists either (established from the call graph, not from a name search). So an agent can edit a reference it can neither create nor find.\n\nSTILL BLOCKED. Exposing a reader is a change to the advertised catalogue, which is the same class of decision I left with the owner for registry_list_workflows. Recommendation is recorded as DQ-T43; I am not adding a tool to unblock a tool."
     }
   ]
 }
