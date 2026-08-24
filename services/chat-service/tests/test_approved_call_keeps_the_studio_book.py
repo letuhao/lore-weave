@@ -127,7 +127,15 @@ def test_the_studio_flag_is_PERSISTED_across_the_suspend():
         "one of the two loaders drops the flag, so which loader ran decides whether the "
         "override works"
     )
-    assert "pinned_step_tools, book_id, studio)" in susp, "the INSERT never writes the flag"
+    # 🔴 WAS `"pinned_step_tools, book_id, studio)" in susp` — pinned to the CLOSING PAREN, so it
+    # went red the moment a legitimate column was added beside it (chapter_id/project_id, "the
+    # OTHER TWO context ids", 2026-08-24). The intent is "the INSERT writes the flag", not "studio
+    # is the last column forever". Check the column list and the VALUES binding instead, which is
+    # what actually fails if the flag is dropped.
+    _insert = susp[susp.index("INSERT INTO chat_suspended_runs"):]
+    _cols = _insert[: _insert.index("VALUES")]
+    assert "book_id, studio" in _cols, "the INSERT column list never names the flag"
+    assert "bool(studio)" in susp, "the INSERT never binds the flag"
     # 🔴 ANCHOR ON THE SAVE CALL, NOT ON THE EXPRESSION. The first draft of this guard grepped
     # the whole file for `studio=bool((context_ids or {}).get("studio")),` — which is ALSO how
     # both `_inject_context_ids` call sites pass it. Deleting the one at the suspend left two

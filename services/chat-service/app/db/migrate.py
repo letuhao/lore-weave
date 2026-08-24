@@ -459,6 +459,30 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- TOOL DEEP-DIVE (2026-08-24) — carry CHAPTER_ID and PROJECT_ID across the suspend, for the
+-- same reason `studio` above is carried, and closing the same hole the note above describes.
+-- That note fixed ONE of the three ids `_inject_context_ids` needs and stopped; the resume
+-- still rebuilt `context_ids` as {book_id, studio}.
+--
+-- The consequence is not a dead override, it is a CORRUPTED BOOK SCOPE. `_crosswired_ids`
+-- identifies a mis-wired id by exact match against the turn's OTHER context ids, so with
+-- chapter_id absent the check has nothing to match and a chapter id sent as `book_id` sails
+-- through. Measured 2026-08-24 (batch c-gbuild5): every run resumed through an approval card,
+-- and on 4 of 4 failing calls the book_id equalled that run's chapter_id — the book-scope check
+-- then correctly refused, the writes the author asked for did not happen, and the model told
+-- them "I'm having a technical issue accessing the book's database".
+--
+-- NULL for pre-existing rows is exactly right: it is the old behaviour (no substitute available,
+-- so no correction attempted), which is what those rows were suspended under.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='chapter_id') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN chapter_id UUID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='project_id') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN project_id UUID;
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
 -- In Write mode a Tier-A server tool NOT on the user's allowlist suspends

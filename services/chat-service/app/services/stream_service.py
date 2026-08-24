@@ -10260,6 +10260,17 @@ async def _emit_chat_turn(
                 # book alone is not the same fact: a plain book-surface turn also has a book,
                 # and the single-book override must not fire there.
                 studio=bool((context_ids or {}).get("studio")),
+                # TOOL DEEP-DIVE (2026-08-24) — and carry the OTHER TWO context ids, closing
+                # the hole the note above opened by fixing only `studio`. `_crosswired_ids`
+                # identifies a mis-wired id by exact match against the turn's OTHER ids, so
+                # with chapter_id absent on the resume it has nothing to match: a chapter id
+                # sent as `book_id` sails through and the book-scope check refuses it.
+                # Measured (c-gbuild5): every run resumed through an approval card and on 4 of 4
+                # failing calls the book_id EQUALLED that run's chapter_id — the author was told
+                # "I'm having a technical issue accessing the book's database" and the writes
+                # they asked for did not happen, on a book that was fine.
+                chapter_id=(context_ids or {}).get("chapter_id"),
+                project_id=(context_ids or {}).get("project_id"),
             )
             # DBT-CHAT-PERSIST — persist the reply produced UP TO the suspend as a
             # visible message NOW (prose so far + the completed tools + the pending
@@ -11620,7 +11631,19 @@ async def resume_stream_response(
         # composition_package_tree and plan_propose_spec with the book's knowledge-project id
         # and no override fired, while the same wrong id HAD been overridden one pass earlier.
         context_ids=(
-            {"book_id": susp.book_id, "studio": bool(susp.studio)} if susp.book_id else None
+            {
+                "book_id": susp.book_id,
+                "studio": bool(susp.studio),
+                # …AND THE OTHER TWO IDS, 2026-08-24. This dict has now lost a field THREE
+                # times — `studio` (fixed 2026-08-12), then chapter_id and project_id — each
+                # time because it is rebuilt BY HAND from a suspension row rather than carried.
+                # Absent chapter_id is not a missing nicety: it is what let a chapter id go out
+                # as `book_id` on every resumed turn, which the book-scope check then refuses.
+                "chapter_id": susp.chapter_id,
+                "project_id": susp.project_id,
+            }
+            if susp.book_id
+            else None
         ),
         rail_specs=_r_rail_specs or None,
         rail_grant_ok=_r_rail_grant,
