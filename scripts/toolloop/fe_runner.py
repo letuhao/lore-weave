@@ -175,6 +175,13 @@ async def _drain(client, auth, method, url, body, out, timeout):
                 # impossible reading that a single sample made look real.
                 out["surfaces"].append(ev.get("value") or {})
                 out["surface"] = ev.get("value")
+                # 🔴 A UNION CANNOT DATE A CHOICE. `surfaced` is the union of every pass, so a
+                # tool advertised only AFTER the model committed to a pipeline still reads
+                # "surfaced 5/5". The timeline interleaves surfaces with calls in arrival order,
+                # which is the only way to ask "was it on the wire when the model chose".
+                _adv = (ev.get("value") or {}).get("advertised") or {}
+                _names = {str(x) for b in _adv.values() if isinstance(b, list) for x in b}
+                out["timeline"].append({"surface": sorted(_names)})
             elif t == "TOOL_CALL_RESULT":
                 # 🔴 WITHOUT THE RESULT, A FAILED WRITE AND A SUCCESSFUL ONE ARE THE SAME EVENT.
                 # book_chapter_create was called with a book id that does not exist, the approval
@@ -186,6 +193,10 @@ async def _drain(client, auth, method, url, body, out, timeout):
                 out["tool_calls"].append(ev)
             elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
                 out["tool_calls"].append(ev)
+                if t == "TOOL_CALL_START":
+                    _n = ev.get("toolCallName") or ev.get("toolName") or ev.get("name")
+                    if _n:
+                        out["timeline"].append({"call": str(_n)})
                 # TOOL_CALL_ARGS arrives as JSON deltas keyed by call id; the approval card
                 # is only readable once they are joined.
                 if t == "TOOL_CALL_ARGS":
@@ -281,7 +292,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
 
     out = {"text": "", "tool_calls": [], "surface": None, "surfaces": [], "run_id": None,
            "events": Counter(), "error": None, "_args": {}, "approvals": [],
-           "pending": None, "status": None, "results": []}
+           "pending": None, "status": None, "results": [], "timeline": []}
     url = f"{BASE}/v1/chat/sessions/{session_id}/messages"
     for attempt in (1, 2):
         try:
@@ -649,6 +660,30 @@ def called_names(r) -> set:
     return out
 
 
+def compact_timeline(r, expect_tool=None) -> list:
+    """Surfaces and calls in ARRIVAL ORDER, so a selection finding can be dated.
+
+    A surface entry keeps the pass's SIZE and, because the whole set would swamp the file, only
+    the advertised names that were CALLED in this turn PLUS THE TOOL UNDER TEST. That last part
+    is not a detail: the tool under test is the one that was never called, so filtering to "the
+    called" alone would drop the only name the question is about and every pass would look
+    innocent. `surfaced_tools` beside it still carries the full union.
+
+    Written after a third cycle in which the batch had computed the answer and kept a summary
+    of it: one boolean for the surface, then no call outcomes, now no ordering.
+    """
+    called = called_names(r) | ({expect_tool} if expect_tool else set())
+    out = []
+    for e in (r.get("timeline") or []):
+        if "call" in e:
+            out.append({"call": e["call"]})
+        else:
+            names = e.get("surface") or []
+            out.append({"pass_size": len(names),
+                        "of_the_called": sorted(n for n in names if n in called)})
+    return out
+
+
 def call_records(r) -> list:
     """Each call as {tool, result_head} — enough to see a REFUSAL in the evidence file.
 
@@ -795,6 +830,7 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
                 # ok=false — the exact invention that scenario's own falsifier says REFUTES the
                 # run. The names alone read as success. See call_records().
                 "calls": call_records(r),
+                "timeline": compact_timeline(r, sc.get("expect_tool")),
                 "error": r.get("error"),
                 # A suspended run has no error, no store change and a perfectly calm reply.
                 # Recording the card is what stops that reading as "the model declined to write".
