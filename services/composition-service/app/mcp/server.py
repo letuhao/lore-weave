@@ -8803,11 +8803,17 @@ class _GlossaryBuildArgs(ForbidExtra):
 
 
 @mcp_server.tool(
-    name="composition_glossary_build",
+    name="composition_build_cast_and_graph",
     description=(
-        "[World building] Build a book's glossary + knowledge graph from a story description, "
-        "deterministically. USE THIS WHEN the user gives you their story, notes or premise and "
-        "wants the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from "
+        # RENAMED + REWRITTEN 2026-08-25. Measured: surfaced 5/5, called 0/5 — not hidden and
+        # not broken (a direct probe drives it end to end), just INDISTINCT. The old name led
+        # with `glossary`, a different noun from the "knowledge graph" the caller asks for, and
+        # the old description opened with a category tag before reaching their words. Both now
+        # lead with the caller's phrasing and with the one thing no sibling can claim: this is
+        # the WHOLE chain in a single call.
+        "Build the KNOWLEDGE GRAPH and the CAST for a book from a story you have been given — "
+        "in ONE call. USE THIS WHEN the user gives you their story, notes or premise and wants "
+        "the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from "
         "my story', 'set up my world'. That includes when they paste the prose inline: this tool "
         "takes it as source_text. You do NOT pick per-entity tools: this ONE tool runs the whole "
         "pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused "
@@ -8834,10 +8840,10 @@ class _GlossaryBuildArgs(ForbidExtra):
         # real money on LLM calls, so the money gate must see it.
         async_job=True,
         paid=True,
-        tool_name="composition_glossary_build",
+        tool_name="composition_build_cast_and_graph",
     ),
 )
-async def composition_glossary_build(ctx: MCPContext, args: _GlossaryBuildArgs) -> dict:
+async def composition_build_cast_and_graph(ctx: MCPContext, args: _GlossaryBuildArgs) -> dict:
     tc = _ctx(ctx)
     from app.deps import get_glossary_build_service
     from app.services.glossary_build.service import GlossaryBuildError

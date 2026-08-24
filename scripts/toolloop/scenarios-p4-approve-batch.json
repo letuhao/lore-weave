@@ -69,8 +69,8 @@
     },
     {
       "id": "composition-glossary-build",
-      "tool_under_test": "composition_glossary_build",
-      "expect_tool": "composition_glossary_build",
+      "tool_under_test": "composition_build_cast_and_graph",
+      "expect_tool": "composition_build_cast_and_graph",
       "intent": "write",
       "tier": "A",
       "scope": "book",

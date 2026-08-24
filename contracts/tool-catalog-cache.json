@@ -8689,7 +8689,7 @@
    "tier": "R"
   }
  },
- "composition_glossary_build": {
+ "composition_build_cast_and_graph": {
   "description": "[World building] Build a book's glossary + knowledge graph from a story description, deterministically. You do NOT pick per-entity tools: this ONE tool runs the whole pipeline \u2014 it plans WHAT to build (a worklist), builds each entity in its own focused step (rich attributes; major entities get a deep multi-section profile), files them as review drafts, then projects them into the graph and proposes their relationships. Ops: 'start' (needs source_text + model_ref \u2014 returns the proposed worklist for the user to approve), 'approve_plan' (the user approved \u2014 begins building; pass a trimmed worklist if they cut items), 'status' (poll progress: per-item built/skipped), 'project_kg' (after the user reviews the drafts), 'approve_edges' (the user approved the relationships \u2014 writes them), 'cancel'. Always show the user the worklist before approving it, and report per-item results honestly (some items may be skipped).",
   "inputSchema": {
    "$defs": {

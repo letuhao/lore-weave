@@ -1,6 +1,6 @@
 """Does the path the model ACTUALLY takes fill the attributes it asks for?
 
-composition_glossary_build exists because eval/schema_recall_poc.py measured that emitting every
+composition_build_cast_and_graph exists because eval/schema_recall_poc.py measured that emitting every
 kind's attributes in one blind pass produces empty/partial rows — "terminology produced EMPTY
 rows, and power_system/item/organization got 2 of their 6-7 slots". Its answer is one focused
 call per entity with a sliced schema.

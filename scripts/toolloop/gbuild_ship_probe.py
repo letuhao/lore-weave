@@ -1,4 +1,4 @@
-"""SHIP audit for composition_glossary_build — a tool that has NEVER completed a call.
+"""SHIP audit for composition_build_cast_and_graph — a tool that has NEVER completed a call.
 
 Tier A/W multi-stage and it SPENDS at every stage. Every call here is a PROPOSE where the tool
 gates; no confirm token is ever redeemed. Two throwaway books, provisioned and torn down.
@@ -27,7 +27,7 @@ def build(label):
 
 def call(**args):
     try:
-        r = m.call("composition_glossary_build", args)
+        r = m.call("composition_build_cast_and_graph", args)
         return {"verdict": "SUCCEEDED", "detail": json.dumps(r, ensure_ascii=False)[:220], "_raw": r}
     except MCPToolError as e:
         return {"verdict": "refused", "detail": str(e)[:260]}

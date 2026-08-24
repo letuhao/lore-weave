@@ -170,7 +170,7 @@ EXPECTED_TOOLS = {
     # ── glossary-build pipeline (spec 2026-07-27) — the DELEGATION surface. One
     # Tier-A tool with a closed-set `op`; the FSM makes every downstream call, so
     # the agent never picks a per-entity tool (the Mị Đế dogfood failure).
-    "composition_glossary_build",
+    "composition_build_cast_and_graph",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",

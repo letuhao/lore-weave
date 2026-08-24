@@ -1,6 +1,6 @@
 """A/B: the path the model TAKES vs the path it never takes, on one story.
 
-composition_glossary_build exists because eval/schema_recall_poc.py measured that emitting every
+composition_build_cast_and_graph exists because eval/schema_recall_poc.py measured that emitting every
 kind's attributes in one blind pass produces empty/partial rows — "terminology produced EMPTY
 rows, and power_system/item/organization got 2 of their 6-7 slots". Its answer is a breadth-only
 plan, a depth tag per entity, then ONE focused call per entity with a sliced schema.
@@ -9,7 +9,7 @@ The model never picks it: on 5 of 5 runs it takes glossary_extract_entities_from
 single call covering every entity of every kind at once. This measures what that costs.
 
     ARM A  glossary_extract_entities_from_doc      (what the model always does)
-    ARM B  composition_glossary_build start -> approve_plan -> status  (what it never does)
+    ARM B  composition_build_cast_and_graph start -> approve_plan -> status  (what it never does)
 
 Same story, same adopted kinds, same fill metric, one throwaway book per arm, both torn down.
 Arm A writes nothing (Tier-R). Arm B writes review DRAFTS into its own throwaway book and never
@@ -130,19 +130,19 @@ finally:
 # ── ARM B ────────────────────────────────────────────────────────────────────────
 b = provision("ab-arm-b")
 try:
-    started = m.call("composition_glossary_build", {
+    started = m.call("composition_build_cast_and_graph", {
         "op": "start", "book_id": b.book_id, "source_text": STORY,
         "model_ref": MODEL, "model_source": "user_model"})
     run_id, wl = started.get("run_id"), (started.get("worklist") or [])
     out["ARM_B_plan"] = {"n": len(wl),
                          "deep": [w.get("name") for w in wl if w.get("depth") == "deep"],
                          "standard": [w.get("name") for w in wl if w.get("depth") != "deep"]}
-    m.call("composition_glossary_build",
+    m.call("composition_build_cast_and_graph",
            {"op": "approve_plan", "book_id": b.book_id, "run_id": run_id, "worklist": wl})
     status = None
     for _ in range(40):
         time.sleep(15)
-        st = m.call("composition_glossary_build",
+        st = m.call("composition_build_cast_and_graph",
                     {"op": "status", "book_id": b.book_id, "run_id": run_id})
         status = st.get("status")
         if str(status).lower() not in ("running", "building", "in_progress", "pending"):
