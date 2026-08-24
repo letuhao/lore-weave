@@ -1807,6 +1807,15 @@ documented command (dry-run → apply → re-run, idempotent); `graph-store-migr
 out of a store that held 35 in total beforehand. What remains owed is the authorisation, not the
 confidence.
 
+**T54i then ran the DECLARED deployment's own corpus through it** — dev's 8 033 nodes and 4 249
+relationships, read from dev and written to a throwaway: **0 MISSING, 0 EXTRA, 84 s**, 22 764
+temporals converted and 1 099 embeddings dropped, every label count matching dev exactly. All
+**14 KAL read routes** were then swept (derived from the controller): the three graph-backed ones
+that have a downstream carry real migrated rows, including `valid_from_ordinal: 7000000` — the
+reading axis surviving as an integer. The sweep also found `POST /v1/kal/books/{bookId}/retrieve`
+federating to a knowledge-service route that returns **404**: its documented downstream was never
+built, which the controller's own header predicted a cross-service smoke would discover.
+
 **Retry/registration:** blocks the SOAK grant. `soak-armed-gate` verifies dual-write ARMING; it
 does not and cannot verify that the store being read has the data — and nothing else in the tree
 did either. That absence was the reusable finding: a cutover gate that checks arming and not

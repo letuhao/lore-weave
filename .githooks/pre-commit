@@ -108,6 +108,13 @@ command -v python >/dev/null 2>&1 || PY=python3
 # EMPTY_DECLARED and BOTH_EMPTY never collapse -- a fresh deployment is legitimately empty and
 # a gate that called that MIGRATED would go green one deployment before the failure.
 "$PY" "$ROOT/scripts/graph-store-migrated-gate.py" --selftest
+# T54i: the KAL exposes 14 read routes and nothing swept them. `knowledge-graph-backend-live-
+# smoke` proves ONE engine on data it writes itself; this asks which of the ROUTES answer, with
+# the list DERIVED from the controller so a route added tomorrow is swept tomorrow. The live
+# half needs a running gateway and a book, so only the selftest runs here; what it pins is that
+# an empty 200 can never read as DATA -- the shape that has cost this repo twice -- and that the
+# row counter knows every envelope, because an instrument that does not report the SYSTEM empty.
+"$PY" "$ROOT/scripts/kal-read-surface-live-smoke.py" --selftest
 # A deferral whose HEADING says open while its own `Retry when` says closed. Found by hand
 # five times on 2026-08-21 and it cost real confusion: `plan-final-verification` refuses a
 # `[x]` QC row whose section "records a deferral" and decides that on the heading, so four

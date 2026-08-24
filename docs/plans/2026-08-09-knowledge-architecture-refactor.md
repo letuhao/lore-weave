@@ -23701,6 +23701,121 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   other work plus the CRLF artifact, exactly as §14 lists them.
 
   ---
+  ### ✅ T54i 2026-08-24 — **the DECLARED deployment's whole corpus, migrated and served: all 14 KAL routes swept**
+
+  ```
+  NEW  scripts/kal-read-surface-live-smoke.py    14 routes DERIVED · 4 verdicts · --selftest 16
+  source        dev Neo4j (7688)  8 033 nodes / 4 249 relationships   READ ONLY (rule 6)
+  destination   a throwaway AGE                                       WRITE
+  result        0 MISSING · 0 EXTRA · 84.0s
+  ```
+
+  🎯 **The declared deployment's DATA, at full scale, through the whole stack.** T54h proved the
+  chain on iso's 1 475 nodes. This runs the corpus the GOAL is actually about — 5.4× larger,
+  433 projects, CJK extraction output with its provenance web intact — read from dev and written
+  to a throwaway. Dev itself is untouched: `--apply` against it is a write no GRANT covers.
+
+  ```
+  == DRY RUN ==   graphs 1 · nodes 8033 · relationships 4249
+                  temporals -> epoch millis  22 764
+                  embedding props DROPPED     1 099   (embedding_1024 1076 · summary 23)
+  == APPLIED in 84.0s ==   MISSING: 0   EXTRA: 0
+  == destination ==  Entity 5161 · Event 1186 · Passage 1051 · Fact 404
+                     ExtractionSource 172 · EntityStatus 35 · relationships 4249
+  ```
+
+  Every count matches dev exactly. **22 764 temporals converted** and **1 099 embeddings dropped**
+  are the two rules the module exists for, exercised at scale rather than on a fixture.
+
+  🔬 **ALL 14 KAL ROUTES, derived from `kal-read.controller.ts` rather than hand-listed** — the
+  same discipline `knowledge-http-surface-gate` already uses, and for the same reason: a hand
+  list drifts and then the sweep reports coverage of a surface that has moved.
+
+  ```
+  DATA      200  GET  entities/:entityId/neighborhood     10 row(s)   <- of 81 total_relations
+  DATA      200  POST wiki-neighborhood                   10 row(s)
+  DATA      200  POST timeline                             5 row(s)
+  NOT-FOUND 404  POST retrieve                            {"detail":"Not Found"}
+  NOT-FOUND 404  GET  canonical · canonical-translation · search      (glossary)
+  EMPTY     200  facts · timeline · attr-values · roster · cast · cast/by-ids · state
+                                                                       DATA=3 EMPTY=7 NOT-FOUND=4
+  ```
+
+  ⚖️ **Only 4 of the 14 are knowledge-backed, and that is derived too.** The other ten federate to
+  **glossary-service**, whose data lives in Postgres and which this migration does not touch — the
+  book is unknown there, so they answer 404 or empty. Three of the four graph-backed routes carry
+  real migrated rows through gateway → knowledge-service → `GraphStore` port → AGE adapter:
+
+  ```
+  {"predicate": "married_to", "from_entity": "831f58cd…", "to_entity": "f534a073…",
+   "valid_from_ordinal": 7000000, …}          紂王 → 姜皇后
+  ```
+
+  **`valid_from_ordinal: 7000000` is the finding inside the finding.** That is the reading axis —
+  `sort_order × 1e6` — and it survived the migration as an INTEGER, which is exactly what the
+  temporal conversion had to get right. A bi-temporal read is answering from AGE with its story
+  position intact.
+
+  🔴 **The sweep found a KAL route whose downstream was never built.**
+  `POST /v1/kal/books/{bookId}/retrieve` federates to `/internal/books/{bookId}/retrieve`, and
+  knowledge-service answers **404**. Probed both, side by side, so it is a diagnosis and not a
+  guess (rule 13):
+
+  ```
+  GET  /internal/books/{book}/kg/neighborhood  -> 200
+  POST /internal/books/{book}/retrieve         -> 404
+  ```
+
+  The controller's own header predicted this exact discovery: *"the rest forward to their
+  documented downstream path and are confirmed by a cross-service live-smoke when the full stack
+  is up."* **This is that live-smoke**, and the route it names had no downstream to confirm.
+
+  ⚠️ **MY INSTRUMENT LIED TWICE, IN THE SAFE-LOOKING DIRECTION, AND BOTH ARE IN THE SCRIPT.**
+
+  ```
+  1  first entity chosen had ZERO edges, so `neighborhood` returned an empty 200 —
+     a CORRECT answer that I nearly read as a broken route. Re-picked 紂王 (81 edges).
+  2  `rows_in`'s envelope list omitted `relations`, so `wiki-neighborhood` was reported
+     EMPTY while the endpoint was returning a full neighbourhood.
+  ```
+
+  The second is the one worth keeping: **an instrument that does not know an envelope reports the
+  SYSTEM as empty.** It fails toward "nothing works", which reads as diligence, and it is how a
+  working surface gets rewritten. Caught by probing the endpoint directly when its verdict
+  disagreed with what the store plainly held. `relations` is now in the list with the reason, and
+  **BITE S** removes it again.
+
+  🧪 **BITES.**
+
+  ```
+  R  verdict_for: `return DATA` unconditionally (the "count the 2xx" sweep)
+       FAIL  a 200 carrying NONE is EMPTY, not a pass: expected EMPTY, got DATA
+  S  drop `relations` from ROW_KEYS
+       FAIL  `relations` is counted — the envelope that was MISSING: expected 4, got 0
+  ```
+
+  📐 **`--min-data` is the control arm**, inherited from the existing smoke's NV-7: a run where
+  nothing anywhere carried rows proves the gateway is up and nothing else. Without a floor a cold
+  stack prints fourteen tidy verdicts and passes. The selftest pins that the floor can actually
+  fail.
+
+  **QC (a) gates:** `kal-read-surface-live-smoke --selftest` **16/16** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` 113 discovered all wired or exempted;
+  `gate-teeth-gate` PASS, baseline unmoved (a smoke is not a CI-invoked gate);
+  four plan gates green.
+  **QC (b) live smoke vs REBUILT images:** the iso `knowledge-service` image was rebuilt and
+  restarted for T54h and is the one serving here; the gateway is the running `lw-iso` one. Every
+  number above is an HTTP response from those containers.
+  **QC (c) real data:** the declared deployment's own 8 033-node corpus, migrated in 84 s and
+  then read back over HTTP. Dev was read and never written.
+
+  ⛔ **Dev remains unmigrated, by authorisation rather than by doubt.** `--apply` against it is a
+  write to a non-throwaway store that no GRANT covers, so `graph-store-migrated-gate` still
+  answers `EMPTY_DECLARED` there. What is no longer open is whether the code, the scale, the
+  temporal conversion, the bi-temporal axis or the KAL read surface work — all of that is now
+  measured on dev's own data.
+
+  ---
   ### ✅ T54h 2026-08-24 — **THE LIVE RUN: a real HTTP request, on `age`, answered from MIGRATED data it did not write**
 
   ```
