@@ -8772,7 +8772,10 @@ class _GlossaryBuildArgs(ForbidExtra):
     name="composition_glossary_build",
     description=(
         "[World building] Build a book's glossary + knowledge graph from a story description, "
-        "deterministically. You do NOT pick per-entity tools: this ONE tool runs the whole "
+        "deterministically. USE THIS WHEN the user gives you their story, notes or premise and "
+        "wants the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from "
+        "my story', 'set up my world'. That includes when they paste the prose inline: this tool "
+        "takes it as source_text. You do NOT pick per-entity tools: this ONE tool runs the whole "
         "pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused "
         "step (rich attributes; major entities get a deep multi-section profile), files them as "
         "review drafts, then projects them into the graph and proposes their relationships. "
