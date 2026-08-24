@@ -1,0 +1,68 @@
+{
+  "scenarios": [
+    {
+      "id": "gbuild-control-named-outright",
+      "tool_under_test": "composition_build_cast_and_graph",
+      "expect_tool": "composition_build_cast_and_graph",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Use the composition_build_cast_and_graph tool to build the cast and the knowledge graph for this book. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+      "prompt_source": "CONTROL A — the tool named OUTRIGHT. If the model still does not call it, the problem is not selection at all: something is preventing the call, and every selection experiment run so far was measuring the wrong thing.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 THE BOOK HAD NO ONTOLOGY, so the model set one up instead of building. Measured 5/5 (batch c-r1-recheck): every run ran glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input and never the tool under test. I filed that as a SIBLING-WINS failure; it is a PRECONDITION - a glossary cannot be built onto a book with no kinds, and adopting first is the correct move.\n\nThis is the same fix that took kg_triage_schema_write from blocked to proven: seed the state the tool needs, and the turn stops spending itself on setup."
+        }
+      ],
+      "approve_why": "Tier A and it spends a model call. The target is this run's OWN throwaway book, torn down after, against the LOCAL model."
+    },
+    {
+      "id": "gbuild-control-unique-capability",
+      "tool_under_test": "composition_build_cast_and_graph",
+      "expect_tool": "composition_build_cast_and_graph",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build my cast and my knowledge graph from this story in a SINGLE operation - plan the full worklist first and show it to me before you build anything, so I can approve it. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+      "prompt_source": "CONTROL B — the one thing only this tool does (one call, plan-then-approve), in natural language, WITHOUT naming it. The rival chain cannot offer a worklist to approve, so a model that understands the ask has exactly one candidate.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          },
+          "why": "🔴 THE BOOK HAD NO ONTOLOGY, so the model set one up instead of building. Measured 5/5 (batch c-r1-recheck): every run ran glossary_list_system_standards -> glossary_adopt_standards -> glossary_task_provide_input and never the tool under test. I filed that as a SIBLING-WINS failure; it is a PRECONDITION - a glossary cannot be built onto a book with no kinds, and adopting first is the correct move.\n\nThis is the same fix that took kg_triage_schema_write from blocked to proven: seed the state the tool needs, and the turn stops spending itself on setup."
+        }
+      ],
+      "approve_why": "Tier A and it spends a model call. The target is this run's OWN throwaway book, torn down after, against the LOCAL model."
+    }
+  ]
+}

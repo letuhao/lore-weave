@@ -286,6 +286,27 @@ def _synonym_pattern(syn: str):
     return re.compile(rf"(?<![a-z0-9]){re.escape(syn)}(?![a-z0-9])")
 
 
+#: Score for a request that spells out a tool's whole name. Larger than any synonym can
+#: be, so an explicit reference always survives the ANSWERABLE_MAX truncation.
+_EXACT_NAME_WEIGHT = 10_000
+
+
+@lru_cache(maxsize=4096)
+def _exact_name_pattern(name: str):
+    """Whole-IDENTIFIER matcher. Deliberately NOT `_synonym_pattern`.
+
+    That one guards with `(?<![a-z0-9])...(?![a-z0-9])`, which is right for a synonym —
+    "add chapter" should still match next to punctuation or an underscore — and wrong for a
+    tool name, because `_` is not in its character class. Caught by the prefix check before
+    this shipped: `book_list` matched INSIDE `book_list_chapters`, so asking for the
+    chapters tool also dragged its shorter sibling onto the wire. A tool name is an
+    identifier, so `_` has to be a boundary character too.
+    """
+    if not _LATIN_SYNONYM.match(name):
+        return None
+    return re.compile(rf"(?<![a-z0-9_]){re.escape(name)}(?![a-z0-9_])")
+
+
 def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
     """The tools whose OWN declared vocabulary says they answer THIS request.
 
@@ -325,6 +346,29 @@ def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
         if not name:
             continue
         fn = td.get("function") or {}
+        # 🔴 AN EXACT TOOL NAME IN THE REQUEST IS A REFERENCE, NOT A NAME HEURISTIC — and this
+        # is NOT the classifier CP-4.d deleted. That one was a twelve-verb SUBSTRING test that
+        # INFERRED A PROPERTY (the read/write lane) from fragments of a name: it matched "get"
+        # inside `memory_forget` and "view" inside `kg_view_delete`, promoting destructive
+        # tools into the safe set, and it disagreed with the declared lane on 29 of 315 tools.
+        # C-1 forbids exactly that: "lane is data at registration, never inferred from a name."
+        #
+        # Nothing is inferred here. The WHOLE identifier has to appear, on word boundaries, and
+        # the only conclusion drawn is the one the writer stated: they named this tool.
+        #
+        # MEASURED 2026-08-25, and it is why this exists: sampling 25 tools and asking for each
+        # one BY NAME ("Please use the <name> tool for me"), 24 of 25 were NOT answerable — so
+        # naming a tool did not put it on the wire. Live at K=5, a prompt saying "Use the
+        # composition_build_cast_and_graph tool to build the cast and the knowledge graph" left
+        # that tool surfaced 0/5 and the model walked a six-call chain instead, never once
+        # calling `tool_load` to go and fetch the thing it had just been told to use.
+        nn = _answer_norm(name)
+        npat = _exact_name_pattern(nn) if nn else None
+        if nn and (npat.search(lp) if npat is not None else nn in lp):
+            # Beats every synonym: naming the tool is the strongest evidence a request can
+            # carry, and it must never be the entry ANSWERABLE_MAX truncates away.
+            hits.append((_EXACT_NAME_WEIGHT, name))
+            continue
         for syn in ((fn.get("_meta") or {}).get("synonyms") or []):
             if not isinstance(syn, str):
                 continue
