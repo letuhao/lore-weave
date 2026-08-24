@@ -1,0 +1,183 @@
+{
+  "schema_size": {
+    "character": 13,
+    "location": 7,
+    "item": 6,
+    "organization": 7,
+    "terminology": 4,
+    "power_system": 7
+  },
+  "ARM_A_extract_entities_from_doc": {
+    "character": {
+      "entities": 2,
+      "names": [
+        "Aldric Vane",
+        "Mira Solene"
+      ],
+      "schema_fields_per_entity": 13,
+      "filled": 2,
+      "asked": 26,
+      "fill_rate": 0.077,
+      "chars_per_filled_field": 68.0
+    },
+    "item": {
+      "entities": 1,
+      "names": [
+        "Ashen Sigil"
+      ],
+      "schema_fields_per_entity": 6,
+      "filled": 3,
+      "asked": 6,
+      "fill_rate": 0.5,
+      "chars_per_filled_field": 30.7
+    },
+    "location": {
+      "entities": 2,
+      "names": [
+        "Hollow Keep",
+        "Obsidian Trench"
+      ],
+      "schema_fields_per_entity": 7,
+      "filled": 3,
+      "asked": 14,
+      "fill_rate": 0.214,
+      "chars_per_filled_field": 12.0
+    },
+    "organization": {
+      "entities": 1,
+      "names": [
+        "Wardens of the Pale"
+      ],
+      "schema_fields_per_entity": 7,
+      "filled": 2,
+      "asked": 7,
+      "fill_rate": 0.286,
+      "chars_per_filled_field": 32.0
+    },
+    "terminology": {
+      "entities": 2,
+      "names": [
+        "stillwater binding",
+        "drowned"
+      ],
+      "schema_fields_per_entity": 4,
+      "filled": 5,
+      "asked": 8,
+      "fill_rate": 0.625,
+      "chars_per_filled_field": 52.4
+    },
+    "_TOTAL": {
+      "filled": 15,
+      "asked": 61,
+      "fill_rate": 0.246,
+      "chars_per_filled_field": 39.3
+    },
+    "_entities": 8
+  },
+  "ARM_B_plan": {
+    "n": 8,
+    "deep": [
+      "Wardens of the Pale",
+      "Stillwater Binding"
+    ],
+    "standard": [
+      "Aldric Vane",
+      "Mira Solene",
+      "Hollow Keep",
+      "Obsidian Trench",
+      "The Ashen Sigil",
+      "Drowned"
+    ]
+  },
+  "ARM_B_status": {
+    "status": "proposed",
+    "skipped": []
+  },
+  "ARM_B_readback": {
+    "listed": 8,
+    "list_keys": [
+      "items",
+      "total",
+      "view"
+    ]
+  },
+  "_ARM_B_sample": "{\"attribute_values\": [{\"attr_def_id\": \"52d00660-2a07-4cde-ba9f-43f949672b60\", \"attr_value_id\": \"01a03509-fc5e-7799-86b8-e939d48df624\", \"attribute_def\": {\"attr_def_id\": \"52d00660-2a07-4cde-ba9f-43f949672b60\", \"code\": \"name\", \"field_type\": \"text\", \"is_required\": true, \"is_system\": false, \"merge_strategy\": \"fill_if_empty\", \"name\": \"Name\", \"sort_order\": 1}, \"entity_id\": \"01a03509-fc5d-7d7e-8503-dc2287006b0a\", \"evidences\": [], \"original_language\": \"en\", \"original_value\": \"Stillwater Binding\", \"translations\": []}, {\"attr_def_id\": \"0fb923e5-2e4b-4cf4-aca4-9bce2111adfc\", \"attr_value_id\": \"01a03509-fc6",
+  "ARM_B_glossary_build": {
+    "character": {
+      "entities": 2,
+      "names": [
+        null,
+        null
+      ],
+      "schema_fields_per_entity": 13,
+      "filled": 4,
+      "asked": 26,
+      "fill_rate": 0.154,
+      "chars_per_filled_field": 87.8
+    },
+    "item": {
+      "entities": 1,
+      "names": [
+        null
+      ],
+      "schema_fields_per_entity": 6,
+      "filled": 4,
+      "asked": 6,
+      "fill_rate": 0.667,
+      "chars_per_filled_field": 88.0
+    },
+    "location": {
+      "entities": 2,
+      "names": [
+        null,
+        null
+      ],
+      "schema_fields_per_entity": 7,
+      "filled": 8,
+      "asked": 14,
+      "fill_rate": 0.571,
+      "chars_per_filled_field": 136.5
+    },
+    "organization": {
+      "entities": 1,
+      "names": [
+        null
+      ],
+      "schema_fields_per_entity": 7,
+      "filled": 6,
+      "asked": 7,
+      "fill_rate": 0.857,
+      "chars_per_filled_field": 73.3
+    },
+    "power_system": {
+      "entities": 1,
+      "names": [
+        null
+      ],
+      "schema_fields_per_entity": 7,
+      "filled": 4,
+      "asked": 7,
+      "fill_rate": 0.571,
+      "chars_per_filled_field": 182.2
+    },
+    "terminology": {
+      "entities": 1,
+      "names": [
+        null
+      ],
+      "schema_fields_per_entity": 4,
+      "filled": 4,
+      "asked": 4,
+      "fill_rate": 1.0,
+      "chars_per_filled_field": 117.8
+    },
+    "_TOTAL": {
+      "filled": 30,
+      "asked": 64,
+      "fill_rate": 0.469,
+      "chars_per_filled_field": 114.5
+    },
+    "_entities": 8
+  },
+  "torn_down": true
+}

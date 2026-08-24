@@ -8743,6 +8743,32 @@ async def composition_derivative_edit(ctx: MCPContext, args: _DerivativeEditArgs
 # op is a clean 422 at the schema, never a silent no-op.
 
 
+async def _resolve_build_lang(tc: Any, book_id: UUID, supplied: str | None) -> str:
+    """The glossary is written in the BOOK's language, not in a language this file picked.
+
+    `glossary_build/prompts.py` already states the intent — "language adapts to the book's source
+    language via `lang` (the POC ran 'vi')" — but the MCP boundary carried the POC's value as its
+    default and the handler passed it through unresolved. Since `lang` also had no description, no
+    model ever set it, so every build wrote Vietnamese whatever the book was.
+
+    An explicitly supplied `lang` still wins. "vi" remains only as the LAST-RESORT fallback when
+    the book cannot be read: that keeps the error path's behaviour exactly as it is today rather
+    than swapping in a different guess, and the warning records when it happened.
+    """
+    if supplied:
+        return supplied
+    try:
+        bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
+        book_obj = await get_book_client().get_book(book_id, bearer)
+        lang = (book_obj or {}).get("original_language")
+        if lang:
+            return str(lang)
+        logger.warning("glossary_build: book %s carries no original_language", book_id)
+    except Exception:
+        logger.warning("glossary_build: book language unreadable for %s", book_id, exc_info=True)
+    return "vi"
+
+
 class _GlossaryBuildArgs(ForbidExtra):
     op: Annotated[
         Literal["start", "approve_plan", "status", "project_kg", "approve_edges", "cancel"],
@@ -8759,7 +8785,15 @@ class _GlossaryBuildArgs(ForbidExtra):
     source_text: str | None = None                  # op=start (required)
     model_ref: str | None = None                    # op=start (required — a user-model UUID)
     model_source: str = "user_model"
-    lang: str = "vi"
+    # OMIT to write in the BOOK's own language. The default was "vi" — the POC's language,
+    # hardcoded at this boundary — so every build wrote Vietnamese into every book (measured
+    # 2026-08-25 against an original_language='en' fixture). It must be None, not another
+    # string: with a string default there is no way to tell "the caller asked for Vietnamese"
+    # from "the caller said nothing".
+    lang: Annotated[str | None, Field(description=(
+        "OPTIONAL language code for the glossary content (e.g. 'en', 'vi'). Omit it and the "
+        "book's own source language is used — pass one only to override that deliberately."
+    ))] = None
     max_items: int = 30
     # op=approve_plan / approve_edges — the HUMAN-trimmed list. Omitted ⇒ take
     # the stored one as-is (the agent must NOT invent entries here; the planner
@@ -8824,7 +8858,8 @@ async def composition_glossary_build(ctx: MCPContext, args: _GlossaryBuildArgs) 
                 "model_source": args.model_source,
                 "model_ref": _need("model_ref", args.model_ref),
                 "source_text": _need("source_text", args.source_text),
-                "lang": args.lang, "max_items": args.max_items,
+                "lang": await _resolve_build_lang(tc, bid, args.lang),
+                "max_items": args.max_items,
             })
             planned = await svc.plan(run["run_id"], owner)
             return {
