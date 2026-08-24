@@ -2311,7 +2311,75 @@ def _inject_context_ids(
                 supplied[:64], val_s,
             )
             args_obj[key] = val_s
+    _drop_crosswired_foreign_ids(
+        args_obj, fn, props, _no_fill,
+        book_id=book_id, chapter_id=chapter_id, project_id=project_id, id_ledger=id_ledger,
+    )
     return args_obj
+
+
+def _drop_crosswired_foreign_ids(
+    args_obj: dict, fn: dict, props: dict, no_fill: set, *,
+    book_id: str | None, chapter_id: str | None, project_id: str | None, id_ledger=None,
+) -> None:
+    """The same cross-wire check, for id arguments that are NOT named book/chapter/project.
+
+    🔴 THE LOOP ABOVE ITERATES OVER EXACTLY THREE ARGUMENT NAMES, so a context-id landing in an
+    argument called anything else was never examined at all. The mechanism was not weak here —
+    it was ABSENT, and the absence is invisible because the three names cover most tools.
+
+    MEASURED 2026-08-24, composition_authoring_run_manage, K=2 and again in the batch before it:
+    the model sent `plan_run_id` = the turn's CHAPTER id. Checked against the deployed function,
+    `_inject_context_ids` returned it untouched. A durable gate task was then minted for a run
+    the platform already had the evidence to know was unbuildable, the author was shown a card,
+    and approving it produced a bare `400 {"code":"action_error"}` — LookupError("plan run not
+    found") with the message discarded. Approve-then-fail on a cost-bearing tool, which is the
+    same shape D-UNDECLARED-REF filed for composition_generate's model_ref.
+
+    Deliberately the NARROW half of the rule above, and nothing more:
+      * only arguments whose name ends in `_id`, so a prose field that happens to hold a UUID
+        is never touched;
+      * only an EXACT match against an id this turn published under a different name — the
+        `_crosswired_ids` / `is_crosswired` standard, never a similarity guess;
+      * only where the tool DECLARES AN EMITTER for that argument, because the whole case for
+        dropping is that the refusal which follows can name where to get the real value. Where
+        it cannot, forwarding an id known to be wrong is still the lesser failure (measured:
+        c-override11, where a drop with nowhere to go blank-retried into the breaker);
+      * DROP only, never substitute. The correct value is not a context id, so the server has
+        nothing to put in its place and must not invent one.
+    """
+    for key in list(args_obj):
+        if key in ("book_id", "chapter_id", "project_id") or key in no_fill:
+            continue
+        if not key.endswith("_id") or key not in props:
+            continue
+        supplied = args_obj.get(key)
+        if not isinstance(supplied, str) or not supplied:
+            continue
+        crosswired = supplied in _crosswired_ids(
+            key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+        ) or (id_ledger is not None and id_ledger.is_crosswired(key, supplied))
+        if not crosswired:
+            continue
+        try:
+            from app.agentruntime.toolcontract import declared_emitter
+            emitter = declared_emitter(_tool_contract_registry(), fn.get("name") or "", key)
+        except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+            emitter = None
+        if not emitter:
+            logger.info(
+                "tool arg %s=%r is cross-wired but %s declares no emitter for it — forwarding "
+                "as-is rather than dropping, because the refusal would name nowhere to go",
+                key, supplied[:64], fn.get("name"),
+            )
+            continue
+        logger.warning(
+            "tool arg %s=%r is another of this turn's context-ids (cross-wired) and %s is not "
+            "a context id the server holds — DROPPING it so the tool's own refusal names %s, "
+            "rather than minting a card for a call that cannot succeed",
+            key, supplied[:64], key, emitter,
+        )
+        args_obj.pop(key, None)
 
 
 def _repair_saved_book_id(

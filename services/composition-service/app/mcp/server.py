@@ -3282,6 +3282,28 @@ async def composition_authoring_run_create(
     tc = _ctx(ctx)
     book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
+    # 🔴 APPROVE-THEN-FAIL. Until 2026-08-24 this minted a confirm-token for ANY plan_run_id and
+    # only looked it up in the ACCEPT effect, where a miss becomes LookupError("plan run not
+    # found") -> HTTPException(400, {"code": "action_error"}) with the message discarded. So the
+    # author was shown a cost-bearing approval card for a run that could not be created, approved
+    # it, and got a bare 400. Measured on 5 of 5 runs (batch c-authrun2) and 2 of 2 (c-authrun4).
+    #
+    # Same class as D-UNDECLARED-REF on composition_generate's model_ref — "Approve-then-fail, on
+    # the most expensive tool on the platform" — and the same remedy: refuse at PROPOSE, and name
+    # the supplier so the refusal is actionable. This can never block a call that would have
+    # worked: the accept does the identical lookup, so a run this rejects is one the accept would
+    # have rejected a human decision later.
+    from app.db.repositories.plan_runs import PlanRunsRepo
+
+    plan_run_uuid = _uuid(args.plan_run_id, "plan_run_id")
+    if await PlanRunsRepo(get_pool()).get_for_book(book_id, plan_run_uuid) is None:
+        raise ValueError(
+            f"no plan run {args.plan_run_id} on this book — plan_run_id must be a PLAN run of "
+            f"this same book. Read the book's existing plan runs from "
+            f"composition_package_tree's `runs.recent`; only if the book has no plan at all does "
+            f"plan_propose_spec create one. It is not the authoring run's own id and never a "
+            f"chapter id."
+        )
     payload = {
         "book_id": args.book_id,
         "plan_run_id": args.plan_run_id,
@@ -3809,10 +3831,22 @@ class _AuthoringRunManageArgs(ForbidExtra):
     # AUTHOR's decisions — how much money, and whether to stop between units. No tool can provide
     # them, the model is correctly forbidden from inventing them, and nothing told it to ASK. Saying
     # so is not a policy change; it is what the handler already enforces, written where it is read.
+    # 🔴 THE DESCRIPTION NAMED ONLY THE TOOL THAT MAKES A NEW RUN. Measured 2026-08-24: the book
+    # already HAD a compiled plan run, and the only supplier this text offered was
+    # plan_propose_spec — which proposes a fresh one. A model that follows it either builds a
+    # second plan or, as measured on 2 of 2 runs, reaches for whatever id it already holds (the
+    # editor's chapter_id) and the create fails with a bare 400.
+    #
+    # An EXISTING run is readable and always was: composition_package_tree returns a `.runs/`
+    # block — the book's 5 most recent plan runs with id/status/mode, via
+    # PlanRunsRepo.list_for_book. Naming it here is not a new capability, it is the supplier the
+    # description was missing; the earlier note that "no tool lists an existing run" was wrong.
     plan_run_id: str | None = Field(default=None, description=(
-        "op=create REQUIRES this. The PLAN run this authoring run drafts from — the `run_id` "
-        "returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's "
-        "own id, which is `run_id`."))
+        "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the "
+        "book ALREADY has a plan, read its id from composition_package_tree's `runs.recent` — "
+        "do NOT propose a new plan just to obtain one. Only when the book has no plan at all is "
+        "the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). "
+        "Not the authoring run's own id, which is `run_id`, and never a chapter id."))
     scope: list[str] | None = None            # create
     level: Literal[3, 4] | None = None        # create
     budget_usd: Decimal | None = Field(default=None, description=(

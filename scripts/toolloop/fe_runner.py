@@ -421,7 +421,68 @@ async def run_scenario(client, auth, sc, idx, fx):
     res["rep"] = idx
     res["book_id"] = fx.book_id
     res["project_id"] = fx.project_id
+    res["seed_ids"] = seed_ids(fx)
     return res
+
+
+def seed_ids(fx) -> dict:
+    """Every id the FIXTURE created, so a cross-wired argument can be IDENTIFIED later.
+
+    🔴 WITHOUT THIS, A CROSS-WIRE IS UNDIAGNOSABLE AFTER THE FACT — AND ONE WAS
+    MISDIAGNOSED FOR A WHOLE CYCLE. composition_authoring_run_manage sent a plan_run_id that was
+    a real UUIDv7 (a model cannot fabricate one: the creation timestamp is IN the id), the create
+    failed with a bare 400, and the batch held nothing that could say what that id WAS. It got a
+    confident blocked reason — "a run_id nothing can look up" — that was simply wrong.
+
+    provision.py already knows all of it: `fx.project_id` and `fx.seeded`, which carries every
+    seed step's RESULT. The batch writer picked fields explicitly and kept neither. So the ids are
+    collected here as {value: what-it-is} — the direction a reader actually needs, because the
+    question is always "the model sent THIS; what is it?" rather than "what is the project id?".
+    """
+    out: dict[str, str] = {}
+    # EVERY id the fixture holds, not the two that were convenient. The first version of this
+    # recorded book_id and project_id only, and the very first cross-wire it was built to
+    # diagnose turned out to be NEITHER — leaving a map that proved the id was not the two
+    # things I had guessed and could not say what it was. An identifying instrument that
+    # covers part of the space produces confident eliminations and no identification.
+    for attr, what in (
+        ("book_id", "fixture book_id"),
+        ("project_id", "fixture project_id (composition_work)"),
+        ("chapter_id", "fixture chapter_id (the EDITOR CONTEXT the turn carries)"),
+        ("world_id", "fixture world_id"),
+        ("user_model_id", "fixture user_model_id"),
+    ):
+        v = getattr(fx, attr, None)
+        if v:
+            out.setdefault(str(v), what)
+    for i, step in enumerate(fx.seeded or []):
+        what = step.get("tool") or (step.get("rest") or {}).get("path") or "seed"
+        _collect_uuids(step.get("result"), f"seed[{i}] {what}", out)
+    return out
+
+
+_UUIDISH = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _collect_uuids(node, where: str, out: dict, key: str = "", depth: int = 0) -> None:
+    """Every UUID-shaped leaf in a seed result, labelled by the KEY it arrived under.
+
+    The key is what makes the record useful: "seed[0] plan_propose_spec.run_id" identifies a
+    cross-wire on sight, where a bare list of uuids would not. Bounded depth because a seed
+    result is arbitrary provider JSON and this is an instrument, not a crawler. An id already
+    recorded keeps its FIRST label — the fixture's own book/project names win over a seed echo.
+    """
+    if depth > 6:
+        return
+    if isinstance(node, str):
+        if _UUIDISH.match(node):
+            out.setdefault(node, f"{where}.{key}" if key else where)
+    elif isinstance(node, dict):
+        for k, v in node.items():
+            _collect_uuids(v, where, out, f"{key}.{k}" if key else str(k), depth + 1)
+    elif isinstance(node, list):
+        for j, v in enumerate(node[:20]):
+            _collect_uuids(v, where, out, f"{key}[{j}]", depth + 1)
 
 
 def _other_runner_pids() -> list[int]:
@@ -676,6 +737,12 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
                 "via": "fe_runner",
                 "rep": r.get("rep"),
                 "book_id": r.get("book_id"),
+                # The fixture's OWN ids, so a cross-wired argument can be named rather than
+                # guessed at. See seed_ids(): a batch that records only book_id cannot tell a
+                # hallucinated id from a real one the fixture made, and the difference decides
+                # whether the defect is the model's or the surface's.
+                "project_id": r.get("project_id"),
+                "seed_ids": r.get("seed_ids") or {},
                 "session_id": r.get("session_id"),
                 # 🔴 THE MEASURED TURN, not the scenario's first line. These differ for every
                 # multi-turn scenario, and recording the wrong one is not cosmetic: reading
