@@ -342,6 +342,13 @@ class AgeGraphStore:
             e.canonical_version = coalesce(e.canonical_version, 1),
             e.confidence    = coalesce(e.confidence, {_lit(confidence)}),
             e.anchor_score  = coalesce(e.anchor_score, 0.0),
+            // T17 A32 — INITIALISED, as the Neo4j repo initialises them. AGE simply had no
+            // such property until evidence arrived, and a MISSING property makes
+            // `e.mention_count >= $floor` evaluate NULL, so the entity vanished from any query
+            // that filters on it. The gap report is exactly such a query, and its symptom is an
+            // empty list rather than an error.
+            e.mention_count  = coalesce(e.mention_count, 0),
+            e.evidence_count = coalesce(e.evidence_count, 0),
             e.aliases       = coalesce(e.aliases, [{_lit(name)}]),
             e.source_types  = CASE
                 WHEN e.source_types IS NULL THEN [{_lit(source_type)}]
@@ -710,9 +717,18 @@ class AgeGraphStore:
             r.quote            = coalesce({_lit(quote)}, r.quote)
         RETURN r
         """
+        # 🔴 `mention_count` moves WITH `evidence_count`, and it did not until T17 A32.
+        # The port says `add_evidence` bumps the target's counterS and the Neo4j repo
+        # bumps both in one SET; this adapter bumped only `evidence_count` and then read
+        # `mention_count` back unchanged, so the return shape looked right. Nothing
+        # noticed because every conformance rule asserted on `evidence_count`.
+        # Consequence from the workload: `mention_count` is the gap report's PRIMARY sort
+        # key and its floor, so `find_gap_candidates(min_mentions=50)` returned nothing
+        # for ever on this backend — an empty list and a 200.
         bump = f"""
         MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})
-        SET t.evidence_count = coalesce(t.evidence_count, 0) + 1
+        SET t.evidence_count = coalesce(t.evidence_count, 0) + 1,
+            t.mention_count  = coalesce(t.mention_count, 0) + 1
         RETURN t.evidence_count
         """
         read = f"""
@@ -1350,6 +1366,48 @@ class AgeGraphStore:
         return events[:limit]
 
     # ── the project as a whole ───────────────────────────────────────
+
+    async def find_gap_candidates(
+        self, *, user_id: str, project_id: str | None,
+        min_mentions: int = 50, limit: int = 100,
+    ) -> list[Entity]:
+        """The gap report on AGE.
+
+        `min_mentions` and `limit` are INTERPOLATED as integers rather than passed through
+        `_lit`, and the `int()` coercion above is the injection barrier — the same shape
+        `COUNTABLE_LABELS` is for a label. Cypher has no parameter form for `LIMIT` on this
+        engine, and a value that has survived `int()` cannot carry a quote.
+
+        The three-key ORDER BY is reproduced exactly. Dropping the tie-breakers would give a
+        set that matches Neo4j's and a PAGE that does not, and the page is what the author
+        reads.
+        """
+        if min_mentions < 0:
+            raise ValueError(f"min_mentions must be >= 0, got {min_mentions}")
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+        where = [
+            f"e.user_id = {_lit(user_id)}",
+            "e.glossary_entity_id IS NULL",
+            "e.archived_at IS NULL",
+            # `coalesce` where Neo4j needs none: Neo4j has always initialised the counter,
+            # AGE has only done so since T17 A32, and rows written before it carry no property
+            # at all. Without this they are invisible to the floor even at `min_mentions=0`,
+            # which reads as "no gaps" — the most reassuring possible wrong answer.
+            #
+            # ⚠️ This one is a PYTHON comment because it sits in the predicate LIST. The first
+            # cut put the note above INSIDE the Cypher with a `#`, and AGE answered
+            # `PostgresSyntaxError: syntax error at or near "A32"`. Cypher comments are `//`.
+            f"coalesce(e.mention_count, 0) >= {int(min_mentions)}",
+        ]
+        if project_id is not None:
+            where.append(f"e.project_id = {_lit(project_id)}")
+        cy = (
+            f"MATCH (e:Entity) WHERE {' AND '.join(where)} RETURN e "
+            f"ORDER BY e.mention_count DESC, e.confidence DESC, e.name ASC "
+            f"LIMIT {int(limit)}"
+        )
+        return [_to_entity(_props(r["v"])) for r in await self._run(cy)]
 
     async def purge_project(self, *, project_id: str) -> dict[str, int]:
         """Delete every node carrying this `project_id`, inside the graph this store holds.

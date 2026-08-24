@@ -233,6 +233,11 @@ async def _drive_every_operation(store, user_id: str, project_id: str) -> list[s
     # would run on an empty graph and agree perfectly, which is the most convincing way to
     # measure nothing. A dedicated project keeps the operation genuinely exercised (it deletes
     # real rows and both engines must report the same count) while leaving the corpus intact.
+    # T17 A32 — the gap report, driven BEFORE the purge below (which deletes its own
+    # project, not this one, but ordering the read first keeps the trace readable).
+    await store.find_gap_candidates(user_id=user_id, project_id=project_id, min_mentions=0)
+    trace.append("gapcandidates()")
+
     doomed = f"{project_id}-doomed"
     for name in ("Ephemeral", "Transient"):
         await store.resolve_or_merge_entity(

@@ -515,6 +515,37 @@ class GraphStore(Protocol):
         """
         ...
 
+    async def find_gap_candidates(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        min_mentions: int = 50,
+        limit: int = 100,
+    ) -> list[Entity]:
+        """Discovered entities with no glossary link, worth promoting — the gap report.
+
+        Four predicates, and each one is load-bearing rather than a filter for tidiness:
+
+        ```
+        glossary_entity_id IS NULL   DISCOVERED only — a linked entity is not a gap
+        archived_at IS NULL          the author already said no to this one
+        mention_count >= $min        KSA §3.4.E; below the floor is extraction noise
+        ORDER BY mention_count DESC, confidence DESC, name ASC
+        ```
+
+        **The sort is a three-key composite and every adapter must honour all three.** A
+        gap report is a page the author works through top-down, so the order IS the product;
+        two adapters that agree on the SET and disagree on the ORDER would show different
+        work queues for the same book, and a set-equality test would call that parity.
+
+        `min_mentions=0` is legal and means "everything discovered", which is a different
+        request from the default and not a degenerate one — a fresh book has no entity at 50.
+        A NEGATIVE floor, or a limit of zero or less, RAISES: they are caller errors, and the
+        repo has refused them since it was written.
+        """
+        ...
+
     async def purge_project(self, *, project_id: str) -> dict[str, int]:
         """Delete every node this project owns. Returns `{nodes_deleted, indexes_dropped}`.
 

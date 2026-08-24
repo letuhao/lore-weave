@@ -90,6 +90,10 @@ OPERATIONS = (
     # the comparison is on the RETURNED counts, not on the graphs, so a secondary that deleted
     # a different number says so.
     "purge_project",
+    # T17 A32. A READ whose value is its ORDER, which is what makes it worth shadowing: two
+    # engines can return the same set and rank it differently, and only a differential that
+    # compares the SEQUENCE would notice.
+    "find_gap_candidates",
 )
 
 
@@ -516,6 +520,14 @@ class ShadowGraphStore:
         return await self._shadow_by_id(
             "add_evidence", out, kw.get("target_id"),
             lambda s, sid: s.add_evidence(**{**kw, "target_id": sid}))
+
+    async def find_gap_candidates(self, **kw):
+        # NATURAL-keyed: every argument is the caller's own. `_comparable` already strips
+        # engine-assigned ids, so what is compared is the identity tuple of each row IN ORDER
+        # — which is the point, because the ordering is the product here.
+        out = await self._primary.find_gap_candidates(**kw)
+        return await self._shadow(
+            "find_gap_candidates", out, lambda s: s.find_gap_candidates(**kw))
 
     async def purge_project(self, **kw):
         """NATURAL-keyed like `project_graph_stats`: the project id is the caller's own.

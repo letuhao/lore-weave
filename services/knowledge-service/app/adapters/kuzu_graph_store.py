@@ -865,9 +865,18 @@ class KuzuGraphStore:
                     "WHERE n.id = $t AND n.user_id = $u AND s.id = $s "
                     "CREATE (n)-[:EVIDENCED_BY {job_id: $j, extraction_model: $m, "
                     "confidence: $c, quote: $q}]->(s)", p)
+                # 🔴 `mention_count` moves WITH `evidence_count`, and it did not until T17 A32.
+                # The port says `add_evidence` bumps the target's counterS and the Neo4j repo
+                # bumps both in one SET; this adapter bumped only `evidence_count` and then read
+                # `mention_count` back unchanged, so the return shape looked right. Nothing
+                # noticed because every conformance rule asserted on `evidence_count`.
+                # Consequence from the workload: `mention_count` is the gap report's PRIMARY sort
+                # key and its floor, so `find_gap_candidates(min_mentions=50)` returned nothing
+                # for ever on this backend — an empty list and a 200.
                 await self._run(
                     f"MATCH (n:{label}) WHERE n.id = $t AND n.user_id = $u "
-                    "SET n.evidence_count = n.evidence_count + 1",
+                    "SET n.evidence_count = n.evidence_count + 1, "
+                    "n.mention_count = n.mention_count + 1",
                     {"t": target_id, "u": user_id})
             row = self._props((await self._run(
                 f"MATCH (n:{label}) WHERE n.id = $t AND n.user_id = $u RETURN n",
@@ -964,6 +973,27 @@ class KuzuGraphStore:
         return {eid: latest.get(eid, "active") for eid in entity_ids}
 
     # ── the project as a whole ────────────────────────────────────────────────────────────
+
+    async def find_gap_candidates(
+        self, *, user_id: str, project_id: str | None,
+        min_mentions: int = 50, limit: int = 100,
+    ) -> list[Entity]:
+        """The gap report on Kuzu. Parameters bind here, including `LIMIT`."""
+        if min_mentions < 0:
+            raise ValueError(f"min_mentions must be >= 0, got {min_mentions}")
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+        q = ["MATCH (n:Entity) WHERE n.user_id = $u",
+             "AND n.glossary_entity_id IS NULL",
+             "AND n.archived_at IS NULL",
+             "AND n.mention_count >= $m"]
+        params: dict = {"u": user_id, "m": int(min_mentions), "lim": int(limit)}
+        if project_id is not None:
+            q.append("AND n.project_id = $p")
+            params["p"] = project_id
+        q.append("RETURN n ORDER BY n.mention_count DESC, n.confidence DESC, n.name ASC "
+                 "LIMIT $lim")
+        return [_to_entity(self._props(r)) for r in await self._run(" ".join(q), params)]
 
     async def purge_project(self, *, project_id: str) -> dict[str, int]:
         """Delete this project's rows from every node table.

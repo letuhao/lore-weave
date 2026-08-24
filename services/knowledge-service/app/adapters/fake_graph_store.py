@@ -685,12 +685,21 @@ class FakeGraphStore:
         if created:
             self._evidence[key] = {"quote": quote, "model": extraction_model}
             self._evidence_counts[target_id] = self._evidence_counts.get(target_id, 0) + 1
+            # The fake stores it ON THE ENTITY, not in a side table, because that is where
+            # every reader looks — `find_gap_candidates` sorts and floors on it. A fake that
+            # only reported the number in its return value would satisfy a test that reads the
+            # result and fail every test that reads the graph.
+            self._entities[target_id] = ent.model_copy(
+                update={"mention_count": (ent.mention_count or 0) + 1})
         elif quote is not None:
             # A quote-bearing re-extraction BACKFILLS a quoteless edge and never wipes one.
             self._evidence[key]["quote"] = self._evidence[key]["quote"] or quote
         return EvidenceWriteResult(
             evidence_count=self._evidence_counts.get(target_id, 0),
-            mention_count=0,
+            # Was hardcoded `0`. The port says this bumps the target's counterS, and a fake
+            # that answers zero to one of them teaches every unit test that uses it a rule the
+            # real stores do not follow.
+            mention_count=self._entities[target_id].mention_count or 0,
             created=created,
         )
 
@@ -724,6 +733,33 @@ class FakeGraphStore:
         return out
 
     # ── the project as a whole ───────────────────────────────────────
+
+    async def find_gap_candidates(
+        self, *, user_id: str, project_id: str | None,
+        min_mentions: int = 50, limit: int = 100,
+    ) -> list[Entity]:
+        """The gap report in memory.
+
+        The sort is written out in full rather than `sorted(key=...)` on one field, because
+        the fake is what most unit tests see: a fake that ordered only by `mention_count`
+        would make a two-key disagreement between the real adapters invisible to every test
+        that uses it, which is the failure mode `fixtures can seed a field the writer never
+        sets` describes from the other side.
+        """
+        if min_mentions < 0:
+            raise ValueError(f"min_mentions must be >= 0, got {min_mentions}")
+        if limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit}")
+        out = [
+            e for e in self._entities.values()
+            if e.user_id == user_id
+            and getattr(e, "glossary_entity_id", None) is None
+            and getattr(e, "archived_at", None) is None
+            and (e.mention_count or 0) >= min_mentions
+            and (project_id is None or e.project_id == project_id)
+        ]
+        out.sort(key=lambda e: (-(e.mention_count or 0), -(e.confidence or 0.0), e.name or ""))
+        return out[:limit]
 
     async def purge_project(self, *, project_id: str) -> dict[str, int]:
         """Drop every in-memory row for this project, across ALL the structures.

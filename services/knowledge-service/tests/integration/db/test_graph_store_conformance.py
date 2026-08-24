@@ -1831,3 +1831,181 @@ async def test_purge_project_reports_indexes_dropped_and_SAYS_when_it_could_not_
     assert out["indexes_dropped"] == 0
     if "indexes_skipped" in out:
         assert out["indexes_skipped"], "an empty reason is not a reason"
+
+
+# ── find_gap_candidates (T17 A32) ───────────────────────────────────────────────────────────
+#
+# ⚠️ `mention_count` is NOT settable through the port and that shaped every fixture below.
+# There is no `merge_entity`; the counter is bumped by `add_evidence`, once per NEW source
+# (a re-run of the same job must not drift it — the rule its own conformance test pins). So a
+# gap candidate's mention count is built by attaching N distinct sources, and the numbers here
+# are small on purpose: the DEFAULT floor is 50 and reaching it would mean 50 round trips per
+# entity in a suite that runs against four adapters.
+
+
+async def _bump(store, user_id: str, entity, n: int) -> None:
+    """Give `entity` a mention_count of `n` the only way the port allows."""
+    for i in range(n):
+        src = f"src-{uuid.uuid4().hex[:10]}"
+        await store._mk_source(user_id, src)
+        await store.add_evidence(
+            user_id=user_id, target_label="Entity", target_id=entity.id, source_id=src,
+            extraction_model="m1", confidence=0.9, job_id=f"job-{i}-{uuid.uuid4().hex[:6]}")
+
+
+@pytest.mark.asyncio
+async def test_add_evidence_bumps_mention_count_ON_THE_ENTITY_not_just_in_its_return(store):
+    """🔴 The half nothing checked, and three of four adapters were not doing it.
+
+    The port says `add_evidence` bumps the target's counter**s**, and the Neo4j repo moves both
+    in one SET. AGE and Kuzu bumped only `evidence_count` and then read `mention_count` back
+    unchanged; the fake returned a hardcoded `0`. Every existing rule asserts on the
+    `EvidenceWriteResult`'s `evidence_count`, so all three passed.
+
+    Consequence, from the workload rather than the contract: `mention_count` is
+    `find_gap_candidates`'s PRIMARY sort key **and** its floor. At a default floor of 50 and a
+    counter frozen at 0, the gap report returns an empty list and a 200 for ever — on the
+    DEFAULT backend.
+
+    So this reads the counter back off the ENTITY, not out of the return value. A store can
+    report a number it did not persist; only the graph can be wrong in the way that matters.
+    """
+    u, p, _ = _ids()
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Counted", kind="character", source_type="chapter")
+    src = f"src-{uuid.uuid4().hex[:10]}"
+    await store._mk_source(u, src)
+
+    job = f"job-{uuid.uuid4().hex[:8]}"
+    first = await store.add_evidence(
+        user_id=u, target_label="Entity", target_id=e.id, source_id=src,
+        extraction_model="m1", confidence=0.9, job_id=job)
+    assert first is not None and first.mention_count >= 1, (
+        f"the RETURN says mention_count={first and first.mention_count}")
+
+    (persisted,) = await store.find_entities_by_name(
+        user_id=u, project_id=p, name="Counted")
+    assert (persisted.mention_count or 0) >= 1, (
+        "add_evidence reported a mention_count it did not persist on the entity — every "
+        "reader of the graph, including the gap report's floor and sort, sees zero"
+    )
+
+    # ...and a re-run of the SAME job must not move it, for the reason evidence_count does not:
+    # a re-extraction is not a new mention.
+    again = await store.add_evidence(
+        user_id=u, target_label="Entity", target_id=e.id, source_id=src,
+        extraction_model="m1", confidence=0.9, job_id=job)
+    (after,) = await store.find_entities_by_name(user_id=u, project_id=p, name="Counted")
+    assert (after.mention_count or 0) == (persisted.mention_count or 0), (
+        f"re-running one job moved mention_count {persisted.mention_count} -> "
+        f"{after.mention_count}: the counter drifts on every retry"
+    )
+    assert again is not None and again.created is False
+
+
+@pytest.mark.asyncio
+async def test_gap_candidates_are_DISCOVERED_unlinked_and_above_the_floor(store):
+    """Three predicates, each shown to exclude something — a filter nothing fails is not a
+    filter. One row per exclusion reason, so an adapter that dropped any single predicate
+    returns a row this test names."""
+    u, p, _ = _ids()
+    keep = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Wanted", kind="character", source_type="chapter")
+    await _bump(store, u, keep, 2)
+
+    quiet = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Quiet", kind="character", source_type="chapter")
+
+    archived = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Archived", kind="character", source_type="chapter")
+    await _bump(store, u, archived, 2)
+    await store.archive_entity(user_id=u, canonical_id=archived.id, reason="author said no")
+
+    got = {e.name for e in await store.find_gap_candidates(
+        user_id=u, project_id=p, min_mentions=2, limit=100)}
+    assert "Wanted" in got, "a discovered, unlinked, well-mentioned entity is the whole point"
+    assert "Quiet" not in got, "the mention floor is not being applied"
+    assert "Archived" not in got, "an archived entity is one the author already declined"
+
+
+@pytest.mark.asyncio
+async def test_gap_candidates_honour_ALL_THREE_sort_keys(store):
+    """The sort IS the product: a gap report is a queue the author works top-down.
+
+    Two adapters can agree on the SET and disagree on the ORDER, and a set-equality test calls
+    that parity. So the fixture forces every tie-break in turn — equal mention_count decided by
+    confidence, then equal confidence decided by name — which an adapter sorting on one key
+    cannot reproduce.
+    """
+    u, p, _ = _ids()
+    # ⚠️ INSERTED IN THE WRONG ORDER ON PURPOSE, and a bite is what forced it. The first
+    # version created them already sorted, so an adapter returning INSERTION ORDER passed
+    # without sorting at all — proven by deleting AGE's two tie-break keys and watching the
+    # test stay green. A fixture whose natural order is the expected answer cannot test a sort.
+    plan = [("Dogwood", 1, 0.9), ("Birch", 2, 0.5), ("Alder", 2, 0.5), ("Cedar", 2, 0.9)]
+    for name, mentions, conf in plan:
+        e = await store.resolve_or_merge_entity(
+            user_id=u, project_id=p, name=name, kind="character", source_type="chapter",
+            confidence=conf)
+        await _bump(store, u, e, mentions)
+
+    rows = await store.find_gap_candidates(
+        user_id=u, project_id=p, min_mentions=0, limit=100)
+    got = [(e.name, e.mention_count) for e in rows]
+    assert [n for n, _ in got] == ["Cedar", "Alder", "Birch", "Dogwood"], (
+        f"expected mention_count DESC, then confidence DESC, then name ASC; got {got}")
+
+
+@pytest.mark.asyncio
+async def test_gap_candidates_respect_the_LIMIT_and_take_the_TOP(store):
+    """A limit that returned an arbitrary slice would pass a count assertion and hand the
+    author the wrong page. The rows returned must be the FIRST ones under the sort."""
+    u, p, _ = _ids()
+    # Reversed for the same reason as the sort fixture above: created ascending, returned
+    # descending, so insertion order is the WRONG answer here.
+    for name, mentions in [("Cedar", 1), ("Beech", 2), ("Aspen", 3)]:
+        e = await store.resolve_or_merge_entity(
+            user_id=u, project_id=p, name=name, kind="character", source_type="chapter")
+        await _bump(store, u, e, mentions)
+
+    got = [e.name for e in await store.find_gap_candidates(
+        user_id=u, project_id=p, min_mentions=0, limit=2)]
+    assert got == ["Aspen", "Beech"], f"limit must take the TOP of the order; got {got}"
+
+
+@pytest.mark.asyncio
+async def test_gap_candidates_are_scoped_to_the_CALLER_and_the_PROJECT(store):
+    """The tenancy predicate, and the control for it: another user's entity must not appear,
+    and neither must another project's when one is named."""
+    u, p, _ = _ids()
+    other_user, other_project, _ = _ids()
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Mine", kind="character", source_type="chapter")
+    await store.resolve_or_merge_entity(
+        user_id=other_user, project_id=p, name="Theirs", kind="character",
+        source_type="chapter")
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=other_project, name="Elsewhere", kind="character",
+        source_type="chapter")
+
+    scoped = {e.name for e in await store.find_gap_candidates(
+        user_id=u, project_id=p, min_mentions=0, limit=100)}
+    assert "Mine" in scoped
+    assert "Theirs" not in scoped, "another tenant's entity reached this user's gap report"
+    assert "Elsewhere" not in scoped, "a project filter that does not filter"
+
+    unscoped = {e.name for e in await store.find_gap_candidates(
+        user_id=u, project_id=None, min_mentions=0, limit=100)}
+    assert {"Mine", "Elsewhere"} <= unscoped, "project_id=None must span the user's projects"
+    assert "Theirs" not in unscoped, "the tenant predicate must survive a null project"
+
+
+@pytest.mark.asyncio
+async def test_gap_candidates_REFUSE_a_negative_floor_and_a_nonpositive_limit(store):
+    """Caller errors, refused by every adapter rather than by one. A limit of 0 silently
+    returning nothing would read as `no gaps` — the most reassuring possible wrong answer."""
+    u, p, _ = _ids()
+    with pytest.raises(ValueError):
+        await store.find_gap_candidates(user_id=u, project_id=p, min_mentions=-1)
+    with pytest.raises(ValueError):
+        await store.find_gap_candidates(user_id=u, project_id=p, limit=0)

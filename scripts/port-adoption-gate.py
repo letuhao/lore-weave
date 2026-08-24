@@ -91,7 +91,12 @@ EXEMPT_DIRS = (
 # `upsert`. NO port growth. Their two siblings stay on the repo deliberately — they measure the
 # BACKEND (ANN recall, a per-engine corpus dump) and need `oversample_factor`, which the port
 # refuses to expose because it is one engine's weakness rather than a domain concept.
-MAX_CONCRETE_IMPORTERS = 54
+#: 54 -> 53 (2026-08-24, T17 A32): `extraction/glossary_writeback.py`. The FIRST fall in this
+#: batch — A31 moved a caller onto the port but `routers/public/projects.py` still imports
+#: `graph_session` to open one, so it stayed a binder. This module needed nothing else from
+#: `graph_repos` and left the set outright, which is what §1.3 means by "a module falls off
+#: when a batch frees it".
+MAX_CONCRETE_IMPORTERS = 53
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
@@ -141,7 +146,10 @@ MAX_CONCRETE_IMPORTERS = 54
 #: as A10 did: 34 class-(d) modules need **85 distinct operations**, 13 of them are blocked by
 #: exactly ONE, and greedy cover frees precisely one module per operation added. There is no
 #: clever batch to find — which is the measurement, not a complaint.
-MIN_GRAPHSTORE_ADOPTERS = 20
+#: 20 -> 21 (2026-08-24, T17 A32): `extraction/glossary_writeback.py` calls
+#: `find_gap_candidates` through the port and drops its `graph_repos` import entirely — which
+#: is why the CEILING moves in the same commit for the first time in this batch.
+MIN_GRAPHSTORE_ADOPTERS = 21
 _CONCRETE = "graph_repos"
 
 #: T25 (3)'s REAL precondition, and it is not a database operation.
@@ -856,7 +864,9 @@ CLASS_OUT = "(1.2) engine-specific janitors — out forever"
 #: across the 33, 12 modules still blocked by exactly ONE, and greedy set cover frees one
 #: module per operation for the first 13 and worse after. A10 said the same thing; A31 is the
 #: first reading of it the gate emits.
-MAX_CLASS_D = 33
+#: 33 -> 32 (2026-08-24, T17 A32): `extraction/glossary_writeback.py`, freed by
+#: `find_gap_candidates`. Still 1:1, exactly as A31's set-cover priced it.
+MAX_CLASS_D = 32
 
 #: Class (a) is now EMPTY, and this pins it there. A module in (a) binds `graph_repos` for a
 #: CONSTANT — a domain fact re-exported by the repo layer, which T17 A5/A6 moved to

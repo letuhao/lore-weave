@@ -5,6 +5,7 @@ find_gap_candidates + glossary client), and the env config loader.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -56,7 +57,12 @@ def test_build_omits_aliases_attr_when_empty():
 @pytest.mark.asyncio
 async def test_writeback_proposes_with_ai_suggested_tag(monkeypatch):
     cands = [_cand("姜子牙", "person", 0.9), _cand("哪吒", "character", 0.85)]
-    monkeypatch.setattr(gw, "find_gap_candidates", AsyncMock(return_value=cands))
+    # ⚠️ Patched at the PORT now, not at a module-level import. A32 moved this consumer onto
+    # `GraphStore`, so `gw.find_gap_candidates` no longer exists — and a monkeypatch of a name
+    # that is gone raises rather than silently doing nothing, which is the good failure.
+    monkeypatch.setattr(
+        gw, "get_graph_store",
+        lambda _session: SimpleNamespace(find_gap_candidates=AsyncMock(return_value=cands)))
     gc = MagicMock()
     gc.propose_entities = AsyncMock(return_value={"created": 2})
     book_id = uuid4()
@@ -77,7 +83,9 @@ async def test_writeback_proposes_with_ai_suggested_tag(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_writeback_no_candidates_skips_call(monkeypatch):
-    monkeypatch.setattr(gw, "find_gap_candidates", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        gw, "get_graph_store",
+        lambda _session: SimpleNamespace(find_gap_candidates=AsyncMock(return_value=[])))
     gc = MagicMock()
     gc.propose_entities = AsyncMock()
 

@@ -26,7 +26,8 @@ from typing import TypedDict
 
 from app.clients.glossary_client import GlossaryClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.graph_repos.entities import Entity, find_gap_candidates
+from app.adapters.graph_store_provider import get_graph_store
+from app.domain.graph_models import Entity
 from app.extraction.entity_resolver import normalize_kind_for_anchor_lookup
 
 logger = logging.getLogger(__name__)
@@ -136,8 +137,7 @@ async def writeback_discovered_entities(
     """Propose discovered-but-unanchored entities to glossary as ai-suggested
     drafts. Returns the count proposed (0 if none). Caller wraps best-effort.
     """
-    candidates = await find_gap_candidates(
-        session,
+    candidates = await get_graph_store(session).find_gap_candidates(
         user_id=user_id,
         project_id=project_id,
         min_mentions=config["min_mentions"],

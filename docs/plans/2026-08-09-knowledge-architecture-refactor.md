@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 101 of 148 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 102 of 149 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (35/45) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (12/13) · `T49` (1/1)
+**OPEN:** `T17` (36/46) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (12/13) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,98 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A32 2026-08-24 — **`find_gap_candidates` reaches the port, and writing its conformance rule found the counter three adapters were not keeping**
+
+  ```
+  GraphStore adopters   20 -> 21   (floor)      concrete binders  54 -> 53  (ceiling)
+  class (d)             33 -> 32   (ceiling)    port conformance  23/23
+  knowledge unit 4436 · integration 760 passed / 312 skipped
+  ```
+
+  📊 **Rule 8 KILLED the batch as scoped, and that was the result.** `find_gap_candidates` ranks
+  and floors on `mention_count`. Measuring what the port could actually supply found that only
+  **one of four adapters maintains it**:
+
+  ```
+  Neo4j (the repo)   SET target.evidence_count = ... + 1,
+                         target.mention_count  = ... + 1        BOTH
+  AGE                SET t.evidence_count = ... + 1             evidence only
+  Kuzu               SET n.evidence_count = n.evidence_count+1   evidence only
+  fake               mention_count=0, hardcoded in the return    neither, persisted
+  ```
+
+  The port's own docstring says `add_evidence` bumps the target's *"counter**s**"*. Three
+  adapters kept one of them and **read the other back unchanged**, so the returned shape looked
+  right. Every existing conformance rule asserts on `evidence_count` from the
+  `EvidenceWriteResult` — so all three passed, for years, on a contract they were half keeping.
+
+  ⛔ **The consequence is not academic and it is on the DEFAULT backend.** `mention_count` is
+  the gap report's primary sort key **and** its floor, default 50. With the counter frozen at 0,
+  `find_gap_candidates(min_mentions=50)` returns an empty list and a `200` **for ever** on AGE.
+  The author is told there are no gaps in a book full of them.
+
+  🔬 **A second divergence of the same family, found the same way.** AGE's
+  `resolve_or_merge_entity` never *initialised* the counters, and on AGE a missing property makes
+  `e.mention_count >= $floor` evaluate NULL — so the entity vanishes from any query that filters
+  on it, even at `min_mentions=0`. Neo4j has always initialised them, which is why its query
+  needs no `coalesce` and AGE's now does: rows written before this row carry no property at all.
+
+  🧪 **The new rule reads the counter off the ENTITY, not out of the return value**, and that
+  distinction is the whole point — a store can report a number it did not persist, and three did.
+  It also pins the other half: a re-run of the same `job_id` must NOT move it, because a
+  re-extraction is not a new mention.
+
+  ```
+  BITE O   the fake reverts to reporting a mention_count it never persists
+             AssertionError: the RETURN says mention_count=0
+             EvidenceWriteResult(evidence_count=1, mention_count=0, created=True)
+  ```
+
+  🔴 **AND THE SORT TEST WAS GREEN BY CONSTRUCTION UNTIL A BITE SAID SO.** BITE N deleted AGE's
+  two tie-break keys — `ORDER BY e.mention_count DESC` alone — and the test **passed**. The
+  fixture created its rows already in the expected order, so an adapter returning INSERTION ORDER
+  satisfied it without sorting at all:
+
+  ```
+  before   created Cedar, Alder, Birch, Dogwood   expected Cedar, Alder, Birch, Dogwood
+  after    created Dogwood, Birch, Alder, Cedar   expected Cedar, Alder, Birch, Dogwood
+
+  BITE N, re-run:
+    AssertionError: expected mention_count DESC, then confidence DESC, then name ASC;
+    got [('Birch', 2), ('Alder', 2), ('Cedar', 2), ('Dogwood', 1)]
+  ```
+
+  **A fixture whose natural order IS the expected answer cannot test a sort.** The same hazard was
+  in the LIMIT fixture and is fixed the same way. This is the session's recurring shape appearing
+  in a place I wrote myself, ten minutes after writing a paragraph about it.
+
+  ⚖️ **Why the ordering is worth this much care.** A gap report is a queue the author works
+  top-down, so the ORDER is the product. Two adapters can agree on the SET and disagree on the
+  sequence, and a set-equality test calls that parity — which is why the port's docstring makes
+  the three keys part of the contract and why the operation is in the shadow differential, where
+  `_comparable` compares the rows **in order**.
+
+  📐 **`mention_count` is NOT settable through the port**, and that shaped every fixture: there is
+  no `merge_entity`, the counter moves only via `add_evidence`, once per NEW source. So the
+  numbers are small (1–3) rather than the real floor of 50 — reaching 50 would be 50 round trips
+  per entity across four adapters.
+
+  ⚠️ **A `#` comment inside AGE Cypher is a SQL syntax error**, and the message says nothing
+  useful: `PostgresSyntaxError: syntax error at or near "A32"`. Cypher comments are `//`. Noted
+  in the file at the two places I put one.
+
+  **QC (a) gates:** `port-adoption-gate` PASS with **three ratchets moved in this commit** —
+  floor 20→21, class (d) 33→32, and the concrete-binder ceiling **54→53**, its first fall in this
+  batch, because `glossary_writeback` needed nothing else from `graph_repos` and left the set
+  outright. `graph-port-gate` PASS; four plan gates green.
+  **QC (b) live smoke:** unit **4436 passed**; integration **760 passed / 312 skipped**, including
+  40 gap/mention conformance results across **four** adapters and the shadow differential over
+  five seeds. Two throwaway engines (rule 6).
+  **QC (c) real data:** the shadow differential is the cross-engine control — Neo4j, AGE and Kuzu
+  each ran the gap report over seeded traffic and agreed on the rows **and their order**, with no
+  entry in the expected-divergence registry.
+
   ---
   ### ✅ T17 A31 2026-08-24 — **`purge_project` reaches the port, and the set-cover says there is no clever batch to wait for**
 

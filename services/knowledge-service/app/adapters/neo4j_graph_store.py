@@ -25,6 +25,7 @@ import time
 from app.db.neo4j_helpers import CypherSession
 from app.db.graph_repos.provenance import EvidenceWriteResult, add_evidence
 from app.db.graph_repos.entities import (
+    find_gap_candidates as _find_gap_candidates,
     Entity,
     EntityDetail,
     archive_entity,
@@ -374,6 +375,17 @@ class Neo4jGraphStore:
         )
         return {f"{label.lower()}_count": int(stats.get(f"{label.lower()}_count", 0))
                 for label in COUNTABLE_LABELS}
+
+    async def find_gap_candidates(
+        self, *, user_id: str, project_id: str | None,
+        min_mentions: int = 50, limit: int = 100,
+    ) -> list[Entity]:
+        # Delegates: the repo owns the query, the ordering and the two ValueErrors. A second
+        # copy here is how the sort keys drift apart, and the sort is the product.
+        return await _find_gap_candidates(
+            self._session, user_id=user_id, project_id=project_id,
+            min_mentions=min_mentions, limit=limit,
+        )
 
     async def purge_project(self, *, project_id: str) -> dict[str, int]:
         # Delegates, for this file's usual reason: the repo holds the query and a second copy
