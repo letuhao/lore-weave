@@ -16,8 +16,9 @@ THE FOUR VERDICTS, AND WHY AN EMPTY 200 IS NOT A PASS
 ────────────────────────────────────────────────────
     DATA        2xx and the body carries rows
     EMPTY       2xx and the body carries none          <- NOT a pass
-    NOT-FOUND   404 — the book, entity, or the DOWNSTREAM ROUTE does not exist
-    ERROR       5xx, or a transport failure
+    NOT-FOUND   404 — the book or entity does not exist
+    NO-ROUTE    501 — the KAL federates to a downstream path NOBODY BUILT (T55b)
+    ERROR       5xx other than 501, or a transport failure
 
 The distinction is the whole point and this repo has paid for it twice: `live-http sweep:
 grant-404 and empty-200 read as success`, and T89's `neighborhood` shipping a 500 on AGE
@@ -58,6 +59,11 @@ ROW_KEYS = ("items", "entities", "edges", "nodes", "results", "facts", "events",
             "cast", "roster", "hits", "timeline", "neighbors", "relations")
 
 DATA, EMPTY, NOT_FOUND, ERROR = "DATA", "EMPTY", "NOT-FOUND", "ERROR"
+#: 501 is a CORRECT answer, not a failure: the KAL now refuses by name when its
+#: downstream has no such route (T55b). Counting it as ERROR would make the sweep red
+#: for the gateway telling the truth — and the previous behaviour, forwarding the
+#: framework's 404, was the thing that scored GREEN.
+NO_ROUTE = "NO-ROUTE"
 
 
 def derive_routes(controller_path: str) -> list[tuple[str, str]]:
@@ -84,6 +90,8 @@ def rows_in(payload: object) -> int:
 
 def verdict_for(status: int, rows: int) -> str:
     """Status + row count -> one of the four readings. Pure, so the selftest can drive it."""
+    if status == 501:
+        return NO_ROUTE
     if status == 0 or status >= 500:
         return ERROR
     if status == 404:
@@ -120,6 +128,10 @@ def _selftest() -> int:
         ("a 200 carrying NONE is EMPTY, not a pass", verdict_for(200, 0), EMPTY),
         ("a 404 is NOT-FOUND, never EMPTY", verdict_for(404, 0), NOT_FOUND),
         ("a 500 is ERROR", verdict_for(500, 0), ERROR),
+        ("a 501 is NO-ROUTE — the KAL refusing by name, not a failure",
+         verdict_for(501, 0), NO_ROUTE),
+        ("...and NO-ROUTE is NOT ERROR, so a truthful refusal does not redden the sweep",
+         verdict_for(501, 0) != ERROR, True),
         ("a transport failure is ERROR", verdict_for(0, 0), ERROR),
         ("a 400 keeps its own status rather than becoming EMPTY",
          verdict_for(400, 0), "HTTP-400"),

@@ -22891,6 +22891,94 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   gate** — that is the whole difference between a manifest and a hand-list.
 
   ---
+  ### ✅ T55b 2026-08-24 — **2 of the KAL's 14 routes federate to downstreams NOBODY BUILT, and both answered 404 as if the book were empty**
+
+  ```
+  probed every declared downstream directly   12 exist · 2 DO NOT
+  GET  /v1/kal/books/{bookId}/search    -> glossary  /internal/books/{id}/entities/search
+  POST /v1/kal/books/{bookId}/retrieve  -> knowledge /internal/books/{id}/retrieve
+  knowledge-gateway  142 tests (135 -> 142), 12 suites
+  ```
+
+  🎯 **T54i's sweep found this and could not tell you WHY, which is the actual lesson.** It
+  reported both as `NOT-FOUND` alongside two genuine ones. Three different bodies were arriving
+  and the KAL collapsed them into one answer:
+
+  ```
+  {"code":"GLOSS_NOT_FOUND","message":"entity not found in this book"}   the route EXISTS
+  404 page not found                          Go's default router     -> NO SUCH ROUTE
+  {"detail":"Not Found"}                      FastAPI's default       -> NO SUCH ROUTE
+  ```
+
+  **A handler that means "absent" says so in its service's own vocabulary. A router with no such
+  path answers about ITSELF, in its framework's words.** One is about the caller's resource; the
+  other is about the KAL's own wiring — and forwarding the second as the first is a lie the
+  caller cannot see through. An author asking for search results was told their book had none.
+
+  ⚖️ **Rule 9, applied to a facade: the KAL now REFUSES BY NAME.**
+
+  ```
+  501  {"message":"this KAL route federates to /internal/books/…/entities/search,
+                   which the downstream service does not implement"}
+  501  {"message":"this KAL route federates to /internal/books/…/retrieve,
+                   which the downstream service does not implement"}
+  ```
+
+  It names the path so the next reader knows what to build, rather than making them re-derive it
+  from a 404. The controller's own header had already predicted the discovery — *"the rest
+  forward to their documented downstream path and are confirmed by a cross-service live-smoke
+  when the full stack is up"* — and T54i was that smoke.
+
+  🔬 **THE CONTROLS ARE THE POINT, AND A BITE PROVED IT.** A classifier that said "unrouted" too
+  readily would turn every genuine *"this entity is not in this book"* into *"not implemented"* —
+  a worse lie than the one it replaces, because the caller would stop asking for rows that are
+  absent today and present tomorrow. **BITE T** made it claim every 404:
+
+  ```
+  ✕ a REAL resource 404 still forwards as a 404 — glossary's own vocabulary
+  ✕ a FastAPI 404 that carries a REASON is a resource 404, not an unrouted one
+  ✕ an empty body is NOT claimed as unrouted
+  ✕ prose that merely MENTIONS the phrase is not a framework page
+                                              Tests: 4 failed, 138 passed
+  ```
+
+  **Every one of the four reds is a control.** The three positive cases stayed green — an
+  over-claiming classifier passes all of them. Verified live too: after the change, the two
+  genuine `GLOSS_NOT_FOUND` routes still answer **404**.
+
+  📐 **The smoke gained a fifth verdict, because 501 is a CORRECT answer.**
+
+  ```
+  DATA=3  EMPTY=7  NO-ROUTE=2  NOT-FOUND=2        (was NOT-FOUND=4)
+  [kal-smoke] PASS — 3 route(s) carried rows, no route errored
+  ```
+
+  Counting 501 as ERROR would redden the sweep **for the gateway telling the truth**, while the
+  previous behaviour — forwarding the framework's 404 — scored green. **BITE U** puts 501 back
+  under ERROR and the selftest names it.
+
+  ⚠️ **I ran the wrong test runner and the suite told me so.** My spec imported from `vitest`;
+  this service uses **jest**, and `npx vitest run` reported *"11 failed, 1 passed"* — every
+  sibling spec failing with `ReferenceError: describe is not defined`, because they use jest
+  globals. Nothing was broken; I had assumed the runner from other services instead of reading
+  `package.json`. Rule 2 on the tooling: `npm test` is 12 suites and 142 tests, all green.
+
+  **QC (a) gates:** `knowledge-gateway` **142 passed / 12 suites** (was 135/11);
+  `knowledge-http-surface-gate` PASS — still 14 federated reads, derived;
+  `kal-read-surface-live-smoke --selftest` 18/18; `gate-wiring-gate` 113, all wired; four plan
+  gates green.
+  **QC (b) live smoke vs REBUILT image:** `./iso.sh build knowledge-gateway` + restart, and every
+  number above is an HTTP response from that container — including the two 501 bodies and the
+  404 control.
+  **QC (c) real data:** the same migrated 8 033-node store T54i loaded; the routes that carry
+  rows still carry them (`neighborhood` 10, `wiki-neighborhood` 10, `timeline` 5).
+
+  ⛔ **What this does NOT do: build the two missing downstreams.** `entities/search` is
+  glossary-service's and `retrieve` is knowledge-service's, and both are features rather than
+  wiring. The KAL's job was to stop misreporting them, and that is done — a 501 naming the path
+  is a work item somebody can pick up, where a 404 was an answer nobody would question.
+
+  ---
   ### 🟡 T55/b 2026-08-22 — **the exemption half: 42 direct calls across 13 services, not 13 in one**
 
   ```

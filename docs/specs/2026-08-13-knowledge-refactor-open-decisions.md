@@ -1862,6 +1862,36 @@ prose is not run.
 already names them on every CI run; nothing here suppresses them, and no `KNOWN_RED` row was added
 — an acknowledgement list that absorbs other people's defects is how they stop being defects.
 
+## 15 · Two KAL routes federate to downstreams nobody built — DECIDED: refuse by name (T55b, 2026-08-24)
+
+**Measured** by probing every declared downstream directly, derived from `kal-read.controller.ts`:
+**12 of 14 exist, 2 do not.**
+
+| KAL route | downstream | what answered |
+|---|---|---|
+| `GET /v1/kal/books/{bookId}/search` | glossary `/internal/books/{id}/entities/search` | `404 page not found` — Go's default router |
+| `POST /v1/kal/books/{bookId}/retrieve` | knowledge `/internal/books/{id}/retrieve` | `{"detail":"Not Found"}` — FastAPI's default |
+
+**The diagnosis, not just the divergence (rule 13).** A handler that means *absent* says so in its
+service's own vocabulary — glossary answers `{"code":"GLOSS_NOT_FOUND"}`. A router with no such
+path answers about ITSELF, in its framework's words. The KAL was forwarding the second as the
+first, so an author asking for search results was told their book had none.
+
+**DECIDED — the KAL refuses by name (rule 9), and does NOT try to implement the two features.**
+`isUnroutedDownstream` classifies a framework 404 and the seam raises **501** naming the path it
+federates to, so the next reader knows what to build. Building `entities/search` and `retrieve`
+is glossary-service's and knowledge-service's work respectively — features, not wiring, and not
+this plan's. What was this plan's is that the KAL stopped misreporting them.
+
+**The controls carry the risk here, not the cases.** A classifier that claimed "unrouted" too
+readily would turn every genuine *"this entity is not in this book"* into *"not implemented"* — a
+worse lie, because the caller would stop asking for rows that are absent today and present
+tomorrow. Four of the seven tests are controls, and the bite that made the classifier
+over-claim reddened exactly those four while all three positive cases stayed green.
+
+**Retry/registration:** `kal-read-surface-live-smoke` reports `NO-ROUTE` for each, so the count
+is visible on every run. It falls to zero when someone builds them.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
