@@ -4129,6 +4129,12 @@
     "D-TRANSLATION-JOB-CONTROL-IS-NOT-A-RAIL-CASE": {
       "status": "CHECKED 2026-08-24. The rail explanation that overturned composition_glossary_build does NOT apply here.",
       "what": "After a pinned rail turned out to be driving composition_glossary_build's turns, the same check was run against translation_job_control rather than assuming its verdict held.\n\n    translation-pass steps: translation_coverage -> translation_start_job -> translation_retranslate_dirty. No cancel step, and the word cancel appears nowhere in its notes.\n    Rails evaluated on the measured book: vision-to-book (next=glossary_list_system_standards) and translation-pass (next=translation_coverage).\nNeither prescribes jobs_cancel or translation_job_control, and jobs_cancel — the tool the model actually called — is not a step in any workflow.\n\nSo the model chose it FREELY, and the cycle-17 verdict stands on a second, independent mechanism check: both tools are forced onto the wire by R1 for the request, which says job rather than translation, and the generic tool wins. That is a genuine answerable-set tie and it is DQ-T41's actual subject."
+    },
+    "D-REGISTRY-WORKFLOW-TENANCY-IS-UNREACHABLE-NOT-MERELY-UNRUN": {
+      "status": "RECORDED 2026-08-24. The bar is NOT satisfied. It is currently UNREACHABLE, which is a different and more useful thing to write down than 'owed'.",
+      "what": "registry_list_workflows' tenancy bar asks whether it returns ANOTHER ACCOUNT's workflows. It has sat OWED on 'needs a second account'. Two facts, both read rather than assumed, sharpen that:\n\n1. THE POPULATION IS EMPTY, not just the account count. Every workflow in this deployment is system-owned: loreweave_agent_registry.workflows has 12 rows, all status=published with owner_user_id NULL, and zero tier='user' rows. So there is no user-owned workflow anywhere for the tool to leak. A second account would not create one either — someone would first have to AUTHOR a workflow.\n\n2. THE PREDICATE IS PRESENT IN THE QUERY THAT SERVES THE TOOL (agent-registry-service/internal/api/workflows.go:277):\n       SELECT slug, title, description, tier, status, surfaces FROM workflows\n       WHERE status = 'published'\n         AND (tier = 'system' OR (tier = 'user' AND owner_user_id = $1))\n       ORDER BY slug\nSystem rows go to everyone; user rows go only to their owner.",
+      "what_is_and_is_not_claimed": "🔴 NOT CLAIMED: that the bar passes. Nothing was exercised — a read of a query is not a measurement, and this loop's standing rule is that code which looks correct is not proof. The owner scoping is UNVERIFIED at runtime.\n\nCLAIMED: that the bar cannot be exercised today for a reason stronger than a missing second account, and that the code carries the predicate the bar is about. Recording that turns an open-ended OWED into a precondition with a trigger.",
+      "the_trigger_to_re_test": "Re-open this the moment a tier='user' workflow exists in loreweave_agent_registry.workflows — that is the first time the case becomes real. The check is then one call per account and does not need a fixture:\n    SELECT count(*) FROM workflows WHERE tier='user';   -- currently 0\nUntil it is non-zero, any 'tenancy verified' claim about this tool would be vacuous: it would be asserting that a query returned none of a set that is empty."
     }
   },
   "deferred_questions": {
@@ -4720,8 +4726,8 @@
     "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
     "tools_concluded_including_deprecated": 203,
     "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-    "defects_total": 140,
-    "defects_other": 101
+    "defects_total": 141,
+    "defects_other": 102
   },
   "observations": [
     {
