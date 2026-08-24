@@ -452,7 +452,11 @@ async def jobs_cancel(
             "suspend job",
             "pause a running job",
             "pause my task",
-            "pause the translation",
+            # "pause the translation" REMOVED 2026-08-25 — a GENERIC tool must not claim a
+            # DOMAIN-specific phrase. It tied with translation_job_control, which is the tool
+            # that actually understands a translation job (its pause applies immediately, while
+            # resume/retry re-spend and return a cost estimate). Whoever says "pause the
+            # translation" wants that one.
             "pause it",
             "hold it",
             "pause that one",

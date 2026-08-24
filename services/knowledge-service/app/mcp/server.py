@@ -519,7 +519,8 @@ async def memory_search(
         # not the feature's name — the distinction that took glossary_curation_list from
         # surfaced 0/3 to called 3/3 with a correct answer.
         synonyms=[
-            "who is",
+            # "who is" belongs to glossary_search, which searches THIS book's story bible.
+            "what do you know about",
             "tell me about the character",
             "remind me about",
             "what do we know about this character",

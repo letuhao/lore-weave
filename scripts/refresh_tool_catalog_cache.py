@@ -65,6 +65,8 @@ def main() -> int:
     a = argparse.ArgumentParser()
     a.add_argument("--check", action="store_true",
                    help="report staleness and exit 1; do not write")
+    a.add_argument("--allow-removals", action="store_true",
+                   help="write even when tools DISAPPEARED (a real retirement, not a race)")
     args = a.parse_args()
 
     live = fetch_live()
@@ -84,6 +86,26 @@ def main() -> int:
     if args.check:
         print("\nSTALE" if stale else "\nup to date")
         return 1 if stale else 0
+
+    # 🔴 A PARTIAL CATALOGUE IS WORSE THAN A STALE ONE, AND THIS SCRIPT WROTE ONE.
+    #
+    # Measured 2026-08-25, minutes after the script was written: refreshed ~30s after restarting
+    # three services and ai-gateway, it saw 274 tools instead of 315 and wrote that — every kg_*
+    # tool "removed", because ai-gateway had not finished RE-FEDERATING knowledge-service. Nothing
+    # complained. The five instruments that read this file would then have reported 41 tools as
+    # absent: a lint would call their defects fixed, and the answerability probe would say they
+    # cannot be reached at all.
+    #
+    # Tools disappearing is the signature of a race, not of a retirement — a real retirement is
+    # deliberate and can pass --allow-removals. Anything else refuses and asks for a re-run.
+    if removed and not args.allow_removals:
+        print(f"\nREFUSED — {len(removed)} tool(s) vanished from the live catalogue. That is "
+              "almost always ai-gateway mid-re-federation, not a retirement; writing it would "
+              "hand five instruments a catalogue missing tools that exist.")
+        print(f"  gone: {removed[:12]}")
+        print("  Wait for federation to settle and re-run, or pass --allow-removals if this "
+              "really is a retirement.")
+        return 1
 
     CACHE.write_text(json.dumps(live, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
                      encoding="utf-8")

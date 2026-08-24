@@ -951,7 +951,9 @@ async def composition_list_canon_rules(
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["generation job", "poll generation", "generate status", "job status",
+        # "job status" -> "generation job status": jobs_get owns the unqualified phrase.
+        synonyms=["generation job", "poll generation", "generate status",
+                  "generation job status",
                   "cowrite job", "writing job", "is the chapter done"],
         tool_name="composition_get_generation_job",
     ),
@@ -5565,7 +5567,10 @@ class _ArcImportArgs(ForbidExtra):
     meta=require_meta(
         "W", "user",
         synonyms=["import arc", "deconstruct", "analyze a work", "拆文",
-                  "reverse-engineer arc", "extract arc template", "analyze reference"],
+                  # "extract arc template" belongs to composition_arc_extract_template;
+                  # this one deconstructs an IMPORTED reference work.
+                  "reverse-engineer arc", "deconstruct an imported work",
+                  "analyze reference"],
         async_job=True,
         tool_name="composition_arc_import_analyze",
     ),
@@ -6628,7 +6633,9 @@ async def plan_bootstrap_apply(
     meta=require_meta(
         "R", "book",
         synonyms=["package tree", "book overview", "what is in this book", "book structure",
-                  "ls", "orient me", "show me the book", "book at a glance"],
+                  # "ls" -> "ls -R": book_list is the unified "ls"; this is the recursive
+                  # whole-book read, which its own description already calls `ls -R`.
+                  "ls -R", "orient me", "show me the book", "book at a glance"],
         tool_name="composition_package_tree",
     ),
 )
@@ -6945,7 +6952,11 @@ def _arc_conflict(exc: StructureConflictError) -> dict[str, Any]:
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["list arcs", "arc tree", "story structure", "sagas", "book architecture",
+        # "story structure" -> "arc structure": the outline tool owns the plain phrase.
+        # "arc structure" DROPPED, not re-homed: composition_arc_suggest already declared
+        # it, and this tool has six other phrasings. My first de-dup swapped one tie for
+        # another by not checking the REPLACEMENT was free.
+        synonyms=["list arcs", "arc tree", "sagas", "book architecture",
                   "spec tree", "arc grouping"],
         ambient_book=True,
         tool_name="composition_arc_list",
@@ -8178,7 +8189,10 @@ class _StructTemplateEditArgs(ForbidExtra):
         "reversible via op=restore). op=restore un-archives (needs template_id)."
     ),
     meta=require_meta("A", "user",
-                      synonyms=["list structure templates", "story structure", "beat sheet",
+                      # "story structure" -> "story structure templates": this tool edits
+                      # the reusable TEMPLATES, not this book's structure.
+                      synonyms=["list structure templates", "story structure templates",
+                                "beat sheet",
                                 "edit structure template", "create structure template",
                                 "clone template", "archive structure template", "manage structure template"],
                       tool_name="composition_structure_template_edit"),

@@ -2777,7 +2777,7 @@
         "analyze a work",
         "拆文",
         "reverse-engineer arc",
-        "extract arc template",
+        "deconstruct an imported work",
         "analyze reference"
       ],
       "tier": "W"
@@ -2816,7 +2816,6 @@
       "synonyms": [
         "list arcs",
         "arc tree",
-        "story structure",
         "sagas",
         "book architecture",
         "spec tree",
@@ -8806,7 +8805,7 @@
         "generation job",
         "poll generation",
         "generate status",
-        "job status",
+        "generation job status",
         "cowrite job",
         "writing job",
         "is the chapter done"
@@ -14373,7 +14372,7 @@
         "book overview",
         "what is in this book",
         "book structure",
-        "ls",
+        "ls -R",
         "orient me",
         "show me the book",
         "book at a glance"
@@ -15274,7 +15273,7 @@
       "scope": "user",
       "synonyms": [
         "list structure templates",
-        "story structure",
+        "story structure templates",
         "beat sheet",
         "edit structure template",
         "create structure template",
@@ -18869,7 +18868,6 @@
         "suspend job",
         "pause a running job",
         "pause my task",
-        "pause the translation",
         "pause it",
         "hold it",
         "pause that one"
@@ -21409,7 +21407,7 @@
     "meta": {
       "scope": "project",
       "synonyms": [
-        "who is",
+        "what do you know about",
         "tell me about the character",
         "remind me about",
         "what do we know about this character",
@@ -23656,7 +23654,7 @@
       "scope": "book",
       "synonyms": [
         "coverage",
-        "translation progress",
+        "translation coverage",
         "how much translated",
         "translation matrix",
         "languages translated"
@@ -23695,10 +23693,10 @@
     "meta": {
       "scope": "book",
       "synonyms": [
-        "cancel job",
-        "pause job",
-        "resume job",
-        "retry job",
+        "cancel the translation",
+        "pause the translation",
+        "resume the translation",
+        "retry the translation",
         "stop translation",
         "restart translation"
       ],
@@ -23748,7 +23746,7 @@
       "scope": "book",
       "synonyms": [
         "translation job",
-        "job status",
+        "translation job status",
         "is my translation done",
         "translation progress"
       ],

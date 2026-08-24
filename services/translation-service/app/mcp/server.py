@@ -186,7 +186,9 @@ def _ctx(ctx: MCPContext) -> ToolContext:
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["coverage", "translation progress", "how much translated",
+        # "translation progress" -> "translation coverage": that phrase means a running
+        # job to a reader; this is the per-chapter x language matrix of what EXISTS.
+        synonyms=["coverage", "translation coverage", "how much translated",
                   "translation matrix", "languages translated"],
         tool_name="translation_coverage",
     ),
@@ -318,7 +320,8 @@ _JOB_STATUS_CHAPTER_REF_FIELDS = ("chapter_id", "status", "version_num")
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["translation job", "job status", "is my translation done",
+        # "job status" -> "translation job status": jobs_get owns the unqualified phrase.
+        synonyms=["translation job", "translation job status", "is my translation done",
                   "translation progress"],
         tool_name="translation_job_status",
     ),
@@ -1033,7 +1036,10 @@ _JOB_CONTROL_TIER = {"cancel": "A", "pause": "A", "resume": "W", "retry": "W"}
     ),
     meta=require_meta(
         "W", "book",  # declared W (the strictest path); cancel/pause execute as A inline.
-        synonyms=["cancel job", "pause job", "resume job", "retry job",
+        # "cancel job"/"pause job"/"resume job"/"retry job" all belonged to the generic
+        # jobs_* tools too. Qualified here: this one controls a TRANSLATION job.
+        synonyms=["cancel the translation", "pause the translation",
+                  "resume the translation", "retry the translation",
                   "stop translation", "restart translation"],
         tool_name="translation_job_control",
     ),
