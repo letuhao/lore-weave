@@ -175,9 +175,26 @@ class TestTheDispatchSiteActuallyDoesIt:
         )
         assert "if _refusal_text and discovery:" in block
 
-    def test_it_did_not_grow_a_third_arming_site(self):
-        """My first attempt added one beside D-FJ-4, which duplicated the envelope case and
-        armed silently — without the [SYSTEM] note that is what actually tells the model."""
+    def test_every_arming_site_is_one_of_the_known_homes(self):
+        """🔴 THIS ASSERTED `calls == 2` AND THE COUNT WAS THE WRONG PROPERTY. A third home was
+        added on 2026-08-24 — the RESUME path, where a Tier-A tool executes after approval and
+        never passes through the main loop at all — and a bare count cannot tell a legitimate new
+        execution path from the duplicate it was written to catch.
+
+        What it was written to catch: my first attempt added a site BESIDE D-FJ-4 that duplicated
+        the envelope case and armed SILENTLY, without the note that tells the model. So the real
+        property is that each site is a distinct, named home. Enumerated, so a fourth one that
+        nobody thought about still turns this red."""
         src = self._src()
         calls = src.count("_tools_named_in_refusal(") - src.count("def _tools_named_in_refusal(")
-        assert calls == 2, f"{calls} call sites — arming should have exactly two homes"
+        homes = {
+            "missing-args interception": "_ma_recovery = _tools_named_in_refusal(",
+            "D-FJ-4 dispatch result": "_recovery = _tools_named_in_refusal(",
+            "resume seed resolution": "_resume_refusal_named = set(_tools_named_in_refusal(",
+        }
+        for name, marker in homes.items():
+            assert marker in src, f"the {name} arming site is gone"
+        assert calls == len(homes), (
+            f"{calls} call sites for {len(homes)} known homes — a new one was added without "
+            f"being named here, and a duplicate of an existing home is exactly what this checks"
+        )

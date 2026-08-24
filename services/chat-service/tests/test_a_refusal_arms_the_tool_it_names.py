@@ -102,10 +102,20 @@ def test_both_refusal_call_sites_exclude_the_failing_tool():
     # site, and counting it made this gate red against correct code on its first run.
     sites = [m for m in re.finditer(r"(?<!def )_tools_named_in_refusal\(\s*\n", src)]
     assert len(sites) >= 2, f"expected both refusal call sites, found {len(sites)}"
+    # 🔴 THIS USED TO REQUIRE THE LITERAL `exclude=c["name"]`, AND THAT SPELLING IS ONLY
+    # AVAILABLE IN THE MAIN LOOP. A third call site was added on the RESUME path (2026-08-24),
+    # where a Tier-A tool executes after approval and the failing tool is carried in
+    # `_resume_refused_tool` — there is no `c` in that scope. This bar's own docstring says what it is for: every caller must
+    # exclude the tool that just failed. It now asserts THAT rather than one spelling, and still
+    # forbids the failure it was written for — a site with no `exclude=`, or one excluding
+    # something unrelated.
+    _FAILING_TOOL_EXPRS = ('exclude=c["name"]', "exclude=_resume_refused_tool")
     for m in sites:
         call = src[m.start():m.start() + 260]
-        assert 'exclude=c["name"]' in call, (
-            "a refusal call site does not exclude the failing tool:\n" + call[:200]
+        assert any(e in call for e in _FAILING_TOOL_EXPRS), (
+            "a refusal call site does not exclude the failing tool. If this is a NEW site with a "
+            "different name for it, add that expression to _FAILING_TOOL_EXPRS — do not drop the "
+            "check:\n" + call[:200]
         )
 
 

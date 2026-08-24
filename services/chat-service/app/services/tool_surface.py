@@ -565,6 +565,7 @@ def discovery_seed_for_surface(
     sticky_domains: set[str] | None = None,
     injected_skill_codes: list[str] | None = None,
     # CP-0.2 — where this function's narrowings register. Optional; see _budget_and_register.
+    refusal_named_tools=None,
     withheld_sink: list[dict] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
@@ -805,6 +806,25 @@ def discovery_seed_for_surface(
     # handful of tools, and only skills actually injected THIS turn contribute.
     if injected_skill_codes:
         names = names | skill_named_tools(injected_skill_codes, catalog)
+    # 🔴 A REFUSAL IS AN INJECTED INSTRUCTION TOO, and the rule directly above already covers
+    # it: "an INJECTED instruction must never name a tool that is not on the wire". A refusal is
+    # the RUNTIME's own words telling the model what to call next — the strongest case of the
+    # three, and the only one that was not riding.
+    #
+    # MEASURED 2026-08-24, batch c-override12, K=5, from chat_messages.withheld_tools:
+    #     composition_entity_override_edit   advertised 5 of 5
+    #     composition_list_derivatives       withheld 5 of 5, for TWO reasons —
+    #         domain_not_selected | domain not in this turn's hot set
+    #         hot_seed            | did not fit the hot_seed token budget (2000 tok)
+    # and its refusal says "Call composition_list_derivatives and pass it THIS SAME project_id".
+    #
+    # The union goes HERE, after both filters, because the withholding came from both: a
+    # budget-only exemption would still have left it out of the hot set. Bounded the same way
+    # skill-named tools are — a refusal names a handful of tools, resolved against the catalogue
+    # by whole-word match, and only a refusal actually issued THIS turn contributes.
+    if refusal_named_tools:
+        _cat_names = {tool_name(td) for td in catalog}
+        names = names | {t for t in refusal_named_tools if t in _cat_names}
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
     # (the whole point of the escape hatch is that the tool is otherwise

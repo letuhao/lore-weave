@@ -1,7 +1,7 @@
 {
   "_fixture": {
-    "a_derivative": "01a030f3-1e8a-7d71-b18c-a863191537e2",
-    "b_derivative": "01a030f3-2269-707b-b697-be678c18fb1f"
+    "a_derivative": "01a031b5-c55d-71b9-8f16-20157aeeeab2",
+    "b_derivative": "01a031b5-c9cf-72f9-b953-29e5d89e1ab6"
   },
   "absent": {
     "verdict": "refused",
@@ -20,12 +20,12 @@
   },
   "canonical": {
     "verdict": "refused",
-    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"NOT_A_DERIVATIVE — overrides exist only on a dị bản (a DERIVATIVE Work — create one with composition_create_",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override exists only on a dị bản (a ",
     "asked": "the CANONICAL project instead of the derivative"
   },
   "idem_first": {
     "verdict": "SUCCEEDED",
-    "detail": "{\"success\": true, \"override\": {\"id\": \"01a030f3-2467-77c9-95d3-4a00941b3248\", \"target_entity_id\": \"01a030f3-1cce-7322-87f6-8301dffa5c94\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": "
+    "detail": "{\"success\": true, \"override\": {\"id\": \"01a031b5-cbb9-7bdd-aa80-4931b596f167\", \"target_entity_id\": \"01a031b5-c3a0-7d4a-855b-d9a06241d29a\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": "
   },
   "idem_repeat": {
     "verdict": "refused",

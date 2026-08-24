@@ -11097,6 +11097,19 @@ async def resume_stream_response(
     pre_tool_chunks: list[dict] | None = [
         _c for _c in (_fe_resolved_chunk, _task_chunk) if _c is not None
     ] or None
+    # Bound HERE, at function scope, and populated only in the approval branch. It is READ by
+    # the seed derivation far below, which runs on resume paths that never took that branch —
+    # declaring it where it is populated would NameError on every confirm-only resume. (Same
+    # class as the tool_calls_history slip caught earlier this session: a diagnostic that breaks
+    # only on the turn it exists to serve.)
+    # 🔴 THE TEXT IS CAPTURED HERE AND RESOLVED LATER, AND THE ORDER IS THE WHOLE POINT. My
+    # first version resolved names at the dispatch site — which runs BEFORE `catalog` is fetched
+    # (L~11332), so the `and catalog` guard was false every time and the collection silently did
+    # nothing. Measured: three suspended runs of composition_entity_override_edit, zero
+    # carry-forward log lines. Resolution now happens beside the seed, where the catalogue
+    # exists.
+    _resume_refusal: str = ""
+    _resume_refused_tool: str = ""
     if is_approval:
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
@@ -11207,6 +11220,29 @@ async def resume_stream_response(
             _resume_ms = int((_time.monotonic() - _resume_t0) * 1000)
             _ok = bool(envelope.get("success"))
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
+            # 🔴 THE RESUME PATH HAD NONE OF THE MAIN LOOP'S GUARDS, AND THIS IS THE SECOND ONE
+            # IT COST. (The first: R1 answerability was inert on every resumed turn because
+            # _emit_chat_turn was called without request_text.) A Tier-A tool SUSPENDS for
+            # approval and executes HERE, not in the main loop — so its refusal never reached
+            # the D-FJ-4 arming, and the tool it names stayed off the wire.
+            #
+            # MEASURED 2026-08-24 (c-override12, K=5). composition_entity_override_edit refused
+            # with NOT_A_DERIVATIVE naming composition_list_derivatives, and
+            # chat_messages.withheld_tools shows that tool withheld 5 of 5 for BOTH
+            # domain_not_selected and hot_seed. Every tool that DID reach the main loop's arming
+            # diagnostic is Tier R.
+            #
+            # Collected here and unioned into the seed below, because a resume RE-DERIVES ITS
+            # SURFACE FROM SCRATCH (WS-3) — arming the live set would be discarded moments later.
+            _resume_refusal = ""
+            if not _ok:
+                _resume_refusal = str(envelope.get("error") or "")
+            if not _resume_refusal and isinstance(_tool_payload, dict) and (
+                    not _ok or _tool_payload.get("success") is False):
+                _resume_refusal = str(_tool_payload.get("error") or "")
+            if _resume_refusal:
+                # Resolved below, beside the seed — the catalogue does not exist yet here.
+                _resume_refused_tool = _tool_name
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
                 "content": tool_result_content(_tool_payload),
@@ -11338,6 +11374,19 @@ async def resume_stream_response(
             # NOT re-armed here: the sink was armed before catalog assembly above, and setting a
             # fresh list would DISCARD the intent gate's records — which is how the previous fix
             # managed to be a no-op even where it was armed.
+            # Resolve the resumed tool's refusal HERE, where `catalog` exists. See the capture
+            # site above the dispatch for why it cannot be done there.
+            _resume_refusal_named: set[str] = set()
+            if _resume_refusal and catalog:
+                _resume_refusal_named = set(_tools_named_in_refusal(
+                    _resume_refusal, _catalog_index(catalog), set(),
+                    exclude=_resume_refused_tool))
+                if _resume_refusal_named:
+                    logger.info(
+                        "resumed %s refused and named %s — carrying them into the re-derived "
+                        "surface so the instruction can be followed",
+                        _resume_refused_tool, ", ".join(sorted(_resume_refusal_named)),
+                    )
             resume_seed_names = discovery_seed_for_surface(
                 resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,
@@ -11355,6 +11404,10 @@ async def resume_stream_response(
                 pinned_step_tools=susp.pinned_step_tools,
                 # D-SKILL-NAMED-TOOLS-RIDE — same guarantee on the resume pass.
                 injected_skill_codes=resume_injected_skills,
+                # …and the same guarantee for the RUNTIME's own instruction: a refusal from the
+                # tool this resume just executed must not name a tool the re-derived surface
+                # then withholds. See the collection site above the dispatch.
+                refusal_named_tools=_resume_refusal_named,
             )
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend,
