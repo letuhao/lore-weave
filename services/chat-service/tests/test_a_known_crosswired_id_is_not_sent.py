@@ -20,6 +20,12 @@ Dropping the argument instead makes the tool's own missing-argument refusal fire
 the declared supplier and arms it. The evidence standard is unchanged: `is_crosswired` is true
 only for an id THIS TURN published under a DIFFERENT name — the same standard the existing
 branch already treats as sufficient to OVERWRITE a value.
+
+🔴 AND IT IS NARROWED TO WHERE THAT ARGUMENT HOLDS. "The refusal names a supplier" is the whole
+case for dropping, so where the tool declares no emitter for the argument there is no case:
+measured c-override11, `composition_list_outline` declares none, its project_id was dropped, and
+the run looped on "keeps being called with missing/blank required arguments" — a worse failure
+than the opaque 404 it replaced. That is a side effect of this very fix, found by running it.
 """
 from __future__ import annotations
 
@@ -31,9 +37,11 @@ PROJ = "01a03116-deb6-7c6e-9e9f-73db5dbe79f3"
 CHAP = "01a03116-ccc0-7000-8000-000000000000"
 
 
-def _def(*props: str) -> dict:
+def _def(*props: str, name: str = "composition_entity_override_edit") -> dict:
+    """Defaults to a tool that DECLARES an emitter for project_id — dropping is only
+    justified where the refusal can name somewhere to go (see the narrowing below)."""
     return {"type": "function", "function": {
-        "name": "composition_list_derivatives", "description": "list works",
+        "name": name, "description": "a tool",
         "parameters": {"type": "object",
                        "properties": {p: {"type": "string"} for p in props},
                        "required": list(props)},
@@ -121,3 +129,40 @@ class TestTheOtherKeysStillWork:
                             chapter_id=CHAP, project_id=None, id_ledger=_ledger(book_id=BOOK))
         assert args["book_id"] == BOOK
         assert args["chapter_id"] == CHAP
+
+
+class TestItDropsOnlyWhereTheRefusalCanNameASupplier:
+    """The narrowing, and the reason for it: dropping is better than forwarding ONLY because the
+    missing-argument refusal that follows names the emitter and arms it. A tool with no declared
+    emitter gets a refusal that names nowhere, and the model blank-retries into the breaker —
+    measured live on composition_list_outline in c-override11."""
+
+    def test_a_tool_with_NO_declared_emitter_keeps_the_value(self):
+        args = {"project_id": BOOK}
+        _inject_context_ids(args, _def("project_id", name="composition_list_outline"),
+                            book_id=BOOK, chapter_id=None, project_id=None,
+                            id_ledger=_ledger(book_id=BOOK))
+        assert args["project_id"] == BOOK, (
+            "the argument was dropped for a tool whose refusal can name no supplier, which "
+            "turns an opaque 404 into a blank-args loop"
+        )
+
+    def test_a_tool_WITH_a_declared_emitter_still_drops(self):
+        """The control: the narrowing must not disable the fix where it was justified."""
+        args = {"project_id": BOOK}
+        _inject_context_ids(args, _def("project_id", name="composition_entity_override_edit"),
+                            book_id=BOOK, chapter_id=None, project_id=None,
+                            id_ledger=_ledger(book_id=BOOK))
+        assert "project_id" not in args
+
+    def test_the_emitter_declarations_this_rests_on_are_real(self):
+        """Guards the premise against the contract file changing underneath."""
+        from app.agentruntime.toolcontract import declared_emitter
+
+        from app.services.stream_service import _tool_contract_registry
+
+        reg = _tool_contract_registry()
+        assert declared_emitter(reg, "composition_entity_override_edit", "project_id"), (
+            "the tool this narrowing keeps dropping for no longer declares an emitter"
+        )
+        assert not declared_emitter(reg, "composition_list_outline", "project_id")

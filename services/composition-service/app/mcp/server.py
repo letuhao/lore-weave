@@ -1683,9 +1683,11 @@ class _DerivativeArchiveArgs(ForbidExtra):
     name="composition_list_derivatives",
     description=(
         "List a book's what-if derivatives (dị bản): the canonical Work + every branch, "
-        "each with its name, branch_point, status and version. Pass ANY Work's project_id "
-        "from the book. VIEW required. Read-only — the agent's read side of the divergence "
-        "manage panel."
+        "each with its name, branch_point, status and version. Pass book_id — that is the "
+        "usual way and the one you will already have. (You may pass ANY Work's project_id "
+        "from the book instead; give exactly one.) The entry with is_canonical=false is a "
+        "derivative, and its project_id is what the override and derivative tools want. "
+        "VIEW required. Read-only — the agent's read side of the divergence manage panel."
     ),
     meta=require_meta(
         "R", "book",
@@ -1695,12 +1697,36 @@ class _DerivativeArchiveArgs(ForbidExtra):
 )
 async def composition_list_derivatives(
     ctx: MCPContext,
-    project_id: Annotated[str, "Any Work's project_id from the book. (a UUID)"],
+    book_id: Annotated[str | None, "The book whose Works to list (a UUID). The usual way in."] = None,
+    project_id: Annotated[str | None, "Any Work's project_id from the book (a UUID) — an alternative to book_id."] = None,
 ) -> dict:
+    # 🔴 THIS USED TO REQUIRE A WORK'S ID TO ENUMERATE A BOOK'S WORKS, which is a chicken-and-egg
+    # the tool imposed on itself: it uses project_id ONLY to find the book and then lists BY BOOK
+    # (see resolve_by_book below). The book id is what this function actually wants.
+    #
+    # MEASURED 2026-08-24 across c-override8/9/10, K=5 each: composition_entity_override_edit is
+    # refused NOT_A_DERIVATIVE, its refusal correctly sends the model here, and the model cannot
+    # produce a project_id — it tried the turn's BOOK id, the target ENTITY id, and the book's
+    # TITLE. book_id is the one id `context_ids` carries on EVERY turn (project_id only on
+    # studio/editor turns), so accepting it lets _inject_context_ids fill it with no further
+    # change, and gives the cross-wire correction something to substitute rather than only
+    # something to drop.
+    #
+    # The project_id path is kept byte-for-byte so no existing caller changes behaviour.
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    meta = await _book_or_deny(works, tc, _uuid(project_id, "project_id"), GrantLevel.VIEW)
-    rows = await works.resolve_by_book(meta.book_id)
+    if bool(book_id) == bool(project_id):
+        return {"success": False, "error": (
+            "give EXACTLY ONE of book_id or project_id — book_id is the usual way in, and "
+            "project_id is for when you already hold a Work's id from this book."
+        )}
+    if book_id:
+        bid = _uuid(book_id, "book_id")
+        await _gate(tc, bid, GrantLevel.VIEW)
+    else:
+        meta = await _book_or_deny(works, tc, _uuid(project_id, "project_id"), GrantLevel.VIEW)
+        bid = meta.book_id
+    rows = await works.resolve_by_book(bid)
     return {
         "works": [
             {

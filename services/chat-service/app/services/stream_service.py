@@ -2189,15 +2189,40 @@ def _inject_context_ids(
             # for an id THIS TURN published under a DIFFERENT name, which is the same standard the
             # branch below already treats as sufficient to OVERWRITE a value.
             _sup = args_obj.get(key)
-            if (isinstance(_sup, str) and id_ledger is not None
+            if not (isinstance(_sup, str) and id_ledger is not None
                     and id_ledger.is_crosswired(key, _sup)):
-                logger.warning(
-                    "tool arg %s=%r is another of this turn's context-ids (%s) and there is no "
-                    "%s to substitute — DROPPING it so the tool asks, rather than sending an id "
-                    "the runtime knows is the wrong kind",
-                    key, _sup[:64], id_ledger.describe(_sup), key,
+                continue
+            # 🔴 NARROWED AFTER A MEASURED SIDE EFFECT. Dropping is only better than forwarding
+            # when the refusal that follows can NAME A SUPPLIER — that was the whole argument for
+            # it. Where the tool declares no emitter for this argument, the model gets "missing
+            # required argument(s)" with nowhere to go, and blank-retries into the breaker.
+            #
+            # MEASURED 2026-08-24, batch c-override11: composition_list_outline declares no
+            # emitter for project_id, its project_id was dropped, and the run looped on
+            # "keeps being called with missing/blank required arguments" — a worse failure than
+            # the opaque 404 it replaced. composition_entity_override_edit DOES declare
+            # project_id <- composition_list_derivatives, and there the drop is exactly right.
+            try:
+                from app.agentruntime.toolcontract import declared_emitter
+                _has_supplier = bool(declared_emitter(
+                    _tool_contract_registry(), fn.get("name") or "", key))
+            except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+                _has_supplier = False
+            if not _has_supplier:
+                logger.info(
+                    "tool arg %s=%r is cross-wired (%s) but %s declares no emitter for it — "
+                    "forwarding as-is rather than dropping, because the refusal would name "
+                    "nowhere to go", key, _sup[:64], id_ledger.describe(_sup),
+                    fn.get("name"),
                 )
-                args_obj.pop(key, None)
+                continue
+            logger.warning(
+                "tool arg %s=%r is another of this turn's context-ids (%s) and there is no "
+                "%s to substitute — DROPPING it so the tool asks and its refusal names the "
+                "emitter, rather than sending an id the runtime knows is the wrong kind",
+                key, _sup[:64], id_ledger.describe(_sup), key,
+            )
+            args_obj.pop(key, None)
             continue
         # Coerce to str: `val` is a session context-id that can arrive as a UUID OBJECT
         # (asyncpg returns a uuid column as `uuid.UUID`, e.g. session_row["project_id"]),
