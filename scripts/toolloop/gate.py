@@ -142,6 +142,23 @@ class Gate:
             "the tool's own response is not evidence of what it wrote")
         self._check(bool(t.get("falsifier")), f"[{t['tool']}] DATA falsifier",
                     "state explicitly what result would REFUTE this conclusion")
+        # 🔴 THE BAR ABOVE ONLY ASKS THAT A FALSIFIER EXISTS. It cannot tell that the run
+        # REFUTED it, so a batch whose own stored calls contradict its prediction still passed —
+        # twice, measured: b18-gen-control passed 8 of 9 while every composition_generate call
+        # carried model_ref="default" (the invention its falsifier names), and c-regwf passed
+        # while 4 of 5 runs reported NINE workflows as studio-available when the studio has six.
+        # In both cases the only thing between the batch and `proven` was a human reading prose.
+        #
+        # This does NOT recompute falsifiers — the gate still cannot judge "the model invented an
+        # id" from a batch; that needs the claim expressed as data per falsifier. It closes the
+        # cheaper hole: a refutation SOMEONE HAS ALREADY WRITTEN DOWN must fail the bar, so
+        # `conclude --state proven` refuses and the only way past is to fix the cause and re-run.
+        violated = sorted(k for k in t if str(k).startswith("falsifier_violated"))
+        self._check(
+            not violated, f"[{t['tool']}] DATA falsifier not violated",
+            "this entry RECORDS its own refutation (" + ", ".join(violated) + ") — a batch whose "
+            "prediction was measured false is not evidence for the conclusion it was written to "
+            "test. Fix the cause and re-run; do not conclude `proven` over it")
         amended = t.get("falsifier_amended_after_run")
         self._check(
             not amended, f"[{t['tool']}] DATA falsifier not back-dated",
