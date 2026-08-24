@@ -23701,6 +23701,114 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   other work plus the CRLF artifact, exactly as §14 lists them.
 
   ---
+  ### ✅ T54h 2026-08-24 — **THE LIVE RUN: a real HTTP request, on `age`, answered from MIGRATED data it did not write**
+
+  ```
+  iso knowledge-service   REBUILT from current source, restarted, /health graph_backend=age
+  startup log             "AGE pool ready (graph=g_shared)"      <- T54f, from the service's own mouth
+  migration               dry-run -> apply -> re-run, all through the DOCUMENTED command
+  graph-store-migrated-gate   MIGRATED (exit 0) on the two live stores
+  live HTTP smoke         PASS — 10 probes, 6 carrying data, backend 'age'
+  THE READ               GET /v1/knowledge/entities?project_id=019fefde-…  ->  total 128
+  ```
+
+  🎯 **This is the GOAL's second half, and it is deliberately NOT on dev.** Running `--apply`
+  against dev writes to a non-throwaway store, which rule 6 reserves and no GRANT covers — that
+  is the STOP list, verbatim. **Rule 1 says where code runs: `lw-iso`.** That stack has real
+  extraction output (1 475 nodes), an AGE store, and a running `knowledge-service`, so the whole
+  chain is provable there without touching dev at all.
+
+  🔴 **The documented command DID NOT EXIST, and the docs had said it did for two commits.**
+  The module header has carried `python -m app.db.migrations.neo4j_to_age` since T54e. There was
+  no `__main__`, no `main`, no argparse:
+
+  ```
+  $ docker exec lw-iso-knowledge-service-1 python -m app.db.migrations.neo4j_to_age
+  exit=0        (and no output whatsoever)
+  ```
+
+  An operator following the documentation reads that as *"dry run: nothing to migrate"*. Silent
+  success is a bug, and it was found by **trying** the command instead of reading it (rule 2).
+  A derived test now asserts the entrypoint exists — **BITE Q** removes it and the test names it.
+
+  📊 **THE CHAIN, in order, on the live stack.**
+
+  ```
+  BEFORE      iso AGE g_shared  Entity 35        iso Neo4j  1 475 nodes
+  DRY RUN     graphs 1 · nodes 1475 · relationships 252
+              temporals -> epoch millis 3569 · embeddings DROPPED 718
+  APPLY       verify: no rows missing
+  RE-RUN      identical counts — idempotent on a LIVE stack, not just a fixture
+  AFTER       iso AGE g_shared  Entity 638       = 603 migrated + 35 pre-existing
+  ```
+
+  ⚖️ **The live run CHANGED the CLI's contract, which is what a live run is for.** The first cut
+  exited **1** on any `verify` mismatch. Against iso — whose `g_shared` already held 35 entities
+  the service itself had written — it reported failure while losing **nothing**:
+
+  ```
+  EXTRA g_shared/Entity: destination 638, source 603      638 = 603 + 35   exit=1
+  ```
+
+  That is every deployment that has ever served a request, and every re-run. The operator's
+  question is *"did my rows land"*: **MISSING** answers no, **EXTRA** answers *"the destination
+  was not empty"*, which is information. A CLI that cannot tell them apart is one whose exit code
+  stops being read. Split, extracted to a pure `cli_exit_code` so it is testable without two
+  engines, and **BITE P** collapses them again:
+
+  ```
+  P  split_verdicts returns every row as MISSING
+       AssertionError: a non-empty destination is not a failed migration
+       assert 1 == 0   where 1 = cli_exit_code(['EXTRA g_shared/Entity: destination 638, source 603'])
+  Q  `if False:` in place of the entrypoint
+       AssertionError: the module documents a `python -m` entrypoint it does not have
+  ```
+
+  🔬 **THE ASSERTION NOTHING ELSE MAKES.** `knowledge-graph-backend-live-smoke` writes a row and
+  reads it back — it proves the round trip and passes perfectly against a store holding nothing
+  else, which is exactly why it could not see T54d. So the last step reads data the request did
+  **not** write, through the service's public surface, with a JWT for the owning user:
+
+  ```
+  GET /v1/knowledge/entities?project_id=019fefde-2f6b-7017-87de-c6b390a170c3&limit=5
+      total reported : 128
+      names returned : ['三世老臣', '三妖', '三妖', '三教', '中宮']
+  ```
+
+  128 is exactly this project's entity count in iso Neo4j, and AGE held **35 entities in total**
+  before the migration — so at least 93 of these cannot have pre-existed. The names are CJK
+  extraction output from a real book. **A running service, configured `age`, built from current
+  source, served a page of a book out of a store the migration had just filled.**
+
+  📐 **`engine="neo4j"` is pinned in the CLI, and it is the one place a pin is right.** The
+  migration reads the engine it is migrating OFF, whatever the process is otherwise configured
+  for — and on a migrated deployment that is `age`, so following the configuration would read the
+  destination into itself.
+
+  🔴 **I claimed this left `port-adoption-gate`'s engine-pinned-session count UNCHANGED. It did
+  not, and the gate REJECTED the commit** — `engine-pinned session call sites GREW to 10
+  (recorded 9)`. The pin is legitimate (it is the one-shot-script class the ceiling already
+  admits) but the number still moves in the same commit, and I had reasoned about it instead of
+  running it. Rule 2 applied to its author: 9 → 10, moved here.
+
+  ⛔ **Still not exercised on dev, and that is unchanged.** Everything above ran on `lw-iso`.
+  Dev's AGE store is still empty, `graph-store-migrated-gate` still returns `EMPTY_DECLARED`
+  there, and the SOAK grant still stays unexercised until the migration is authorised against a
+  non-throwaway store. What this row removes is every OTHER doubt: the code, the command, the
+  idempotency, the exit-code contract and the read-back are all proven against real data on a
+  real service.
+
+  **QC (a) gates:** `graph-store-migrated-gate --selftest` 14/14;
+  `knowledge-graph-backend-live-smoke --selftest` PASS; `port-adoption-gate` and
+  `graph-port-gate` PASS; four plan gates green. `knowledge-service` unit **4439 passed**.
+  **QC (b) live smoke vs REBUILT images:** `./iso.sh build knowledge-service` was run **four**
+  times across this row (the image had `neo4j_repos` and no migration module when it started),
+  and every measurement above is against a container restarted onto the rebuilt image — verified
+  by `ls app/db/` inside it showing `graph_repos` and `neo4j_to_age.py`.
+  **QC (c) real data:** iso's real extraction output, 1 475 nodes and 252 relationships, migrated
+  and then read back over HTTP. Nothing was written to a non-throwaway store.
+
+  ---
   ### ✅ T54g 2026-08-24 — **the check that would have caught T54d: nothing in the tree compares the two STORES**
 
   ```

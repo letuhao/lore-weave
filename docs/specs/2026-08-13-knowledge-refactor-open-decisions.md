@@ -1798,6 +1798,15 @@ writes to a non-throwaway store, which rule 6 reserves and the GRANTS do not cov
 proven; the execution is a decision. Until it runs, the SOAK grant stays unexercised — restarting
 `knowledge-service` before the migration still points every graph read at an empty store.
 
+**Everything else about it is now proven END TO END on `lw-iso` (T54h), which rule 1 names as
+where code runs.** A rebuilt `knowledge-service` on `KNOWLEDGE_GRAPH_BACKEND=age`, its own
+startup log reporting `AGE pool ready (graph=g_shared)`; the migration driven through its
+documented command (dry-run → apply → re-run, idempotent); `graph-store-migrated-gate` returning
+`MIGRATED`; the HTTP smoke passing on `age`; and finally a real
+`GET /v1/knowledge/entities?project_id=…` returning **128 entities the request did not write**,
+out of a store that held 35 in total beforehand. What remains owed is the authorisation, not the
+confidence.
+
 **Retry/registration:** blocks the SOAK grant. `soak-armed-gate` verifies dual-write ARMING; it
 does not and cannot verify that the store being read has the data — and nothing else in the tree
 did either. That absence was the reusable finding: a cutover gate that checks arming and not

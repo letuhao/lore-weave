@@ -75,6 +75,8 @@ __all__ = [
     "PER_PROJECT_LAYOUT",
     "LAYOUTS",
     "render_report",
+    "split_verdicts",
+    "cli_exit_code",
 ]
 
 
@@ -649,3 +651,109 @@ async def verify(neo4j_session, age_pool, plan: MigrationPlan) -> list[str]:
                 rows = await result.data()
                 _report(graph, rel_type, rows[0]["n"] if rows else 0, expected)
     return problems
+
+
+# ── the operator CLI ─────────────────────────────────────────────────────────────────────────
+#
+# 🔴 **The module documented this interface before it existed.** The header has said
+# `python -m app.db.migrations.neo4j_to_age` since T54e; running it imported the module, did
+# nothing, and **exited 0**. An operator following the documentation would have read that as
+# "dry run: nothing to migrate" — silent success, which is a bug and not a convenience.
+# Found by trying the documented command instead of reading it (rule 2).
+
+
+def split_verdicts(problems: list[str]) -> tuple[list[str], list[str]]:
+    """`verify`'s rows split into what FAILS and what merely INFORMS.
+
+    Pure so it can be bitten: the CLI around it needs two live engines, and the decision
+    needs none. The live run is what made this a decision at all — see `_cli_main`.
+    """
+    return ([r for r in problems if r.startswith("MISSING")],
+            [r for r in problems if r.startswith("EXTRA")])
+
+
+def cli_exit_code(problems: list[str]) -> int:
+    """0 unless rows are MISSING. EXTRA is information, not failure."""
+    missing, _ = split_verdicts(problems)
+    return 1 if missing else 0
+
+
+async def _cli_main() -> int:
+    import argparse
+
+    from app.config import settings
+    from app.db.age_pool import age_pool, close_age_pool, init_age_pool
+    from app.db.neo4j import close_neo4j_driver, init_neo4j_driver
+    from app.db.neo4j import graph_session
+
+    ap = argparse.ArgumentParser(description="Migrate a Neo4j knowledge graph into AGE")
+    ap.add_argument("--apply", action="store_true", help="execute (default: dry-run)")
+    ap.add_argument("--layout", default=SERVICE_LAYOUT, choices=list(LAYOUTS),
+                    help="destination topology (default: the one the SERVICE reads)")
+    args = ap.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+    # Both lifecycles are the CLI's here, exactly as `recanon_honorifics` owns the driver's:
+    # the getters raise unless the FastAPI lifespan hook ran, and it never does under `-m`.
+    await init_neo4j_driver()
+    if not await init_age_pool():
+        # Refusing rather than falling back, and for T54's reason: a migration that silently
+        # wrote nowhere would report success and leave the store as empty as it found it.
+        logger.error(
+            "no AGE pool — KNOWLEDGE_AGE_DB_URL is unset or unreachable. Refusing to run: "
+            "a migration with no destination is not a dry run, it is a no-op that reports "
+            "success."
+        )
+        await close_neo4j_driver()
+        return 2
+
+    logger.info(
+        "neo4j->age %s  layout=%s  source=%s",
+        "APPLY" if args.apply else "DRY-RUN", args.layout,
+        settings.neo4j_uri or "<unset>",
+    )
+    try:
+        # `engine="neo4j"` pins the SOURCE. This is the one place a pin is correct rather
+        # than debt: the migration reads the engine it is migrating OFF, whatever the
+        # process is otherwise configured for — and on a migrated deployment that is `age`,
+        # so following the configuration here would read the destination into itself.
+        async with graph_session(engine="neo4j") as session:
+            plan = await migrate(session, age_pool(), apply=args.apply, layout=args.layout)
+            print(render_report(plan))
+            if args.apply:
+                problems = await verify(session, age_pool(), plan)
+                # 🔴 **MISSING fails; EXTRA does not, and the LIVE RUN is what settled it.**
+                # The first cut exited 1 on any mismatch. Run against the iso stack — whose
+                # `g_shared` already held 35 entities the service itself had written — it
+                # reported failure while losing NOTHING:
+                #
+                #     EXTRA g_shared/Entity: destination 638, source 603     638 = 603 + 35
+                #
+                # That is every deployment that has ever served a request, and every re-run.
+                # The operator's question is "did my rows land": MISSING answers no, EXTRA
+                # answers "the destination was not empty", which is information. A CLI that
+                # cannot tell them apart is one whose exit code stops being read.
+                missing, extra = split_verdicts(problems)
+                if extra:
+                    print(f"\nnote — the destination was NOT empty ({len(extra)} label(s) "
+                          f"hold more than the source). Nothing was lost; those rows were "
+                          f"already there:")
+                    for row in extra[:10]:
+                        print(f"  {row}")
+                if missing:
+                    print(f"\nVERIFY FAILED — {len(missing)} label(s) came up SHORT:")
+                    for row in missing[:20]:
+                        print(f"  {row}")
+                    return 1
+                print("\nverify: no rows missing")
+    finally:
+        await close_age_pool()
+        await close_neo4j_driver()
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    import asyncio
+    import sys as _sys
+
+    _sys.exit(asyncio.run(_cli_main()))

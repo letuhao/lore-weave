@@ -18,6 +18,8 @@ import pytest
 from app.db.migrations.neo4j_to_age import (
     EMBEDDING_PROPS,
     SHARED_GRAPH,
+    cli_exit_code,
+    split_verdicts,
     LABEL_KEYS,
     PER_PROJECT_LAYOUT,
     SERVICE_LAYOUT,
@@ -455,3 +457,55 @@ def test_the_endpoint_refusals_fire_in_BOTH_layouts(layout):
               "Sprocket", {"id": "s1", "project_id": "p1"}, {})],
             layout,
         )
+
+
+# ── T54h: the CLI's verdict, settled by the LIVE RUN ─────────────────────────────────────────
+
+
+def test_a_MISSING_row_fails_and_an_EXTRA_row_does_not():
+    """The distinction the live run forced.
+
+    The first CLI exited 1 on any `verify` mismatch. Run against the iso stack — whose
+    `g_shared` already held 35 entities the service itself had written — it reported failure
+    while losing nothing:
+
+        EXTRA g_shared/Entity: destination 638, source 603      638 = 603 + 35
+
+    That is every deployment that has ever served a request, and every re-run. MISSING answers
+    the operator's actual question ("did my rows land"); EXTRA answers "the destination was not
+    empty", which is information.
+    """
+    extra = ["EXTRA g_shared/Entity: destination 638, source 603"]
+    missing = ["MISSING g_shared/Fact: destination 3, source 56"]
+    assert cli_exit_code(extra) == 0, "a non-empty destination is not a failed migration"
+    assert cli_exit_code(missing) == 1, "rows that did not land MUST fail the run"
+    assert cli_exit_code(extra + missing) == 1, "one MISSING outweighs any number of EXTRA"
+    assert cli_exit_code([]) == 0
+
+
+def test_the_split_keeps_BOTH_lists_rather_than_discarding_the_informational_one():
+    """The control: a version that simply filtered for MISSING would pass the assertions above
+    and lose the EXTRA rows entirely, so the operator would never be told the destination was
+    dirty — which on a cutover is the thing worth knowing."""
+    rows = ["EXTRA a/b: destination 2, source 1", "MISSING c/d: destination 0, source 9"]
+    missing, extra = split_verdicts(rows)
+    assert len(missing) == 1 and len(extra) == 1
+    assert missing[0].startswith("MISSING") and extra[0].startswith("EXTRA")
+
+
+def test_the_documented_CLI_ENTRYPOINT_exists():
+    """🔴 It did not, for two commits.
+
+    The module header has documented `python -m app.db.migrations.neo4j_to_age` since T54e.
+    Running it imported the module, did nothing and **exited 0** — which an operator following
+    the documentation reads as "dry run: nothing to migrate". Silent success is a bug, and this
+    was found by TRYING the documented command rather than reading it.
+    """
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "migrations"
+           / "neo4j_to_age.py").read_text(encoding="utf-8")
+    assert 'if __name__ == "__main__":' in src, (
+        "the module documents a `python -m` entrypoint it does not have"
+    )
+    assert "_cli_main" in src and "--apply" in src

@@ -1497,7 +1497,16 @@ _ENGINE_LITERAL = re.compile("(?P<q>['\"])(neo4j|age)(?P=q)")
 #: which ran against a known engine. 9 call sites across 7 modules, measured 2026-08-22. This
 #: number is not aiming at zero — it is aiming at "no SERVICE code names an engine", and it
 #: rises only if someone pins a call site that should have followed the configuration.
-MAX_PINNED_SESSIONS = 9
+#: 9 -> 10 (2026-08-24, T54h): `db/migrations/neo4j_to_age.py`'s CLI opens
+#: `graph_session(engine="neo4j")`. This is the one place a pin is not debt — the migration
+#: reads the engine it is migrating OFF, whatever the process is configured for, and on a
+#: migrated deployment that IS `age`, so following the configuration would read the destination
+#: into itself. It is the one-shot-script class this ceiling already admits.
+#:
+#: ⚠️ The T54h evidence block first claimed this count was UNCHANGED. It was not, and the gate
+#: rejected the commit — which is the ratchet doing precisely its job against an author who had
+#: reasoned about the number instead of running it (rule 2, on myself).
+MAX_PINNED_SESSIONS = 10
 
 _PINNED_SESSION = re.compile(r"""graph_session\(\s*engine\s*=""")
 
