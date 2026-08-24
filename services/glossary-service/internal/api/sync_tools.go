@@ -131,6 +131,42 @@ func (s *Server) toolBookSyncApply(ctx context.Context, req *mcp.CallToolRequest
 		}
 		items = append(items, syncApplyItemReq{Entity: entity, ID: strings.TrimSpace(it.ID), Choice: choice})
 	}
+	// 🔴 MINT-TIME VALIDATION STOPPED AT THE SHAPE OF AN ID. Measured 2026-08-24 over MCP, each
+	// of these MINTED A CARD: an item id that exists nowhere, a book with ZERO available updates,
+	// and book A's sync row applied against book B. Every row on this card decides whether the
+	// author's own value is overwritten, so a card for rows that are not available updates asks
+	// them to approve a change that cannot happen — approve-then-fail on a Tier-W write.
+	//
+	// The set to check against is the one the READER returns, computed here by the same three
+	// functions glossary_book_sync_available runs. One membership test covers all three cases: an
+	// unknown id, another book's id, and an id that is already up to date are all simply absent
+	// from this book's available set. Same principle as the entity/choice/UUID checks above,
+	// extended from the shape of an id to whether it names something to apply.
+	//
+	// A query failure FAILS THE PROPOSAL rather than skipping the check: this is the same pool
+	// and the same service, so a failure here is a database failure, not a degraded dependency to
+	// route around. (Contrast the liveness lookup below, which is best-effort because it only
+	// decorates a card that is already valid.)
+	avail := map[string]bool{}
+	for _, fn := range []func(context.Context, uuid.UUID, uuid.UUID) ([]syncUpdateItem, error){
+		s.syncGenresAvailable, s.syncKindsAvailable, s.syncAttributesAvailable,
+	} {
+		got, aerr := fn(ctx, bookID, userID)
+		if aerr != nil {
+			return nil, confirmCardOut{}, errors.New("could not read this book's available updates to validate the proposal")
+		}
+		for _, av := range got {
+			avail[av.ID] = true
+		}
+	}
+	for _, it := range items {
+		if !avail[it.ID] {
+			return nil, confirmCardOut{}, fmt.Errorf(
+				"%s %s is not an available update for this book — read "+
+					"glossary_book_sync_available first and use the ids it returns",
+				it.Entity, it.ID)
+		}
+	}
 	rows := []previewRow{
 		{Label: "rows to update from source", Value: fmt.Sprint(takeN), Note: "take_theirs"},
 		{Label: "rows to keep as-is", Value: fmt.Sprint(keepN), Note: "keep_mine (accept divergence)"},
