@@ -58,3 +58,19 @@ class TestItStaysAnL1Listing:
     def test_the_empty_case_still_reports_a_reason(self):
         out = workflow_list_result([])
         assert out["count"] == 0 and out.get("reason") == "no workflows"
+
+
+# 🔴 THE DESCRIPTION GUARD THAT WAS HERE IS REMOVED, AND THE REASON IS THE POINT.
+#
+# It asserted the description declares every field the result carries — accurate, and MEASURED
+# HARMFUL. Telling the model "narrow the result by `surfaces` yourself, or call
+# registry_list_workflows" made it narrow itself BADLY:
+#
+#     replies naming a NON-studio workflow   1/5  ->  4/5
+#     replies MISSING a studio workflow      0/5  ->  4/5
+#
+# Before the wording it mostly delegated to the tool that filters server-side and got the answer
+# right; after it, it self-filtered and produced a list that both invented and omitted. The
+# payload accuracy is right in principle and is recorded as a RECOMMENDATION
+# (D-WORKFLOW-LIST-DESCRIBES-A-PAYLOAD-IT-NO-LONGER-RETURNS) rather than shipped unmeasured a
+# second time. The `surfaces` FIELD stays — that change is measured good (4/5 wrong -> 1/5).
