@@ -725,6 +725,44 @@ def sweep_orphans(older_than_minutes: int = 0) -> list[str]:
     return out
 
 
+def sweep_orphan_translation_jobs() -> int:
+    """Translation jobs whose BOOK no longer exists — debris this harness makes every run.
+
+    🔴 MEASURED 2026-08-24: sixty translation jobs were visible to the test account and NOT ONE
+    was controllable. Every translation scenario SQL-seeds a pending job on its throwaway book;
+    teardown removes the book and the job row survives, because it lives in another database with
+    no FK to it. `jobs_list` goes on listing all sixty with control_caps ["cancel"], while
+    translation_job_control resolves through the job's book and refuses every one of them with
+    "not found or not accessible" — correctly.
+
+    That cost a probe: ids read straight from translation_jobs looked perfectly good and every
+    call refused, and the reason was not the tool. A harness that leaves undeletable rows behind
+    eventually measures its own debris.
+
+    Book-scoped and conservative by construction: a job is removed ONLY when its book_id is absent
+    from loreweave_book.books, so a live book's jobs are never touched.
+    """
+    rows = oracle.db_query("loreweave_translation",
+                           "SELECT DISTINCT book_id::text FROM translation_jobs")
+    book_ids = [r[0] for r in (rows or []) if r and r[0]]
+    if not book_ids:
+        return 0
+    quoted = ",".join("'" + b.replace("'", "''") + "'" for b in book_ids)
+    live = oracle.db_query("loreweave_book", f"SELECT id::text FROM books WHERE id IN ({quoted})")
+    alive = {r[0] for r in (live or []) if r and r[0]}
+    orphan = [b for b in book_ids if b not in alive]
+    if not orphan:
+        return 0
+    oq = ",".join("'" + b.replace("'", "''") + "'" for b in orphan)
+    n = oracle.db_query("loreweave_translation",
+                        f"WITH d AS (DELETE FROM translation_jobs WHERE book_id IN ({oq}) "
+                        f"RETURNING 1) SELECT count(*)::text FROM d")
+    try:
+        return int(n[0][0])
+    except (IndexError, TypeError, ValueError):
+        return 0
+
+
 def sweep_orphan_worlds(older_than_minutes: int = 0) -> list[str]:
     """🔴 A WORLD IS NOT BOOK-SCOPED, SO THE BOOK SWEEP ABOVE NEVER SAW ONE.
 
@@ -768,6 +806,8 @@ def main() -> int:
         # Worlds are NOT book-scoped, so they need their own pass — see sweep_orphan_worlds.
         w = sweep_orphan_worlds()
         print(f"swept {len(w)} throwaway world(s)")
+        j = sweep_orphan_translation_jobs()
+        print(f"swept {j} orphaned translation job(s)")
         return 0
     fx = Throwaway(a.label).build()
     print(json.dumps({"book_id": fx.book_id, "chapter_id": fx.chapter_id,

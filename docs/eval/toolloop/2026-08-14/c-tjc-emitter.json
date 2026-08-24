@@ -1,0 +1,2463 @@
+{
+  "batch": "c-tjc-emitter",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "kg_triage_schema_write",
+      "scenario": "kg-triage-schema-write-with-an-ontology",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the schema changes with NO confirm card (Tier W), OR the action chosen is not `add_to_schema` when the author asked to add an edge TYPE — `add_to_vocab` adds a controlled-vocabulary VALUE and `widen_target_kinds` loosens which node kinds an edge may point at, both of which are different changes to the author's ontology — OR the model invents a signature. 🔴 A PRECONDITION REFUSAL IS NOT A FAILURE: this project has no adopted ontology, so 'there is nothing to add to' is a correct answer, and it must be recorded as the tool working rather than as the tool broken.",
+      "answer_expect": null,
+      "falsifier_sha": "b8a9550a7d944c13",
+      "ship_audit": {
+        "gate": "OWED — Tier W and schema-mutating.",
+        "absent_case": "OWED — a signature that is not in the queue must be refused.",
+        "empty_case": "OWED — an action with no value to add must be refused.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a033dc-068c-72c3-b376-836bf796b425",
+          "project_id": "01a033dc-0826-762a-a2a4-7da0347b6339",
+          "seed_ids": {
+            "01a033dc-068c-72c3-b376-836bf796b425": "fixture book_id",
+            "01a033dc-0826-762a-a2a4-7da0347b6339": "fixture project_id (composition_work)",
+            "01a033dc-074d-7757-b75f-3e86574ee8c4": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a033dc-0f4e-7073-ad7f-e7c0c701209d": "seed[2] kg_propose_edge.triage_id",
+            "01a033dc-108b-7055-a639-e7dc92c9839f": "seed[4] /v1/kg/actions/confirm.schema_id"
+          },
+          "session_id": "01a033dc-39a1-78d0-9fe4-25e68d6e5311",
+          "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+          "scenario_prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+          "prior_turns": [
+            {
+              "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+              "called": [
+                "kg_triage_schema_write"
+              ],
+              "text": "I've proposed adding the \"Protagonist Of\" relationship to your project's structure; please confirm the change on the card to apply it."
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_triage_schema_write"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_schema_write",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_triage_schema_write",
+              "result_head": "{\"ok\": true, \"result\": {\"proposed\": true, \"confirm_token\": \"eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX3RyaWFnZV9zY2hlbWFfd3JpdGUiLCJleHAiOjE3ODc1NzcwODIsImp0aSI6IjFkZDU1OWVjLTkzYjQtNDUzMi1iOTA5LTZjOGUzZTZhMTQ2YyIsInAiOnsiYWN0aW9uIjoiYWRkX3RvX3NjaGVtYSIsImFkZF9raW5kcyI6W10sImNvZGUiOiJBTExJRURfV0lU"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "call": "kg_triage_schema_write"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.165331+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.157234+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:54.989437+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.941169+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.165331+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:00:55.27926+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.157234+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:54.989437+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've proposed adding the \"Allied With\" relationship to your structure; please confirm the change on the card to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a033dc-c692-75bc-8fb5-2d9e475aba64",
+          "project_id": "01a033dc-c812-7b7a-b93f-4e9a75ce4d8b",
+          "seed_ids": {
+            "01a033dc-c692-75bc-8fb5-2d9e475aba64": "fixture book_id",
+            "01a033dc-c812-7b7a-b93f-4e9a75ce4d8b": "fixture project_id (composition_work)",
+            "01a033dc-c72a-72e0-b3b9-dd3334352ba3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a033dc-c9db-702f-82b4-fde3bff79e2f": "seed[2] kg_propose_edge.triage_id",
+            "01a033dc-cb01-7bff-a5a8-417dfa8368cb": "seed[4] /v1/kg/actions/confirm.schema_id"
+          },
+          "session_id": "01a033dc-f339-7353-a52e-d5189dde0b17",
+          "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+          "scenario_prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+          "prior_turns": [
+            {
+              "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+              "called": [
+                "kg_triage_schema_write"
+              ],
+              "text": "I've prepared the change to add the \"Proposes\" edge type to your structure; please confirm it on the card to apply the update."
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_triage_schema_write"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_schema_write",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_triage_schema_write",
+              "result_head": "{\"ok\": true, \"result\": {\"proposed\": true, \"confirm_token\": \"eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX3RyaWFnZV9zY2hlbWFfd3JpdGUiLCJleHAiOjE3ODc1NzcxMjIsImp0aSI6IjkwZGZjMWQ5LTM3NTgtNDU1Zi05NjAzLTliNzkxNjUyMjVkZCIsInAiOnsiYWN0aW9uIjoiYWRkX3RvX3NjaGVtYSIsImFkZF9raW5kcyI6W10sImNvZGUiOiJhbGxpZWRfd2l0"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "call": "kg_triage_schema_write"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.302131+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.289753+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.746929+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.057885+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.302131+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:01:43.012496+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.289753+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.746929+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the change to add the \"Allied With\" edge type to your structure; please confirm it on the card to apply the update."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a033dd-4ce7-794f-b09e-848d4e066c6b",
+          "project_id": "01a033dd-4e70-7dda-a9f0-9cf512f5340f",
+          "seed_ids": {
+            "01a033dd-4ce7-794f-b09e-848d4e066c6b": "fixture book_id",
+            "01a033dd-4e70-7dda-a9f0-9cf512f5340f": "fixture project_id (composition_work)",
+            "01a033dd-4d98-70c1-8053-8be7095e8259": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a033dd-5059-79be-a952-c58c1e7516a1": "seed[2] kg_propose_edge.triage_id",
+            "01a033dd-5171-7105-96ff-95fc138adb9c": "seed[4] /v1/kg/actions/confirm.schema_id"
+          },
+          "session_id": "01a033dd-8028-72aa-b96e-bd36cfb591be",
+          "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+          "scenario_prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+          "prior_turns": [
+            {
+              "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+              "called": [
+                "kg_triage_schema_write"
+              ],
+              "text": "The change to add the \"Proposes\" edge type to your structure is ready for you to confirm."
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_triage_schema_write"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_schema_write",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_triage_schema_write",
+              "result_head": "{\"ok\": true, \"result\": {\"proposed\": true, \"confirm_token\": \"eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX3RyaWFnZV9zY2hlbWFfd3JpdGUiLCJleHAiOjE3ODc1NzcxNTgsImp0aSI6ImU3MTM3ZGMzLTAyNmItNDRjOS1iODliLTg2MjVjMDRmOWFkZCIsInAiOnsiYWN0aW9uIjoiYWRkX3RvX3NjaGVtYSIsImFkZF9raW5kcyI6W10sImNvZGUiOiJhbGxpZWRfd2l0"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "call": "kg_triage_schema_write"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.704936+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.688224+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.177549+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.471875+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.704936+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:02:17.431986+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:16.688224+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.177549+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The change to add the \"allied_with\" edge type to your structure is ready for you to confirm."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a033dd-d9e2-7dfe-aab6-b9d0af6dcc81",
+          "project_id": "01a033dd-db24-7c54-9885-d6d16d09b606",
+          "seed_ids": {
+            "01a033dd-d9e2-7dfe-aab6-b9d0af6dcc81": "fixture book_id",
+            "01a033dd-db24-7c54-9885-d6d16d09b606": "fixture project_id (composition_work)",
+            "01a033dd-da7c-75b6-8d73-06dd5a9e91ae": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a033dd-dcf6-7b04-bdbc-e2b07961f7d0": "seed[2] kg_propose_edge.triage_id",
+            "01a033dd-de4a-7ec2-8abb-2d6f9b6b2ac7": "seed[4] /v1/kg/actions/confirm.schema_id"
+          },
+          "session_id": "01a033de-0c81-7393-ab96-86cae85abd31",
+          "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+          "scenario_prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+          "prior_turns": [
+            {
+              "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+              "called": [
+                "kg_triage_schema_write"
+              ],
+              "text": "I've prepared the change to add the `PROPOSES` edge type to your structure; please confirm it on the card to apply the update."
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_triage_schema_write"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_schema_write",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_triage_schema_write",
+              "result_head": "{\"ok\": true, \"result\": {\"proposed\": true, \"confirm_token\": \"eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX3RyaWFnZV9zY2hlbWFfd3JpdGUiLCJleHAiOjE3ODc1NzcyMDAsImp0aSI6IjlkMGFiODFmLTRlNDYtNDU0Ny04Yzk2LTU5NTU3NWJiNmYzYiIsInAiOnsiYWN0aW9uIjoiYWRkX3RvX3NjaGVtYSIsImFkZF9raW5kcyI6W10sImNvZGUiOiJhbGxpZWRfd2l0"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "call": "kg_triage_schema_write"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.714116+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.708181+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:53.17463+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.54024+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.714116+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:02:53.490842+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:52.708181+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:53.17463+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the change to add the `allied_with` edge type to your structure; please confirm it on the card to apply the update."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a033de-9c3f-76f5-b837-0b1d678c58ab",
+          "project_id": "01a033de-9d80-7d8f-b847-83cf6df64fa7",
+          "seed_ids": {
+            "01a033de-9c3f-76f5-b837-0b1d678c58ab": "fixture book_id",
+            "01a033de-9d80-7d8f-b847-83cf6df64fa7": "fixture project_id (composition_work)",
+            "01a033de-9cd2-7674-bdcf-432e60f67a86": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a033de-9fb6-7180-adb8-84c69ea06e28": "seed[2] kg_propose_edge.triage_id",
+            "01a033de-a0c7-7239-878e-d5653317855c": "seed[4] /v1/kg/actions/confirm.schema_id"
+          },
+          "session_id": "01a033de-c971-7123-81b5-8a48605a9a2f",
+          "prompt": "Add the allied_with edge type to the schema so that proposal fits.",
+          "scenario_prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+          "prior_turns": [
+            {
+              "prompt": "Add the edge type to the schema so that proposal fits — resolve triage by changing the schema.",
+              "called": [
+                "kg_triage_schema_write"
+              ],
+              "text": "I've proposed adding the \"Protagonist Of\" relationship to your project's structure. Please confirm the change on the card to finalize it."
+            }
+          ],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_triage_schema_write"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_schema_write",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_triage_schema_write",
+              "result_head": "{\"ok\": true, \"result\": {\"proposed\": true, \"confirm_token\": \"eyJhc3ViIjoiIiwiYXV0aCI6ImdyYW50IiwiZCI6ImtnX3RyaWFnZV9zY2hlbWFfd3JpdGUiLCJleHAiOjE3ODc1NzcyNDQsImp0aSI6ImM5ZWE4OTk5LTYzN2UtNDg5OC1iMGM5LTkzODRlZGM5YWUwOSIsInAiOnsiYWN0aW9uIjoiYWRkX3RvX3NjaGVtYSIsImFkZF9raW5kcyI6W10sImNvZGUiOiJBTExJRURfV0lU"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "call": "kg_triage_schema_write"
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "kg_triage_schema_write"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.470171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.464356+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:43.029987+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.290281+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.470171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 30,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-24 13:03:43.281448+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:42.464356+00"
+              },
+              "loreweave_knowledge.kg_triage_items": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:43.029987+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've proposed adding the \"Allied With\" relationship to your structure. Please confirm the change on the card to finalize it."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "translation_job_control",
+      "scenario": "translation-job-control-refederated",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the job is cancelled with NO confirm card (Tier W), OR the action chosen is `resume` or `retry` — both RE-SPEND money by the tool's own description and neither is what the author asked for — OR the model invents a job_id rather than reading one from turn 1. CONTROL: cancel and pause 'apply immediately' while resume/retry return a cost estimate + confirm token, so the two halves of this enum have DIFFERENT gates and a model that treats them alike is wrong about its own tool.",
+      "answer_expect": null,
+      "falsifier_sha": "57194994db03d789",
+      "ship_audit": {
+        "gate": "EXERCISED, and this is the FIRST CALL THIS TOOL HAS EVER COMPLETED in any batch. Both halves of its gate behave as its description says:\n    action=cancel  applies IMMEDIATELY -> {status: 'cancelled'}, and the job's row went pending -> cancelled in the database\n    action=resume  RE-SPENDS money -> {needs_confirm: true, confirm_token: ...}; it cards instead of re-running, and no token was redeemed",
+        "absent_case": "EXERCISED and REFUSED: an unknown job_id and a job NAME where a UUID belongs both return 'not found or not accessible'. An action outside the enum is refused by the schema, naming the permitted values.",
+        "idempotency": "EXERCISED and REFUSED: cancelling the SAME job twice returns 409 TRANSL_CANNOT_CANCEL — a specific code, not a generic error — and the row stayed 'cancelled'. A COMPLETED job is refused the same way, so a terminal job cannot be cancelled into a second state.",
+        "tenancy": "EXERCISED, and the evidence is stronger than the probe I set out to run. The tool takes only job_id + action, so its scope is not in its arguments — it resolves the job's BOOK. That gate is demonstrably real: all 60 translation jobs this account could see were ORPHANS whose books had been torn down, and translation_job_control refused every one of them with 'not found or not accessible' while jobs_list happily listed them.\n\n🔴 HONEST LIMIT: a job on a DIFFERENT book of the SAME account IS controllable, which is correct (the caller owns it) but means no cross-ACCOUNT breach was driven — the harness has one account.",
+        "_probe": "scripts/toolloop/jobcontrol_ship_probe.py — two throwaway books, jobs seeded the way the scenarios seed them, all rows deleted and both books torn down. Refusals run first against untouched state; the single real cancel runs LAST.",
+        "_probe_output": {
+          "_fixture": {
+            "book_a": "01a033d8-b001-7cfc-ba49-9d1d5fba4b5d",
+            "pending_job": "01a033d8-b3a6-767c-862d-f0f97152fd8d",
+            "completed_job": "01a033d8-b48a-76b9-bdac-16e903b972cd",
+            "book_b": "01a033d8-b1c1-76f8-989d-091569c0a336",
+            "job_on_book_b": "01a033d8-b571-7b44-b7c4-996ffbfbef0f"
+          },
+          "absent": {
+            "verdict": "refused",
+            "detail": "MCP translation_job_control error: Error executing tool translation_job_control: not found or not accessible",
+            "asked": "a job_id that does not exist"
+          },
+          "malformed": {
+            "verdict": "refused",
+            "detail": "MCP translation_job_control error: Error executing tool translation_job_control: not found or not accessible",
+            "asked": "a job NAME where a UUID is required"
+          },
+          "bad_action": {
+            "verdict": "refused",
+            "detail": "MCP translation_job_control error: invalid arguments for translation_job_control — `action`: Input should be 'cancel', 'pause', 'resume' or 'retry' (you sent 'obliterate'). Fix the argument and call the tool again.",
+            "asked": "an action outside the enum — refused, not defaulted"
+          },
+          "terminal_state": {
+            "verdict": "refused",
+            "detail": "MCP translation_job_control error: Error executing tool translation_job_control: 409: {'code': 'TRANSL_CANNOT_CANCEL', 'message': 'Job is already completed'}",
+            "asked": "cancel a COMPLETED job — terminal jobs are not cancellable"
+          },
+          "gate_resume_respends": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"needs_confirm\": true, \"confirm_token\": \"eyJkIjoidHJhbnNsYXRpb24uam9iX3Jlc3VtZSIsImV4cCI6MTc4NzU3NjgzNSwicCI6eyJhY3Rpb24iOiJqb2JfcmVzdW1lIiwiYm9va19pZCI6IjAxYTAzM2Q4LWIwMDEtN2NmYy1iYTQ5LTlkMWQ1ZmJhNGI1ZCIsImNoYXB0ZXJfaW",
+            "asked": "resume RE-SPENDS money, so it must card or refuse — never silently re-run"
+          },
+          "_status_before": "pending",
+          "gate_cancel_immediate": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"job_id\": \"01a033d8-b3a6-767c-862d-f0f97152fd8d\", \"status\": \"cancelled\", \"_meta\": {\"undo_hint\": {\"available\": false}}, \"success\": true}",
+            "asked": "cancel a genuinely pending job — the first call this tool has ever completed"
+          },
+          "_status_after_first": "cancelled",
+          "idempotency": {
+            "verdict": "refused",
+            "detail": "MCP translation_job_control error: Error executing tool translation_job_control: 409: {'code': 'TRANSL_CANNOT_CANCEL', 'message': 'Job is already cancelled'}",
+            "asked": "cancel the SAME job again"
+          },
+          "_status_after_second": "cancelled",
+          "tenancy_job_on_another_book": {
+            "note": "book B is a DIFFERENT book of the same account; its job must not be controllable via book A's scope",
+            "verdict": "SUCCEEDED",
+            "detail": "{\"job_id\": \"01a033d8-b571-7b44-b7c4-996ffbfbef0f\", \"status\": \"cancelled\", \"_meta\": {\"undo_hint\": {\"available\": false}}, \"success\": true}"
+          }
+        }
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a033dc-068d-726f-aa44-d4aa248dea95",
+          "project_id": "01a033dc-0820-7d99-ab08-b2691aff759c",
+          "seed_ids": {
+            "01a033dc-068d-726f-aa44-d4aa248dea95": "fixture book_id",
+            "01a033dc-0820-7d99-ab08-b2691aff759c": "fixture project_id (composition_work)",
+            "01a033dc-074a-74ee-8049-34eb350f5ca8": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a033dc-35b5-786d-b15f-02aaa7890e34",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "What is the status of the translation job for this book?",
+          "prior_turns": [
+            {
+              "prompt": "What is the status of the translation job for this book?",
+              "called": [
+                "translation_coverage",
+                "translation_job_status",
+                "translation_retranslate_dirty",
+                "translation_start_job"
+              ],
+              "text": "There is currently no active translation job running for this book. \n\nHowever, looking at the translation coverage, **Chapter 1** (ID: `01a033dc-074a-74ee-8049-34eb350f5ca8`) is currently untranslated. \n\nWould you like me to start a translation for that chapter?\n\nI've prepared the translation for Chapter 1; please confirm the request in the card to start the process.\n\nI've prepared a re-translation for the changed segment in Chapter 1; please confirm the request in the card to proceed.\n\nI do not have access to the status of that specific translation job."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_list",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.160258+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.151699+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.354114+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:52.938157+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.160258+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.151699+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.838875+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:00:53.354114+00"
+              },
+              "loreweave_translation.chapter_segments": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:30.046951+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:42.838875+00"
+              }
+            },
+            "loreweave_translation.chapter_segments": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:30.046951+00"
+              }
+            }
+          },
+          "answer": "I couldn't find any active translation jobs to cancel. I only see several background planning jobs currently running for the composition service."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a033dd-0595-7cc4-87d2-b5a33c3ec153",
+          "project_id": "01a033dd-06d8-7d46-8645-96af4f49ed2a",
+          "seed_ids": {
+            "01a033dd-0595-7cc4-87d2-b5a33c3ec153": "fixture book_id",
+            "01a033dd-06d8-7d46-8645-96af4f49ed2a": "fixture project_id (composition_work)",
+            "01a033dd-0624-78eb-96a8-fc8c6606f579": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a033dd-30b7-7a7e-9e3e-c93f6fc364be",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "What is the status of the translation job for this book?",
+          "prior_turns": [
+            {
+              "prompt": "What is the status of the translation job for this book?",
+              "called": [
+                "translation_coverage",
+                "translation_job_status",
+                "translation_retranslate_dirty",
+                "translation_start_job"
+              ],
+              "text": "The translation for this book is currently at a starting point: there is one chapter (ID: `01a033dd-0624-78eb-96a8-fc8c6606f579`) that has not yet been translated.\n\nWould you like me to start the translation for that chapter?\n\nI've prepared the translation for the first chapter; please confirm the request to start it.\n\nI've prepared the update for the changed segment; please confirm the request to re-translate it.\n\nI do not have access to the status of a translation job with that ID."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_list",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.367083+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.360292+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.484075+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.180442+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.367083+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.360292+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:01:58.484075+00"
+              },
+              "loreweave_translation.chapter_segments": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.561216+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_translation.chapter_segments": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:17.561216+00"
+              }
+            }
+          },
+          "answer": "I cannot cancel that job because I don't have a valid job ID to target. \n\nIf you can provide the specific ID for the translation job you're referring to, I can attempt to cancel it for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a033dd-bf65-714b-917d-754595645cd2",
+          "project_id": "01a033dd-c0ab-7d32-9e04-4c3533e1c7dc",
+          "seed_ids": {
+            "01a033dd-bf65-714b-917d-754595645cd2": "fixture book_id",
+            "01a033dd-c0ab-7d32-9e04-4c3533e1c7dc": "fixture project_id (composition_work)",
+            "01a033dd-c000-760f-baac-f588a2881d7e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a033dd-e9f8-7db6-afd2-7f4e468e371d",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "What is the status of the translation job for this book?",
+          "prior_turns": [
+            {
+              "prompt": "What is the status of the translation job for this book?",
+              "called": [
+                "translation_coverage",
+                "translation_job_status",
+                "translation_retranslate_dirty",
+                "translation_start_job"
+              ],
+              "text": "The translation for this book is currently at a starting point: there is one chapter (Chapter 1) that has not yet been translated. \n\nWould you like me to start the translation for that chapter?\n\nI've prepared the translation for Chapter 1; you can confirm it now to start the process.\n\nI've prepared the update for the changed segments in Chapter 1; you can confirm it now to apply the changes.\n\nI am unable to retrieve the status of that translation job because the job ID provided is not recognized or accessible."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_list",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.937621+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.930882+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:46.044742+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.760296+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.937621+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:45.930882+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:02:46.044742+00"
+              },
+              "loreweave_translation.chapter_segments": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:05.540184+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_translation.chapter_segments": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:05.540184+00"
+              }
+            }
+          },
+          "answer": "I cannot cancel the job because I don't have a valid job ID to target. \n\nIf you can provide the specific job ID or tell me which chapter you were referring to, I can try to find it and stop the process for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a033de-b21b-70ba-a1f7-e142f434089c",
+          "project_id": "01a033de-b362-7bf9-8b07-1cb7ce19c2ca",
+          "seed_ids": {
+            "01a033de-b21b-70ba-a1f7-e142f434089c": "fixture book_id",
+            "01a033de-b362-7bf9-8b07-1cb7ce19c2ca": "fixture project_id (composition_work)",
+            "01a033de-b2b8-790a-b897-a22b5d65f504": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a033de-dbeb-7ac2-9e90-337696b5a830",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "What is the status of the translation job for this book?",
+          "prior_turns": [
+            {
+              "prompt": "What is the status of the translation job for this book?",
+              "called": [
+                "translation_coverage",
+                "translation_job_status",
+                "translation_retranslate_dirty",
+                "translation_start_job"
+              ],
+              "text": "There is currently no active translation job running for this book. \n\nHowever, looking at the translation coverage, **Chapter 1** (ID: `01a033de-b2b8-790a-b897-a22b5d65f504`) is currently untranslated. \n\nWould you like me to start a translation for that chapter?\n\nI've started the translation for Chapter 1; you can confirm the request in the card above to begin.\n\nI've prepared a re-translation for the changed segment in Chapter 1; you can confirm it in the card above.\n\nI did not re-read the current status of the translation job, so my answer may be stale."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_list",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments for jobs_list \\u2014 `status.literal['pending','running','paused','cancelling','completed','failed','cancelled']`: Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled' (you sent 'active'); `status.list[literal['p"
+            },
+            {
+              "tool": "jobs_list",
+              "result_head": "{\"ok\": true, \"result\": {\"items\": [{\"service\": \"composition\", \"job_id\": \"01a028e7-8dd3-729b-a177-8e1f9bf14a9a\", \"kind\": \"plan_forge_propose\", \"status\": \"running\", \"detail_status\": null, \"title\": null, \"progress\": null, \"parent_job_id\": null, \"child_count\": 0, \"control_caps\": [\"cancel\"], \"model\": \"goo"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "call": "jobs_list"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "jobs_list",
+                "translation_job_control"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.072397+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.066161+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.268582+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:47.896443+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.072397+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.066161+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:03:48.268582+00"
+              },
+              "loreweave_translation.chapter_segments": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:15.654434+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_translation.chapter_segments": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:15.654434+00"
+              }
+            }
+          },
+          "answer": "I couldn't find any active translation jobs to cancel. I only see several background planning jobs currently running."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a033df-8ab1-7181-a5e9-de8b4ce6cc1c",
+          "project_id": "01a033df-8be2-7d5d-b681-85003966f96e",
+          "seed_ids": {
+            "01a033df-8ab1-7181-a5e9-de8b4ce6cc1c": "fixture book_id",
+            "01a033df-8be2-7d5d-b681-85003966f96e": "fixture project_id (composition_work)",
+            "01a033df-8b3e-781c-972c-3f2d3d4e25b4": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a033df-b427-758e-bb59-c0690a8ff20f",
+          "prompt": "Cancel that job.",
+          "scenario_prompt": "What is the status of the translation job for this book?",
+          "prior_turns": [
+            {
+              "prompt": "What is the status of the translation job for this book?",
+              "called": [
+                "translation_coverage",
+                "translation_job_status",
+                "translation_retranslate_dirty",
+                "translation_start_job"
+              ],
+              "text": "The translation for this book hasn't started yet. Currently, there is one chapter (ID: `01a033df-8b3e-781c-972c-3f2d3d4e25b4`) that is waiting to be translated.\n\nWould you like me to start the translation for that chapter?\n\nI've prepared the translation for the first chapter; you can confirm it now to start the process.\n\nI've prepared the update for the changed segment; you can confirm it now to apply the changes.\n\nI did not re-read the translation status, so my answer may be stale."
+            }
+          ],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_list",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "translation_job_control"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.496144+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.490372+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.679124+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.326371+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.496144+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.490372+00"
+              },
+              "loreweave_translation.translation_jobs": {
+                "rows": 1,
+                "latest": "2026-08-24 13:04:43.679124+00"
+              },
+              "loreweave_translation.chapter_segments": {
+                "rows": 1,
+                "latest": "2026-08-24 13:05:02.060634+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_translation.chapter_segments": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 13:05:02.060634+00"
+              }
+            }
+          },
+          "answer": "I cannot cancel the translation job because there are no active or pending translation jobs currently running for this book. \n\nAs I mentioned, the first chapter is currently waiting to be translated, but no job has been started yet. If you were referring to a different task or if you'd like me to check on something else, please let me know."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 5,
+      "suspended_count": 0,
+      "blocked_reason": "STILL BLOCKED ON DQ-T41, and this cycle did not move that — but it settled two things and removed a trap.\n\nTHE TIE IS REAL, unlike composition_generate's. Checked against the deployed matcher, the blocking prompt 'Cancel that job.' makes BOTH translation_job_control and jobs_cancel answerable, and so do the other two arms ('Stop the translation for this book.', 'Cancel job — stop translation...'). R1 does its job and puts both on the wire; the request says 'job', not 'translation'; the model takes the generic tool. That is precisely the question DQ-T41 asks and it is not mine to answer.\n\nI DECLARED THE SUPPLIER AND PREDICTED IT WOULD NOT HELP, BEFORE THE RUN. translation_job_control.job_id had no emitter; jobs_list supplies it (verified by calling it: items[].job_id for service='translation'). Declaring it worked for two tools this week because those were CHOSEN and then refused for want of an obtainable id. This one is not chosen. Measured after the declaration: called 0/5 — the predicted result, recorded rather than retried.\n\nAND I DID NOT RUN A SECOND BATCH. This tool's own correction notes arms at 1/5, 0/5 and 2/5, so another sample could well have come back green with nothing fixed. Sampling until the gate passes is not evidence.\n\nWHAT IS NO LONGER UNKNOWN: the tool WORKS. All four owed SHIP cases are exercised (see ship_audit) — cancel applies immediately and moved a real job pending -> cancelled, resume cards because it re-spends, a second cancel is refused 409, and unknown/malformed ids are refused. Whatever DQ-T41 decides, it is not waiting on this tool."
+    }
+  ]
+}
