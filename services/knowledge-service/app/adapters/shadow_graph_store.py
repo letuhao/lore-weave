@@ -84,6 +84,12 @@ OPERATIONS = (
     "status_at_order",
     "events_in_window",
     "project_graph_stats",
+    # T17 A31. A DESTRUCTIVE operation in the shadow is deliberate: it is the one place where
+    # the two engines disagreeing costs data rather than a wrong answer, so it is exactly what
+    # a differential should watch. Both stores are purged, which is what shadowing means — and
+    # the comparison is on the RETURNED counts, not on the graphs, so a secondary that deleted
+    # a different number says so.
+    "purge_project",
 )
 
 
@@ -510,6 +516,29 @@ class ShadowGraphStore:
         return await self._shadow_by_id(
             "add_evidence", out, kw.get("target_id"),
             lambda s, sid: s.add_evidence(**{**kw, "target_id": sid}))
+
+    async def purge_project(self, **kw):
+        """NATURAL-keyed like `project_graph_stats`: the project id is the caller's own.
+
+        ⚠️ **The comparison is over `nodes_deleted` and `indexes_dropped` only, and
+        `indexes_skipped` is expected to DIFFER.** Neo4j sweeps per-project summary vector
+        indexes and reports a number; AGE and Kuzu have no index administration and say so in
+        words. A differential that demanded the whole dict match would report a divergence on
+        every purge — the "recorded, not diagnosed" shape rule 13 exists for — and the honest
+        reading is that the two engines agree about the DATA and differ about a capability
+        one of them does not have.
+        """
+        def _data_only(d: dict) -> dict:
+            return {k: v for k, v in d.items() if k != "indexes_skipped"}
+
+        async def _secondary(store):
+            return _data_only(await store.purge_project(**kw))
+
+        out = await self._primary.purge_project(**kw)
+        await self._shadow("purge_project", _data_only(out), _secondary)
+        # The CALLER gets the primary's full dict, reason string included — the filtering is
+        # the comparison's, not the caller's.
+        return out
 
     async def project_graph_stats(self, **kw):
         # NATURAL-keyed: the project id is the caller's own, not a node id the secondary

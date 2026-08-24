@@ -225,6 +225,21 @@ async def _drive_every_operation(store, user_id: str, project_id: str) -> list[s
     await store.archive_entity(user_id=user_id, canonical_id=b.id, reason="prelude")
     await store.restore_entity(user_id=user_id, canonical_id=b.id)
     trace += ["archive()", "restore()"]
+
+    # T17 A31 — `purge_project`, on a project of its OWN and last.
+    #
+    # ⚠️ It is the only DESTRUCTIVE operation in `OPERATIONS`, so driving it on `project_id`
+    # would delete the corpus the randomised tail then works against — every later comparison
+    # would run on an empty graph and agree perfectly, which is the most convincing way to
+    # measure nothing. A dedicated project keeps the operation genuinely exercised (it deletes
+    # real rows and both engines must report the same count) while leaving the corpus intact.
+    doomed = f"{project_id}-doomed"
+    for name in ("Ephemeral", "Transient"):
+        await store.resolve_or_merge_entity(
+            user_id=user_id, project_id=doomed, name=name, kind="character",
+            source_type="chapter")
+    await store.purge_project(project_id=doomed)
+    trace.append("purge()")
     return trace
 
 

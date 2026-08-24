@@ -36,7 +36,7 @@ from app.db.models import (
     ProjectUpdate,
 )
 from app.db.neo4j import graph_session
-from app.db.graph_repos.project_graph import purge_project
+from app.adapters.graph_store_provider import get_graph_store
 from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError
@@ -799,10 +799,15 @@ async def delete_project(
     # the row is already gone (re-sweep can reclaim a stray orphan); log + move on.
     try:
         async with graph_session() as session:
-            purged = await purge_project(session, str(project_id))
+            purged = await get_graph_store(session).purge_project(project_id=str(project_id))
+        # `indexes_skipped` is present only when the engine has no index administration to
+        # look at, and saying so is the point: `indexes_dropped: 0` alone cannot distinguish
+        # "there were none" from "this store cannot look", and on the default backend the
+        # second was being logged as a failed purge while the nodes had in fact gone.
         logger.info(
-            "purged neo4j for deleted project %s: %s nodes, %s indexes",
+            "purged graph for deleted project %s: %s nodes, %s indexes%s",
             project_id, purged["nodes_deleted"], purged["indexes_dropped"],
+            f" ({purged['indexes_skipped']})" if purged.get("indexes_skipped") else "",
         )
     except Exception:  # noqa: BLE001 — best-effort; the Postgres delete is authoritative
         logger.warning(

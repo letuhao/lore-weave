@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 99 of 146 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 100 of 147 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (34/44) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (11/12) · `T49` (1/1)
+**OPEN:** `T17` (35/45) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (11/12) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -2123,6 +2123,112 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A31 2026-08-24 — **`purge_project` reaches the port, and the set-cover says there is no clever batch to wait for**
+
+  ```
+  GraphStore adopters   19 -> 20   (floor, moves in this commit)
+  class (d)             34 -> 33   (ceiling, moves in this commit)
+  port conformance      22/22 methods have a rule
+  knowledge unit 4436 · integration 735 passed / 312 skipped
+  ```
+
+  📊 **MEASURE THE BATCH BEFORE BUILDING IT (rule 8), and the answer is A10's, re-derived.**
+  Greedy set cover over the 34 class-(d) modules and the operations they need:
+
+  ```
+  85 distinct operations across 34 modules
+  13 modules blocked by exactly ONE operation
+   1 ops -> 1 module freed        4 ops -> 4 modules freed
+   2 ops -> 2 modules freed       5 ops -> 5 modules freed
+   3 ops -> 3 modules freed       6 ops -> 6 modules freed
+  ```
+
+  **Flat 1:1 for the first thirteen, worse after.** So there is no batch with leverage waiting
+  to be found, and §1.3's *"the ceiling is not going to zero, and that is correct"* is now a
+  measurement rather than a judgement. The unit is "which module", and the FLOOR is the number
+  that moves.
+
+  ⚖️ **The port method takes NO `user_id`, and its absence is the contract.** Every other method
+  on this port filters by tenant, so a reader is entitled to assume this one does — it must not.
+  The authority for a purge is the owner-gated Postgres delete that has *already happened*;
+  once that row is gone every node carrying its `project_id` is an orphan whoever wrote it, so a
+  user-scoped purge would leave exactly the orphan `D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`
+  exists to prevent — **and report success.** Measured on dev before choosing, because
+  "one project, one user" is a property of the data and not of the schema:
+
+  ```
+  432 of 433 projects   exactly ONE distinct user_id     scoping would be a no-op
+  p-assist              21 users, 21 nodes, 1 each       the assistant sentinel, not
+                                                         reachable by a project DELETE
+  ```
+
+  🔬 **Four adapters, and the fourth is why the operation is interesting.** Neo4j and AGE both
+  express it as one property-scoped sweep. **Kuzu is schema-full** — a label is a TABLE, so
+  there is no label-less `MATCH (n)` and the sweep must name each one. It derives that list from
+  `KUZU_NODE_TABLES`, its own schema, because a hand list is what goes stale when a table is
+  added: the new table keeps its rows and the purge still reports success.
+
+  ⛔ **NOT `PROJECT_GRAPH_LABELS`, though it is the tempting constant and four of the five.**
+  That tuple governs what a **re-extraction rebuild** may clear and excludes `Passage` on
+  purpose — passage nodes carry chat- and glossary-sourced chunks extraction did not create. A
+  project DELETE is the other case entirely. Using the rebuild's list here strands `EntityStatus`
+  behind a successful-looking purge, and the conformance suite **cannot see it**: it creates
+  entities, so an adapter sweeping only `Entity` passes every rule in it. A separate derived
+  unit test closes that, with a control asserting the two tuples still differ by exactly the row
+  that would strand.
+
+  🧪 **BITES — by line number, red for the right reason, restored.**
+
+  ```
+  H  age_graph_store:1375   drop the project predicate from the DETACH DELETE
+        RED  purging one project took another project's entities with it   [age]
+             — and that is not hypothetical: the service builds this adapter on the SHARED
+               graph (T54f), so an unscoped delete there is every project at once.
+  I  kuzu_graph_store       sweep PROJECT_GRAPH_LABELS instead of the schema
+        RED  the purge swept ['Entity','Event','ExtractionSource','Fact'] but Kuzu declares
+             ['Entity','EntityStatus','Event','ExtractionSource','Fact']
+  ```
+
+  🔻 **Two couplings fired that I had not planned for, and both were right to.** Adding a 22nd
+  port method broke, in order:
+
+  ```
+  test_OPERATIONS_covers_the_WHOLE_port        the shadow's operation list omitted it
+  test_every_OPERATION_is_actually_WRAPPED     ...and then it was listed but unwrapped
+  test_the_seed_corpus_reaches_every_operation ...and then wrapped but never driven
+  ```
+
+  Three separate guards, each catching the next stage of the same half-finished adoption —
+  exactly the *"the list and the surface disagreeing"* defect their own docstrings describe.
+
+  ⚠️ **Driving a DESTRUCTIVE operation in the differential needed care, and the careless version
+  measures nothing.** `purge_project` is the only destructive member of `OPERATIONS`; driving it
+  on the corpus project would delete the data the randomised tail then works against, and every
+  later comparison would run on an empty graph and **agree perfectly**. It runs last, on a
+  project of its own, seeded with two entities so it deletes real rows. The shadow compares
+  `nodes_deleted`/`indexes_dropped` and deliberately **excludes `indexes_skipped`**: Neo4j sweeps
+  per-project summary vector indexes and reports a number, AGE and Kuzu have no index
+  administration and say so in words. Demanding the whole dict match would report a divergence on
+  every purge — a difference in CAPABILITY dressed as a difference in data (rule 13).
+
+  📐 **And `indexes_dropped: 0` means two different things, which is the bug at the call site.**
+  On Neo4j it means "there were none"; on AGE it means "there is no index administration here".
+  The router now logs the reason when one is given. Before this, the named refusal reached the
+  caller's `except Exception` and every project delete on the default backend logged *"graph
+  orphaned, re-sweep owed"* while the nodes had in fact gone — indistinguishable from a purge
+  that really failed.
+
+  **QC (a) gates:** `port-adoption-gate` PASS with **both ratchets moved in this commit** (floor
+  19→20, class (d) 34→33, conformance 22/22); `graph-port-gate` PASS; four plan gates green.
+  **QC (b) live smoke:** `knowledge-service` unit **4436 passed**, integration **735 passed /
+  312 skipped** — including the adapter-parameterised conformance suite across **all four**
+  adapters (16 purge rules: 4 × neo4j/age/kuzu/fake) and the shadow differential over five seeds.
+  Two throwaway engines (rule 6).
+  **QC (c) real data:** the shadow differential IS the real-data control here — Neo4j, AGE and
+  Kuzu each purged a seeded project and **agreed on the counts**, across all five seeds, with no
+  entry in the expected-divergence registry.
+
   ---
   ### ✅ T17 A30 2026-08-24 — **`neo4j_repos` → `graph_repos`, and the criterion §10.1 wrote down that no gate had ever read**
 

@@ -136,7 +136,12 @@ MAX_CONCRETE_IMPORTERS = 54
 #: 18 -> 19 (2026-08-22, T54): `main.py` imports the provider to build the AGE pool at
 #: lifespan. The floor rising on a CUTOVER commit is the point of the floor — T42/T43 shipped
 #: an adapter nobody could select, and adoption is the number that would have shown it.
-MIN_GRAPHSTORE_ADOPTERS = 19
+#: 19 -> 20 (2026-08-24, T17 A31): `routers/public/projects.py` calls `purge_project` through
+#: the port. First module moved by A31's set-cover measurement, which priced the rest exactly
+#: as A10 did: 34 class-(d) modules need **85 distinct operations**, 13 of them are blocked by
+#: exactly ONE, and greedy cover frees precisely one module per operation added. There is no
+#: clever batch to find — which is the measurement, not a complaint.
+MIN_GRAPHSTORE_ADOPTERS = 20
 _CONCRETE = "graph_repos"
 
 #: T25 (3)'s REAL precondition, and it is not a database operation.
@@ -846,7 +851,12 @@ CLASS_OUT = "(1.2) engine-specific janitors — out forever"
 
 #: A shrink-only ratchet, same contract as the ceiling above. This is the first DERIVED value;
 #: every earlier figure for this population was hand-written prose, and it drifted.
-MAX_CLASS_D = 34
+#: 34 -> 33 (2026-08-24, T17 A31): `routers/public/projects.py`, freed by `purge_project`
+#: reaching the port. The rate is now measured rather than estimated — 85 distinct operations
+#: across the 33, 12 modules still blocked by exactly ONE, and greedy set cover frees one
+#: module per operation for the first 13 and worse after. A10 said the same thing; A31 is the
+#: first reading of it the gate emits.
+MAX_CLASS_D = 33
 
 #: Class (a) is now EMPTY, and this pins it there. A module in (a) binds `graph_repos` for a
 #: CONSTANT — a domain fact re-exported by the repo layer, which T17 A5/A6 moved to

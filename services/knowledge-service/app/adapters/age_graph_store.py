@@ -1351,6 +1351,38 @@ class AgeGraphStore:
 
     # ── the project as a whole ───────────────────────────────────────
 
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
+        """Delete every node carrying this `project_id`, inside the graph this store holds.
+
+        **Property-scoped, not `drop_graph`, and T54f is why.** The service builds this adapter
+        on `graph_name_for(None)` — the SHARED graph — because Neo4j holds every project in one
+        database and `g_shared` reproduces that exactly. Dropping the graph would therefore
+        delete every project, and on the harness's per-project construction it would delete the
+        right rows for the wrong reason. The property predicate is correct under both.
+
+        `indexes_dropped` is 0 with a stated reason rather than a bare zero: AGE has no vector
+        index administration to sweep (§3.1 makes the vector layer per-dim Postgres TABLES), so
+        "none to drop" and "cannot look" are different answers and the caller can tell them
+        apart — the distinction A31 found missing on this path.
+        """
+        rows = await self._run(
+            f"MATCH (n) WHERE n.project_id = {_lit(project_id)} RETURN count(n)",
+            columns="c agtype",
+        )
+        nodes = int(rows[0]["c"]) if rows else 0
+        if nodes:
+            await self._run(
+                f"MATCH (n) WHERE n.project_id = {_lit(project_id)} DETACH DELETE n "
+                f"RETURN count(n)",
+                columns="c agtype",
+            )
+        return {
+            "nodes_deleted": nodes,
+            "indexes_dropped": 0,
+            "indexes_skipped": "AGE has no vector index administration; the vector layer is "
+                               "per-dim Postgres tables (§3.1)",
+        }
+
     async def project_graph_stats(
         self, *, user_id: str, project_id: str,
     ) -> dict[str, int]:

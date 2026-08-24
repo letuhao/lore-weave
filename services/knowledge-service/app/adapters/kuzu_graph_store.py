@@ -46,6 +46,7 @@ from typing import Any
 
 from loreweave_extraction.canonical import canonicalize_entity_name
 
+from app.db.kuzu_bootstrap import KUZU_NODE_TABLES
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Entity, EntityDetail, Relation
 
@@ -963,6 +964,42 @@ class KuzuGraphStore:
         return {eid: latest.get(eid, "active") for eid in entity_ids}
 
     # ── the project as a whole ────────────────────────────────────────────────────────────
+
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
+        """Delete this project's rows from every node table.
+
+        **Kuzu is schema-full, so there is no label-less `MATCH (n)` to write.** Neo4j and AGE
+        express the purge as one property-scoped sweep across the whole graph; here a label is
+        a TABLE and the sweep has to name each one. The list is DERIVED from
+        `KUZU_NODE_TABLES` — this adapter's own schema — rather than hand-written, because a
+        hand list is exactly what goes stale when a table is added: the new table would keep
+        its rows, the purge would report success, and the orphan would be invisible.
+
+        ⚠️ **NOT `PROJECT_GRAPH_LABELS`**, though it is the tempting constant and it is four of
+        these five. That tuple governs what a **re-extraction rebuild** may clear — it excludes
+        `Passage` on purpose, because passage nodes carry chat- and glossary-sourced chunks
+        extraction did not create. A project DELETE is the other case entirely: the owning row
+        is already gone, so everything belonging to it goes, and using the rebuild's list here
+        would strand `EntityStatus` rows behind a successful-looking purge.
+        """
+        nodes = 0
+        for label in KUZU_NODE_TABLES:
+            rows = await self._run(
+                f"MATCH (n:{label}) WHERE n.project_id = $p RETURN count(n) AS c",
+                {"p": project_id},
+            )
+            found = int(rows[0]["c"]) if rows else 0
+            if found:
+                await self._run(
+                    f"MATCH (n:{label}) WHERE n.project_id = $p DETACH DELETE n",
+                    {"p": project_id},
+                )
+                nodes += found
+        return {
+            "nodes_deleted": nodes,
+            "indexes_dropped": 0,
+            "indexes_skipped": "Kuzu has no vector index administration to sweep",
+        }
 
     async def project_graph_stats(
         self, *, user_id: str, project_id: str,

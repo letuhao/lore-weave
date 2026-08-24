@@ -1760,3 +1760,74 @@ async def test_status_at_order_fails_OPEN_to_active(store):
 
     assert await store.status_at_order(
         user_id=u, project_id=p, entity_ids=[], at_order=10_000) == {}
+
+
+# ── purge_project (T17 A31) ─────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_purge_project_removes_THIS_project_and_leaves_the_others(store):
+    """Both halves, because either alone passes for the wrong reason.
+
+    `MATCH (n) DETACH DELETE n` satisfies "this project is gone" on every adapter and deletes
+    the whole store — which on the AGE adapter would be a real possibility, since the service
+    builds it on the SHARED graph (T54f). A purge is only correct if the neighbour survives.
+    """
+    u, p, _ = _ids()
+    _, other, _ = _ids()
+    mine = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    theirs = await store.resolve_or_merge_entity(
+        user_id=u, project_id=other, name="Mira", kind="character", source_type="chapter")
+
+    out = await store.purge_project(project_id=p)
+    assert out["nodes_deleted"] >= 1, f"nothing was reported deleted: {out}"
+
+    assert (await store.project_graph_stats(
+        user_id=u, project_id=p))["entity_count"] == 0, "the purged project still has entities"
+    assert (await store.project_graph_stats(
+        user_id=u, project_id=other))["entity_count"] == 1, (
+        "purging one project took another project's entities with it")
+    assert mine.id != theirs.id
+
+
+@pytest.mark.asyncio
+async def test_purge_project_is_IDEMPOTENT_and_reports_zero_the_second_time(store):
+    """A re-run must not error, and must not claim to have deleted rows again — a sweeper
+    that reports work it did not do makes an orphan look reclaimed."""
+    u, p, _ = _ids()
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    first = await store.purge_project(project_id=p)
+    second = await store.purge_project(project_id=p)
+    assert first["nodes_deleted"] >= 1
+    assert second["nodes_deleted"] == 0, f"a second purge claimed {second}"
+
+
+@pytest.mark.asyncio
+async def test_purge_project_on_an_UNKNOWN_project_is_a_no_op_not_an_error(store):
+    """The caller runs this best-effort after the Postgres row is already gone, so a project
+    whose graph was never written must return cleanly. Raising here would be logged as
+    "graph orphaned, re-sweep owed" for a graph that never existed."""
+    out = await store.purge_project(project_id=f"p-{uuid.uuid4().hex[:12]}")
+    assert out["nodes_deleted"] == 0
+    assert out["indexes_dropped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_purge_project_reports_indexes_dropped_and_SAYS_when_it_could_not_look(store):
+    """`indexes_dropped: 0` means two different things and the shape has to keep them apart.
+
+    On Neo4j it means "there were none". On AGE and the fake it means "there is no index
+    administration here at all" — §3.1 moved the vector layer to per-dim Postgres tables. An
+    adapter that cannot look reports `indexes_skipped` with the reason; one that looked and
+    found nothing does not. Collapsing the two is what made every AGE project delete log
+    "graph orphaned, re-sweep owed" while the nodes had in fact gone.
+    """
+    u, p, _ = _ids()
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    out = await store.purge_project(project_id=p)
+    assert out["indexes_dropped"] == 0
+    if "indexes_skipped" in out:
+        assert out["indexes_skipped"], "an empty reason is not a reason"

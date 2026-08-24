@@ -35,6 +35,7 @@ from app.db.graph_repos.entities import (
 )
 from app.db.graph_repos.entity_status import status_at_order
 from app.db.graph_repos import maintenance as _maintenance
+from app.db.graph_repos import project_graph as _project_graph
 from app.db.graph_repos.events import Event, list_events_filtered, list_events_in_order
 from app.db.graph_repos import facts as _facts_repo
 from app.db.graph_repos import events as _event_repo
@@ -373,6 +374,13 @@ class Neo4jGraphStore:
         )
         return {f"{label.lower()}_count": int(stats.get(f"{label.lower()}_count", 0))
                 for label in COUNTABLE_LABELS}
+
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
+        # Delegates, for this file's usual reason: the repo holds the query and a second copy
+        # is how the two drift. It also holds the NAMED refusal around index administration
+        # (`list_summary_vector_indexes` raises `NotImplementedError` off Neo4j), and that
+        # refusal is what keeps `indexes_skipped` distinguishable from `indexes_dropped: 0`.
+        return await _project_graph.purge_project(self._session, project_id)
 
     # ── events ───────────────────────────────────────────────────────
 

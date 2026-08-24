@@ -515,6 +515,36 @@ class GraphStore(Protocol):
         """
         ...
 
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
+        """Delete every node this project owns. Returns `{nodes_deleted, indexes_dropped}`.
+
+        ⚠️ **There is no `user_id` here, and its absence is the contract — not an oversight.**
+        Every other method on this port filters by tenant, so a reader is entitled to assume
+        this one does too. It must not, and the reason is the defect the operation exists to
+        fix (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`): the authority for a purge is the
+        owner-gated Postgres project delete that has *already happened*. Once that row is gone
+        every node carrying its `project_id` is an orphan, whoever wrote it — so a user-scoped
+        purge would leave exactly the orphan this is here to prevent, and report success.
+
+        Measured on dev before choosing (T17 A31), because "one project, one user" is a
+        property of the data rather than of the schema:
+
+            432 of 433 projects   exactly ONE distinct user_id  -> scoping is a no-op
+            `p-assist`            21 users, 21 nodes, 1 each    -> the assistant sentinel,
+                                                                   not reachable by project DELETE
+
+        **Best-effort at the CALL SITE, not here.** The caller wraps this and logs; an adapter
+        that swallowed its own failure would make "purged" and "could not reach the graph"
+        the same observable, which is the confusion T17 A31 found in the AGE path — a named
+        refusal from index administration read as *"graph orphaned, re-sweep owed"* on every
+        single delete, while the nodes had in fact gone.
+
+        `indexes_dropped` counts per-project summary vector indexes removed. It is `0` on any
+        engine without Neo4j index administration, and such an engine reports the reason in
+        `indexes_skipped` rather than pretending it dropped none because there were none.
+        """
+        ...
+
     # ── events ───────────────────────────────────────────────────────
 
     async def events_in_window(

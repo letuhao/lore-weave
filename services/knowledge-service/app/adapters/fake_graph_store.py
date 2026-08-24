@@ -725,6 +725,46 @@ class FakeGraphStore:
 
     # ── the project as a whole ───────────────────────────────────────
 
+    async def purge_project(self, *, project_id: str) -> dict[str, int]:
+        """Drop every in-memory row for this project, across ALL the structures.
+
+        The list is long on purpose. A fake that cleared `_entities` alone would still answer
+        `facts_for` and `status_at_order` from the leftovers, and the conformance rule would
+        pass on the fake while both real stores did a `DETACH DELETE` that takes the edges with
+        it. Everything keyed by entity id is swept through the ids that are going.
+        """
+        gone = {e.id for e in self._entities.values() if e.project_id == project_id}
+        nodes = len(gone)
+        self._entities = {k: v for k, v in self._entities.items() if v.project_id != project_id}
+        nodes += sum(1 for f in self._facts if f.project_id == project_id)
+        self._facts = [f for f in self._facts if f.project_id != project_id]
+        nodes += sum(1 for e in self._events if e.project_id == project_id)
+        self._events = [e for e in self._events if e.project_id != project_id]
+        self._relations = [
+            r for r in self._relations
+            if r.subject_id not in gone and r.object_id not in gone
+        ]
+        self._evidence = {k: v for k, v in self._evidence.items() if k[0] not in gone}
+        self._evidence_counts = {
+            k: v for k, v in self._evidence_counts.items() if k not in gone
+        }
+        self._fact_subject = {
+            k: v for k, v in self._fact_subject.items()
+            if k in {f.id for f in self._facts}
+        }
+        self._event_origin = {
+            k: v for k, v in self._event_origin.items()
+            if k in {e.id for e in self._events}
+        }
+        self._statuses = {k: v for k, v in self._statuses.items() if k[1] != project_id}
+        # No index administration exists in memory, and saying so keeps the fake's shape the
+        # same as AGE's rather than claiming a drop it never made.
+        return {
+            "nodes_deleted": nodes,
+            "indexes_dropped": 0,
+            "indexes_skipped": "an in-memory store has no vector indexes",
+        }
+
     async def project_graph_stats(
         self, *, user_id: str, project_id: str,
     ) -> dict[str, int]:
