@@ -11,10 +11,57 @@
       "answer_expect": null,
       "falsifier_sha": "c02072befd177952",
       "ship_audit": {
-        "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
-        "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
-        "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
-        "tenancy": "OWED — book-scoped."
+        "gate": "EXERCISED — and this is the FIRST CALL THIS TOOL HAS EVER COMPLETED, in any batch. op=start with a real model_ref returns {run_id, status:'plan_ready', worklist:[...]}: the planner runs and STOPS, holding the worklist for a human. The checkpoint is op=approve_plan, not a confirm card on start — which is the design the description states ('it plans WHAT to build (a worklist) ... files them as review drafts'). Driven on a throwaway book with the ontology adopted, torn down after; no later stage was approved, so nothing was projected.",
+        "absent_case": "EXERCISED and REFUSED, with SPECIFIC messages rather than a uniform 404:\n    op=status      with an unknown run_id -> 'NOT_FOUND: run not found'\n    op=approve_plan with an unknown run_id -> 'NOT_FOUND: run not found'\nThe falsifier's worst case — approving a plan the author has never seen — cannot be reached by naming a run that does not exist.",
+        "empty_case": "EXERCISED and REFUSED in three shapes:\n    source_text=''      -> 'source_text is required for op=start'\n    model_ref omitted   -> 'model_ref is required for op=start'\n    model_ref='default' -> 'PLANNER_FAILED: model_ref must be a UUID-shaped string'\nThe third matters: this is the D-UNDECLARED-REF placeholder, and unlike composition_generate — which mints a cost-bearing card for it — this tool refuses it.",
+        "idempotency": "EXERCISED and REFUSED exactly as the bar asks: a SECOND op=start on the same book returns 'ACTIVE_RUN: this book already has a build run in progress'. One book, one build run.",
+        "tenancy": "EXERCISED CROSS-ACCOUNT and REFUSED — a genuinely different owner, not a same-account approximation.\n\n    composition_glossary_build{op:'start', book_id: <a book owned by 019e97b0-…>}\n      -> 'not found or not accessible'\n\nTHE ERROR MESSAGE IS THE DISCRIMINATOR, which is what makes this evidence rather than a coincidence. op=start gates the book (GrantLevel.EDIT) BEFORE svc.create_run, and _need('model_ref', …) raises while the params dict is being BUILT — also before create_run. So the call was made with model_ref deliberately OMITTED: if the gate had been bypassed the reply would have been 'model_ref is required for op=start'. It was the tenancy refusal, so the gate fired. Verified after: zero rows for that book. Nothing was created and nothing was spent on either branch — which is why it was safe to point a write/spend op at data I do not own.\n\nNOTE ON THE NON-START OPS: they derive the book from the RUN, not from the argument (`current = await svc.get(run_id, owner)` then `_gate(tc, current['book_id'], …)`), and svc.get is OWNER-scoped. So another account's run is unreachable and a mismatched book_id argument is inert. Measured: op=status with a foreign book_id and a random run_id returns 'NOT_FOUND: run not found' — the run check fires first, so that refusal is NOT tenancy evidence and is not offered as any.\n\nThis supersedes the earlier note on this case, which said the check 'needs a SECOND ACCOUNT which this harness cannot produce'. It needed no second login — only a resource owned by someone else, which the store had all along.",
+        "_probe": "scripts/toolloop/gbuild_ship_probe.py — two throwaway books, ontology adopted, torn down; op=start ran the planner once and no later stage was approved.",
+        "_probe_output": {
+          "absent_status": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: NOT_FOUND: run not found",
+            "asked": "op=status with a run_id that does not exist"
+          },
+          "absent_approve_plan": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: NOT_FOUND: run not found",
+            "asked": "op=approve_plan with a run_id that does not exist"
+          },
+          "empty_source_text": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: source_text is required for op=start",
+            "asked": "op=start with source_text present but EMPTY"
+          },
+          "omitted_model_ref": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: model_ref is required for op=start",
+            "asked": "op=start with model_ref omitted"
+          },
+          "invented_model_ref": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: PLANNER_FAILED: model_ref must be a UUID-shaped string, got 'default'",
+            "asked": "op=start with model_ref='default'"
+          },
+          "gate": {
+            "verdict": "SUCCEEDED",
+            "detail": "{\"run_id\": \"01a0339f-1cea-71d7-a52a-1d78282c831e\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"Nhân vật chính đang thực hiện hành trình lên Hollow Keep.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {",
+            "asked": "a VALID op=start — the first call this tool has ever completed"
+          },
+          "idempotency": {
+            "verdict": "refused",
+            "detail": "MCP composition_glossary_build error: Error executing tool composition_glossary_build: ACTIVE_RUN: this book already has a build run in progress",
+            "asked": "op=start a SECOND time on the same book"
+          }
+        },
+        "_observation_not_a_finding": "The worklist's `why` fields came back in VIETNAMESE for an English source_text. The account's display language is a server-side preference and is plausibly Vietnamese here, so this is recorded as an observation and NOT as a defect — establishing which it is needs the account's language pref, which was not checked.",
+        "_provenance": "🔴 THESE CASES WERE EXERCISED AGAINST A DIFFERENT BATCH'S FIXTURE, NOT THIS ONE, and that is stated rather than glossed. They were driven directly over MCP on 2026-08-24 by scripts/toolloop/gbuild_ship_probe.py against its own throwaway books, and recorded on c-gbuild.json — the batch that was current at the time. This batch (c-gbuild3) is the one the ledger now points at, and it still carried the scenario spec's original OWED scaffolding, so the evidence file for the concluded batch was reading as 'four cases never run' when they had been run.\n\nCarried forward for accuracy of the record ONLY. It changes no verdict: this tool fails LIVE called (0/5) and stays blocked either way. The tool's behaviour has not changed between the two batches — no code touched it; the only change since was its description, measured at zero effect.\n\nThe OWED text this replaced is kept below as _superseded_owed_scaffolding.",
+        "_superseded_owed_scaffolding": {
+          "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+          "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+          "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+          "tenancy": "OWED — book-scoped."
+        }
       },
       "defects": [],
       "runs": [
