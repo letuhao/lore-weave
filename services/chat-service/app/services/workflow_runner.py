@@ -110,13 +110,32 @@ WORKFLOW_LOAD_TOOL: dict = {
 
 
 def workflow_list_result(workflows: list[dict]) -> dict:
-    """Deterministic list of the visible workflows (slug/title/description/tier). Unranked."""
+    """Deterministic list of the visible workflows (slug/title/description/tier/surfaces).
+    Unranked.
+
+    🔴 `surfaces` USED TO BE DROPPED HERE, AND THE MODEL ANSWERED WRONG BECAUSE OF IT. Measured
+    2026-08-24: asked "What workflows are available on the studio surface?", the model answered
+    from this listing on 4 of 5 runs and named NINE workflows as studio-available. Five of them
+    are not — the studio has six. It was not guessing badly; with only {slug, title, description,
+    tier} it was structurally unable to know, and said so confidently anyway.
+
+    The rows arrive carrying the field: verified at runtime, the registry client hands over
+    {description, inputs, notes_md, slug, steps, surfaces, tier, title} with surfaces like
+    ['book','editor','studio']. And the FEDERATED sibling already returns it — registry_list_
+    workflows' own L1 query selects `slug, title, description, tier, status, surfaces`. So two
+    listings of the same rows disagreed about the reference shape; this is not an L1 economy
+    being relaxed, it is an inconsistency being closed, for 1-3 short strings per row.
+
+    It is deliberately NOT a `surface` ARGUMENT: this listing still cannot filter server-side.
+    It only stops hiding what it already holds, so the model can narrow truthfully.
+    """
     items = [
         {
             "slug": wf.get("slug", ""),
             "title": wf.get("title") or wf.get("slug", ""),
             "description": wf.get("description", ""),
             "tier": wf.get("tier", ""),
+            "surfaces": wf.get("surfaces") or [],
         }
         for wf in workflows
         if wf.get("slug")
