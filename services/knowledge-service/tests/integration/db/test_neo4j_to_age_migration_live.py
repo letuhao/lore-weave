@@ -387,3 +387,37 @@ async def test_the_PER_PROJECT_layout_is_still_available_for_the_HARNESS(
         f"['{seeded['p1']}', '{seeded['p2']}'] RETURN count(n) AS n",
     ) == 0, "under the harness layout nothing scoped belongs in the shared graph"
     assert graph_name_for(None) == SHARED_GRAPH
+
+
+def test_no_SIBLING_age_suite_holds_a_graph_across_tests():
+    """The hazard `age_pool` creates, pinned where it is created.
+
+    This file's fixture DROPs every graph in the AGE database before each of its tests, to
+    establish the empty destination `verify` compares against. In CI that database is
+    `loreweave_age_test` and it is SHARED with the conformance, bootstrap, shadow, rebuild and
+    repo-layer suites. The wipe is safe only because every one of them builds its graph inside a
+    FUNCTION-scoped fixture, so no graph is ever live across a test boundary — verified, and the
+    full `tests/integration/db` run (735 passed) is the empirical half of it.
+
+    That is a property of THEIR code, not mine, and nothing else says so. A module- or
+    session-scoped AGE fixture added later would be wiped mid-run by a fixture in a file its
+    author never read, and the failure would surface as a flake in the suite that did nothing
+    wrong. Derived from the directory rather than a hand list, so a new AGE suite is covered the
+    day it lands.
+    """
+    import pathlib
+    import re
+
+    here = pathlib.Path(__file__).resolve().parent
+    offenders = []
+    for path in sorted(here.glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if not re.search(r"TEST_AGE_DSN|create_age_pool|AgeGraphStore|age_repo_session", text):
+            continue
+        for m in re.finditer(r"scope\s*=\s*[\"'](module|session|package)[\"']", text):
+            offenders.append(f"{path.name}: scope={m.group(1)!r}")
+    assert not offenders, (
+        "an AGE-touching suite now holds a fixture across tests, and this file's `age_pool` "
+        f"fixture DROPs every graph between tests: {offenders}. Either scope it to `function`, "
+        "or give this file its own AGE database."
+    )

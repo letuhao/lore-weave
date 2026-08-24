@@ -1813,14 +1813,17 @@ line claimed *"...and every gate is green"*. The repo has **113**. `gate-wiring-
 the sweep CI drives over the same `discovered()` predicate — takes **7m25s** and comes back RED.
 
 **Attribution, because a divergence RECORDED is not a divergence DIAGNOSED (rule 13).** Each red
-was run individually and traced to the file it names:
+was run individually and traced to the file it names. Confirmed by re-running the full sweep
+after each fix — **12 red -> 10 (the two runner defects) -> 9 (the ratchet)** — so the
+attribution below is a measurement of the sweep, not a reading of the code:
 
 | gate | cause | whose |
 |---|---|---|
 | `qc5-acceptance-gate` | exits 2 bare — argparse requires `--file`/`--selftest` | **the RUNNER** — fixed |
 | `soak-armed-gate` | exits 2 bare — requires `--url`/`--file`/`--selftest` | **the RUNNER** — fixed |
 | `gate-teeth-gate` | red-ability baseline 42 -> 41 | **this commit** — moved |
-| `transitions-validation-lint.sh` | `$''`: the WORKING TREE has CRLF | **environment** — the index is `i/lf`, `.gitattributes` says `*.sh text eol=lf`, and it is the only such file. A Linux runner never sees it. |
+| `transitions-validation-lint.sh` | `$'
+'`: the WORKING TREE has CRLF | **environment** — the index is `i/lf`, `.gitattributes` says `*.sh text eol=lf`, and it is the only such file. A Linux runner never sees it. |
 | `ai-provider-gate` · `gate-number-visibility-gate` · `language-bias-gate` · `llm-budget-ssot-gate` · `pagination-cap-lint` · `projection-coverage-lint` · `raw-sql-lint` · `guard-redability-gate` | real findings in `fake_truth_store.py`, `mirror_truth_handler.go`, `critic.py`, `self_heal.py`, the AGE adapters' pre-existing SQL builders, 7 unprojected glossary events | **other work** — none names a file this plan touched |
 
 **DECIDED.** The two runner defects and the one ratchet this session moved are fixed here. The

@@ -23572,13 +23572,41 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   STALE and fails the sweep. A registry entry that excuses nothing still excuses the *next* gate
   that lands in the same file.
 
+  ⚠️ **One more hazard, found by asking whether CI runs what I just wrote.** It does — the
+  knowledge integration leg arms all four DSNs, builds `loreweave/postgres-knowledge:18` and runs
+  a Neo4j service container, so `tests green` is genuinely backed. **The hypothesis that it did
+  not was mine and it was wrong**; checking beat asserting. But the answer surfaced a real one:
+  in CI the AGE database `loreweave_age_test` is SHARED with the conformance, bootstrap, shadow,
+  rebuild and repo-layer suites, and T54f's `age_pool` fixture DROPs every graph in it before each
+  test to establish the empty destination `verify` needs.
+
+  ```
+  safe ONLY because every AGE-touching suite builds its graph in a FUNCTION-scoped fixture
+  measured: 9 files, 0 module/session/package-scoped fixtures among them
+  ```
+
+  That is a property of THEIR code that MY fixture depends on, and nothing said so. A
+  module-scoped AGE fixture added later would be wiped mid-run by a file its author never read,
+  and the flake would surface in the suite that did nothing wrong. Now pinned where the hazard is
+  created, derived from the directory so a new AGE suite is covered the day it lands —
+  **BITE M** gave `test_age_bootstrap.py` a `scope="module"` fixture and it went red naming it.
+
   **QC (a) gates:** `plan-final-verification --selftest` 5/5 (new); `gate-teeth-gate` PASS with
   its ratchet moved **in this commit** (42→41, earned by the three selftests added this session);
   `gate-wiring-gate` 113 discovered, all wired or exempted; four plan gates green.
   **QC (b) live smoke:** N/A — no service seam is crossed; this is verification machinery.
-  **QC (c) real data:** the 7m25s sweep itself, run twice — before the fix it reported the two
-  argparse reds, after it does not, and `_run` was called directly on both gates with and without
-  the registry to prove the difference is the invocation and not the gate.
+  **QC (c) real data:** the 7m25s sweep itself, run THREE times, and the count moved exactly as
+  the diagnosis predicted:
+
+  ```
+  12 red   as found
+  10 red   after NEEDS_ARGS — qc5-acceptance-gate and soak-armed-gate gone
+   9 red   after the gate-teeth ratchet moved
+  ```
+
+  `_run` was also called directly on both gates with and without the registry, so the difference
+  is proven to be the invocation rather than the gate. The 9 that remain are the 8 attributed to
+  other work plus the CRLF artifact, exactly as §14 lists them.
 
   ---
   ### ✅ T54g 2026-08-24 — **the check that would have caught T54d: nothing in the tree compares the two STORES**
