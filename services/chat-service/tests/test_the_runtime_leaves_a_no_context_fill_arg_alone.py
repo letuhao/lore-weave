@@ -1,4 +1,4 @@
-"""D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE.
+"""`_meta.no_context_fill` — the arguments a tool tells the backfiller to LEAVE ALONE.
 
 `_inject_context_ids` fills a known session context id when the tool's schema declares it and
 the model omitted it. That rests on an assumption which is true of almost every tool and not of
@@ -20,8 +20,19 @@ Measured 2026-08-24 (batches c-motiflink6 / c-motiflink7, K=5 each, gemma-4-26b-
     same refusal, twice more                       -> the repeat-breaker ended the turn
 
 A remedy a refusal names has to be reachable, or it is worse than no remedy: it costs the model
-two more attempts and then the turn. `_meta.mode_selecting_args` is how a tool says "the absence
-of this argument means something — do not fill it."
+two more attempts and then the turn.
+
+The field is named for the EFFECT rather than that cause because a second shape was measured
+the same day and then rejected: `composition_entity_override_edit`'s ambient `project_id` is
+also the wrong object (the book's CANONICAL Work, where an override needs a DERIVATIVE). But
+declaring it here made things worse, not better — `composition_list_derivatives` requires a
+project_id and takes nothing else, so the canonical id is a perfectly good input to the lookup
+the tool wants, and suppressing the backfill left the model with no project id to look anything
+up WITH. It then put the target_entity_id into project_id and book_id on three separate tools.
+
+So the rule this field enforces — AN ARGUMENT THE RUNTIME MAY SUPPLY MUST BE ONE THE CALLER
+COULD ALSO HAVE SUPPLIED AND MEANT — is necessary and not sufficient: an argument can be wrong
+in a tool's own slot and still be the right thing to hold.
 """
 from __future__ import annotations
 
@@ -51,25 +62,25 @@ def _tool_def(meta: dict | None = None, props: tuple[str, ...] = ("book_id",)) -
     }
 
 
-class TestAModeSelectingArgIsLeftAlone:
-    def test_an_omitted_mode_selecting_arg_is_NOT_filled(self):
+class TestADeclaredArgIsLeftAlone:
+    def test_an_omitted_declared_arg_is_NOT_filled(self):
         """The measured failure, in one assertion."""
         out = _inject_context_ids(
             {"op": "create"},
-            _tool_def({"tier": "A", "scope": "user", "mode_selecting_args": ["book_id"]}),
+            _tool_def({"tier": "A", "scope": "user", "no_context_fill": ["book_id"]}),
             book_id=BOOK, chapter_id=None, project_id=None,
         )
         assert "book_id" not in out, (
-            "the runtime filled an argument whose absence is meaningful — the model cannot "
-            "then follow a refusal that tells it to omit the argument"
+            "the runtime filled an argument the tool told it to leave alone — the model cannot "
+            "then follow a refusal that tells it to omit that argument"
         )
 
-    def test_a_supplied_mode_selecting_arg_is_left_exactly_as_the_model_sent_it(self):
+    def test_a_supplied_declared_arg_is_left_exactly_as_the_model_sent_it(self):
         """Not filling is half of it. Correcting one the model DID send would take the choice
         away just as completely, in the other direction."""
         out = _inject_context_ids(
             {"op": "create", "book_id": "99999999-9999-7999-8999-999999999999"},
-            _tool_def({"tier": "A", "scope": "user", "mode_selecting_args": ["book_id"]}),
+            _tool_def({"tier": "A", "scope": "user", "no_context_fill": ["book_id"]}),
             book_id=BOOK, chapter_id=None, project_id=None, studio=True,
         )
         assert out["book_id"] == "99999999-9999-7999-8999-999999999999"
@@ -80,7 +91,7 @@ class TestAModeSelectingArgIsLeftAlone:
         for another."""
         out = _inject_context_ids(
             {"op": "create"},
-            _tool_def({"tier": "A", "scope": "user", "mode_selecting_args": ["book_id"]},
+            _tool_def({"tier": "A", "scope": "user", "no_context_fill": ["book_id"]},
                       props=("book_id", "chapter_id", "project_id")),
             book_id=BOOK, chapter_id=CHAPTER, project_id=PROJECT,
         )
@@ -103,7 +114,7 @@ class TestEveryOtherToolIsUnchanged:
     def test_an_empty_declaration_changes_nothing(self):
         out = _inject_context_ids(
             {"op": "create"},
-            _tool_def({"tier": "A", "scope": "user", "mode_selecting_args": []}),
+            _tool_def({"tier": "A", "scope": "user", "no_context_fill": []}),
             book_id=BOOK, chapter_id=None, project_id=None,
         )
         assert out.get("book_id") == BOOK
@@ -114,7 +125,7 @@ class TestEveryOtherToolIsUnchanged:
         for bad in ("book_id", 7, {"book_id": True}, [None, 3]):
             out = _inject_context_ids(
                 {"op": "create"},
-                _tool_def({"tier": "A", "scope": "user", "mode_selecting_args": bad}),
+                _tool_def({"tier": "A", "scope": "user", "no_context_fill": bad}),
                 book_id=BOOK, chapter_id=None, project_id=None,
             )
             assert out.get("book_id") == BOOK, f"declaration {bad!r} changed behaviour"
@@ -133,9 +144,15 @@ class TestTheToolActuallyDeclaresIt:
                / "composition-service" / "app" / "mcp" / "server.py")
         assert src.exists(), f"composition-service source not found at {src}"
         text = src.read_text(encoding="utf-8")
-        i = text.find('name="composition_motif_link_edit"')
-        assert i != -1, "the tool registration moved"
-        assert 'mode_selecting_args=["book_id"]' in text[i:i + 2500], (
-            "composition_motif_link_edit no longer declares book_id mode-selecting, so the "
-            "runtime will fill it again and its refusal becomes unfollowable"
-        )
+        # composition_entity_override_edit was declared here for a day and taken back out:
+        # its ambient project_id IS the wrong Work, but suppressing the backfill starved the
+        # model of the only project id it had, and it put the target_entity_id into project_id
+        # and book_id on three other tools. Recorded on
+        # D-THE-AMBIENT-PROJECT-IS-THE-WRONG-WORK-AND-THE-RUNTIME-SUPPLIES-IT.
+        for tool, arg in (("composition_motif_link_edit", "book_id"),):
+            i = text.find(f'name="{tool}"')
+            assert i != -1, f"{tool}'s registration moved"
+            assert f'no_context_fill=["{arg}"]' in text[i:i + 2500], (
+                f"{tool} no longer declares {arg} no-context-fill, so the runtime will fill it "
+                f"again and the tool's refusal becomes unfollowable"
+            )

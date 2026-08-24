@@ -2128,8 +2128,9 @@ def _inject_context_ids(
     _meta = fn.get("_meta") or {}
     ambient_book = bool(_meta.get("ambient_book"))
     ambient_project = bool(_meta.get("ambient_project"))  # composition: resolve project_id from X-Project-Id
-    # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE — arguments whose ABSENCE IS
-    # MEANINGFUL. This whole function rests on an assumption that is true of almost every tool
+    # D-THE-RUNTIME-INJECTS-THE-ARG-THAT-SWITCHES-THE-MODE and
+    # D-THE-AMBIENT-PROJECT-IS-THE-WRONG-WORK-AND-THE-RUNTIME-SUPPLIES-IT — arguments a tool
+    # declares this backfiller must LEAVE ALONE. This whole function rests on an assumption that is true of almost every tool
     # and not of all of them: that a context id merely SCOPES the call, so supplying one the
     # model forgot can only help. For a tool where the id selects a different code path, filling
     # it changes what the tool DOES, and the model cannot undo it.
@@ -2140,7 +2141,7 @@ def _inject_context_ids(
     # and its refusal said to call again WITHOUT book_id. The model did exactly that — and the
     # id was injected again. Both runs then died on the repeat-breaker. The remedy a refusal
     # names has to be reachable, or it is worse than no remedy at all.
-    _mode_args = _meta.get("mode_selecting_args")
+    _mode_args = _meta.get("no_context_fill")
     _no_fill = {a for a in _mode_args if isinstance(a, str)} if isinstance(
         _mode_args, (list, tuple)) else set()
     for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
@@ -2165,7 +2166,38 @@ def _inject_context_ids(
             continue
         if key == "project_id" and ambient_project:
             continue
-        if not val or key not in props:
+        if key not in props:
+            continue
+        if not val:
+            # 🔴 NO SUBSTITUTE IS NOT THE SAME AS NO KNOWLEDGE. This used to `continue` on a
+            # missing context value, which silently skipped the cross-wire check below — so a
+            # value the ledger KNEW was the wrong kind of id was forwarded untouched, and the
+            # model got back an opaque "not found or not accessible" for a call the runtime had
+            # already recognised as mis-wired.
+            #
+            # MEASURED 2026-08-24 (batch c-override9, K=5): the turn carries no project_id (it is
+            # populated only on studio/editor turns), the model sent
+            # composition_list_derivatives{project_id: <this turn's BOOK id>}, and
+            # `is_crosswired("project_id", book_id)` returns True — checked directly against the
+            # deployed function. The correction could not run for want of a value to put in, and
+            # the wrong one went out anyway.
+            #
+            # The runtime must not SEND an argument it knows is wrong. Dropping it makes the
+            # tool's own missing-argument refusal fire instead, which names the declared supplier
+            # and arms it — a path that already works — rather than an opaque domain 404. The
+            # evidence standard is unchanged and deliberately high: `is_crosswired` is true only
+            # for an id THIS TURN published under a DIFFERENT name, which is the same standard the
+            # branch below already treats as sufficient to OVERWRITE a value.
+            _sup = args_obj.get(key)
+            if (isinstance(_sup, str) and id_ledger is not None
+                    and id_ledger.is_crosswired(key, _sup)):
+                logger.warning(
+                    "tool arg %s=%r is another of this turn's context-ids (%s) and there is no "
+                    "%s to substitute — DROPPING it so the tool asks, rather than sending an id "
+                    "the runtime knows is the wrong kind",
+                    key, _sup[:64], id_ledger.describe(_sup), key,
+                )
+                args_obj.pop(key, None)
             continue
         # Coerce to str: `val` is a session context-id that can arrive as a UUID OBJECT
         # (asyncpg returns a uuid column as `uuid.UUID`, e.g. session_row["project_id"]),

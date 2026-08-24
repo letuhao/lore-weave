@@ -2009,7 +2009,21 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
     works = WorksRepo(get_pool())
     work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
-        return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one)"}
+        # 🔴 THIS USED TO SAY ONLY "create one with composition_create_derivative", AND THE BOOK
+        # USUALLY ALREADY HAS ONE. Measured c-override8, K=5 on a fixture whose seed creates a
+        # derivative: the model is handed the book's ambient (canonical) project, refused here,
+        # and told to CREATE — when what it needs is to FIND the derivative that exists. Listing
+        # comes first now, and naming the tool also ARMS it (chat-service's _tools_named_in_refusal
+        # runs on dispatch results), which a message that named only the create tool never did for
+        # the lookup.
+        return {"success": False, "error": (
+            "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
+            "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
+            "project_id). Call composition_list_derivatives and pass it THIS SAME project_id — it "
+            "lists every Work of the book — then retry with the project_id of the entry whose "
+            "is_canonical is false. Only if that list has no derivative should you create one with "
+            "composition_create_derivative."
+        )}
     # 🔴 AN OVERRIDE WITH NO FIELDS OVERRIDES NOTHING, and it was being created. Measured
     # 2026-08-23 by direct probe: overridden_fields={} returned {"success": true, "override":
     # {..., "overridden_fields": {}}}. The row then reads as a real override to everything
@@ -5064,7 +5078,7 @@ class _MotifLinkEditArgs(ForbidExtra):
         # consumer that backfills a missing context id must leave it alone: measured 2026-08-24,
         # chat-service filled the omitted id, this tool refused, its refusal said to call again
         # WITHOUT book_id, and the runtime put it back — the remedy was unfollowable.
-        mode_selecting_args=["book_id"],
+        no_context_fill=["book_id"],
         synonyms=["link motifs", "connect motifs", "add motif edge", "unlink motifs",
                   "remove motif edge", "compose pattern", "set succession", "mark variant"],
         tool_name="composition_motif_link_edit",
@@ -8447,6 +8461,16 @@ class _EntityOverrideEditArgs(ForbidExtra):
         "overridden_fields). op=delete (needs project_id + override_id) SOFT-deletes — the override stops applying immediately but is recoverable. op=restore (needs project_id + override_id) brings it back; it FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one. EDIT required."
     ),
     meta=require_meta("A", "book",
+                      # 🔴 no_context_fill=["project_id"] WAS TRIED HERE AND TAKEN BACK OUT. The
+                      # ambient project IS the wrong Work for this tool — measured c-override7,
+                      # NOT_A_DERIVATIVE 5/5 — but suppressing the backfill is too blunt a remedy:
+                      # composition_list_derivatives requires a project_id and takes nothing else
+                      # ("Pass ANY Work's project_id from the book"), so the canonical id is a
+                      # perfectly good input to the very lookup this tool wants. Removing it left
+                      # the model with no project id at all, and c-override8 measured what it did
+                      # then — put the target_entity_id into project_id AND book_id on three
+                      # different tools, all refused "not found or not accessible".
+                      # The remedy is the refusal below, not starving the argument.
                       synonyms=["add entity override", "edit entity override", "delete entity override",
                                 "restore entity override", "undo entity override delete",
                                 "override entity field", "manage entity override"],

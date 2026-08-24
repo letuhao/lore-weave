@@ -203,3 +203,51 @@ class TestTheClientContract:
         c = GlossaryClient("http://glossary", "tok")
         c._http = NS(post=AsyncMock(side_effect=httpx.ConnectError("down")))
         assert await c.entities_by_ids(uuid.uuid4(), [str(uuid.uuid4())]) == []
+
+
+class TestTheCanonicalRefusalPointsAtTheLookup:
+    """D-THE-AMBIENT-PROJECT-IS-THE-WRONG-WORK-AND-THE-RUNTIME-SUPPLIES-IT.
+
+    The book's ambient project is its CANONICAL Work, and chat-service backfills it into any
+    tool that declares `project_id`. An override exists only on a DERIVATIVE, so the id the
+    model is handed is refused by definition — and the refusal used to say "create one with
+    composition_create_derivative" on a book that, in this scenario, ALREADY HAS ONE (the seed
+    creates it). Measured c-override8, K=5: the model was told to make a second derivative
+    instead of finding the first.
+
+    Naming `composition_list_derivatives` also ARMS it — chat-service's
+    `_tools_named_in_refusal` runs on dispatch results — which a message naming only the create
+    tool never did for the lookup.
+    """
+
+    async def test_it_names_the_lookup_before_the_create(self):
+        import app.mcp.server as srv
+
+        canonical = NS(id=uuid.uuid4(), project_id=uuid.uuid4(),
+                       book_id=uuid.uuid4(), source_work_id=None)
+
+        async def get_canonical(pid):
+            return canonical
+
+        async with _patched(works_get=get_canonical) as s:
+            s.WorksRepo(None).get = AsyncMock(return_value=canonical)
+            with patch.object(srv, "DerivativesRepo") as DR:
+                DR.return_value.add_override = AsyncMock()
+                res = await srv.composition_entity_override_add(
+                    _Ctx(), srv._EntityOverrideAddArgs(
+                        project_id=str(canonical.project_id),
+                        target_entity_id=str(uuid.uuid4()),
+                        overridden_fields={"occupation": "cartographer"}),
+                )
+        assert res["success"] is False
+        err = res["error"]
+        assert "NOT_A_DERIVATIVE" in err
+        assert "composition_list_derivatives" in err, (
+            "the refusal never names the tool that FINDS the derivative, so a book that already "
+            "has one is told to make another"
+        )
+        assert err.index("composition_list_derivatives") < err.index("composition_create_derivative"), (
+            "create is offered before list — the wrong order for a book that already has a "
+            "derivative, which is the common case"
+        )
+        assert "is_canonical" in err, "it does not say which entry of the list to take"
