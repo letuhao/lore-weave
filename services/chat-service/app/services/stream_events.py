@@ -139,10 +139,35 @@ def _match_case(repl: str, orig: str) -> str:
     return repl
 
 
+def _rewrites_part_of_a_hyphenated_name(text: str, start: int, end: int) -> bool:
+    """True when a match is only PART of a hyphenated token — i.e. rewriting it would invent a
+    name rather than translate a word.
+
+    Measured 2026-08-25: the §4 rules are word-boundary regexes and `-` is a word boundary, so
+    `glossary-bootstrap` became "story bible-bootstrap" and `entity-triage` became
+    "element-triage" in 5 of 5 replies. Neither name exists — the user cannot use them and
+    workflow_load cannot resolve them. Half-translating a name produces a broken identifier,
+    where translating a WHOLE one is a deliberate relabel: the `vision-to-book` rule matches its
+    entire token, so both its neighbours are prose and it is untouched by this guard.
+
+    Deliberate trade-off, stated: a hyphenated compound in ordinary prose ("entity-level") now
+    keeps its jargon word instead of being rewritten. That leaks a word the guard would rather
+    hide, which is the direction this errs in — and it is much the lesser harm than confidently
+    handing the reader an identifier that does not exist."""
+    return text[start - 1:start] == "-" or text[end:end + 1] == "-"
+
+
 def scrub_jargon(text: str) -> str:
-    """Rewrite unambiguous §4 system-jargon to plain novelist words. Idempotent, case-aware."""
+    """Rewrite unambiguous §4 system-jargon to plain novelist words. Idempotent, case-aware.
+
+    A match that is only part of a hyphenated NAME is left alone — see
+    `_rewrites_part_of_a_hyphenated_name`."""
     for pat, repl in _JARGON_SUBS:
-        text = pat.sub(lambda m: _match_case(repl, m.group(0)), text)
+        def _one(m: re.Match[str]) -> str:
+            if _rewrites_part_of_a_hyphenated_name(m.string, m.start(), m.end()):
+                return m.group(0)
+            return _match_case(repl, m.group(0))
+        text = pat.sub(_one, text)
     return text
 
 
