@@ -53,7 +53,11 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 # Lowered 43 -> 42 on 2026-08-22 (T56c). The gate had been printing `Progress — lower
 # NO_PROOF_BASELINE to 42` for two commits without anyone moving it: a ratchet asking to be
 # tightened and not being is the same drift it exists to catch, one level up.
-NO_PROOF_BASELINE = 42
+#: 42 -> 41 (2026-08-24, T48): `graph-port-gate` and `plan-final-verification` each gained a
+#: `--selftest`, and `graph-store-migrated-gate` (T54g) landed with one. The reading is the
+#: ratchet doing exactly what the comment above describes — it went red asking to be lowered,
+#: in the same run that earned the lowering.
+NO_PROOF_BASELINE = 41
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

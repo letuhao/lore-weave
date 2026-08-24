@@ -32,7 +32,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLAN = os.path.join(ROOT, "docs", "plans", "2026-08-09-knowledge-architecture-refactor.md")
 
 # The gates this plan introduced or relies on. Each must exit 0.
-GATES = [
+#: The gates this verifier runs ITSELF: the six that encode THIS PLAN's invariants.
+#:
+#: 🔴 **This list used to end a sentence that claimed far more than it checked.** The PASS line
+#: said *"...and every gate is green"* while running six of the repo's **113**. The claim was
+#: 18x wider than the check, and it is the verifier for a plan whose acceptance includes
+#: *"nothing silently dropped"* — the same overstatement it exists to catch, in the instrument.
+#:
+#: It is NOT widened to 113 here, and that is measured rather than preferred: `--run-all` takes
+#: **7m25s** on this machine, and a verification people cancel is decorative. CI owns the full
+#: sweep (`gate-wiring-gate --run-all`, covered by construction because the runner iterates the
+#: same `discovered()` predicate). What changed is the WORDING and the DELEGATION CHECK below:
+#: this verifier now states its six, and fails if the full sweep is not wired somewhere else.
+PLAN_GATES = [
     "glossary-events-ssot-gate.py",
     "alive-column-deprecation-gate.py",
     "derived-entity-id-gate.py",
@@ -70,7 +82,52 @@ def sections(text: str) -> list[tuple[str, str, str]]:
     return out
 
 
+def _selftest() -> int:
+    """Pins the two properties this file just lost and regained.
+
+    Neither was checkable before, which is why the overstatement survived: the PASS line is
+    prose, and prose is not run. These read the SOURCE, so the claim and the check cannot
+    drift the way the claim and the behaviour did.
+    """
+    src = open(__file__, encoding="utf-8").read()
+    # COMMENTS ARE STRIPPED, and the first run of this selftest is why: it went red on the
+    # comment above `PLAN_GATES`, which QUOTES the retracted wording so the next reader knows
+    # it was considered and removed. `ssot-claim-gate` already makes exactly this allowance
+    # ("retractions that quote the old wording are allowed"). A check that cannot tell a
+    # retraction from a relapse forces the retraction to be deleted, which is how the reason
+    # for a fix gets lost.
+    # ...and the SELFTEST ITSELF is excluded, which the second run found: the check below
+    # contains the retracted phrase as its needle, so searching the whole file always matched
+    # and the check could never pass. A detector that reads its own text is measuring itself.
+    head, _, tail = src.partition("def _selftest")
+    claims = head + tail.partition(chr(10) + "def main() -> int:")[2]
+    body = chr(10).join(
+        l for l in claims.splitlines() if not l.lstrip().startswith("#")
+    )
+    checks = [
+        ("the PASS line no longer claims `every gate is green`",
+         "every gate is green" not in body),
+        ("it states how many gates it actually ran",
+         "len(PLAN_GATES)" in body),
+        ("every PLAN_GATES entry exists on disk",
+         all(os.path.exists(os.path.join(ROOT, "scripts", g)) for g in PLAN_GATES)),
+        ("the full sweep is DELEGATED and the delegation is asserted",
+         "gate-wiring-gate.py" in body and "runs NOWHERE" in body),
+        ("PLAN_GATES is a real subset, not secretly everything",
+         0 < len(PLAN_GATES) < 20),
+    ]
+    failures = 0
+    print("plan-final-verification - selftest (offline)")
+    for label, ok in checks:
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}")
+    print(chr(10) + "  all checks passed" if not failures else chr(10) + f"  {failures} FAILED")
+    return 1 if failures else 0
+
+
 def main() -> int:
+    if "--selftest" in sys.argv:
+        return _selftest()
     if not os.path.exists(PLAN):
         print(f"[plan-verify] FAIL — plan not found: {PLAN}")
         return 1
@@ -123,8 +180,8 @@ def main() -> int:
                     f"{tid} is marked DONE but its own section records a deferral — a QC task "
                     f"cannot certify work that is still open")
 
-    # 4 — gates green.
-    for g in GATES:
+    # 4 — the plan's own gates, run here.
+    for g in PLAN_GATES:
         path = os.path.join(ROOT, "scripts", g)
         if not os.path.exists(path):
             failures.append(f"gate missing: {g}")
@@ -134,14 +191,39 @@ def main() -> int:
         if rc != 0:
             failures.append(f"gate failed: {g}")
 
+    # 4b — the FULL sweep is somebody's job, and this asserts it is somebody's.
+    #
+    # Running 113 gates here would take 7m25s and this verifier would stop being run. So the
+    # delegation is checked instead of the gates: `gate-wiring-gate` reports every discovered
+    # gate as wired-or-exempt, and CI drives `--run-all` over the same predicate. If that
+    # arrangement is ever dismantled, this verifier's six become the whole of the coverage and
+    # nothing would say so.
+    wiring = os.path.join(ROOT, "scripts", "gate-wiring-gate.py")
+    if not os.path.exists(wiring):
+        failures.append("gate-wiring-gate.py is gone — nothing now proves the OTHER gates run")
+    else:
+        rc = subprocess.run([sys.executable, wiring], capture_output=True, text=True)
+        total = re.search(r"(\d+) gate\(s\) discovered", rc.stdout or "")
+        print(f"[plan-verify] delegation  gate-wiring-gate                "
+              f"{'PASS' if rc.returncode == 0 else 'FAIL'}"
+              f"{f' ({total.group(1)} gates discovered, all wired or exempted)' if total else ''}")
+        if rc.returncode != 0:
+            failures.append("gate-wiring-gate failed — some gate runs NOWHERE, so this "
+                            "verifier's six are not the floor they look like")
+
     print()
     if failures:
         print("[plan-verify] FAIL")
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("[plan-verify] PASS — every task is done-with-evidence or DECIDED with a spec "
-          "citation, no QC task certifies open work, and every gate is green.")
+    print(f"[plan-verify] PASS — every task is done-with-evidence or DECIDED with a spec "
+          f"citation, no QC task certifies open work, and the {len(PLAN_GATES)} gates that "
+          f"encode THIS PLAN's invariants are green.")
+    print("  The other gates are CI's, via `gate-wiring-gate --run-all`; this run asserted that "
+          "arrangement exists,")
+    print("  not that those gates passed. A verifier that says 'every gate' while running six "
+          "is the defect it exists to catch.")
     print("  NOTE: 'decided' is not 'done'. An unfinished task has a settled design and "
           "unwritten code;")
     print(f"  read {SPEC_DOC} for what was decided, and the RESUME line for what to type next.")

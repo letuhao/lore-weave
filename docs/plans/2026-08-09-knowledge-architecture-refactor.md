@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 100 of 147 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 101 of 148 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (35/45) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (11/12) · `T49` (1/1)
+**OPEN:** `T17` (35/45) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (12/13) · `T49` (1/1)
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -23472,6 +23472,114 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48k 2026-08-24 — **the verifier said "every gate is green" while running 6 of 113, and the full sweep is RED**
+
+  ```
+  plan-final-verification   ran 6 hand-listed gates · claimed "every gate is green"
+  the repo has              113 gates (gate-wiring-gate's own discovery)
+  gate-wiring-gate --run-all  7m25s, and it comes back RED
+  ```
+
+  🎯 **T48's acceptance is *"nothing silently dropped"*, and the thing dropping something was
+  the instrument.** The PASS line's claim was **18× wider** than its check. Nothing was lying on
+  purpose — the list is old and the sentence grew past it — which is exactly how this plan's
+  other census defects happened, and the cure is the same one: derive it, or state what you did
+  not do.
+
+  📐 **Not widened to 113, and that is measured rather than preferred.** `--run-all` takes
+  **7m25s** on this machine, and a verification people cancel is decorative. CI owns the full
+  sweep and owns it *by construction* — the runner iterates the same `discovered()` predicate, so
+  a gate written tomorrow runs the day it lands. What changed:
+
+  ```
+  the WORDING     names the number it actually ran
+  the DELEGATION  asserts gate-wiring-gate reports every gate wired-or-exempt, and FAILS if
+                  that arrangement is dismantled — because then the six ARE the coverage
+                  and nothing would say so
+  ```
+
+  🔬 **THE SWEEP IS RED, AND EVERY RED WAS TRACED TO THE FILE IT NAMES (rule 13).** A list is
+  not a diagnosis, so each was run alone:
+
+  ```
+  qc5-acceptance-gate            exits 2 BARE — argparse requires --file/--selftest   RUNNER
+  soak-armed-gate                exits 2 BARE — requires --url/--file/--selftest      RUNNER
+  gate-teeth-gate                red-ability baseline 42 -> 41                        THIS COMMIT
+  transitions-validation-lint.sh $'\r' — the WORKING TREE has CRLF                    ENVIRONMENT
+  ai-provider-gate · gate-number-visibility-gate · language-bias-gate ·
+  llm-budget-ssot-gate · pagination-cap-lint · projection-coverage-lint ·
+  raw-sql-lint · guard-redability-gate                                                OTHER WORK
+  ```
+
+  🔴 **Two were the RUNNER, not the gates, and that is the worst kind of red.** `_run` invokes
+  every gate bare; a gate whose argparse declares a required group exits 2 with a usage error and
+  the runner records it as failing. Both are healthy — `--selftest` is **15/15** and **18/18**,
+  and the pre-commit hook has been running them that way all along. So the sweep carried **two
+  permanent false reds**, which this file's own message condemns better than I can: *"a gate that
+  is red and unacknowledged is how a whole suite becomes background noise."* A red that cannot be
+  fixed by fixing the code teaches a reader to skim, and the next real red arrives to an audience
+  that has learned to.
+
+  DERIVED, not remembered: all **77** runnable Python gates were probed bare, and exactly these
+  two exit 2 with an argparse *"required"* error.
+
+  ⚖️ **The CRLF one is ENVIRONMENT and the evidence is unambiguous** — checked rather than
+  assumed, because "it fails on my machine" is a claim about a machine:
+
+  ```
+  git ls-files --eol   i/lf  w/crlf  attr/text eol=lf   scripts/transitions-validation-lint.sh
+  .gitattributes:11    *.sh text eol=lf
+  the only such file   1 of 67 shell files in the tree
+  ```
+
+  The index is right, the attribute is right, my checkout is wrong, and a Linux runner never sees
+  it. Recorded so the next person on Windows does not spend the afternoon I nearly did.
+
+  ⛔ **The remaining eight are real, unacknowledged, and NOT this plan's.** Every file they name —
+  `fake_truth_store.py`, `mirror_truth_handler.go`, `critic.py`, `self_heal.py`, the AGE adapters'
+  pre-existing SQL builders, seven unprojected glossary events — belongs to work outside the
+  knowledge refactor. **No `KNOWN_RED` row was added for any of them**: an acknowledgement list
+  that absorbs other people's defects is how those defects stop being defects. Recorded in §14
+  with attribution, so the next reader inherits a diagnosis instead of a list.
+
+  🧪 **BITES — red for the right reason, restored.**
+
+  ```
+  K  restore "every gate is green" in the PASS line
+       FAIL  the PASS line no longer claims `every gate is green`
+       FAIL  it states how many gates it actually ran
+  L  empty the NEEDS_ARGS registry
+       scripts/qc5-acceptance-gate.py    RED   error: one of --file or --selftest is required
+       scripts/soak-armed-gate.py        RED   error: one of --url, --file or --selftest is required
+     ...and under the fix, both GREEN.
+  ```
+
+  ⚠️ **The selftest took three attempts and both failures are worth keeping**, because each is a
+  detector that could not fail:
+
+  ```
+  1st  red on the COMMENT that quotes the retracted wording so the next reader knows it was
+       considered — `ssot-claim-gate` already makes exactly this allowance. A check that cannot
+       tell a retraction from a relapse forces the retraction to be deleted, and the REASON for
+       a fix is what gets lost.
+  2nd  red forever, because the check's own needle is the phrase it searches for. A detector
+       that reads its own text is measuring itself.
+  ```
+
+  📐 **`NEEDS_ARGS` carries a staleness probe**, the same discipline `KNOWN_RED` has and the one
+  T54g's `graph-port-gate` fix added for exemptions: a row whose gate runs clean bare is reported
+  STALE and fails the sweep. A registry entry that excuses nothing still excuses the *next* gate
+  that lands in the same file.
+
+  **QC (a) gates:** `plan-final-verification --selftest` 5/5 (new); `gate-teeth-gate` PASS with
+  its ratchet moved **in this commit** (42→41, earned by the three selftests added this session);
+  `gate-wiring-gate` 113 discovered, all wired or exempted; four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam is crossed; this is verification machinery.
+  **QC (c) real data:** the 7m25s sweep itself, run twice — before the fix it reported the two
+  argparse reds, after it does not, and `_run` was called directly on both gates with and without
+  the registry to prove the difference is the invocation and not the gate.
+
   ---
   ### ✅ T54g 2026-08-24 — **the check that would have caught T54d: nothing in the tree compares the two STORES**
 

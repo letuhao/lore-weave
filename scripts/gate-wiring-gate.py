@@ -293,7 +293,8 @@ def _is_wired(rel: str, hook: str, ci: str) -> bool:
 def wiring_report() -> tuple[list[str], list[str]]:
     """(uncovered, stale_rows)."""
     names = discovered()
-    known = set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+    known = (set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+             | set(NEEDS_ARGS))
     stale = [n for n in sorted(known) if n not in names]
 
     if runner_in_ci():
@@ -311,7 +312,29 @@ def wiring_report() -> tuple[list[str], list[str]]:
     return uncovered, stale
 
 
-def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
+# Gates that REQUIRE an argument. `_run` invokes every gate bare, and a gate whose argparse
+# declares a required mutually-exclusive group exits 2 with a usage error — which the runner
+# recorded as RED. Both of these are healthy (`--selftest` is 15/15 and 18/18 respectively, and
+# the pre-commit hook runs them that way and has all along), so `--run-all` carried TWO
+# permanent false reds.
+#
+# 🔴 That is worse than it sounds, and this file already says why: *"a gate that is red and
+# unacknowledged is how a whole suite becomes background noise."* A red that can never be fixed
+# by fixing the code teaches a reader to skim the list, and the next REAL red arrives into an
+# audience that has learned to skim.
+#
+# DERIVED, not remembered: probing all 77 runnable Python gates bare found exactly these two
+# exiting 2 with an argparse "required" error. The rest either run bare or are already in
+# NEEDS_STACK / TOO_SLOW.
+NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
+    "scripts/qc5-acceptance-gate.py": (
+        ["--selftest"], "requires --file or --selftest; the live arms need a stack and models"),
+    "scripts/soak-armed-gate.py": (
+        ["--selftest"], "requires --url, --file or --selftest; the live read needs /metrics"),
+}
+
+
+def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str]:
     # RELATIVE path + cwd=REPO, never an absolute one.
     #
     # The first draft passed `str(REPO / rel)`, which on Windows is
@@ -321,7 +344,8 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
     # A CI job would have shipped failing everything. Worth noting which way it
     # broke: the runner called them RED, not green. A harness bug that reports
     # success is the one that ends careers.
-    cmd = [sys.executable, rel] if rel.endswith(".py") else ["bash", rel]
+    extra = [] if bare else NEEDS_ARGS.get(rel, ([], ""))[0]
+    cmd = ([sys.executable, rel] if rel.endswith(".py") else ["bash", rel]) + extra
     t0 = time.time()
     try:
         # stdin=DEVNULL is load-bearing. `amaw-guardrail-gate.py` is a Claude
@@ -409,7 +433,27 @@ def run_all() -> int:
             failures.append((n, out))
             print(f"  {n:<44} RED    ({secs:5.1f}s)")
 
+    # A NEEDS_ARGS row that is no longer needed is standing permission for nothing, and the
+    # same shape this file already refuses for KNOWN_RED. Probed rather than assumed: if the
+    # gate runs clean with NO arguments, the row is stale and the next gate to acquire a
+    # required argument would be silently absolved by it.
+    stale_args = []
+    for n in sorted(NEEDS_ARGS):
+        if n not in runnable:
+            continue
+        bare_ok, _, _ = _run(n, timeout=120, bare=True)
+        if bare_ok:
+            stale_args.append(n)
+
     rc = 0
+    if stale_args:
+        print(f"\ngate-wiring-gate: {len(stale_args)} NEEDS_ARGS row(s) are STALE — "
+              f"the gate runs clean with no arguments:\n")
+        for n in stale_args:
+            print(f"  {n}  (row says: {NEEDS_ARGS[n][1]})")
+        print("\nDelete the row. A registry entry that excuses nothing still "
+              "excuses the NEXT gate that lands in the same file.")
+        rc = 1
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:

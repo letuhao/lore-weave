@@ -1806,6 +1806,41 @@ CONTENT reads green on an empty destination. **Closed at T54g** by
 returns `EMPTY_DECLARED` on dev today (exit 1) and `MIGRATED` on a store that has been migrated
 (exit 0) — both measured on live data, in opposite directions.
 
+## 14 · The full gate sweep is RED, and `plan-final-verification` said "every gate is green" (T48, 2026-08-24)
+
+**Measured, not inferred.** `plan-final-verification` runs **6** hand-listed gates and its PASS
+line claimed *"...and every gate is green"*. The repo has **113**. `gate-wiring-gate --run-all` —
+the sweep CI drives over the same `discovered()` predicate — takes **7m25s** and comes back RED.
+
+**Attribution, because a divergence RECORDED is not a divergence DIAGNOSED (rule 13).** Each red
+was run individually and traced to the file it names:
+
+| gate | cause | whose |
+|---|---|---|
+| `qc5-acceptance-gate` | exits 2 bare — argparse requires `--file`/`--selftest` | **the RUNNER** — fixed |
+| `soak-armed-gate` | exits 2 bare — requires `--url`/`--file`/`--selftest` | **the RUNNER** — fixed |
+| `gate-teeth-gate` | red-ability baseline 42 -> 41 | **this commit** — moved |
+| `transitions-validation-lint.sh` | `$''`: the WORKING TREE has CRLF | **environment** — the index is `i/lf`, `.gitattributes` says `*.sh text eol=lf`, and it is the only such file. A Linux runner never sees it. |
+| `ai-provider-gate` · `gate-number-visibility-gate` · `language-bias-gate` · `llm-budget-ssot-gate` · `pagination-cap-lint` · `projection-coverage-lint` · `raw-sql-lint` · `guard-redability-gate` | real findings in `fake_truth_store.py`, `mirror_truth_handler.go`, `critic.py`, `self_heal.py`, the AGE adapters' pre-existing SQL builders, 7 unprojected glossary events | **other work** — none names a file this plan touched |
+
+**DECIDED.** The two runner defects and the one ratchet this session moved are fixed here. The
+remaining eight are real, unacknowledged, and **not this plan's**: every file they name belongs to
+work outside the knowledge refactor. They are recorded rather than fixed, because fixing eight
+unrelated gates inside a knowledge-architecture row is how a plan stops being about anything —
+and recorded rather than ignored, because `gate-wiring-gate`'s own message is right that *"a gate
+that is red and unacknowledged is how a whole suite becomes background noise"*.
+
+**What was actually wrong, and it is the instrument.** A verifier that says *"every gate"* while
+running six is the exact defect this plan's acceptance names — *"nothing silently dropped"* —
+occurring in the thing that checks for it. It now states the number it ran, and asserts the
+DELEGATION (that `gate-wiring-gate` reports every gate wired-or-exempt) instead of pretending to
+be the sweep. Both properties are pinned by a `--selftest`, because a PASS line is prose and
+prose is not run.
+
+**Retry/registration:** the eight belong to whoever owns those files. `gate-wiring-gate --run-all`
+already names them on every CI run; nothing here suppresses them, and no `KNOWN_RED` row was added
+— an acknowledgement list that absorbs other people's defects is how they stop being defects.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
