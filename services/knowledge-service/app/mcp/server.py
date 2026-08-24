@@ -1967,8 +1967,13 @@ async def kg_triage_schema_write(
         # in 30 live runs and tool_load never, so the answerability pre-filter is the only
         # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
         # are phrasings a PERSON types, not the feature's name.
+        # 2026-08-25 — "build the knowledge graph" REMOVED: composition_build_cast_and_graph
+        # declared the identical string. An exact duplicate is an unbreakable tie, and the
+        # scenario that named this phrase measured the tie rather than either tool. This
+        # one reads the book's CHAPTERS, so its phrasing says so.
         synonyms=[
-            "build the knowledge graph",
+            "build the knowledge graph from my chapters",
+            "build the graph from the book",
             "generate the wiki",
             "rebuild the graph",
             "extract the graph from my book",

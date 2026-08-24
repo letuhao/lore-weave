@@ -8829,8 +8829,12 @@ class _GlossaryBuildArgs(ForbidExtra):
     meta=require_meta(
         "A", "book",
         synonyms=[
+            # 2026-08-25 — "build the knowledge graph" REMOVED: kg_build declared the
+            # identical string, which is a tie answerability cannot break. This tool's
+            # input is prose the caller hands over, so its phrasing says so.
             "build my world", "set up the glossary", "create the cast",
-            "build the knowledge graph", "world building", "glossary build",
+            "build the knowledge graph from this story", "world building",
+            "glossary build", "build the cast and the graph",
             "add all the characters", "extract the cast from my story",
         ],
         ambient_book=True,
