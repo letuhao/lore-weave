@@ -4125,6 +4125,10 @@
       "it_explains_the_previous_cycle": "Cycle 21 made this tool's description CLAIM the case in the prompt's own words and measured called 0/5. That result now has a mechanism rather than a shrug: a tool description cannot beat a rail the SERVER IS ACTIVELY DRIVING and whose step tools it pins onto the surface. The 'a tool cannot out-describe a recipe' conclusion was right and understated — the recipe is not a competitor's prose, it is a platform rail with the next step computed per turn.",
       "this_is_the_third_reason_this_tool_has_carried": "🔴 AND THAT IS THE POINT WORTH KEEPING. Its causes have been, in order: (a) 'the book had no ontology' — a real precondition, fixed by the seed; (b) 'the prompt withheld a required input' — real, fixed by the prompt; (c) 'A CLEAN SIBLING-WINS AT LAST' — WRONG. Each verdict was written after the previous one was fixed and each looked conclusive at the time. The rail was visible in the service log the whole way and nobody had grepped for it.",
       "what_the_decision_actually_is": "NOT DQ-T41. Ranking between two answerable tools is the wrong frame here — R1 forces composition_glossary_build and NOT the competitors; the competitors are on the wire because the RAIL PINS THEM, and they are chosen because the rail drives them.\n\nTHE REAL QUESTION, and it is the owner's: vision-to-book steps 5+6 (extract_entities_from_doc -> propose_entities, with kg_add_nodes at 8) are the per-entity chain that composition_glossary_build replaces with ONE gated tool that also builds deep profiles, files review drafts and proposes relationships. Should that rail segment call the one-shot tool instead?\n\nMY RECOMMENDATION: yes for vision-to-book, because the rail's own promise ('captures the CAST and key terms they have told you about') is exactly this tool's job and the tool does it better than the three-step chain. And separately, kg-build's notes already say 'If the glossary is empty there is nothing to connect: say so and offer to capture the cast first (a DIFFERENT JOB)' — it acknowledges the job and names no tool for it. Naming one there is the cheaper half.\n\nI AM NOT MAKING EITHER CHANGE. A workflow is a user-facing recipe and its step list is a product decision, which the standing rule says I must not settle to unblock a tool. But the decision is now specific — two named steps in one named workflow — rather than 'precedence between siblings'."
+    },
+    "D-TRANSLATION-JOB-CONTROL-IS-NOT-A-RAIL-CASE": {
+      "status": "CHECKED 2026-08-24. The rail explanation that overturned composition_glossary_build does NOT apply here.",
+      "what": "After a pinned rail turned out to be driving composition_glossary_build's turns, the same check was run against translation_job_control rather than assuming its verdict held.\n\n    translation-pass steps: translation_coverage -> translation_start_job -> translation_retranslate_dirty. No cancel step, and the word cancel appears nowhere in its notes.\n    Rails evaluated on the measured book: vision-to-book (next=glossary_list_system_standards) and translation-pass (next=translation_coverage).\nNeither prescribes jobs_cancel or translation_job_control, and jobs_cancel — the tool the model actually called — is not a step in any workflow.\n\nSo the model chose it FREELY, and the cycle-17 verdict stands on a second, independent mechanism check: both tools are forced onto the wire by R1 for the request, which says job rather than translation, and the generic tool wins. That is a genuine answerable-set tie and it is DQ-T41's actual subject."
     }
   },
   "deferred_questions": {
@@ -4716,8 +4720,8 @@
     "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
     "tools_concluded_including_deprecated": 203,
     "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-    "defects_total": 139,
-    "defects_other": 100
+    "defects_total": 140,
+    "defects_other": 101
   },
   "observations": [
     {
@@ -4777,5 +4781,33 @@
         "Shipped a word-list arm catching reference_id='UNKNOWN_ID_PLEASE_PROVIDE'; re-measured on the deployed build and the model's next attempt was 'REPLACE_WITH_ACTUAL_REFERENCE_ID' — not one shared word, straight through to a card. The list was refuted by the very next run.\nReplaced with a SHAPE rule (SCREAMING_SNAKE_CASE), which is measured rather than assumed: 0 of 293 codes this platform has issued contain an uppercase letter, and a UUID has no underscore. My first shape attempt — 'not a UUID and has an uppercase letter' — was then caught by the SUITE for breaking a standing invariant (world_id='Ashfall' must survive when nothing is declared) and would have broken opaque vendor ids like 'ABC-123'.\nTHE A/B: composition_reference_update went from carding a fabricated id on 5/5 runs in each of two arms to ZERO cards, with the model asking the author instead. Two wrong fixes and a suite catch to get one right rule."
       ]
     }
-  ]
+  ],
+  "THE_FOUR_REMAINING_DECISIONS_2026_08_24": {
+    "_why_this_block_exists": "Four tools are blocked and every one now terminates in a decision that is not mine. The evidence is spread over a dozen defect entries written across many cycles, and TWO of my own recommendations were WRONG and have been reversed or withdrawn. So this is one place to read what is actually being asked, with the wrong advice marked as wrong.\n\n🔴 HOW MUCH TO TRUST THE REST OF IT: of the six 'this cannot move without a decision' verdicts I wrote this week, THREE did not survive re-checking (composition_generate's DQ-T42, registry_list_workflows' duplicate claim, glossary_book_sync_apply's safety claim) and a fourth was reframed entirely (composition_glossary_build). The pattern was always the same: I reasoned about behaviour instead of grepping for the mechanism. Treat what follows as the best current reading, not as settled.",
+    "1_translation_job_control": {
+      "asks": "When two tools tie on the platform's own vocabulary, should a DOMAIN-SPECIFIC tool take precedence over a GENERIC one, and should that precedence be a declared field or a ranking rule? (DQ-T41's original subject.)",
+      "evidence": "The measured prompt makes BOTH translation_job_control and jobs_cancel answerable, and so do the other two arms. jobs_cancel's synonyms include 'stop the translation', colonising the domain tool's vocabulary. NOT a rail case (checked 2026-08-24) and NOT a missing supplier (job_id <- jobs_list declared; measured 0/5 after, exactly as predicted before the run).",
+      "state": "The tool WORKS — all four SHIP cases exercised; cancel moved a real job pending -> cancelled, resume cards because it re-spends, a repeat cancel is refused 409.",
+      "my_recommendation": "Rank by SPECIFICITY rather than synonym LENGTH. This is the ONE tool where that fix is measured to be on-point."
+    },
+    "2_composition_glossary_build": {
+      "asks": "Should vision-to-book's steps 5+6 (glossary_extract_entities_from_doc -> glossary_propose_entities, with kg_add_nodes at 8) call the one-shot composition_glossary_build instead?",
+      "evidence": "NOT a tie and NOT a description problem — both eliminated by measurement. A PINNED RAIL drives the turn (logged: 'rail vision-to-book: 3/9 steps done, next=glossary_book_ontology_read') and the observed chain is that rail's steps 4/5/6/8 in order. Making the tool's description claim the case changed nothing (0/5).",
+      "state": "The tool WORKS — op=start returns a run_id, status plan_ready and a worklist; all four owed SHIP cases refuse correctly.",
+      "my_recommendation": "Yes for vision-to-book. Cheaper half first: kg-build's notes already say to offer to capture the cast first (a different job) and name no tool for it — name one.",
+      "do_not_use_this_frame": "DQ-T41. R1 forces THIS tool and not the competitors; they are on the wire because the rail pins them."
+    },
+    "3_composition_reference_update": {
+      "asks": "Should the author's reference shelf get a READER on the agent surface?",
+      "evidence": "Premise re-checked three ways and it HOLDS: no references block in package_tree; no reader in the live 315-tool catalogue under 'reference shelf', 'source document', 'source_url', 'corpus', 'shelf' or 'source material'; and OUT-1 governs the shape of a listing, not whether one must exist. The shelf has a full REST surface and a repository declaring create, list, get, delete, update_metadata, update_content and search — exactly ONE is a tool, the metadata editor.",
+      "state": "The tool WORKS — a valid edit lands and was verified by re-reading over REST; absent and foreign-project ids refused; idempotent. The model never invents an id: it refuses and hits the blank-args breaker.",
+      "my_recommendation": "Expose composition_reference_list(project_id) and declare reference_id <- it. COST, measured: ~220-300 tokens of schema (peers: composition_authoring_run_list ~223, composition_list_derivatives ~299), about 11-15% of the 2000-token hot-seed budget when hot-seeded, nothing otherwise. Against a shipped, advertised tool that cannot be used at all."
+    },
+    "4_registry_list_workflows": {
+      "asks": "What should answer a SURFACE-SCOPED workflow question when an always-on consumer-local tool that cannot filter is advertised on every pass?",
+      "evidence": "🔴 MY EARLIER RECOMMENDATION WAS WRONG AND IS REVERSED. I had said the two tools are the same capability and recommended visibility=legacy, superseded_by=workflow_list. They are not: registry_list_workflows takes surface (book|editor|studio); workflow_list declares no properties at all and cannot filter. Measured 12 / book 12 / editor 11 / STUDIO 6. Acting on my advice would have deleted the only tool that can answer correctly.\nMeasured consequence: asked about the studio surface, the model answered from the twin on 4 of 5 runs and named NINE workflows as studio-available. Five of them are not. That batch is refuted by its own falsifier and was not concluded proven.",
+      "state": "The tool WORKS — each surface returns its own set, studio a strict subset of book, never empty, and an invalid or empty surface is refused by the enum. Tenancy stays OWED (needs a second account).",
+      "my_recommendation": "Either give workflow_list the same surface argument (makes the twin sufficient) or have its description say it cannot narrow and name registry_list_workflows for that case (makes the twin honest, and is cheaper). The measurement does not choose between them."
+    }
+  }
 }
