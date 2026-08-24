@@ -99,16 +99,18 @@ An array-input tool takes **1..N** items — a single item is just a 1-element a
 
 ### CAT-4 · Tool visibility: `_meta.visibility` gates discovery, not existence
 
-> **DRIFT NOTE (2026-07-22): `find_tools` is DEPRECATED — F17 (`f30dc77e5`), "hide find_tools
-> from the LLM; `tool_list`/`tool_load` are the sole discovery path."** The mentions of
-> `find_tools`/`search_catalog`/"fuzzy-search result" in this section and older specs
-> (`2026-07-06-tool-catalog-simplification.md`) predate that deprecation. The legacy-exclusion
-> rule below is UNCHANGED — it now applies to the current discovery surface (`tool_list` +
-> `tool_load`, deterministic category listing → load-by-name), not to fuzzy `find_tools`.
-> Do NOT reach for `find_tools`/`search_catalog` in new work; its ranking is unreliable and it
-> is no longer model-facing.
+> **RETIRED, NOT MERELY DEPRECATED (2026-08-25). `find_tools` is unreachable on every
+> surface** — the chat advertise path, the ai-gateway dispatch, the public MCP gateway's
+> always-allow and its activation exemption, and the server instructions that used to tell every
+> connecting client to call it. It last ran on **2026-07-15**. `tool_list` + `tool_load`
+> (deterministic category listing → load-by-name) are the only discovery surface.
+>
+> **The DRIFT NOTE this replaces was itself the defect.** From 2026-07-22 it said "deprecated" and
+> "do NOT reach for it in new work" — while the code kept a docstring calling the path LIVE, the
+> public gateway kept advertising it, and the gateway instructions kept recommending it. A
+> deprecation notice does not retire anything. See **DIS-3**, which is the rule this cost.
 
-A consolidated or superseded tool is **not deleted** — existing callers (older FE builds, tests, other services) keep working. Instead it's tagged `_meta.visibility: "legacy"` (default, when absent: `"discoverable"`). `find_tools`/`search_catalog` (both the chat-service and ai-gateway implementations — they must stay in lockstep per their own header comment) and any domain hot-seed **exclude `legacy`-tagged tools entirely** — a legacy tool never appears in a fuzzy-search result and is never hot-seeded, no matter how well its description matches an intent. The **only** path to activating a legacy tool for a session is an explicit, user-initiated pin — a **Settings & Configuration Boundary**-governed per-session choice (SET-1: this is a user setting, not a global unlock), never a blanket "show me everything" mode.
+A consolidated or superseded tool is **not deleted** — existing callers (older FE builds, tests, other services) keep working. Instead it's tagged `_meta.visibility: "legacy"` (default, when absent: `"discoverable"`). The advertised TURN CATALOGUE, `tool_list` and any domain hot-seed **exclude `legacy`-tagged tools entirely — unconditionally, whether or not a replacement is on the same wire (see DIS-4; the conditional version left 117 dead tools reachable)** — a legacy tool never appears in a fuzzy-search result and is never hot-seeded, no matter how well its description matches an intent. The **only** path to activating a legacy tool for a session is an explicit, user-initiated pin — a **Settings & Configuration Boundary**-governed per-session choice (SET-1: this is a user setting, not a global unlock), never a blanket "show me everything" mode.
 
 ## Part 5 — The durable human gate (ext-tasks) — the KIND-C confirm mechanism
 
@@ -120,6 +122,147 @@ A consolidated or superseded tool is **not deleted** — existing callers (older
 - **GATE-4 · A Go tool with `Out=any` (a gate tool returns a handle OR a card) — or ANY `any`-typed struct field in its result — MUST carry an explicit `{type:object}` `outputSchema`.** The go-sdk otherwise infers `outputSchema.properties.result` as the bare permissive "any" schema, which the ai-gateway proxy's strict validator REJECTS — failing the whole provider's `list-tools` so **none of its tools route** (a silent, catalog-wide outage; the kit's `RegisterTool`/`RegisterTaskProvideInput` now do this automatically). This is why a gate must be smoke-tested THROUGH the gateway, not only via the raw `/mcp` handler.
 
 ---
+
+## Part 6 — DISCOVERY: how a tool gets found, and how a dead one stops being found
+
+> **Every rule here was measured on 2026-08-25**, during a run that spent 39 live turns concluding
+> a working tool was "blocked". It was reachable, it ran correctly when reached, and none of that
+> was the problem. What follows is what actually was.
+
+### DIS-1 · A tool MUST be reachable by its own name
+
+Answerability matched a tool's **declared synonyms and nothing else**. Sampling 25 tools from the
+live catalogue and asking for each by name — *"Please use the `<name>` tool for me"* — **24 of 25
+were not answerable.** Naming a tool did not put it on the wire.
+
+Live at K=5, a prompt reading *"Use the `composition_build_cast_and_graph` tool to build the cast
+and the knowledge graph"* left that tool **surfaced 0/5**. The model walked a six-call chain
+instead and never once called `tool_load` to fetch the thing it had just been told to use. A second
+arm asked for the one capability only that tool has — plan a worklist, show it, then build — and
+the model **simulated the worklist in prose** rather than finding the tool that does it.
+
+**This is not the name-classifier `CP-4.d` deleted,** and the distinction is the rule. That was a
+twelve-verb *substring* test that **inferred a property** (the read/write lane) from *fragments* of
+a name — it saw *get* inside `memory_forget`, *view* inside `kg_view_delete`, promoting destructive
+tools into the always-advertised safe set, and it disagreed with the declared lane on 29 of 315
+tools. C-1 forbids exactly that: *"lane is data at registration, never inferred from a name."*
+Nothing is inferred by DIS-1: the **whole identifier** must appear, on **identifier boundaries**,
+and the only thing concluded is what the writer said — they named this tool.
+
+Identifier boundaries are not word boundaries. A synonym matcher guarding with
+`(?<![a-z0-9])…(?![a-z0-9])` is right for a phrase and **wrong for a name**, because `_` is outside
+that class: `book_list` matches inside `book_list_chapters`. Guard names with `_` in the class too.
+
+### DIS-2 · Two UNRELATED tools must not declare the same synonym
+
+Answerability is **additive and ranks by match length**, so an identical string is a tie nothing
+downstream can break — there is nothing to break it *with*. Both tools reach the wire
+indistinguishable, and whichever the model happens to prefer wins every time.
+
+`composition_build_cast_and_graph` and `kg_build` both declared **"build the knowledge graph"**.
+The scenario that tested the first built its prompt from that phrase — sound reasoning, a tool
+declaring words verbatim should be reachable by them — and measured **0/10, 0/20 and 0/5** across
+three conditions. It was measuring the tie. De-duplicating moved the tool off zero on the first run.
+
+Swept live: **92 phrases were declared by more than one tool.** 75 were a legacy tool sharing with
+its successor — *deliberate*, and the point of the R2 rule in `answerable_tools`, so whatever
+phrasing reaches the old name also reaches its replacement. **17 were ties between unrelated
+tools.**
+
+**Fix by naming what distinguishes the tools — usually their INPUT or their scope — not by picking
+a winner.** `kg_build` reads the book's *chapters*; `composition_build_cast_and_graph` reads *prose
+the caller hands it*. Neither kept the bare phrase; each says which. And a **generic tool must not
+claim a domain phrase**: `jobs_pause` declared "pause the translation", which belongs to
+`translation_job_control`, the tool that actually understands a translation job.
+
+*Enforced by `scripts/lint_duplicate_synonyms.py` (`--max-ties 0`), which exempts
+legacy↔successor overlap by design.*
+
+⚠️ **When you de-duplicate, check the REPLACEMENT is free.** The first pass at this swapped two
+ties for two new ones: "arc structure" was already `composition_arc_suggest`'s.
+
+### DIS-3 · Retirement is TOTAL, or it poisons every reader
+
+`find_tools` was pulled from the model's view by F17 on 2026-07-20 and last actually ran on
+**2026-07-15**. Six weeks later it was still, simultaneously:
+
+* described by its own handler as *"the variant the **LIVE** `_stream_with_tools()` tool-loop call
+  site awaits"*;
+* reached by a `if name == FIND_TOOLS_NAME: _add(FIND_TOOLS_TOOL)` branch that **could never fire**,
+  because the name was no longer in the tuple that loop iterates;
+* advertised by the public MCP gateway to **every key at any scope**;
+* recommended by the ai-gateway's own `SERVER_INSTRUCTIONS`, which told **every connecting client**
+  to call it.
+
+An agent read that, believed it, and spent a session diagnosing a cache-key bug in an embedding
+path only the dead tool can reach. The bug was real. The finding was worthless.
+
+**A retirement must land on every surface AND every instruction that names the tool** — handler,
+always-on list, gateway policy, activation exemptions, server instructions, and the docstrings that
+claim liveness. Leave the code and its rationale if you like (deleting loses *why*), but make it
+**unreachable**, and have the dispatch return an explicit refusal naming the replacement rather
+than a silent empty result a caller will read as *"no such capability"*.
+
+### DIS-4 · `visibility: legacy` means UNREACHABLE — not "unreachable when convenient"
+
+The drop rule removed a legacy tool from a turn catalogue **only when its named replacement
+happened to be on the same wire**. That left **31 legacy tools advertised forever** (they name no
+`superseded_by` to satisfy) and 86 more advertised on any turn their replacement missed. Measured
+against the live catalogue: **315 advertised → 198 after the rule was widened to every legacy
+tool.**
+
+The marking is a decision, taken deliberately. **Traffic to a marked tool is rot, not a
+requirement** — `find_tools` is what that looks like when it is left to run. If a tool marked
+legacy turns out to be load-bearing, **correct the marking**; do not leave a path open around it.
+
+*A companion consequence worth stating: the release denominator and the advertised surface must be
+the same set. Before this, the platform advertised 315 tools while the ledger counted 198 as
+shippable — 117 an agent could reach had never been evaluated.*
+
+### DIS-5 · An instrument that reads a cached catalogue must be able to tell that it is stale
+
+`contracts/tool-catalog-cache.json` had **no timestamp, no generator, and five consumers** — three
+lints, the answerability probe, and a gate test. Every one silently measured whatever the catalogue
+looked like the last time somebody made the file by hand.
+
+Caught the moment the first lint ran: it reported a duplicate synonym that had already been fixed,
+deployed and verified gone from the live wire. Refreshing showed **39 tools whose definitions had
+drifted**, not the two just edited. *An instrument that measures the past reports a fixed defect as
+open — and a new one as absent.*
+
+**And a PARTIAL catalogue is worse than a stale one.** The refresher written to close this gap
+immediately wrote one: run ~30s after restarting three services and ai-gateway, it read **274 tools
+instead of 315** — every `kg_*` tool "removed", because federation had not finished — and wrote
+that without complaint. Tools *disappearing* is the signature of a race, not a retirement: refuse
+the write, and require an explicit flag for a real removal.
+
+*`scripts/refresh_tool_catalog_cache.py` regenerates from the live catalogue; `--check` fails when
+stale.*
+
+### DIS-6 · A scenario built on a phrase two tools share measures the TIE, not the tool
+
+Before trusting a surfacing measurement, check that the prompt can **discriminate**. A scenario
+whose headline phrase is declared by more than one tool cannot test either of them, and will report
+the one under test as broken.
+
+Related: a scenario's **falsifier must be reachable by the scenario**. The one here described
+post-call safety — no confirm card, `op` must be `start`, no invented `run_id` — while the gate
+blocked on selection, so across 39 live runs *the falsifier was never evaluated once*. Split
+selection from behaviour: one arm that NAMES the tool and tests what it does, one that tests
+whether it gets chosen.
+
+### DIS-7 · A user-facing text filter must never rewrite an IDENTIFIER
+
+The §4 "speak plainly" guard rewrites system jargon in the assistant's output. Its rules are
+word-boundary regexes and `-` is a word boundary, so they fired **inside slugs**: 5 of 5 replies
+handed the user `story bible-bootstrap` and `element-triage` — names that do not exist, that they
+cannot type and that `workflow_load` cannot resolve.
+
+**Translate a WORD; never half-translate a NAME.** Translating a *whole* name is a different act and
+stays legal (`vision-to-book` → "book-building" is a deliberate relabel). A residual worth knowing:
+a bare identifier that IS a jargon word — six skill slugs are literally `glossary` — cannot be
+protected by a hyphen rule.
+
 
 ## Enforcement — current & required
 
@@ -134,13 +277,18 @@ A consolidated or superseded tool is **not deleted** — existing callers (older
 | IN-8 4-source drift | `test_mcp_server.py` (FastMCP `tools/list` == expected) + `test_graph_schema_tools.py` (schema⇄arg-model) |
 | Frontend-tool contract (IN-3/IN-7/OUT-6) | `test_frontend_tools_contract.py` (BE) · `frontendToolContract.test.ts` (FE, proves each resolver reads every required arg + rejects with an error) · `panelCatalogContract.test.ts` |
 | OUT-3 concise-wire | `scripts/context-budget-l3-lint.py` |
+| DIS-1 reachable-by-name | `chat-service/tests/test_a_tool_named_in_the_request_is_answerable.py` |
+| DIS-2 no shared synonym between unrelated tools | `scripts/lint_duplicate_synonyms.py --max-ties 0` |
+| DIS-4 legacy is unreachable | `chat-service/tests/test_superseded_tool_does_not_compete_with_its_replacement.py` |
+| DIS-5 catalogue cache is not stale | `scripts/refresh_tool_catalog_cache.py --check` |
+| DIS-7 the plain-speech guard leaves NAMES alone | `chat-service/tests/test_the_plain_speech_guard_does_not_invent_workflow_names.py` |
 
 **Not yet enforced (tracked gaps — candidate work):**
 1. **No cross-service "MCP-tool lint"** that fails a *new* tool for: a bare-`string` arg whose description enumerates a finite set (IN-3), a set-returning tool with no `get_by_id` sibling and no `@small_return` (OUT-1), or a tool-result site bypassing `_tool_result_content` in a service the L3 lint doesn't yet cover. Today these are caught per-tool by hand-written tests, so a tool with no test slips. **Partial coverage landed (K37, 2026-07-24):** `scripts/context-budget-defaults-lint.py` (pre-commit) IS a cross-service lint for one OUT-2 rule — a LIST tool (has `detail`+`limit`) must default `detail=summary` + `limit<=25`. It seeds the 14 current offenders as a FLIP-PENDING `ALLOW` (K37 debt) and blocks NEW violations. The IN-3 / OUT-1 dimensions above are still per-tool-test-only.
 2. **OUT-1/OUT-2 have no repo-wide contract-snapshot harness yet** — the Context Budget Law §6b names it as planned (per-tool return-shape snapshot + `@small_return` honesty check). **First landing (K36, 2026-07-24):** a per-tool *default-reply byte-budget* test now guards `jobs_list` (`test_jobs_list_default_reply_fits_the_context_budget` — asserts the no-arg reply `< result_warn_bytes()` under >1 page of fat rows). It's per-tool, not yet a cross-service harness, so a *new* set-returning tool with no such test still slips; generalizing it (a fixture that runs every registered list tool through the byte budget) is the remaining work. Until then, reference-first + a hand-written budget test is convention on new list tools.
 3. The IN-8 drift-lock exists for the **knowledge** MCP surface; the same discipline for glossary/composition/other domain surfaces is per-service and uneven.
-4. **CAT-4 tool visibility has no lint yet.** Nothing today checks that a `legacy`-tagged tool is actually excluded from `search_catalog`/hot-seed in *both* `tool_discovery.py` (chat-service) and `find-tools.ts` (ai-gateway) — they must stay in lockstep or one surface leaks a legacy tool the other correctly hides. Tracked as BUILD work in `docs/specs/2026-07-06-tool-catalog-simplification.md`.
-5. **`invoke_tool`'s `arguments` field is a deliberate, protocol-necessitated IN-3/IN-4 deviation.** `services/mcp-public-gateway/src/scope/invoke-tool.ts` — the public MCP edge's execution facade takes a generic `{name: string, arguments: object}` shape (no closed-set enum on `name`, no per-target schema on `arguments`) because it exists PRECISELY to call a tool the client's cached `tools/list` never described (a standard MCP client fetches `tools/list` once at connect and never re-polls — see `docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md`'s 2026-07-07 amendment). A closed-set `name` enum would have to be the full ~150+ tool catalogue (defeating the lazy-loading token savings this facade exists for); a per-target `arguments` schema is structurally impossible for a single generic tool definition. The real IN-3/IN-4 discipline is enforced one layer up instead: `find_tools`' result text carries the target's full description + schema in prose, and the target's OWN schema is still validated server-side once `invoke_tool` unwraps the call into a normal `tools/call` (every existing per-tool IN-3/IN-4 gate still runs against the real target name/args, unchanged). Accepted, not a candidate for closing — the deviation is the fix, not a gap to lint away.
+4. **CAT-4 tool visibility — PARTLY CLOSED 2026-08-25, and the remainder is narrower than it was.** The chat-service turn catalogue now drops EVERY `legacy` tool unconditionally (DIS-4), measured 315 → 198, pinned by `test_superseded_tool_does_not_compete_with_its_replacement.py`. What is still owed is the *lockstep*: nothing checks that the ai-gateway surface hides exactly the same set, so one surface can still leak what the other correctly hides. `find-tools.ts` is no longer the place to check it — that tool is retired (DIS-3); the check belongs against the advertised catalogue itself.
+5. **`invoke_tool`'s `arguments` field is a deliberate, protocol-necessitated IN-3/IN-4 deviation.** `services/mcp-public-gateway/src/scope/invoke-tool.ts` — the public MCP edge's execution facade takes a generic `{name: string, arguments: object}` shape (no closed-set enum on `name`, no per-target schema on `arguments`) because it exists PRECISELY to call a tool the client's cached `tools/list` never described (a standard MCP client fetches `tools/list` once at connect and never re-polls — see `docs/plans/2026-06-29-public-mcp-lazy-tool-loading.md`'s 2026-07-07 amendment). A closed-set `name` enum would have to be the full ~150+ tool catalogue (defeating the lazy-loading token savings this facade exists for); a per-target `arguments` schema is structurally impossible for a single generic tool definition. The real IN-3/IN-4 discipline is enforced one layer up instead: **`tool_load`'s** result carries the target's full description + schema (and is what ACTIVATES a tool for `invoke_tool` — listing alone does not), and the target's OWN schema is still validated server-side once `invoke_tool` unwraps the call into a normal `tools/call`. *Corrected 2026-08-25: this paragraph used to credit `find_tools` with carrying the schema. That tool is retired (DIS-3), and verifying the replacement before rewriting this text is how the retirement was confirmed not to break the public edge.* (every existing per-tool IN-3/IN-4 gate still runs against the real target name/args, unchanged). Accepted, not a candidate for closing — the deviation is the fix, not a gap to lint away.
 
 ---
 
@@ -161,3 +309,7 @@ A consolidated or superseded tool is **not deleted** — existing callers (older
 - [ ] Merging tools with different confirm/safety behavior? Branch explicitly, test each branch (CAT-2)
 - [ ] Multi-item support is `items[]` (1..N, bounded), with per-item results — no separate singular shape (CAT-3)
 - [ ] Deprecating a tool? Tag `_meta.visibility:"legacy"`, don't delete — verify it's excluded from discovery on **both** federation surfaces (CAT-4)
+- [ ] Reachable by its own NAME, on identifier boundaries (DIS-1)
+- [ ] No synonym shared with an UNRELATED tool — `lint_duplicate_synonyms.py --max-ties 0`; check the replacement is free too (DIS-2)
+- [ ] Retiring? Every surface AND every instruction that names it, and the dispatch refuses by naming the replacement (DIS-3)
+- [ ] Testing surfacing? The prompt must DISCRIMINATE, and the falsifier must be reachable by the scenario (DIS-6)
