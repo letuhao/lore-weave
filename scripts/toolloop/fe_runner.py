@@ -243,7 +243,8 @@ def pending_approval(out) -> dict | None:
 
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
                     thinking=False, effort="off", timeout=TURN_TIMEOUT,
-                    permission_mode="write", approve=None, max_approvals=3):
+                    permission_mode="write", approve=None, max_approvals=3,
+                    enabled_skills=None):
     """One real turn, including the approvals a user would have clicked.
 
     `approve` is the outcome to send when the run suspends on a Tier-A card — `approved_once`,
@@ -259,6 +260,20 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
             # the user picked. Currently identical on this account (behavior={}), which is
             # exactly why it would have gone unnoticed.
             "permission_mode": permission_mode}
+    # 🔴 THE HARNESS COULD NOT PIN A SKILL, AND FIVE TOOLS ARE UNREACHABLE WITHOUT ONE.
+    # INTENT_GATED_SETUP_TOOLS (glossary_adopt_standards, glossary_propose_kinds, glossary_plan,
+    # glossary_propose_batch, glossary_book_sync_apply) are filtered out of the TURN CATALOG
+    # unless the turn carries world-setup intent — signalled by the `glossary_shaping` skill,
+    # which skill_registry injects when `"glossary" in enabled_skills`. The gate is deliberate
+    # and measured (a co-writer once rebuilt a newcomer's ontology on a plain "write chapter 1"
+    # turn), and its own principle is that "guidance and capability move as ONE signal".
+    #
+    # The FE sends enabled_skills on every message; this harness never did, so it could only
+    # ever observe the gated half of that signal. Without it those five tools cannot be measured
+    # at all — not because the product cannot reach them, but because the instrument cannot
+    # construct the state the product requires.
+    if enabled_skills:
+        body["enabled_skills"] = list(enabled_skills)
     if book_id and chapter_id:
         body["editor_context"] = {"book_id": book_id, "chapter_id": chapter_id}
     if book_id:
@@ -383,6 +398,7 @@ async def run_scenario(client, auth, sc, idx, fx):
                               book_id=fx.book_id,
                               chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
                               permission_mode=sc.get("permission_mode", "write"),
+                              enabled_skills=sc.get("enabled_skills"),
                               approve=sc.get("approve"),
                               # 🔴 A HARNESS CONSTANT WAS DECIDING A MEASUREMENT. max_approvals
                               # defaulted to 3 with no way to say otherwise. Measured 2026-08-23 on
