@@ -1,21 +1,21 @@
 {
   "_fixture": {
-    "a_derivative": "01a02fec-43ee-70d8-91cf-bb0d61196290",
-    "b_derivative": "01a02fec-482c-77a2-90ac-257c768a74d4"
+    "a_derivative": "01a030f3-1e8a-7d71-b18c-a863191537e2",
+    "b_derivative": "01a030f3-2269-707b-b697-be678c18fb1f"
   },
   "absent": {
-    "verdict": "SUCCEEDED",
-    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-4890-7801-aa61-56c5766e2694\", \"target_entity_id\": \"35cc7a35-6163-424e-86ea-b5f5913cdf87\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": ",
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"TARGET_NOT_IN_THIS_BOOK — no such entity in the book this derivative belongs to. An override must point at a",
     "asked": "an entity that does not exist"
   },
   "tenancy": {
-    "verdict": "SUCCEEDED",
-    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-4937-756d-b9b8-3d8fe4268e6a\", \"target_entity_id\": \"01a02fec-467d-7e1d-aa9a-d3bf75001a81\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": ",
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"TARGET_NOT_IN_THIS_BOOK — no such entity in the book this derivative belongs to. An override must point at a",
     "asked": "book B's entity offered to book A's derivative"
   },
   "empty": {
-    "verdict": "SUCCEEDED",
-    "detail": "{\"success\": true, \"override\": {\"id\": \"01a02fec-49d1-7f98-88a5-add3bb2d1380\", \"target_entity_id\": \"01a02fec-4253-74e5-8761-df30fde01dcc\", \"overridden_fields\": {}}, \"_meta\": {\"undo_hint\": {\"tool\": \"comp",
+    "verdict": "refused",
+    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"EMPTY_OVERRIDE — overridden_fields is required and must name at least one field, e.g. {\\\"occupation\\\": \\\"car",
     "asked": "overridden_fields present but EMPTY"
   },
   "canonical": {
@@ -24,8 +24,8 @@
     "asked": "the CANONICAL project instead of the derivative"
   },
   "idem_first": {
-    "verdict": "refused",
-    "detail": "MCP composition_entity_override_edit error: Error executing tool composition_entity_override_edit: {\"message\": \"OVERRIDE_EXISTS — an override for this entity already exists; update it instead\"}"
+    "verdict": "SUCCEEDED",
+    "detail": "{\"success\": true, \"override\": {\"id\": \"01a030f3-2467-77c9-95d3-4a00941b3248\", \"target_entity_id\": \"01a030f3-1cce-7322-87f6-8301dffa5c94\", \"overridden_fields\": {\"occupation\": \"cartographer\"}}, \"_meta\": "
   },
   "idem_repeat": {
     "verdict": "refused",
