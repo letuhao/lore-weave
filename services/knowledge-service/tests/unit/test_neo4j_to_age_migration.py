@@ -17,7 +17,10 @@ import pytest
 
 from app.db.migrations.neo4j_to_age import (
     EMBEDDING_PROPS,
+    SHARED_GRAPH,
     LABEL_KEYS,
+    PER_PROJECT_LAYOUT,
+    SERVICE_LAYOUT,
     AmbiguousAdoption,
     CrossProjectEdge,
     DanglingEndpoint,
@@ -186,7 +189,7 @@ def test_a_CROSS_PROJECT_edge_raises_because_AGE_cannot_express_it():
             ],
             [("ABOUT", "Fact", {"id": "f1", "project_id": "p1"},
               "Entity", {"id": "e1", "project_id": "p2"}, {})],
-        )
+         PER_PROJECT_LAYOUT)
 
 
 def test_an_edge_between_two_UNSCOPED_nodes_is_NOT_cross_project():
@@ -196,7 +199,7 @@ def test_an_edge_between_two_UNSCOPED_nodes_is_NOT_cross_project():
     plan = plan_migration(
         [("Book", {"book_id": "b1"}), ("Part", {"part_id": "pt1"})],
         [("HAS_CHILD", "Book", {"book_id": "b1"}, "Part", {"part_id": "pt1"}, {})],
-    )
+     PER_PROJECT_LAYOUT)
     assert plan.total_rels == 1
     assert plan.graphs[None].rels == 1
 
@@ -220,7 +223,7 @@ def test_the_plan_reproduces_the_per_project_census_shape():
         ],
         [("RELATES_TO", "Entity", {"id": "e1", "project_id": "p1"},
           "Entity", {"id": "e2", "project_id": "p1"}, {})],
-    )
+     PER_PROJECT_LAYOUT)
     assert plan.total_nodes == 4
     assert plan.total_rels == 1
     assert set(plan.graphs) == {"p1", "p2", None}
@@ -296,7 +299,7 @@ def test_an_unscoped_node_cited_by_ONE_project_is_adopted_into_that_project_grap
         ],
         [("EVIDENCED_BY", "Entity", {"id": "e1", "project_id": "p1"},
           "ExtractionSource", {"id": "s1"}, {})],
-    )
+     PER_PROJECT_LAYOUT)
     assert set(plan.graphs) == {"p1"}, "the source did not follow the entity that cites it"
     assert plan.graphs["p1"].labels == {"Entity": 1, "ExtractionSource": 1}
     assert plan.graphs["p1"].rel_types == {"EVIDENCED_BY": 1}
@@ -305,7 +308,7 @@ def test_an_unscoped_node_cited_by_ONE_project_is_adopted_into_that_project_grap
 def test_an_unscoped_ORPHAN_stays_in_the_shared_graph():
     """The other half, and iso has four of them: cited by nothing, so there is no referrer to
     inherit from and inventing one would be a guess."""
-    plan = plan_migration([("ExtractionSource", {"id": "orphan"})], [])
+    plan = plan_migration([("ExtractionSource", {"id": "orphan"})], [], PER_PROJECT_LAYOUT)
     assert set(plan.graphs) == {None}
 
 
@@ -326,7 +329,7 @@ def test_an_unscoped_node_cited_by_TWO_projects_is_REFUSED():
                 ("EVIDENCED_BY", "Entity", {"id": "e2", "project_id": "p2"},
                  "ExtractionSource", {"id": "s1"}, {}),
             ],
-        )
+         PER_PROJECT_LAYOUT)
 
 
 def test_adoption_does_NOT_move_a_node_that_already_has_a_project():
@@ -340,6 +343,115 @@ def test_adoption_does_NOT_move_a_node_that_already_has_a_project():
         ],
         [("EVIDENCED_BY", "Entity", {"id": "e1", "project_id": "p1"},
           "ExtractionSource", {"id": "s1", "project_id": "p1"}, {})],
-    )
+     PER_PROJECT_LAYOUT)
     assert set(plan.graphs) == {"p1"}
     assert plan.graphs["p1"].nodes == 2
+
+
+# ── T54f: the DEFAULT layout is the graph the SERVICE reads ──────────────────────────────────
+
+
+def test_the_DEFAULT_layout_puts_everything_in_ONE_graph():
+    """The first cut defaulted to per-project and would have landed the data where the service
+    cannot see it — the same empty store T54d found, produced by the fix for it."""
+    plan = plan_migration(
+        [
+            ("Entity", {"id": "e1", "project_id": "p1"}),
+            ("Entity", {"id": "e2", "project_id": "p2"}),
+            ("Chapter", {"chapter_id": "c1"}),
+        ],
+        [],
+    )
+    assert set(plan.graphs) == {None}, "the default must be ONE graph, as Neo4j is one database"
+    assert plan.graphs[None].nodes == 3
+
+
+def test_the_SERVICE_layout_cannot_produce_a_cross_graph_edge_at_all():
+    """The same pair that RAISES under per-project is fine under the default, because there is
+    only one graph for it to cross out of. The refusal is not weakened — it is unreachable in a
+    layout that has no boundaries, and still reachable in the one that does."""
+    args = (
+        [
+            ("Fact", {"id": "f1", "project_id": "p1"}),
+            ("Entity", {"id": "e1", "project_id": "p2"}),
+        ],
+        [("ABOUT", "Fact", {"id": "f1", "project_id": "p1"},
+          "Entity", {"id": "e1", "project_id": "p2"}, {})],
+    )
+    assert plan_migration(*args, SERVICE_LAYOUT).total_rels == 1
+    with pytest.raises(CrossProjectEdge):
+        plan_migration(*args, PER_PROJECT_LAYOUT)
+
+
+def test_an_unknown_layout_is_REFUSED_rather_than_defaulted():
+    with pytest.raises(ValueError, match="is not one of"):
+        plan_migration([("Entity", {"id": "e1", "project_id": "p1"})], [], "whatever")
+
+
+def test_the_DEFAULT_targets_the_SAME_graph_the_service_opens___DERIVED():
+    """The check that would have caught T54f, and it reads the service's wiring rather than
+    restating it.
+
+    `db/neo4j.py` opens the repo-layer AGE session with **no project argument**, and
+    `graph_store_provider` builds `AgeGraphStore(pool, graph_name_for(None))`. Both therefore
+    resolve to `graph_name_for(None)` — `g_shared`. If either ever starts passing a project,
+    this test goes red on the migration rather than the migration silently writing somewhere
+    the service no longer reads.
+    """
+    import ast as _ast
+
+    from app.db.age_bootstrap import graph_name_for
+
+    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "neo4j.py").read_text(
+        encoding="utf-8"
+    )
+    calls = [
+        n for n in _ast.walk(_ast.parse(src))
+        if isinstance(n, _ast.Call) and isinstance(n.func, _ast.Name)
+        and n.func.id == "age_repo_session"
+    ]
+    assert calls, "db/neo4j.py no longer opens an AGE repo session — re-derive this test"
+    for call in calls:
+        assert len(call.args) <= 1 and not call.keywords, (
+            "db/neo4j.py now passes a project to age_repo_session, so the repo layer reads "
+            "PER-PROJECT graphs. The migration's default layout must move with it."
+        )
+
+    provider = (
+        pathlib.Path(__file__).resolve().parents[2] / "app" / "adapters"
+        / "graph_store_provider.py"
+    ).read_text(encoding="utf-8")
+    assert "graph_name_for(None)" in provider, (
+        "the GraphStore provider no longer builds on the shared graph — the migration's "
+        "default layout must move with it"
+    )
+
+    plan = plan_migration([("Entity", {"id": "e1", "project_id": "p1"})], [])
+    assert set(plan.graphs) == {None}
+    assert graph_name_for(None) == SHARED_GRAPH
+
+
+@pytest.mark.parametrize("layout", [SERVICE_LAYOUT, PER_PROJECT_LAYOUT])
+def test_the_endpoint_refusals_fire_in_BOTH_layouts(layout):
+    """Parameterised because a first cut lost them in one of the two.
+
+    `resolve_graph_keys` returned early for `SERVICE_LAYOUT` — one graph, nothing to group —
+    and the unkeyed-label and dangling-endpoint checks sat below that return. The DEFAULT
+    layout, the one every real run uses, silently stopped making them; the suite stayed green
+    because both refusals were only ever exercised through the other layout. Whether an
+    endpoint EXISTS is not a property of the graph boundary.
+    """
+    with pytest.raises(DanglingEndpoint):
+        plan_migration(
+            [("Fact", {"id": "f1", "project_id": "p1"})],
+            [("ABOUT", "Fact", {"id": "f1", "project_id": "p1"},
+              "Entity", {"id": "gone", "project_id": "p1"}, {})],
+            layout,
+        )
+    with pytest.raises(UnkeyedLabel):
+        plan_migration(
+            [("Fact", {"id": "f1", "project_id": "p1"})],
+            [("ABOUT", "Fact", {"id": "f1", "project_id": "p1"},
+              "Sprocket", {"id": "s1", "project_id": "p1"}, {})],
+            layout,
+        )

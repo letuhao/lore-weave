@@ -71,6 +71,9 @@ __all__ = [
     "to_age_millis",
     "translate_props",
     "plan_migration",
+    "SERVICE_LAYOUT",
+    "PER_PROJECT_LAYOUT",
+    "LAYOUTS",
     "render_report",
 ]
 
@@ -113,6 +116,27 @@ EMBEDDING_PROPS: frozenset[str] = frozenset({"embedding_1024", "summary_embeddin
 #: entirely unscoped on dev (24 nodes, 33 HAS_CHILD edges) and every one of its edges is between
 #: two unscoped nodes, so the whole component lands here intact.
 SHARED_GRAPH = "g_shared"
+
+#: 🔴 **T54f — the first cut of this module wrote to the WRONG GRAPHS, and only reading the
+#: service's own wiring found it.** It built 433 per-project graphs, because the iso AGE store
+#: visibly held 120 populated `p-…` graphs. Those are **T43's shadow harness and the two
+#: benchmarks**, which construct `AgeGraphStore(pool, gname)` per project on purpose. The
+#: SERVICE does not:
+#:
+#:     app/db/neo4j.py:184                    age_repo_session(age_pool())        -> g_shared
+#:     adapters/graph_store_provider.py:98    AgeGraphStore(pool, graph_name_for(None)) -> g_shared
+#:
+#: Both halves read `g_shared`, and the provider says why in as many words: Neo4j holds every
+#: project in one database and scopes by property, so `g_shared` reproduces that exactly, and
+#: adopting per-project graphs there *"would smuggle an isolation-model change into an engine
+#: swap"*. A migration into per-project graphs therefore lands where the service cannot see it
+#: — the SAME empty-store outcome T54d found, produced by the fix for it.
+#:
+#: So the default is the layout the service reads, and `per_project` stays available for the
+#: harness that genuinely uses it.
+SERVICE_LAYOUT = "service"
+PER_PROJECT_LAYOUT = "per_project"
+LAYOUTS = (SERVICE_LAYOUT, PER_PROJECT_LAYOUT)
 
 
 class UnmappableProperty(TypeError):
@@ -285,7 +309,7 @@ def node_index(nodes) -> dict:
     return index
 
 
-def resolve_graph_keys(nodes, rels) -> dict:
+def resolve_graph_keys(nodes, rels, layout: str = SERVICE_LAYOUT) -> dict:
     """Which graph each node goes to — `project_id` when it has one, else its referrer's.
 
     ⚠️ **The adoption rule came from the real data refusing the simple one.** dev has zero
@@ -301,27 +325,44 @@ def resolve_graph_keys(nodes, rels) -> dict:
     the referrer can. The four orphans — cited by nothing — stay shared, because there is no
     referrer to inherit from and inventing one would be a guess.
     """
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout={layout!r} is not one of {LAYOUTS}")
     index = node_index(nodes)
-    own: dict = {}
-    for key, props in index.items():
-        own[key] = graph_key_for(props.get("project_id"))
 
-    referrers: dict = {}
+    # ⚠️ Endpoint validation runs in BOTH layouts and the split above it is why. A first cut
+    # returned early for `SERVICE_LAYOUT` — one graph, nothing to group — and took the unkeyed
+    # -label and dangling-endpoint refusals with it, so the DEFAULT layout silently lost two
+    # checks the tests only exercised through the other one. What is layout-specific is the
+    # graph BOUNDARY: adoption and cross-graph edges. Whether an endpoint exists is not.
     for rel_type, start_label, start_props, end_label, end_props, _ in rels:
-        for side_label, side_props in ((start_label, start_props), (end_label, end_props)):
+        for side_label in (start_label, end_label):
             if side_label not in LABEL_KEYS:
                 raise UnkeyedLabel(
                     f"relationship {rel_type!r} touches unkeyed label {side_label!r}"
                 )
-        start_key = (start_label, start_props.get(LABEL_KEYS[start_label]))
-        end_key = (end_label, end_props.get(LABEL_KEYS[end_label]))
-        for side in (start_key, end_key):
+        for side_label, side_props in ((start_label, start_props), (end_label, end_props)):
+            side = (side_label, side_props.get(LABEL_KEYS[side_label]))
             if side not in index:
                 raise DanglingEndpoint(
                     f"{rel_type} points at {side[0]} {side[1]!r}, which is not among the "
                     f"migrated nodes — the edge would be written against a node that does "
                     f"not exist, or MERGE would conjure an empty one"
                 )
+
+    if layout == SERVICE_LAYOUT:
+        # One graph, exactly as Neo4j holds one database: nothing to adopt, and no boundary
+        # for an edge to cross. The two refusals below stay reachable under `per_project`,
+        # which is the layout that can violate them.
+        return {key: None for key in index}
+
+    own: dict = {}
+    for key, props in index.items():
+        own[key] = graph_key_for(props.get("project_id"))
+
+    referrers: dict = {}
+    for rel_type, start_label, start_props, end_label, end_props, _ in rels:
+        start_key = (start_label, start_props.get(LABEL_KEYS[start_label]))
+        end_key = (end_label, end_props.get(LABEL_KEYS[end_label]))
         for scoped, unscoped in ((start_key, end_key), (end_key, start_key)):
             if own.get(scoped) is not None and own.get(unscoped) is None:
                 referrers.setdefault(unscoped, set()).add(own[scoped])
@@ -337,7 +378,7 @@ def resolve_graph_keys(nodes, rels) -> dict:
     return resolved
 
 
-def plan_migration(nodes, rels) -> MigrationPlan:
+def plan_migration(nodes, rels, layout: str = SERVICE_LAYOUT) -> MigrationPlan:
     """Group the source graph into per-project graphs, refusing what AGE cannot hold.
 
     `nodes` is an iterable of `(label, props)`; `rels` of
@@ -346,7 +387,7 @@ def plan_migration(nodes, rels) -> MigrationPlan:
     derived from (rule 3).
     """
     plan = MigrationPlan()
-    resolved = resolve_graph_keys(nodes, rels)
+    resolved = resolve_graph_keys(nodes, rels, layout)
     for label, props in nodes:
         translate_props(props, plan.policy)
         key = resolved[(label, props.get(LABEL_KEYS[label]))]
@@ -503,7 +544,9 @@ async def collect_source(neo4j_session) -> tuple[list, list]:
     return nodes, rels
 
 
-async def migrate(neo4j_session, age_pool, *, apply: bool = False) -> MigrationPlan:
+async def migrate(
+    neo4j_session, age_pool, *, apply: bool = False, layout: str = SERVICE_LAYOUT,
+) -> MigrationPlan:
     """Plan the migration and, with `apply=True`, perform it.
 
     The plan is computed FIRST and in full. Every refusal — an unkeyed label, a cross-project
@@ -513,7 +556,7 @@ async def migrate(neo4j_session, age_pool, *, apply: bool = False) -> MigrationP
     close.
     """
     nodes, rels = await collect_source(neo4j_session)
-    plan = plan_migration(nodes, rels)
+    plan = plan_migration(nodes, rels, layout)
     if not apply:
         return plan
 
@@ -530,7 +573,7 @@ async def migrate(neo4j_session, age_pool, *, apply: bool = False) -> MigrationP
     # The SAME resolution the plan used — grouping by raw `project_id` here would put an
     # adopted node in `g_shared` while the plan counted it in the referrer's graph, and
     # `verify` would then report MISSING for a row that was written to the wrong place.
-    resolved = resolve_graph_keys(nodes, rels)
+    resolved = resolve_graph_keys(nodes, rels, layout)
     nodes_by_project: dict = {}
     for label, props in nodes:
         key = resolved[(label, props.get(LABEL_KEYS[label]))]

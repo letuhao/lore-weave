@@ -23367,7 +23367,108 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ---
   ---
   ---
+  ### 🔻 T54f 2026-08-24 — **T54e's migration wrote to graphs the service does not read, and every one of its tests was green**
+
+  ```
+  the migration wrote     433 per-project graphs (g_<project>)
+  the service reads       g_shared, BOTH halves:
+      app/db/neo4j.py:184                  age_repo_session(age_pool())          <- no project
+      adapters/graph_store_provider.py:98  AgeGraphStore(pool, graph_name_for(None))
+  so a migrated dev would have looked EXACTLY like the store T54d found empty
+  ```
+
+  🔴 **This is a defect in the commit immediately above, and continuing to work is what found
+  it — not a test.** T54e was measured, bitten four times, proven on real data and pushed. The
+  next row began by reading `graph_store_provider` for an unrelated reason, and the provider's
+  own docstring says the thing that condemns the migration: the shared graph is *"not a
+  compromise — it is the CURRENT topology"*, because Neo4j holds every project in one database
+  and scoping by property reproduces that exactly; adopting per-project graphs there *"would
+  smuggle an isolation-model change into an engine swap"*.
+
+  📐 **Where the wrong idea came from, precisely.** iso's AGE store visibly holds **120
+  populated `p-…` graphs**, and T54e read that as the service's topology. It is **T43's shadow
+  harness and the two backend benchmarks**, which construct `AgeGraphStore(pool, gname)` per
+  project deliberately. Derived rather than recalled — the only production module in the tree
+  that passes a project to `age_repo_session` was, until this row, `neo4j_to_age.py` itself:
+
+  ```
+  app/db/migrations/neo4j_to_age.py:544   age_repo_session(age_pool, project_key)   <- the bug
+  app/db/neo4j.py:184                     age_repo_session(age_pool())              <- everything else
+  ```
+
+  ⚖️ **The cure is a LAYOUT parameter whose default is derived from the service, not chosen.**
+  `SERVICE_LAYOUT` (one graph, as Neo4j is one database) is the default; `PER_PROJECT_LAYOUT`
+  stays for the harness that genuinely uses it — deleting it would make the cross-graph and
+  adoption refusals dead code guarded by nothing, and those refusals are correct for the
+  topology that has boundaries.
+
+  🔬 **THE TEST THAT WOULD HAVE CAUGHT IT ASKS FROM THE OTHER END.** Every T54e assertion named
+  a graph, so all of them counted the graphs the migration had just written — green by
+  construction, in the most literal sense. The new one opens the session **the service** opens,
+  with no project argument, and asks whether the data is there:
+
+  ```
+  BITE G (LIVE)  migrate(..., layout=PER_PROJECT_LAYOUT) as the default
+    AssertionError: the service's own session sees 0 entities — the migration wrote
+                    somewhere it does not read
+  ```
+
+  It is joined by a DERIVED unit test that reads `db/neo4j.py`'s AST: if that call ever starts
+  passing a project, the migration's default must move with it, and the test says so rather
+  than the migration silently writing somewhere unread.
+
+  🧪 **A second defect, found by the first fix and bitten separately.** The layout branch was
+  first written as an early return — one graph, nothing to group — which took the
+  **unkeyed-label and dangling-endpoint refusals** with it, because they sat below it. The
+  DEFAULT layout, the one every real run uses, silently stopped making them, and the suite
+  stayed green because both were only ever exercised through the *other* layout.
+
+  ```
+  BITE F  reinstate the early return at line 337
+    FAILED test_the_endpoint_refusals_fire_in_BOTH_layouts[service]      <- the new test
+           test_the_endpoint_refusals_fire_in_BOTH_layouts[per_project]  PASSES
+  ```
+
+  The parametrised pair is the point: one arm red and one green is what proves the check is
+  about the endpoint and not about the boundary.
+
+  ⚠️ **And the live tests were assuming they owned the source graph.** Run alone: 9/9. Run with
+  the rest of `tests/integration/db`, which shares the throwaway Neo4j: **981 entities and 343
+  RELATES_TO** that other tests had left there, all of which `migrate()` correctly picks up
+  because reading the whole graph is its job. Every assertion now scopes to the fixture's own
+  rows. A migration test that assumes an empty source is testing a machine that does not exist.
+
+  **QC (a) gates:** `graph-port-gate` PASS (315 scanned, exemption + selftest from T54e intact),
+  `port-adoption-gate` PASS at ceiling on every reading, four plan gates green.
+  **QC (b) live smoke:** `knowledge-service` unit **4433 passed**; DB integration **713 passed,
+  312 skipped** — the whole directory, not the file alone, which is the run that found the
+  contamination above. Two throwaway engines (rule 6), Neo4j 2026.03 + `loreweave/postgres-knowledge:18`.
+  **QC (c) real data:** iso's real extraction output re-migrated under the corrected default,
+  then read back through **the service's own session factory** — `age_repo_session(pool)` with
+  no project, exactly as `db/neo4j.py:184` opens it:
+
+  ```
+  == DRY RUN ==  graphs 1 · nodes 1475 · relationships 252
+                 temporals -> epoch millis 3569 · embeddings DROPPED 718
+  == APPLIED 7.6s ==   verify: CLEAN
+  == RE-RUN  9.5s ==   verify: CLEAN
+
+  service session sees Entity             603
+  service session sees Event              110
+  service session sees Passage            673
+  service session sees Fact               56
+  service session sees ExtractionSource   27
+  service session sees relationships      252
+  ```
+
+  Those six numbers are iso Neo4j's census exactly. Under T54e's default the same probe
+  returned **zero**.
+
+  ---
   ### ✅ T54e 2026-08-24 — **the Neo4j → AGE migration: §13 decided as option 2, and the REAL data refuted the design twice**
+  ⚠️ **Its GRAPH LAYOUT was wrong and T54f above corrects it** — the property policy, the
+  merge keys and the refusals below all stand; the destination did not.
+
 
   ```
   NEW  app/db/migrations/neo4j_to_age.py                    planner + property policy + apply

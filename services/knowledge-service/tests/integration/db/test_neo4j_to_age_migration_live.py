@@ -28,7 +28,12 @@ import pytest_asyncio
 
 from app.db.age_bootstrap import create_age_pool, graph_name_for
 from app.db.age_session import age_repo_session
-from app.db.migrations.neo4j_to_age import migrate, verify
+from app.db.migrations.neo4j_to_age import (
+    PER_PROJECT_LAYOUT,
+    SHARED_GRAPH,
+    migrate,
+    verify,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -66,33 +71,6 @@ async def age_pool():
                     f"SELECT ag_catalog.drop_graph('{row['name']}', true)"
                 )
         yield pool
-    finally:
-        await pool.close()
-
-
-async def _cleanup_age(p1, p2, book, part):
-    """Drop the two project graphs and this run's rows out of the shared one."""
-    dsn = os.environ.get("TEST_AGE_DSN")
-    if not dsn:
-        return
-    pool = await create_age_pool(dsn, min_size=1, max_size=2)
-    try:
-        async with pool.acquire() as conn:
-            for project in (p1, p2):
-                name = graph_name_for(project)
-                if await conn.fetchval(
-                    "SELECT count(*) FROM ag_catalog.ag_graph WHERE name = $1", name
-                ):
-                    await conn.execute(
-                        f"SELECT ag_catalog.drop_graph('{name}', true)"
-                    )
-        if await _graph_exists(pool, None):
-            async with age_repo_session(pool, None) as session:
-                await session.run(
-                    "MATCH (n) WHERE n.book_id = $b OR n.part_id = $p DETACH DELETE n "
-                    "RETURN 1 AS ok",
-                    b=book, p=part,
-                )
     finally:
         await pool.close()
 
@@ -167,11 +145,18 @@ async def seeded(neo4j_driver):
                 "DETACH DELETE n",
                 p1=p1, p2=p2, book=book,
             )
-        # AGE too. The first live run failed here and the failure was worth having: the
-        # fixture cleaned only the SOURCE, so six runs left six Books in `g_shared` and
-        # `verify` reported `g_shared/Book: 6 != 1` — which reads exactly like a migration
-        # defect. A test that writes to two stores has to clean both.
-        await _cleanup_age(p1, p2, book, part)
+        # AGE needs no cleanup here: `age_pool` DROPs every graph before each test, which is
+        # the empty-destination precondition `verify` compares against. The first live run had
+        # neither, and six accumulated Books read as `g_shared/Book: 6 != 1` — a migration
+        # defect that was not one.
+
+
+#: ⚠️ **Every assertion below scopes to the fixture's OWN rows, and the full-suite run is why.**
+#: `migrate()` reads the ENTIRE source graph — that is its job — and the throwaway Neo4j is
+#: shared with the rest of `tests/integration/db`, which had left **981 entities and 343
+#: RELATES_TO** in it. Run alone the file was 9/9; run with its neighbours the totals were
+#: someone else's. A migration test that assumes it owns the source is testing an empty
+#: machine, and production is never one.
 
 
 async def _one(pool, project_key, cypher, column="n"):
@@ -189,10 +174,17 @@ async def test_the_migration_lands_WHOLE_and_verify_agrees(neo4j_driver, age_poo
     assert problems == [], f"the migrated graph does not match the plan: {problems}"
     assert plan.total_nodes >= 6 and plan.total_rels >= 2
 
-    assert await _one(age_pool, seeded["p1"], "MATCH (n:Entity) RETURN count(n) AS n") == 2
-    assert await _one(age_pool, seeded["p2"], "MATCH (n:Entity) RETURN count(n) AS n") == 1
     assert await _one(
-        age_pool, seeded["p1"], "MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS n"
+        age_pool, None,
+        f"MATCH (n:Entity) WHERE n.project_id IN ['{seeded['p1']}', '{seeded['p2']}'] RETURN count(n) AS n",
+    ) == 3, (
+        "all three entities land in ONE graph — the default layout is the topology "
+        "the SERVICE reads, and Neo4j holds every project in one database too"
+    )
+    assert await _one(
+        age_pool, None,
+        f"MATCH ()-[r:RELATES_TO]->() WHERE r.user_id = 'u1' AND "
+        f"r.subject_id = '{seeded['p1']}-e1' RETURN count(r) AS n",
     ) == 2
 
 
@@ -209,15 +201,15 @@ async def test_created_at_arrives_as_an_INTEGER_the_way_AGE_writes_it(
     async with neo4j_driver.session() as session:
         await migrate(session, age_pool, apply=True)
     value = await _one(
-        age_pool, seeded["p1"],
-        "MATCH (n:Entity {name: 'Kai'}) RETURN n.created_at AS n",
+        age_pool, None,
+        f"MATCH (n:Entity) WHERE n.id = '{seeded['p1']}-e1' RETURN n.created_at AS n",
     )
     assert isinstance(value, int), f"created_at came back as {type(value).__name__}: {value!r}"
     assert value > 1_700_000_000_000, "epoch MILLIS, not seconds — a 1000x error still sorts"
 
     in_world = await _one(
-        age_pool, seeded["p1"],
-        "MATCH (n:Event) RETURN n.event_date_iso AS n",
+        age_pool, None,
+        f"MATCH (n:Event) WHERE n.id = '{seeded['p1']}-v1' RETURN n.event_date_iso AS n",
     )
     assert in_world == "1247-03-02", (
         "the in-world date is a STRING by design; converting it would rewrite a bi-temporal "
@@ -233,11 +225,13 @@ async def test_the_embedding_is_ABSENT_and_the_alias_list_SURVIVED(
     async with neo4j_driver.session() as session:
         await migrate(session, age_pool, apply=True)
     assert await _one(
-        age_pool, seeded["p1"],
-        "MATCH (n:Entity {name: 'Kai'}) RETURN n.embedding_1024 IS NULL AS n",
+        age_pool, None,
+        f"MATCH (n:Entity) WHERE n.id = '{seeded['p1']}-e1' "
+        f"RETURN n.embedding_1024 IS NULL AS n",
     ) is True
     assert await _one(
-        age_pool, seeded["p1"], "MATCH (n:Entity {name: 'Kai'}) RETURN n.aliases AS n"
+        age_pool, None,
+        f"MATCH (n:Entity) WHERE n.id = '{seeded['p1']}-e1' RETURN n.aliases AS n"
     ) == ["Kai", "K"]
 
 
@@ -250,14 +244,22 @@ async def test_running_it_TWICE_does_not_duplicate_a_single_row(
     not know rather than falling back."""
     async with neo4j_driver.session() as session:
         await migrate(session, age_pool, apply=True)
-        first = await _one(age_pool, seeded["p1"], "MATCH (n) RETURN count(n) AS n")
+        first = await _one(
+            age_pool, None,
+            f"MATCH (n) WHERE n.project_id = '{seeded['p1']}' RETURN count(n) AS n",
+        )
         plan = await migrate(session, age_pool, apply=True)
-        second = await _one(age_pool, seeded["p1"], "MATCH (n) RETURN count(n) AS n")
+        second = await _one(
+            age_pool, None,
+            f"MATCH (n) WHERE n.project_id = '{seeded['p1']}' RETURN count(n) AS n",
+        )
         problems = await verify(session, age_pool, plan)
     assert second == first, f"a re-run changed the node count {first} -> {second}"
     assert problems == []
     assert await _one(
-        age_pool, seeded["p1"], "MATCH ()-[r:RELATES_TO]->() RETURN count(r) AS n"
+        age_pool, None,
+        f"MATCH ()-[r:RELATES_TO]->() WHERE r.subject_id = '{seeded['p1']}-e1' "
+        f"RETURN count(r) AS n",
     ) == 2, "the relationship MERGE is not idempotent"
 
 
@@ -289,13 +291,13 @@ async def test_a_DRY_RUN_writes_nothing(neo4j_driver, age_pool, seeded):
         )
         try:
             plan = await migrate(session, age_pool, apply=False)
-            assert probe in plan.graphs, "the dry run did not even PLAN the row"
+            assert None in plan.graphs, "the dry run did not even PLAN the row"
             # Absence of the GRAPH, not a zero row count. The first version asked AGE to
             # count inside a graph that had never been created and got
             # `InvalidSchemaNameError` — the right answer arriving as an error. Asserting
             # the catalog says it plainly, and it is the stronger claim: a dry run that
             # created an empty graph would still have written DDL.
-            assert not await _graph_exists(age_pool, probe), (
+            assert not await _graph_exists(age_pool, None), (
                 "a dry run created the destination graph"
             )
         finally:
@@ -317,11 +319,71 @@ async def test_TWO_relationships_between_the_SAME_pair_both_survive(
     async with neo4j_driver.session() as session:
         await migrate(session, age_pool, apply=True)
     predicates = []
-    async with age_repo_session(age_pool, seeded["p1"]) as session:
+    async with age_repo_session(age_pool, None) as session:
         result = await session.run(
-            "MATCH ()-[r:RELATES_TO]->() RETURN r.predicate AS n ORDER BY r.predicate"
+            f"MATCH ()-[r:RELATES_TO]->() WHERE r.subject_id = '{seeded['p1']}-e1' "
+            f"RETURN r.predicate AS n ORDER BY r.predicate"
         )
         predicates = [row["n"] for row in await result.data()]
     assert predicates == ["knows", "rivals"], (
         f"both edges must survive with their own properties; got {predicates}"
     )
+
+
+async def test_the_migrated_graph_is_readable_through_the_SERVICE_SESSION(
+    neo4j_driver, age_pool, seeded
+):
+    """🔴 The check that would have caught T54f, and none of the tests above can.
+
+    Every assertion in this file names a graph. The migration's first cut named 433 of them —
+    one per project, because iso's AGE store visibly held 120 populated `p-…` graphs — and
+    those graphs belong to **T43's shadow harness**, not to the service. The service opens
+    exactly one:
+
+        app/db/neo4j.py:184                  age_repo_session(age_pool())          -> g_shared
+        adapters/graph_store_provider.py:98  AgeGraphStore(pool, graph_name_for(None))
+
+    So a migration into per-project graphs lands where the service cannot see it — the same
+    empty store T54d found, produced by the fix for it, and every count above would still have
+    been green because they were counting the graphs the migration had just written.
+
+    This test asks the question from the other end: open the session the SERVICE would open,
+    with no project argument at all, and see whether the data is there.
+    """
+    async with neo4j_driver.session() as session:
+        await migrate(session, age_pool, apply=True)
+    async with age_repo_session(age_pool) as service_session:   # no project — as db/neo4j.py
+        result = await service_session.run(
+            f"MATCH (n:Entity) WHERE n.project_id IN "
+            f"['{seeded['p1']}', '{seeded['p2']}'] RETURN count(n) AS n"
+        )
+        rows = await result.data()
+    assert rows and rows[0]["n"] == 3, (
+        "the service's own session sees {} entities — the migration wrote somewhere it does "
+        "not read".format(rows[0]["n"] if rows else 0)
+    )
+
+
+async def test_the_PER_PROJECT_layout_is_still_available_for_the_HARNESS(
+    neo4j_driver, age_pool, seeded
+):
+    """The control on the default, and the reason the other layout was not simply deleted.
+
+    T43's shadow harness and both backend benchmarks construct `AgeGraphStore(pool, gname)` per
+    project deliberately — that topology is real, it is just not the service's. Keeping it
+    opt-in means the refusals it needs (cross-graph edges, adoption) stay reachable and tested
+    rather than becoming dead code guarded by nothing.
+    """
+    async with neo4j_driver.session() as session:
+        plan = await migrate(session, age_pool, apply=True, layout=PER_PROJECT_LAYOUT)
+        problems = await verify(session, age_pool, plan)
+    assert problems == []
+    assert seeded["p1"] in plan.graphs and seeded["p2"] in plan.graphs
+    assert await _one(age_pool, seeded["p1"], "MATCH (n:Entity) RETURN count(n) AS n") == 2
+    assert await _one(age_pool, seeded["p2"], "MATCH (n:Entity) RETURN count(n) AS n") == 1
+    assert await _one(
+        age_pool, None,
+        f"MATCH (n:Entity) WHERE n.project_id IN "
+        f"['{seeded['p1']}', '{seeded['p2']}'] RETURN count(n) AS n",
+    ) == 0, "under the harness layout nothing scoped belongs in the shared graph"
+    assert graph_name_for(None) == SHARED_GRAPH

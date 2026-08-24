@@ -1755,7 +1755,18 @@ lost from Neo4j, but they would be unreadable by a service pointed at AGE.
    sources. It also re-spends the LLM budget that produced 1 186 events.
 
 `app/db/migrations/neo4j_to_age.py`, dry-run by default in the house style of
-`recanon_honorifics`. Two rules carry it, both forced by measurement rather than design taste:
+`recanon_honorifics`.
+
+🔴 **Its first cut wrote to the wrong graphs (T54f, same day).** It built 433 per-project AGE
+graphs; the service reads **one** — `db/neo4j.py:184` opens `age_repo_session(age_pool())` with
+no project and `graph_store_provider.py:98` builds `AgeGraphStore(pool, graph_name_for(None))`,
+both `g_shared`. The 120 populated `p-…` graphs on iso that suggested otherwise belong to T43's
+shadow harness. A migration into per-project graphs therefore reproduces the very empty store
+this section exists to fix. The destination is now a `layout` parameter defaulting to the
+service's topology, with `per_project` kept for the harness, and a DERIVED test reads
+`db/neo4j.py`'s AST so the default moves if the service's wiring ever does.
+
+Two rules carry the property translation, both forced by measurement rather than design taste:
 
 * **temporals become epoch millis**, because `cypher_dialect` renders `{NOW}` as `datetime()`
   on Neo4j and `timestamp()` on AGE — one property, two types — and `graph_repos/entities.py:264`
