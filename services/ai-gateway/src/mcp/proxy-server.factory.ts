@@ -40,9 +40,12 @@ import {
 const SERVER_INSTRUCTIONS = [
   'LoreWeave is a multi-agent studio for multilingual novel co-writing, translation, and',
   'knowledge-graph/glossary building. Tools are grouped by domain (book, glossary, knowledge,',
-  'translation, composition, plan, story, jobs, catalog, registry, settings) — call `find_tools`',
-  'with a short description of what you want to do (optionally scoped with `group=<domain>`) to',
-  'discover the right tool by name before acting; a high-impact write returns a `confirm_token`',
+  // RETIRED 2026-08-25 — these instructions told every connecting client to call `find_tools`,
+  // which has been dead since 2026-07-15. Instructions that name a retired tool are how the
+  // retirement fails: the client believes it, calls it, and the platform looks broken.
+  'translation, composition, plan, story, jobs, catalog, registry, settings) — call `tool_list`',
+  'to see every tool in a domain, then `tool_load` to load the exact one you need before acting;',
+  'a high-impact write returns a `confirm_token`',
   'that must be replayed to actually execute it.',
 ].join(' ');
 

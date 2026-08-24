@@ -1678,9 +1678,13 @@ def _advertise_discovery_tools(
     # (ui_*/confirm/propose). find_tools is NOT federated, so it has no catalog
     # entry — source it from FIND_TOOLS_TOOL.
     for name in ALWAYS_ON_CORE_NAMES:
-        if name == FIND_TOOLS_NAME:
-            _add(FIND_TOOLS_TOOL)
-            continue
+        # RETIRED 2026-08-25. This branch has been UNREACHABLE since F17 (2026-07-20) pulled
+        # FIND_TOOLS_NAME out of ALWAYS_ON_CORE_NAMES — the tuple this loop iterates. It read
+        # like a live advertise path and was not one, which is precisely how a half-retired
+        # tool poisons whoever reads the file next. Kept as a comment so nobody re-adds it.
+        #   if name == FIND_TOOLS_NAME:
+        #       _add(FIND_TOOLS_TOOL)
+        #       continue
         # WS-1a — tool_list/tool_load are consumer-local meta-tools (not federated), like
         # find_tools; source their schemas from the module defs.
         if name == TOOL_LIST_NAME:

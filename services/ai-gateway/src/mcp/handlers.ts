@@ -308,8 +308,22 @@ export async function handleCallTool(
   if (name === TOOL_LOAD_NAME) {
     return handleToolLoad(federation, args, headers);
   }
+  // RETIRED 2026-08-25 (owner decision). find_tools is semantic top-K and structurally
+  // cannot surface a tool outside its K matches — the F17 reason it was pulled from the
+  // LLM's view on 2026-07-20. It has not been called since 2026-07-15. The handler and
+  // `handleFindTools` are LEFT IN PLACE deliberately (deleting them loses the rationale
+  // above), but nothing may reach them: a caller gets a refusal that names the replacement
+  // rather than a silent empty result it would mistake for "no such capability".
   if (name === FIND_TOOLS_NAME) {
-    return handleFindTools(federation, args, headers);
+    return {
+      isError: true,
+      content: [{
+        type: 'text' as const,
+        text: 'find_tools is RETIRED. Use tool_list to see every tool in a domain, then '
+          + 'tool_load to load the exact one. It was semantic top-K and could not surface a '
+          + 'tool outside its K matches; the deterministic pair has no such blind spot.',
+      }],
+    };
   }
   // Phase 3 — ui_* are consumer-local directive tools: validate (enum/required) and
   // return a directive the browser acts on; an out-of-enum arg is an isError result

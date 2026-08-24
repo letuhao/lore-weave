@@ -354,7 +354,11 @@ export function isToolAllowed(name: string, scopes: readonly string[]): boolean 
   if (scopes.includes(WILDCARD_SCOPE)) return true;
   // The discovery meta-tools are always-allowed (their results are scope-filtered; a
   // discovered/loaded tool is re-checked here when called) — permitted for every key, any scope.
-  if (name === FIND_TOOLS_NAME || name === TOOL_LIST_NAME || name === TOOL_LOAD_NAME) return true;
+  // RETIRED 2026-08-25 — FIND_TOOLS_NAME removed from this always-allow. It used to mean
+  // every key, at any scope, both saw find_tools in tools/list AND could call it. The
+  // deterministic pair (tool_list + tool_load) is the discovery surface on every other
+  // surface; the public edge was the last place still offering the retired one.
+  if (name === TOOL_LIST_NAME || name === TOOL_LOAD_NAME) return true;
   const pol = TOOL_POLICY[name];
   if (!pol) return false;
   if (!scopes.includes(pol.tier)) return false;

@@ -501,12 +501,17 @@ def drop_superseded_tools(
     for td in catalog:
         name = tool_name(td)
         replacement = tool_superseded_by(td)
+        # 2026-08-25 — WIDENED TO EVERY LEGACY TOOL, on the owner's standing decision that a
+        # legacy tool is a DEAD tool. The old rule dropped one only when its named
+        # replacement happened to be on the same wire, which left 31 legacy tools with no
+        # `superseded_by` advertised forever and 86 more advertised whenever their
+        # replacement missed the turn. Traffic to a dead tool is rot, not a requirement:
+        # find_tools is what that looks like when it is left to run.
+        #   ...and replacement and replacement in present   <- the old, narrower condition
         if (
             name
             and name not in pinned
             and is_legacy_tool(td)
-            and replacement
-            and replacement in present
         ):
             dropped.append(name)
             continue
@@ -520,8 +525,11 @@ def drop_superseded_tools(
         for _n in dropped:
             record_surface_withheld(
                 _n, stage="superseded",
-                reason=(f"superseded by {tool_superseded_by(_by_name[_n])}, which is advertised "
-                        "on this same turn — pin it via pinned_legacy_tools to keep it"),
+                reason=(
+                    f"superseded by {tool_superseded_by(_by_name[_n])}"
+                    if tool_superseded_by(_by_name[_n])
+                    else "marked visibility=legacy with no replacement named"
+                ) + " — legacy tools are not advertised; pin it via pinned_legacy_tools to keep it",
             )
     return kept, dropped
 
