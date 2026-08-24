@@ -7334,9 +7334,32 @@ async def _stream_with_tools(
                 # an instruction the model cannot follow when X is off-surface, and it answers by
                 # narrating the fix and retrying the same failing call. Same decision the dispatch
                 # chokepoint makes for an off-surface tool the model DID call, one step earlier.
-                if not ok and discovery:
+                # 🔴 D-A-DOMAIN-REFUSAL-NAMES-A-TOOL-AND-ARMS-NOTHING — THIS WAS GATED ON
+                # `not ok`, AND THAT MISSED A WHOLE SHAPE OF REFUSAL.
+                # `ok` is the ENVELOPE's status: the CALL succeeded. A tool that dispatches and
+                # reports its refusal in the RESULT BODY — the `{"success": False, "error": "…
+                # call X first"}` form used throughout composition-service — arrives here with
+                # ok=True and armed nothing.
+                #
+                # MEASURED 2026-08-24, batch c-override12, K=5, from
+                # chat_messages.advertised_tools:
+                #     composition_entity_override_edit   advertised 5 of 5
+                #     composition_list_derivatives       advertised 0 of 5  <- named by its refusal
+                # The model was told "Call composition_list_derivatives and pass it THIS SAME
+                # project_id" on every run and could not see the tool on any of them; it reached
+                # for the composition reads it COULD see and every one refused.
+                #
+                # Only an EXPLICIT `success is False` counts. Most reads never set the key at
+                # all, and treating a missing `success` as failure would scan every ordinary
+                # result for tool names.
+                _refusal_text = ""
+                if not ok:
+                    _refusal_text = str(envelope.get("error") or "")
+                elif isinstance(tool_payload, dict) and tool_payload.get("success") is False:
+                    _refusal_text = str(tool_payload.get("error") or "")
+                if _refusal_text and discovery:
                     _recovery = _tools_named_in_refusal(
-                        envelope.get("error") or "", cat_index, active_tool_names,
+                        _refusal_text, cat_index, active_tool_names,
                         exclude=c["name"])
                     if _recovery:
                         _arm_tools(
