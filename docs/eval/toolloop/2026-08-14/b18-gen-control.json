@@ -346,7 +346,8 @@
       "surfaced_count": 5,
       "called_count": 5,
       "wrote_count": 0,
-      "suspended_count": 5
+      "suspended_count": 5,
+      "falsifier_violated_2026_08_24": "🔴 THIS BATCH MUST NOT BE CONCLUDED, AND IT PASSES 8 OF 9 GATE BARS. Read back on 2026-08-24 from loreweave_chat.chat_messages: every composition_generate call in this batch carried model_ref='default' with model_source='platform_model', and every one came back ok=false. The tool was CALLED and REFUSED 5 of 5 — it never minted a card for a usable model_ref, and the suspensions counted here belong to a DIFFERENT tool's card (D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD).\n\nThis scenario's own falsifier says: 'REFUTED IF ... the model INVENTS a model_source/model_ref — both are REQUIRED and neither is ambient'. model_ref='default' is that invention verbatim, and it is the same string D-UNDECLARED-REF filed for this exact argument.\n\nSo 'called 5/5' here counts a REFUSED call. The gate's DATA-falsifier bar reads a RECORDED FIELD rather than recomputing the claim, so a batch can satisfy it on an assertion that the stored tool calls contradict. That is not the gate being wrong — nothing in the batch told it otherwise — but it is why a 8/9 here is not 'one probe away from proven'."
     }
   ]
 }

@@ -649,6 +649,31 @@ def called_names(r) -> set:
     return out
 
 
+def call_records(r) -> list:
+    """Each call as {tool, result_head} — enough to see a REFUSAL in the evidence file.
+
+    The harness already keeps TOOL_CALL_RESULT content (it has to: "a failed write and a
+    successful one are the same event" without it), and the batch writer kept only the tool
+    NAMES. So a batch could show a tool called five times and say nothing about five refusals,
+    which is how a violated falsifier sat one probe away from `proven`.
+
+    The result head is deliberately raw and short: this is for a reader deciding whether a call
+    did anything, not a parser. Args are NOT recorded here — `_args` is cleared by the approval
+    loop, so anything read from it after a resume would be silently partial, and a
+    half-populated argument record is worse than none.
+    """
+    names, out = {}, []
+    for e in (r.get("tool_calls") or []):
+        cid = e.get("toolCallId")
+        n = e.get("toolCallName") or e.get("toolName") or e.get("name")
+        if cid and n:
+            names.setdefault(cid, n)
+    for res in (r.get("results") or []):
+        out.append({"tool": names.get(res.get("id")) or "?",
+                    "result_head": (res.get("content") or "")[:300]})
+    return out
+
+
 def surfaced_names(r) -> set:
     """Every tool advertised in ANY pass of the turn — core, frontend and activated alike."""
     out = set()
@@ -757,6 +782,19 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
                 "called": sc.get("expect_tool") in called_names(r),
                 "surfaced": sc.get("expect_tool") in surfaced_names(r),
                 "called_tools": sorted(called_names(r)),
+                # 🔴 THE SET, NOT JUST THE BIT ABOUT THE TOOL UNDER TEST. `surfaced_names` already
+                # computes every tool advertised in every pass and the writer kept one boolean of
+                # it, so no batch on file could answer "was the tool's SUPPLIER advertised" — the
+                # question every selection finding turns on. composition_generate needs a
+                # model_ref from settings_list_models; whether the model COULD have obtained one
+                # was unanswerable from five batches that all recorded it as "surfaced: true".
+                "surfaced_tools": sorted(surfaced_names(r)),
+                # 🔴 "CALLED" DOES NOT MEAN "WORKED", AND THE BATCH COULD NOT TELL THE DIFFERENCE.
+                # b18-gen-control recorded composition_generate called 5/5 and passed 8 of 9 gate
+                # bars; every one of those calls carried model_ref="default" and came back
+                # ok=false — the exact invention that scenario's own falsifier says REFUTES the
+                # run. The names alone read as success. See call_records().
+                "calls": call_records(r),
                 "error": r.get("error"),
                 # A suspended run has no error, no store change and a perfectly calm reply.
                 # Recording the card is what stops that reading as "the model declined to write".
