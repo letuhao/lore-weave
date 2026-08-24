@@ -1,0 +1,2503 @@
+{
+  "batch": "c-gbuild5",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_glossary_build",
+      "scenario": "composition-glossary-build-with-an-ontology",
+      "intent": "write",
+      "falsifier": "REFUTED IF: entities are created with NO confirm card, OR the op chosen is not `start` on a first request — its enum spans start|approve_plan|status|project_kg|approve_edges|cancel, and `approve_plan` or `approve_edges` would be approving a plan the author has never seen, which is the worst outcome for a tool whose whole design is a human checkpoint between stages — OR the model invents a run_id for a run that has not started. CONTROL: a fresh book has no story text beyond one seeded chapter, so a build with nothing to extract from is itself worth seeing.",
+      "answer_expect": null,
+      "falsifier_sha": "c02072befd177952",
+      "ship_audit": {
+        "gate": "OWED — Tier A, multi-stage, and it spends at every stage.",
+        "absent_case": "OWED — op=status/approve_plan with a run_id that does not exist must be refused.",
+        "idempotency": "OWED — op=start twice must not launch two runs for the same book.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a03469-2ecf-7cd0-a7f2-e88303ef223c",
+          "project_id": "01a03469-3027-730d-9529-78a14da28b5d",
+          "seed_ids": {
+            "01a03469-2ecf-7cd0-a7f2-e88303ef223c": "fixture book_id",
+            "01a03469-3027-730d-9529-78a14da28b5d": "fixture project_id (composition_work)",
+            "01a03469-2f61-7fea-901d-f12f25b9d758": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "cf343b01-16cc-4081-97e1-88b3ae6a4f8c": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.genres[0].genre_id",
+            "4e88975f-08d7-4bd5-a38a-4bd3642dac37": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.kinds[0].book_kind_id",
+            "f07731cc-7edf-4948-9f2b-f31ca9f0eb32": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.kinds[1].book_kind_id",
+            "2de17710-2ec9-4fe2-b22d-ea6de68162e4": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[0].attr_id",
+            "0033a8ef-ec3d-4054-a3e8-2ce14234a70e": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[1].attr_id",
+            "48ea5c2f-ed69-4b99-bd3d-0a7ef17b09e9": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[2].attr_id",
+            "342d3b15-ee7e-4225-bf6c-6af583f132da": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[3].attr_id",
+            "1939de9b-1725-4a8a-b3de-4303d047f9a5": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[4].attr_id",
+            "f3d5a77a-8541-4f62-9676-e716847daff2": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[5].attr_id",
+            "3c44ce5c-814f-47fd-bb71-f79546545fec": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[6].attr_id",
+            "96f1705e-b7c7-4fd4-b393-20dcec71caf4": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[7].attr_id",
+            "94edc0e1-326c-4fd2-aef1-d2fd0a7803df": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[8].attr_id",
+            "e9c6620d-6d5a-4117-960e-e00bdb5fe928": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[9].attr_id",
+            "68ee986b-7d30-4bf3-84be-01c01554b8d8": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[10].attr_id",
+            "648042a9-38cf-458b-bf03-92703705503f": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[11].attr_id",
+            "3d9e21e9-dcd9-4f3d-8f7d-c8924ca9d671": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[12].attr_id",
+            "0c07afae-3939-4681-a57e-872d704b1295": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[13].attr_id",
+            "81a7bb7a-36ab-479e-982d-0c22126b3261": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[14].attr_id",
+            "a2a36bf1-3772-4e52-82e9-1f955e688577": "seed[0] /v1/glossary/books/01a03469-2ecf-7cd0-a7f2-e88303ef223c/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a03469-5d63-753a-b87e-c446a729fb0a",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_glossary_build",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "result_head": "{\"ok\": true, \"result\": {\"candidates\": [{\"kind\": \"character\", \"name\": \"Aldric Vane\"}, {\"kind\": \"character\", \"name\": \"Mira Solene\"}], \"notes\": [\"black stair\", \"skipped 2 item(s) the model tagged with kind \\\"place\\\", which this book has no kind for\"]}}"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"'glossary_book_sync_available' has already FAILED 2 times this turn with the same error: book not accessible \\u2014 retrying it (even with different arguments) keeps hitting the same wall. STOP calling it. Do EXACTLY what that error says to fix it (e.g. if it tells you to loo"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.981448+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.974084+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.77779+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.981448+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:35:04.074907+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:03.974084+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've identified the characters from your story: **Aldric Vane** and **Mira Solene**.\n\nI'm having a technical issue accessing the book's database to save them into your cast list. Once this is resolved, I'll be able to record them and move on to mapping how they connect. \n\nWould you like me to try again in a moment, or is there anything else you'd like to add to the story description first?\n\nI did not re-read the book's current state this turn, so my previous response regarding the characters was based on the text you provided in your last message rather than a fresh scan of the book's database. My information may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a03469-de56-72ca-9fab-dbeeff04b47f",
+          "project_id": "01a03469-df92-737c-860d-7256a70acc36",
+          "seed_ids": {
+            "01a03469-de56-72ca-9fab-dbeeff04b47f": "fixture book_id",
+            "01a03469-df92-737c-860d-7256a70acc36": "fixture project_id (composition_work)",
+            "01a03469-deec-7fd5-9c7d-c528cbe895a4": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "feb7f6eb-15a5-4e4e-bb4f-f2833a430cd1": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.genres[0].genre_id",
+            "7b033470-c2ef-4997-9745-7770479ed4b3": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.kinds[0].book_kind_id",
+            "a9278a80-f900-4070-954d-2a6dcdddb517": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.kinds[1].book_kind_id",
+            "1f590cd6-fb6a-4df7-bee6-d9959b6e3796": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[0].attr_id",
+            "cda57bb9-f143-4254-90a7-a42142f8a5fa": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[1].attr_id",
+            "4e76185e-bf40-4371-994b-2ea6750b0c5c": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[2].attr_id",
+            "c9f3ee1a-bc6b-4d14-a210-1a4e3bc96716": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[3].attr_id",
+            "2ebd9716-1f6c-4bc5-b178-72414a678615": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[4].attr_id",
+            "23551f4f-554e-45d4-a1d1-206be3b9cffe": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[5].attr_id",
+            "cf39efc9-f163-4bac-848a-98fc0bb44890": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[6].attr_id",
+            "559ed73b-fc7d-4acd-adca-db0554cfdd18": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[7].attr_id",
+            "1c0978a3-4baa-4636-95fd-65d5032ad59f": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[8].attr_id",
+            "95cb7960-89b4-4116-bd20-38838e7a2283": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[9].attr_id",
+            "3d59dc63-f138-4eae-98b9-80c911d8c533": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[10].attr_id",
+            "0f48135a-a465-4cb4-8ca3-28ba7455bc4f": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[11].attr_id",
+            "21bdcbce-a956-4b0b-ac25-4eda19203c50": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[12].attr_id",
+            "f043dc76-60b6-46f6-ae58-e0aa3dd57cd4": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[13].attr_id",
+            "74379e59-7da1-412c-ab32-585fb6f4de8e": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[14].attr_id",
+            "95fe3d1a-7896-46db-961b-9f066d33d5fb": "seed[0] /v1/glossary/books/01a03469-de56-72ca-9fab-dbeeff04b47f/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0346a-07d8-760e-b08a-f3a2914cdf21",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_project_list",
+            "kg_project_set_embedding_model",
+            "settings_list_models"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_glossary_build",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_project_set_embedding_model",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_run_benchmark",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": true, \"result\": {\"ontology\": {\"attributes\": [{\"base_version\": \"2026-08-24T15:35:48.968762Z\", \"code\": \"name\", \"field_type\": \"text\", \"genre_code\": \"universal\", \"is_required\": true, \"kind_code\": \"character\", \"name\": \"Name\"}, {\"base_version\": \"2026-08-24T15:35:48.968762Z\", \"code\": \"name\", \"field_"
+            },
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "result_head": "{\"ok\": true, \"result\": {\"candidates\": [{\"kind\": \"character\", \"name\": \"Aldric Vane\"}, {\"kind\": \"character\", \"name\": \"Mira Solene\"}], \"notes\": [\"black stair\", \"skipped 2 item(s) the model tagged with kind \\\"place\\\", which this book has no kind for\"]}}"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": true, \"result\": {\"results\": [{\"entity_id\": \"01a0346a-33a2-7ce8-9e15-04ea0273dc30\", \"name\": \"Aldric Vane\", \"status\": \"created\"}, {\"entity_id\": \"01a0346a-33ae-74bf-a1a8-180da601755f\", \"name\": \"Mira Solene\", \"status\": \"created\"}], \"summary\": {\"created\": 2, \"failed\": 0, \"skipped\": 0}}}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a03469-df92-737c-860d-7256a70acc36\", \"name\": \"LOOP-THROWAWAY-composition-glossary-build-with-an-ontology-1-9dff71e5\", \"project_type\": \"book\", \"book_id\": \"01a03469-de56-72ca-9fab-dbeeff04b47f\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a03469-df92-737c-860d-7256a70acc36\", \"name\": \"LOOP-THROWAWAY-composition-glossary-build-with-an-ontology-1-9dff71e5\", \"project_type\": \"book\", \"book_id\": \"01a03469-de56-72ca-9fab-dbeeff04b47f\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes_created\": 2, \"nodes_existing\": 0, \"entities_seen\": 2, \"skipped\": 0, \"nodes\": [{\"entity_id\": \"d839c8ae57febf41a6991fc202f08d69\", \"name\": \"Aldric Vane\", \"kind\": \"character\"}, {\"entity_id\": \"f0bfe510ff93dc849ab66754c4c65f02\", \"name\": \"Mira Solene\", \"kind\": \"character\"}]}}"
+            },
+            {
+              "tool": "kg_build",
+              "result_head": "{\"ok\": false, \"error\": \"'kg_build' works inside a knowledge PROJECT and there is none in scope \\u2014 it cannot run. Call kg_project_list to find one and pass its id as project_id, or kg_project_create to make one. Calling this again without a project cannot succeed.\"}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a03469-df92-737c-860d-7256a70acc36\", \"name\": \"LOOP-THROWAWAY-composition-glossary-build-with-an-ontology-1-9dff71e5\", \"project_type\": \"book\", \"book_id\": \"01a03469-de56-72ca-9fab-dbeeff04b47f\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_build",
+              "result_head": "{\"ok\": false, \"error\": \"this project has no embedding model configured \\u2014 call kg_project_set_embedding_model first (pick one of your embedding models with settings_list_models), then retry this build. kg_run_benchmark rates the model's retrieval but does NOT gate this build (advisory since 2026"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"created_at\": \"2026-06-12T10:48:01.186122Z\", \"is_active\": true, \"is_favorite\": false, \"notes\": \"\", \"pricing\": {\"input_per_mtok\": 3, \"output_p"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_build"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_build"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list",
+                "kg_project_set_embedding_model",
+                "settings_list_models"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list",
+                "kg_project_set_embedding_model",
+                "settings_list_models"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list",
+                "kg_project_set_embedding_model",
+                "settings_list_models"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_build",
+                "kg_project_list",
+                "kg_project_set_embedding_model",
+                "settings_list_models"
+              ]
+            },
+            {
+              "call": "kg_project_set_embedding_model"
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.887171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.881682+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.716826+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.887171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:35:48.968762+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-24 15:36:10.411998+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:17.217349+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.glossary_entities": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-24 15:36:10.411998+00"
+              }
+            },
+            "loreweave_knowledge.knowledge_projects": {
+              "before": {
+                "rows": 1,
+                "latest": "2026-08-24 15:35:48.881682+00"
+              },
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:17.217349+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0346a-b009-7af8-a783-dad1131cf9a2",
+          "project_id": "01a0346a-b14a-71aa-ad54-3cc3b5219e93",
+          "seed_ids": {
+            "01a0346a-b009-7af8-a783-dad1131cf9a2": "fixture book_id",
+            "01a0346a-b14a-71aa-ad54-3cc3b5219e93": "fixture project_id (composition_work)",
+            "01a0346a-b09d-759e-9127-035897917564": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "0841ec3d-972f-4af3-bd6b-ea9883283f36": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.genres[0].genre_id",
+            "dd73203b-f89d-4b0e-9aae-869fa849e9a3": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.kinds[0].book_kind_id",
+            "7ce1dc7e-3830-4a68-ae87-e5ccf9df9c93": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.kinds[1].book_kind_id",
+            "ab7850ad-b54a-4743-ba10-6825555e8d82": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[0].attr_id",
+            "91235bc7-9485-4034-9f56-3ffc32616abf": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[1].attr_id",
+            "63eb66c1-7093-4603-94b8-a089d5993138": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[2].attr_id",
+            "9ce40c6a-4e6d-4bee-bd1f-39e3017e4a21": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[3].attr_id",
+            "c2a6a51b-7fbb-4f22-bb77-9e174afabb15": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[4].attr_id",
+            "32264a8a-027d-48d6-9326-8685796a4ab2": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[5].attr_id",
+            "acf6112d-f53c-49a4-a1aa-9194016715ce": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[6].attr_id",
+            "1c190d2b-5af3-47d6-b0ea-fe8c30e64955": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[7].attr_id",
+            "fad0f9b7-6aed-4c86-b060-26108e43daab": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[8].attr_id",
+            "b0144e2e-1cdf-49bd-a7b5-ea2b76d034c2": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[9].attr_id",
+            "24817c63-f0fb-4f99-8a06-c00a306f37bc": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[10].attr_id",
+            "e83af216-1771-4eb9-8593-4a810ff6741e": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[11].attr_id",
+            "236ea4a8-b6db-4807-b28e-6301b2eb7d3f": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[12].attr_id",
+            "14c9a77c-19b4-44e9-99b3-4c3f25921191": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[13].attr_id",
+            "4a32c264-287e-47c6-8755-3ecb9c879567": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[14].attr_id",
+            "34fa7831-55ec-42fb-9d47-65a426aed907": "seed[0] /v1/glossary/books/01a0346a-b009-7af8-a783-dad1131cf9a2/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0346a-deff-7f3d-8c2d-2297dff6e26c",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_glossary_build",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "result_head": "{\"ok\": true, \"result\": {\"candidates\": [{\"kind\": \"character\", \"name\": \"Aldric Vane\"}, {\"kind\": \"character\", \"name\": \"Mira Solene\"}], \"notes\": [\"black stair\", \"skipped 2 item(s) the model tagged with kind \\\"place\\\", which this book has no kind for\"]}}"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": true, \"result\": {\"ontology\": {\"attributes\": [{\"base_version\": \"2026-08-24T15:36:42.660752Z\", \"code\": \"name\", \"field_type\": \"text\", \"genre_code\": \"universal\", \"is_required\": true, \"kind_code\": \"character\", \"name\": \"Name\"}, {\"base_version\": \"2026-08-24T15:36:42.660752Z\", \"code\": \"name\", \"field_"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 45,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.575999+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.569632+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.397247+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.575999+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:36:42.660752+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:36:42.569632+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've identified the following characters from your story:\n\n*   **Aldric Vane**\n*   **Mira Solene**\n\nI attempted to save them to your cast list, but I encountered an error accessing the book's database. Please ensure the book is active or let me know if you'd like me to try again. Once they are saved, I can begin mapping how they connect!\n\nI was unable to save Aldric Vane and Mira Solene to your cast list because I encountered an error accessing the book's database. I have not made any changes to your story bible.\n\nI did not re-read the book's current state this turn, so my information may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a0346b-5cfd-70cd-9249-fb1db08da21d",
+          "project_id": "01a0346b-5e32-7b79-8fce-8ee52e39f63e",
+          "seed_ids": {
+            "01a0346b-5cfd-70cd-9249-fb1db08da21d": "fixture book_id",
+            "01a0346b-5e32-7b79-8fce-8ee52e39f63e": "fixture project_id (composition_work)",
+            "01a0346b-5d8b-7b8d-bef8-ac692da60a04": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "d9997464-81ea-4d3a-be71-6d590ad1363c": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.genres[0].genre_id",
+            "80645935-22eb-4c37-9726-3b7ae4e8f56b": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.kinds[0].book_kind_id",
+            "8c385a4d-2f77-4578-b247-265f68747b2a": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.kinds[1].book_kind_id",
+            "0947a240-07d1-4121-ad0a-bc0cbed0aecc": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[0].attr_id",
+            "d175308e-0303-49e6-8c19-21d1c6c4b51e": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[1].attr_id",
+            "cc114f75-07c1-4246-9af5-d2a1e34aaf98": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[2].attr_id",
+            "351d0842-444e-4780-af67-5bd067af5af9": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[3].attr_id",
+            "9d51a36a-84fd-4604-b124-9054ac55d4b7": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[4].attr_id",
+            "fafbe501-e3c1-4006-8607-c621924d3597": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[5].attr_id",
+            "2ee5f85f-d105-4e2f-a3b4-653f52727291": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[6].attr_id",
+            "66145176-188d-429b-9f09-507ac4144f35": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[7].attr_id",
+            "e7352ece-c921-4572-9af5-cea993120b66": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[8].attr_id",
+            "61e87042-b7b2-4527-be73-9681add32813": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[9].attr_id",
+            "165a693a-e17a-4e6c-8cb8-0e996e664fba": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[10].attr_id",
+            "7a76cb4e-7e7a-4e52-92b5-6698f02ed557": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[11].attr_id",
+            "94e2ef3b-9aa7-4bd6-9171-6bfa3e39d571": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[12].attr_id",
+            "1ff9d3f1-118f-4348-b663-4ec369340267": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[13].attr_id",
+            "3b159e47-995a-4f3d-bf56-9c3f059422d1": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[14].attr_id",
+            "ebd2ab99-b683-4f28-b22c-a51c7290555a": "seed[0] /v1/glossary/books/01a0346b-5cfd-70cd-9249-fb1db08da21d/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0346b-88e1-72bd-b37a-b52b15a0aaf7",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_graph_query",
+            "kg_project_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_glossary_build",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "result_head": "{\"ok\": true, \"result\": {\"candidates\": [{\"kind\": \"character\", \"name\": \"Aldric Vane\"}, {\"kind\": \"character\", \"name\": \"Mira Solene\"}], \"notes\": [\"black stair\", \"skipped 2 item(s) the model tagged with kind \\\"place\\\", which this book has no kind for\"]}}"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_package_tree: not found or not accessible\"}"
+            },
+            {
+              "tool": "kg_graph_query",
+              "result_head": "{\"ok\": false, \"error\": \"'kg_graph_query' works inside a knowledge PROJECT and there is none in scope \\u2014 it cannot run. Call kg_project_list to find one and pass its id as project_id, or kg_project_create to make one. Calling this again without a project cannot succeed.\"}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a0346b-5e32-7b79-8fce-8ee52e39f63e\", \"name\": \"LOOP-THROWAWAY-composition-glossary-build-with-an-ontology-3-4ea383a0\", \"project_type\": \"book\", \"book_id\": \"01a0346b-5cfd-70cd-9249-fb1db08da21d\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_graph_query"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "composition_package_tree",
+                "glossary_book_sync_available",
+                "glossary_propose_entities",
+                "kg_graph_query",
+                "kg_project_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.840171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.834064+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.667578+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.840171+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:37:26.879664+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:37:26.834064+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've started extracting the cast from your story. I've identified **Aldric Vane** and **Mira Solene** as characters.\n\nI'm currently having a little trouble accessing the book's specific settings to finalize the list, but I have the names ready. Once I can link them to your world's categories, I'll save them as drafts for you to review.\n\nAfter we've saved your cast, I'll move straight into mapping out how they connect and building the foundation for your story plan. \n\nWould you like me to try saving these characters now, or is there more of the story you'd like to add first?\n\nI did not re-read the book's current state before responding to your previous request, so my understanding of the cast and the book's structure may be stale. I will use the connection map to get the most up-to-date information.\n\nI've checked the available projects, but I don't have a specific project ID for the book you're working on to run a connection map query. \n\nIf you can provide the project ID or if we can establish one, I'll be able to pull the exact data from the graph for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a0346c-076f-7adf-958c-ebdeaadde020",
+          "project_id": "01a0346c-08bb-7593-b1f7-dab4284768bf",
+          "seed_ids": {
+            "01a0346c-076f-7adf-958c-ebdeaadde020": "fixture book_id",
+            "01a0346c-08bb-7593-b1f7-dab4284768bf": "fixture project_id (composition_work)",
+            "01a0346c-080f-7d55-a73c-66f1d9adeb48": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "8826a647-ca86-4e8c-8a74-60aefa2b25bb": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.genres[0].genre_id",
+            "20218f66-f6c0-424d-a578-993fdf64f192": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.kinds[0].book_kind_id",
+            "a2175bba-55cd-4b39-9aac-f90539118a29": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.kinds[1].book_kind_id",
+            "5b09c73c-d50c-48ac-a217-bf1ba0a968c1": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[0].attr_id",
+            "eefcba6e-7ec9-4293-bd4b-3f8f652bad5a": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[1].attr_id",
+            "9f01e276-a3d0-4ce7-9b75-1713d4c4bfa8": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[2].attr_id",
+            "f4d91af3-b004-47d7-be21-81d96cc08c4e": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[3].attr_id",
+            "e332fc66-2ea4-48e9-8c9a-508117097c22": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[4].attr_id",
+            "582bce09-a29f-4516-9b88-421a5ac4d9ab": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[5].attr_id",
+            "03b1b0e3-bbc7-4e6b-942d-720c600204bb": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[6].attr_id",
+            "b2448fe1-b01f-4cb7-a771-579ef3ae7166": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[7].attr_id",
+            "54852762-8f03-4c7a-b77e-23f308a7470c": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[8].attr_id",
+            "c0ba9ce4-3f5b-4739-81dc-3c00940b3fa7": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[9].attr_id",
+            "a1ab2a2c-01a4-4f79-9bd2-f82d85344520": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[10].attr_id",
+            "09b17e6d-d3b8-4786-86b6-f694a39b1a76": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[11].attr_id",
+            "8931c1c2-80cf-4b5f-b0cf-2fbd27872500": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[12].attr_id",
+            "b1805bc8-57e5-42a9-80a3-d42bdf46bd6e": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[13].attr_id",
+            "5378c532-8c08-49b9-b811-46d6c94a9b8a": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[14].attr_id",
+            "b3d93086-0da1-4f31-a310-bb94d7302f65": "seed[0] /v1/glossary/books/01a0346c-076f-7adf-958c-ebdeaadde020/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0346c-36fa-707f-acbf-165ed57f4c59",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_glossary_build",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "result_head": "{\"ok\": true, \"result\": {\"candidates\": [{\"kind\": \"character\", \"name\": \"Aldric Vane\"}, {\"kind\": \"character\", \"name\": \"Mira Solene\"}], \"notes\": [\"black stair\", \"skipped 2 item(s) the model tagged with kind \\\"place\\\", which this book has no kind for\"]}}"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            },
+            {
+              "tool": "glossary_book_sync_available",
+              "result_head": "{\"ok\": false, \"error\": \"'glossary_book_sync_available' has already FAILED 2 times this turn with the same error: book not accessible \\u2014 retrying it (even with different arguments) keeps hitting the same wall. STOP calling it. Do EXACTLY what that error says to fix it (e.g. if it tells you to loo"
+            },
+            {
+              "tool": "glossary_book_ontology_read",
+              "result_head": "{\"ok\": false, \"error\": null}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": null}"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "result_head": "{\"ok\": false, \"error\": \"book not accessible\"}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_extract_entities_from_doc"
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 46,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_ontology_read",
+                "glossary_book_sync_available",
+                "glossary_extract_entities_from_doc",
+                "glossary_list_system_standards",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_sync_available"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "call": "glossary_book_ontology_read"
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "glossary_propose_entities"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "composition_glossary_build",
+                "glossary_book_sync_available",
+                "glossary_propose_entities"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_extract_entities_from_doc",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "glossary_propose_entities",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.496748+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.490853+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.319719+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.496748+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-24 15:38:10.538475+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-24 15:38:10.490853+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've identified the characters from your story: **Aldric Vane** and **Mira Solene**.\n\nI'm currently having trouble accessing the book's database to save them into your cast list. Once I can reach the book, I'll immediately save these characters and move on to mapping how they connect.\n\nWould you like me to try again, or is there anything else you'd like to add to the story description first?\n\nI did not re-read the book's current state this turn, so my previous information may be stale. I am unable to answer your question about the stored data without first performing a fresh query."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 1,
+      "batch_invalid_2026_08_24": "🔴 DO NOT USE THIS BATCH FOR COMPARISON. Four of five runs failed on 'book not accessible' from the glossary service before the chain reached the tool this batch was run to test. Writes fell to 1/5 and the model told the author it could not access the book's database. The apparent improvements — fewer kg_build failures, fewer silent replies, fewer calls — are all consequences of the runs collapsing earlier, not of the change under test. book-service was healthy throughout."
+    }
+  ]
+}
