@@ -1800,8 +1800,11 @@ proven; the execution is a decision. Until it runs, the SOAK grant stays unexerc
 
 **Retry/registration:** blocks the SOAK grant. `soak-armed-gate` verifies dual-write ARMING; it
 does not and cannot verify that the store being read has the data — and nothing else in the tree
-does either. That absence is the reusable finding: a cutover gate that checks arming and not
-CONTENT reads green on an empty destination.
+did either. That absence was the reusable finding: a cutover gate that checks arming and not
+CONTENT reads green on an empty destination. **Closed at T54g** by
+`scripts/graph-store-migrated-gate.py`, which compares the two stores' per-project censuses and
+returns `EMPTY_DECLARED` on dev today (exit 1) and `MIGRATED` on a store that has been migrated
+(exit 0) — both measured on live data, in opposite directions.
 
 ## How this file is kept honest
 

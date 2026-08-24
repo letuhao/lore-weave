@@ -23473,6 +23473,103 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ---
   ---
   ---
+  ### ✅ T54g 2026-08-24 — **the check that would have caught T54d: nothing in the tree compares the two STORES**
+
+  ```
+  NEW  scripts/graph-store-migrated-gate.py     6 verdicts · --selftest 14 cases · wired
+  ```
+
+  🎯 **T54d was invisible to every gate in the repo, and each of them was doing its job.**
+  That is the finding worth keeping — not that a check was missing, but *why the existing ones
+  could not see it*:
+
+  ```
+  port-adoption-gate          `backend declarations 0/0 non-age` — reads the DECLARATION
+  soak-armed-gate             verifies dual-write ARMING, and says so in its own docstring
+  knowledge-graph-backend-    writes a row and reads it back, so it proves the ROUND TRIP and
+    live-smoke                passes perfectly against a store holding nothing else
+  ```
+
+  Every one asks about **wiring**. T54d is a question about **data**, and the only thing that
+  can answer it is a comparison between the two stores — which nothing did.
+
+  📊 **Run against the real dev censuses (rule 1, reads only):**
+
+  ```
+  dev Neo4j (7688)     433 projects, 8 005 scoped nodes
+  dev AGE g_shared       0 projects,     0 scoped nodes      <- the graph the service reads
+
+  [graph-store-migrated-gate] FAIL — EMPTY_DECLARED: the other store holds 433 project(s)
+  and the declared store holds NONE — every graph read would answer from an empty store (T54d)
+    the deployment declares `age`. Flipping the variable moves every graph read to that
+    store; it does not move the data.                                            exit=1
+  ```
+
+  🔬 **And on a case it was NOT derived from — a store that HAS been migrated (rule 3):**
+
+  ```
+  iso Neo4j            367 projects / 1 449 nodes
+  migrated AGE         367 projects / 1 449 nodes
+
+  [graph-store-migrated-gate] OK — MIGRATED: the declared store holds all 367 project(s)
+  the other store does                                                            exit=0
+  ```
+
+  Both readings on **live data**, in opposite directions. A detector shown only the state that
+  motivated it is green by construction; the inverse is what proves the comparison is
+  directional rather than "notices a zero somewhere".
+
+  ⚖️ **Six verdicts, because collapsing them is the whole failure mode.** `env-gated tests skip
+  and the green suite lies` is a known class here, so a run that proves nothing never reads as
+  a pass:
+
+  ```
+  MIGRATED        declared store holds every project the other does      PASS
+  PARTIAL         some but not all                                       FAIL
+  EMPTY_DECLARED  the other has projects, the declared has none          FAIL   <- T54d
+  BOTH_EMPTY      neither holds anything                                 INDETERMINATE
+  ONE_STORE       only one census supplied — nothing to compare          INDETERMINATE
+  DISARMED        no census at all                                       INDETERMINATE
+  ```
+
+  **`BOTH_EMPTY` is INDETERMINATE and not a pass, deliberately.** A fresh deployment is
+  legitimately empty; a gate that called that MIGRATED would go green on exactly this failure
+  one deployment earlier.
+
+  🧪 **BITE J — collapse `EMPTY_DECLARED` into `BOTH_EMPTY`, the "a zero is a zero" reading:**
+
+  ```
+  87  if not declared_has:            (was: if not declared_has and not other_has:)
+
+  selftest  FAIL  dev as measured — declared AGE empty, Neo4j full:
+                  expected EMPTY_DECLARED, got BOTH_EMPTY
+            FAIL  EMPTY_DECLARED and BOTH_EMPTY are DISTINCT readings of a zero
+
+  ...and on the REAL dev census the bitten gate returns exit=0:
+  [graph-store-migrated-gate] INDETERMINATE — BOTH_EMPTY
+  ```
+
+  That second line is the point: one merged branch and the gate misses the exact defect it was
+  written for, on the exact data that produced it, while reporting a reassuring sentence.
+
+  📐 **The verdict function is PURE and the census is an input, which is what makes the
+  selftest possible.** Reading a census needs two drivers, two sets of credentials and a live
+  stack; the DECISION needs none of them. Keeping them apart is why all six readings —
+  including the three no live stack can produce on demand — run offline in the pre-commit hook.
+  Two of the fourteen checks are properties rather than examples (`EMPTY_DECLARED` and
+  `BOTH_EMPTY` differ; no reading is both blocking and indeterminate), because a table of
+  examples can be satisfied by a function that memorised its own rows.
+
+  **QC (a) gates:** `graph-store-migrated-gate --selftest` **14/14**, wired into
+  `.githooks/pre-commit` beside `soak-armed-gate`; `gate-wiring-gate` 113 discovered, all wired
+  or exempted — CI's `--run-all` covers it by construction, and invoked with no census it
+  reports DISARMED and exits 0 rather than failing a stackless runner.
+  **QC (b) live smoke:** N/A — this gate opens no connection by design; the live half is the
+  two censuses above, taken by hand from the real stack and from the migrated throwaway.
+  **QC (c) real data:** both runs above are real censuses — 433/8 005 from dev, 367/1 449 from
+  iso and its migrated destination. Nothing was written to a non-throwaway store.
+
+  ---
   ### 🔻 T54f 2026-08-24 — **T54e's migration wrote to graphs the service does not read, and every one of its tests was green**
 
   ```
