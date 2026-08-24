@@ -652,6 +652,19 @@
     "translation_job_control": {
       "job_id": "jobs_list"
     },
-    "_added_2026_08_24_third": "translation_job_control.job_id <- jobs_list. VERIFIED BY CALLING IT: jobs_list takes no required argument and returns items[] carrying job_id for service='translation', each with control_caps ['cancel'].\n\n🔴 AND I DO NOT EXPECT THIS TO UNBLOCK THE TOOL — the prediction is recorded before the run that tests it. The declaration works where a tool is CHOSEN and then refused for want of an id it cannot obtain (composition_generate, composition_motif_adopt). This tool is not being chosen: measured against the deployed matcher, 'Cancel that job.' makes BOTH translation_job_control and jobs_cancel answerable, and the model takes the generic one. Arming jobs_list helps a model that has already picked the tool; it says nothing about which of two cancel tools owns the request. That is DQ-T41."
+    "_added_2026_08_24_third": "translation_job_control.job_id <- jobs_list. VERIFIED BY CALLING IT: jobs_list takes no required argument and returns items[] carrying job_id for service='translation', each with control_caps ['cancel'].\n\n🔴 AND I DO NOT EXPECT THIS TO UNBLOCK THE TOOL — the prediction is recorded before the run that tests it. The declaration works where a tool is CHOSEN and then refused for want of an id it cannot obtain (composition_generate, composition_motif_adopt). This tool is not being chosen: measured against the deployed matcher, 'Cancel that job.' makes BOTH translation_job_control and jobs_cancel answerable, and the model takes the generic one. Arming jobs_list helps a model that has already picked the tool; it says nothing about which of two cancel tools owns the request. That is DQ-T41.",
+    "jobs_cancel": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "jobs_get": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "jobs_pause": {
+      "job_id": "jobs_list",
+      "service": "jobs_list"
+    },
+    "_added_2026_08_24_fourth": "jobs_cancel / jobs_get / jobs_pause — job_id AND service <- jobs_list. VERIFIED BY CALLING IT: jobs_list takes no required argument and returns items[] carrying service, job_id, status and control_caps, which is both of the fields each of these three requires.\n\nWHY IT MATTERS, measured: asked to cancel a translation job that genuinely existed, the model chose jobs_cancel and then told the author 'I cannot cancel the job because I don't have a valid job ID to target', on a run where a pending job was seeded and asserted. The whole family required two ids and declared a supplier for neither. The domain tool (translation_job_control) got its declaration in cycle 17; its generic siblings did not, and the generic ones are what the model picks.\n\nDeclared for all three rather than only the tool that was measured: the gap is identical in jobs_get and jobs_pause and fixing one would leave the same hole beside it."
   }
 }
