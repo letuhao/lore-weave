@@ -1,6 +1,90 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `b7bbbfaa9` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-23
+**HEAD:** `30077d74f` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-25
+
+## 📕 2026-08-24 → 08-25 — the BLOCKED-TOOL loop: 197 proven, 1 blocked, and a warning about that number
+
+**Where it stands, derived not typed** — `python scripts/toolloop/gate.py audit` (clean, 203 rows)
+and `python scripts/toolloop/problem_remaining.py`:
+
+```
+tools:    declared=315  concluded=198  proven=197  blocked=1     (+5 deprecated = 203 rows)
+problems: problems=16   cleared=15     remaining=1
+DQs open: 10
+```
+
+### 🔴 READ THIS BEFORE QUOTING "197 PROVEN / 1 BLOCKED"
+
+That is a TOOL count, and `problem_remaining.py` refuses to let it stand alone:
+
+> ⚠ 12 of 15 'CLEARED' problem(s) do NOT meet the definition — every tool reads proven, but…
+
+Several of those problems say so in their own words: **P3-NAME-TO-ID** "CANNOT BE CLEARED, AND I AM
+NOT GOING TO ENGINEER AROUND IT"; **P7-FALSE-ABSENCE** "NOW READS 'CLEARED' BY TOOL COUNT AND ITS
+INVARIANT STILL FAILS"; **P8-ANSWERABILITY** "CANNOT BE CLEARED WITHOUT DQ-T32"; **P12-RAIL-PINNED-TURN**
+"FIX GATED ON DQ-T33"; **P15-TRANSPORT-STALL** "BLOCKED ON EXTERNAL VISIBILITY"; **P16-PROSE-CONFIRMATION**
+"NOT CLEARED, THOUGH ITS ONLY TOOL NOW READS PROVEN". A tool clearing its gate does not mean the
+invariant behind it is fixed. Quote both numbers or neither.
+
+### Proven this run
+`composition_authoring_run_manage`, `composition_motif_adopt`, `glossary_book_sync_apply`,
+`composition_generate`, `composition_reference_update`, `translation_job_control`,
+`settings_provider_inventory`, `propose_edit`, `composition_entity_override_edit`,
+`composition_motif_link_edit`, `registry_list_workflows`.
+
+### Two shipped fixes
+- **The §4 plain-speech guard half-translated NAMES.** `\bglossary\b` fires inside
+  `glossary-bootstrap` because `-` is a word boundary, so 5/5 replies handed the user
+  `story bible-bootstrap` and `element-triage` — names that do not exist. Guarded in
+  `scrub_jargon`; invented names 5/5 → 0/5. A whole-token relabel (`vision-to-book` →
+  "book-building") is deliberate and still fires. **Residual, not covered:** 6 skill slugs are the
+  literal string `glossary`; a hyphen guard cannot help a bare identifier that IS a jargon word.
+- **A resumed turn sent the CHAPTER id as `book_id`** — `chat_suspended_runs` gains
+  `chapter_id`/`project_id`. "book not accessible" 13 → 0; runs that wrote 1/5 → 5/5.
+
+### ▶ THE ONE BLOCKED TOOL — `composition_glossary_build` — needs an OWNER DECISION, now priced
+
+It is advertised in the **same 44-tool pass** the model chooses from, its description quotes the
+prompt verbatim ("build the knowledge graph", "extract the cast from my story"), its `model_ref`
+emitter is declared, and **the tool works** (probe: `op=start` → `{run_id, status: plan_ready,
+worklist}`, refusing unknown run_ids and the `model_ref="default"` placeholder). The model takes
+the four-step glossary chain instead — 5/5 in eval, and **0 organic calls in four weeks** against
+2,788 across 62 other composition tools.
+
+**What that routing costs** (`scripts/toolloop/ab_depth_probe.py`,
+`docs/eval/toolloop/2026-08-14/ab-depth-probe.json` — one story, both paths, throwaway book each):
+
+```
+                                        fill_rate   chars/filled_field
+ARM A  glossary_extract_entities_from_doc   0.246          39.0    <- what the model always does
+ARM B  composition_glossary_build           0.516         108.7    <- what it never does
+```
+
+≈585 vs ≈3,587 characters of attribute content. On "extract the cast from my story", arm A fills
+**2 of 26** character attribute slots. Arm B also found a `power_system` entity arm A missed
+entirely. This confirms `eval/schema_recall_poc.py` on the live path. **n=1 story, one run per arm
+— a magnitude, not a distribution.**
+
+**So DO NOT retire it as a duplicate.** I recommended exactly that and was wrong; the same mistake
+I had already retracted on `registry_list_workflows` this run — comparing what two tools are FOR
+instead of what they PRODUCE. **DQ-T41** is the decision, and it is worth ~6× the attribute
+content of every cast built from pasted prose.
+
+### Two retractions worth reading before trusting this run's reasoning
+1. **The rail explanation was false.** I claimed a pinned `vision-to-book` rail pre-empted the
+   tool, "proven from four directions" — three were population-level. The scenario's own records
+   show `pinned_step_tools=[]` on all 17 gbuild rows including the newest batch. No rail.
+2. **Six blocked reasons were retracted across the run**, each with the wrong text left standing
+   above the correction so the mistake stays legible.
+
+### Filed, not fixed
+- `D-THE-OUT2-LINT-ONLY-INSPECTS-TOOLS-THAT-ARE-ALREADY-COMPLIANT` — the lint's trigger is the
+  presence of `detail`+`limit`, so it sees **8 of 40** list tools; a tool is exempted by being more
+  non-compliant. `settings_list_models` returns 10,380 bytes by default, over the 8 KB budget.
+- `O-GLOSSARY-BUILD-PLANNER-DEFAULTS-TO-VIETNAMESE` — the planner signature defaults `lang="vi"`;
+  an English story produced Vietnamese names and values.
+- `DQ-T43` — the runner's "READ-INTENT TURN WROTE" flag fires on `chat.turn_completed`, the
+  platform's own per-turn event.
 
 ## 📕 2026-08-22 → 08-23 — the RESOLUTION loop: cycle 2 at 6/7, 12 of 13 problems open
 
