@@ -75,7 +75,8 @@ WORKFLOW_LIST_TOOL: dict = {
         "description": (
             "List the curated multi-step WORKFLOWS available here — named, ordered recipes for "
             "common jobs (e.g. \"set up a glossary for this book\"). Returns {slug, title, "
-            "description} per workflow. Prefer a workflow over improvising a long tool sequence; "
+            "description, tier, surfaces} per workflow. Prefer a workflow over improvising a long "
+            "tool sequence; "
             "then call workflow_load(slug) to get its exact steps."
         ),
         "parameters": {
