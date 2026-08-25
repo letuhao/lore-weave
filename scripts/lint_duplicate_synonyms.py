@@ -49,6 +49,23 @@ def load() -> dict[str, dict]:
     return out
 
 
+#: A tie that was DELIBERATELY LEFT IN PLACE because a live A/B said breaking it was worse.
+#: Every entry must name the evidence, because "we meant to do that" with no measurement behind it
+#: is how a lint stops meaning anything. This is not the same as the legacy<->successor family
+#: above: those ties cannot be contested (one side is dropped from the catalogue); these are two
+#: live tools that genuinely contest the phrase, and the contest was measured.
+MEASURED_TIES = {
+    "pause the translation": (
+        "jobs_pause vs translation_job_control. Removing it from jobs_pause on the reasoning that "
+        "a GENERIC tool must not claim a DOMAIN phrase took the tool from surfaced 5/5 / called "
+        "5/5 to surfaced 2/5 / called 0/5, and translation_job_control did NOT pick up the calls "
+        "(0/5 in both arms). Restoring it recovered surfacing to 5/5. Evidence: "
+        "docs/eval/toolloop/2026-08-14/c-jobspause-{control,reword,restored}.json. Whether the "
+        "domain tool SHOULD win the phrase is DQ-T41 and is the owner's."
+    ),
+}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--max-ties", type=int, default=None,
@@ -77,16 +94,23 @@ def main() -> int:
 
     shared = {p: n for p, n in by_phrase.items() if len(n) > 1}
     intentional = {p: n for p, n in shared.items() if supersession_family(n)}
-    ties = {p: n for p, n in shared.items() if p not in intentional}
+    ties = {p: n for p, n in shared.items()
+            if p not in intentional and p not in MEASURED_TIES}
     # A tie only BITES when every tool in it can still reach the wire. A legacy tool is dropped
     # from the turn catalog, so a tie involving one cannot be contested in practice.
     live = {p: n for p, n in ties.items()
             if all(meta.get(x, {}).get("visibility") != "legacy" for x in n)}
 
+    measured = {p: n for p, n in shared.items() if p in MEASURED_TIES}
+
     print(f"phrases declared by more than one tool : {len(shared)}")
     print(f"  intentional (legacy <-> successor)   : {len(intentional)}   [not a defect]")
+    print(f"  MEASURED and deliberately kept       : {len(measured)}   [listed below, not hidden]")
     print(f"  ties between unrelated tools         : {len(ties)}")
     print(f"  ...still LIVE (every tool advertised): {len(live)}")
+    # An allowlist that does not PRINT what it excused is a remainder bucket by another name.
+    for p, n in sorted(measured.items()):
+        print(f"\nKEPT BY MEASUREMENT: {p!r} -> {sorted(n)}\n  {MEASURED_TIES[p]}")
     if live:
         print("\nLIVE TIES — answerability cannot separate these:")
         for p, n in sorted(live.items(), key=lambda kv: (-len(kv[1]), kv[0])):

@@ -452,11 +452,22 @@ async def jobs_cancel(
             "suspend job",
             "pause a running job",
             "pause my task",
-            # "pause the translation" REMOVED 2026-08-25 — a GENERIC tool must not claim a
-            # DOMAIN-specific phrase. It tied with translation_job_control, which is the tool
-            # that actually understands a translation job (its pause applies immediately, while
-            # resume/retry re-spend and return a cost estimate). Whoever says "pause the
-            # translation" wants that one.
+            # 🔴 "pause the translation" WAS REMOVED HERE ON 2026-08-25 AND RESTORED THE SAME DAY,
+            # BY MEASUREMENT. The argument for removing it was clean — a GENERIC tool must not
+            # claim a DOMAIN phrase, and translation_job_control is the tool that actually
+            # understands a translation job. The A/B says otherwise, same scenario, same seed:
+            #
+            #     original wording, build of 2026-07-28   surfaced 5/5   jobs_pause called 5/5
+            #     original wording, after the de-dup      surfaced 2/5   jobs_pause called 0/5
+            #
+            # and translation_job_control did NOT take the calls — 0/5 in both arms. The model
+            # ran jobs_list, jobs_get, jobs_summary and paused nothing. So the phrase move did
+            # not redirect the request to a better tool, it removed the only tool that was
+            # answering it. A tie that has been MEASURED is broken by taking the phrase off the
+            # LOSER; taking it off the winner leaves nobody holding the request. Whether the
+            # domain-specific tool SHOULD win it is DQ-T41, which is the owner's and is not
+            # settled by reverting a regression.
+            "pause the translation",
             "pause it",
             "hold it",
             "pause that one",

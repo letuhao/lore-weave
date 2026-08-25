@@ -519,7 +519,14 @@ async def memory_search(
         # not the feature's name — the distinction that took glossary_curation_list from
         # surfaced 0/3 to called 3/3 with a correct answer.
         synonyms=[
-            # "who is" belongs to glossary_search, which searches THIS book's story bible.
+            # 🔴 "who is" WAS REMOVED HERE ON 2026-08-25 AND RESTORED THE SAME DAY. The tie with
+            # glossary_search is real, and it was broken the wrong way: this tool's own ledger
+            # note reads "CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase". The
+            # tie had already been MEASURED and this tool won it every time. Removing the phrase
+            # from the winner does not break the tie, it takes the winner off the wire — strictly
+            # worse than the tie it was fixing. glossary_search gives it up instead: it has seven
+            # other phrasings and no measured turn that depends on this one.
+            "who is",
             "what do you know about",
             "tell me about the character",
             "remind me about",

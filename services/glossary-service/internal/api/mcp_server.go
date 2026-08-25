@@ -58,7 +58,14 @@ func (s *Server) mcpHandler() http.Handler {
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
 		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
 		// are phrasings a PERSON types, not the feature's name.
-		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"look up a character", "find a character", "who is", "do i have an entry for", "search my story bible", "find an entity", "is there an entry for", "look up in the glossary"})),
+		//
+		// 🔴 "who is" IS DELIBERATELY NOT HERE. It ties with memory_recall_entity, and that tie
+		// has been measured: memory_recall_entity was called 3/3 on "Who is Mira Solene?" and is
+		// PROVEN on it. A tie is broken by taking the phrase off the tool that LOSES it, never
+		// off the one that wins — the loser keeps every other way in, and this tool has seven,
+		// with no measured turn depending on "who is". Removing it from the winner instead
+		// (attempted 2026-08-25, reverted same day) takes the right tool off the wire entirely.
+		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"look up a character", "find a character", "do i have an entry for", "search my story bible", "find an entity", "is there an entry for", "look up in the glossary"})),
 	}, s.toolSearch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{

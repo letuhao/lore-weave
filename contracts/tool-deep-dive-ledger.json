@@ -2950,7 +2950,8 @@
    "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/c-ask.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
    "evidence_file": "docs/eval/toolloop/2026-08-14/c-ask.json",
    "evidence_class": "gate-backed",
-   "counts_toward_release": true
+   "counts_toward_release": true,
+   "stale_proof_2026_08_25": "🔴 THIS ROW READS `proven` AND ITS PROOF NO LONGER REPRODUCES. Re-measured 2026-08-25 on the same scenario, same seed, same approval mode: surfaced 5/5 (recovered, after the synonym regression above was reverted) and CALLED 0/5, where the original run was 5/5.\n\nTHE TOOL WAS NOT SHOWN BROKEN. The model's own replies say why: 'I've checked the running jobs, but I don't see any active translation jobs' and 'All translation jobs are currently marked as completed'. It listed the jobs and correctly declined to pause one that is not there. That is P4-PRECONDITION - the fixture cannot reach the state the tool needs - and it lines up with two rows already open: D-STORE-SNAPSHOT-CANNOT-SEE-THE-JOB-PROJECTION and D-JOBS-LIST-ADVERTISES-CANCEL-ON-JOBS-THAT-CANNOT-BE-CANCELLED (every translation job visible to this account was an orphan). The seed INSERTs straight into loreweave_translation.translation_jobs, which bypasses the outbox that fills loreweave_jobs.job_projection, so jobs_list never sees the job it seeded.\n\nNOT FLIPPED TO `blocked` HERE. The LIVE bar is failed (0 called), but flipping a terminal state on a fixture gap - without the fixture primitive that would let the tool be exercised at all - would record a verdict about the TOOL from evidence about the HARNESS. Recorded for the owner: this row's green is stale and it needs a working job fixture before it can be re-proven.\n\nevidence: docs/eval/toolloop/2026-08-14/c-jobspause-control.json (de-dup arm), c-jobspause-reword.json (pronoun arm), c-jobspause-restored.json (phrase restored)."
   },
   "registry_update_workflow": {
    "state": "proven",
@@ -4420,6 +4421,29 @@
     "scripts/test_required_args_are_declared_gate.py::TestTheListMayOnlyShrink::test_the_baseline_is_not_stale",
     "scripts/test_toolloop_name_nonce_is_not_id_shaped.py::TestScenariosDoNotPutAHexNonceInAName::test_no_new_scenario_suffixes_a_display_name_with_run_id"
    ]
+  },
+  "D-A-SYNONYM-DEDUP-DISARMED-THE-TOOL-THAT-WON-THE-TIE": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "knowledge-service, jobs-service, glossary-service",
+   "found_by": "running the reachability gate that 4976cc055 never ran",
+   "invariant": "A synonym tie is broken by taking the phrase off the tool that LOSES it. Taking it off the winner does not redirect the request - it leaves nobody holding it. And when the loop already holds a MEASUREMENT of which tool a phrase should reach, that measurement outranks a reading of the two descriptions.",
+   "what": "4976cc055 de-duplicated 8 shared synonyms by asking, for each phrase, which tool's own DESCRIPTION owned it. Two of those eight had already been measured, and the measurement said the opposite:\n\n  'who is'               -> memory_recall_entity was PROVEN on it. Its ledger note reads \"CALLED 3/3 from 'Who is Mira Solene?' - its OWN declared phrase\". The phrase was moved to glossary_search, which has SEVEN other phrasings and no measured turn depending on this one.\n  'pause the translation' -> jobs_pause was PROVEN 5/5 on 'Pause the translation one for now.' The phrase was moved to translation_job_control on the reasoning that a GENERIC tool must not claim a DOMAIN phrase.",
+   "the_ab_that_settled_it": "Same scenario, same seed, same approval mode, K=5 per arm:\n    original wording, build of 2026-07-28   surfaced 5/5   jobs_pause called 5/5\n    original wording, after the de-dup      surfaced 2/5   jobs_pause called 0/5\n    original wording, phrase restored       surfaced 5/5   jobs_pause called 0/5\ntranslation_job_control - the intended beneficiary - was called 0/5 in BOTH de-dup arms. The move did not hand the request to a better tool; the model ran jobs_list, jobs_get and jobs_summary and paused nothing.",
+   "and_a_worse_reword_in_between": "Before restoring the phrase I reworded the follow-up to 'Pause that one for now.', which the offline matcher confirmed reaches jobs_pause and nothing else. Measured 1/5, with jobs_list called 5/5: 'that one' is a pronoun, so the model went to LOOK UP which job before acting. A wording that satisfies the matcher can be strictly worse for the model. The reword is reverted.",
+   "the_fix": "'who is' restored to memory_recall_entity and dropped from glossary_search; 'pause the translation' restored to jobs_pause. Both deployed, verified by sha256 read from INSIDE the container against the host source, ai-gateway restarted to re-federate, and the catalogue cache refreshed (it reported exactly the changed tools and nothing else).",
+   "test": "scripts/test_a_measured_turn_reaches_its_tool_gate.py",
+   "what_is_NOT_settled": "Whether a domain-specific tool SHOULD beat a generic one on a shared phrase is DQ-T41 and belongs to the owner. This reverts a measured regression; it does not answer the question."
+  },
+  "D-THE-REACHABILITY-GATE-GUESSED-THE-MEASURED-TURN-FROM-A-SCENARIO-FILE": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "scripts (the loop's own instrument)",
+   "invariant": "An instrument that asks 'what was this measured on' must READ the measurement. A proxy for the measurement is a second thing that can drift.",
+   "what": "test_a_measured_turn_reaches_its_tool_gate derived the measured turn by scanning scenario files and picking the one whose stem matches the ledger's `evidence_file` - falling back to `cands[-1]`, the last file alphabetically, when none matched. Its own docstring says 'One rule now, and it is the ledger's' and the fallback quietly breaks that rule.\n\nMEASURED: translation_job_control is concluded on c-tjc-jobsupplier, for which NO scenario file exists, so the gate was reporting a sentence out of `rebaseline` and calling it the measured turn. Seven scenario files declare that tool; the gate read the wrong one and could not have known.",
+   "the_trap_inside_the_fix": "🔴 Reading the evidence's `prompt` unconditionally is ALSO wrong, and it reported seven world_* tools as measured on 'List my worlds.' - the exact sentence this gate's docstring already calls meaningless for them, arriving by a new route. THE BATCH SCHEMA DRIFTED: 72 rows carry `scenario_prompt` (the opening) beside `prompt` (the turn measured), and 58 older rows carry `prompt` alone holding the OPENING. `scenario_prompt`'s presence is the discriminator.",
+   "what_it_changed": "unreachable went 0 -> 1. Not a regression: the gate had been reading the wrong sentences and scoring them green. The single entry is translation_job_control, whose measured turn is an anaphoric 'Cancel that job.' after a supplier turn - a structural limit of answerability on a pronoun, recorded in the baseline with the reason rather than closed.",
+   "test": "scripts/test_a_measured_turn_reaches_its_tool_gate.py"
   }
  },
  "deferred_questions": {
@@ -5023,8 +5047,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 158,
-  "defects_fixed": 41,
+  "defects_total": 160,
+  "defects_fixed": 43,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

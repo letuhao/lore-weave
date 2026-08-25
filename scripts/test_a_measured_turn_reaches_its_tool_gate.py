@@ -89,8 +89,51 @@ def measured_turns() -> dict[str, str]:
     two instruments read different sentences and disagreed about whether it was reachable — the
     gate said 0 unreachable while the probe said 1. An instrument that disagrees with its own
     sibling is measuring something neither of us named. One rule now, and it is the ledger's.
+
+    🔴 AND WHEN THE CITED FILE IS NOT ON DISK, READ THE EVIDENCE — DO NOT GUESS. The rule above
+    was stated and then quietly broken: matching on `evidence_file` fell back to `cands[-1]`, the
+    last scenario file alphabetically, whenever no scenario file carried that name. Measured
+    2026-08-25: `translation_job_control` is concluded on `c-tjc-jobsupplier`, for which there is
+    NO scenario file, so the gate was reporting a sentence out of `rebaseline` — a file the
+    ledger does not cite — and calling it the measured turn.
+
+    The evidence records the exact sentence — but ONLY in its newer shape, and reading it blindly
+    is a trap this nearly fell into. THE BATCH SCHEMA DRIFTED: 72 rows carry `scenario_prompt`
+    (the scenario's opening) alongside `prompt` (the turn actually measured), and 58 older rows
+    carry `prompt` alone, holding the OPENING. Reading `prompt` unconditionally reported seven
+    world_* tools as measured on "List my worlds." — which is the very sentence this docstring
+    already says means nothing about them, arriving by a new route. `scenario_prompt`'s presence
+    is the discriminator, so it is the discriminator here.
+
+    That also fixes what the fallback was hiding — `c-tjc-jobsupplier`'s real sequence is a
+    SUPPLIER turn ("What is the status of the translation job for this book?") followed by an
+    anaphoric "Cancel that job.", which no scenario file on disk describes.
     """
     ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.exists() else {"tools": {}}
+
+    # What was actually SENT, straight off the evidence the conclusion cites.
+    from_evidence: dict[str, str] = {}
+    for tool, row in ledger["tools"].items():
+        ev = row.get("evidence_file")
+        if not ev:
+            continue
+        p = ROOT / ev
+        if not p.exists():
+            continue
+        try:
+            batch = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        er = next((x for x in batch.get("tools", []) if x.get("tool") == tool), None)
+        runs = (er or {}).get("runs") or []
+        if not runs:
+            continue
+        last = runs[-1]
+        # Only the newer shape distinguishes the opening from the measured turn. Without
+        # `scenario_prompt`, `prompt` IS the opening and says nothing about a later turn.
+        if "scenario_prompt" in last and last.get("prompt"):
+            from_evidence[tool] = last["prompt"]
+
     by_tool: dict[str, list[tuple[str, str]]] = {}
     for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
         try:
@@ -102,10 +145,15 @@ def measured_turns() -> dict[str, str]:
             if t and s.get("tool_under_test"):
                 by_tool.setdefault(s["tool_under_test"], []).append(
                     (f.stem.replace("scenarios-", ""), t[-1]))
-    out: dict[str, str] = {}
+    out: dict[str, str] = dict(from_evidence)
     for tool, cands in by_tool.items():
+        if tool in out:  # the measurement itself always wins over a scenario file
+            continue
         ev = (ledger["tools"].get(tool) or {}).get("evidence_file") or ""
         want = pathlib.Path(ev).stem
+        # No evidence prompt AND a cited file that names no scenario: there is nothing here to
+        # read, so take the file the ledger cites if it exists and otherwise the last candidate —
+        # but only for pre-gate rows, which is the only case that now reaches this line.
         out[tool] = next((turn for name, turn in cands if name == want), cands[-1][1])
     return out
 
