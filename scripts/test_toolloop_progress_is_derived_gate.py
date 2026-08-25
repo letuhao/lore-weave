@@ -112,13 +112,35 @@ def test_the_counters_track_the_rows_and_not_a_constant():
 
 def test_a_deprecated_row_stays_out_of_the_numerator():
     """The predecessor's own correction, kept red-able: counting the five deprecated rows read
-    114/198 where the shippable figure was 109/198."""
+    114/198 where the shippable figure was 109/198.
+
+    🔴 THIS TEST WENT RED AT HEAD AND NOBODY SAW IT, because the commit that broke it ran only
+    the composition-service suite. `composition_glossary_build` was added as a RENAME REDIRECT
+    with `state: deprecated`, so the excluded set grew from five rows to six — and the sixth is
+    not a concluded tool at all, it is a pointer. `len(excluded)` had quietly come to mean two
+    different things: "deprecated but CONCLUDED" (which belongs in the wider count) and "not a
+    tool" (which belongs in neither). Both halves are now asserted separately, so a third shape
+    cannot merge into either.
+    """
     led = copy.deepcopy(_ledger())
     derived = gate.recompute_progress(led)
-    excluded = [k for k, v in led["tools"].items() if v.get("counts_toward_release") is False]
-    assert excluded, "the fixture for this test is the five deprecated rows; none are present"
+    excluded = {k: v for k, v in led["tools"].items()
+                if v.get("counts_toward_release") is False}
+    concluded_but_deprecated = [k for k, v in excluded.items() if v.get("state") in gate.TERMINAL]
+    not_a_tool = [k for k, v in excluded.items() if v.get("state") not in gate.TERMINAL]
+
+    assert concluded_but_deprecated, "the fixture for this test is the deprecated PROVEN rows"
     assert (derived["tools_concluded_including_deprecated"]
-            == derived["tools_concluded"] + len(excluded))
+            == derived["tools_concluded"] + len(concluded_but_deprecated))
+
+    # A redirect row is in the ledger so an old NAME resolves, not because a tool was concluded,
+    # and it must stay out of BOTH counters. The one way it could leak back in is by being given
+    # a terminal state, so the shape is pinned rather than the count.
+    for k in not_a_tool:
+        assert led["tools"][k].get("state") == "deprecated", (
+            f"{k} counts toward no release and is not concluded, so it should carry the redirect "
+            f"shape `deprecated`; it carries {led['tools'][k].get('state')!r}. A new shape here "
+            f"will start inflating tools_concluded_including_deprecated silently.")
 
 
 def test_the_last_batch_regex_sees_both_naming_conventions():
@@ -134,9 +156,44 @@ def test_the_last_batch_regex_sees_both_naming_conventions():
 
 
 def test_nothing_is_silently_dropped_from_the_defect_counters():
-    """`defects_proven` + `defects_open` does not equal the total — three rows are shipped
-    invariant fixes recorded with `commit`/`test` and no `state` at all. The remainder is STATED
-    rather than lost, because a counter that quietly omits a shape is how 'closed' gets claimed."""
-    d = gate.recompute_progress(_ledger())
-    assert d["defects_total"] == len(_ledger()["defects"])
-    assert d["defects_proven"] + d["defects_open"] + d["defects_other"] == d["defects_total"]
+    """🔴 THE ASSERTION THIS REPLACES COULD NOT FAIL.
+
+    It read `defects_proven + defects_open + defects_other == defects_total`, and `defects_other`
+    was DEFINED as `total - proven - open`. The identity holds for every possible partition,
+    including the one that was actually shipped: 14 open, 117 "other", against 71 genuinely open
+    defects. A remainder bucket makes any classifier look complete, and an assertion over a
+    remainder bucket makes any classifier look tested.
+
+    The counter now reads a CLOSED `state` and raises on anything else, so the real assertions
+    are: every state is in the closed set, the named buckets sum to the total with no remainder,
+    and — the one with teeth — an unclassifiable row STOPS the count instead of joining it.
+    """
+    led = _ledger()
+    d = gate.recompute_progress(led)
+
+    assert d["defects_total"] == len(led["defects"])
+    named = {f"defects_{s}" for s in gate.DEFECT_STATES}
+    assert named <= set(d), f"missing a bucket: {named - set(d)}"
+    assert "defects_other" not in d, "the remainder bucket is back; it is what hid 57 open rows"
+    assert sum(d[k] for k in named) == d["defects_total"], (
+        "the named buckets do not account for every row, and there is nowhere else for one to be")
+
+
+@pytest.mark.parametrize("bad", [None, "OPEN — measured 2026-08-23", "opened", "Open"])
+def test_a_state_the_counter_cannot_classify_stops_the_count(bad):
+    """Prove it RED on the ORIGINAL defect, in memory.
+
+    `"OPEN — measured 2026-08-23"` is not a hypothetical — it is the verbatim shape of 57 shipped
+    rows, and the old `startswith("open")` scored every one of them as not-open. Each value here
+    must now raise rather than be counted, because the failure mode being guarded is not a wrong
+    bucket, it is a row that quietly belongs to none.
+    """
+    led = copy.deepcopy(_ledger())
+    victim = next(iter(led["defects"]))
+    if bad is None:
+        led["defects"][victim].pop("state", None)
+    else:
+        led["defects"][victim]["state"] = bad
+
+    with pytest.raises(ValueError, match="not one of"):
+        gate.recompute_progress(led)

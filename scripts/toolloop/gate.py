@@ -54,6 +54,11 @@ LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 MIN_REPEATS = 3
 TERMINAL = ("proven", "blocked")
 
+#: A defect row's `state`, CLOSED. The prose stays in `status`; only this is ever counted.
+#: `withdrawn` is a defect that turned out not to be one; `superseded` folded into another row
+#: and must name it. See the comment in `recompute_progress` for what the open set cost.
+DEFECT_STATES = ("open", "fixed", "proven", "withdrawn", "superseded")
+
 
 class Gate:
     def __init__(self, batch: dict, path: pathlib.Path):
@@ -490,24 +495,34 @@ def recompute_progress(ledger: dict) -> dict:
         date = parts[-2] if len(parts) > 1 else ""
         last_batch = f"batch-{best[0]} ({date})" if date else f"batch-{best[0]}"
 
-    def defect_state(d) -> str:
-        return str((d.get("state") or d.get("status") or "") if isinstance(d, dict) else "")
-
-    proven_d = sum(1 for d in defects.values() if defect_state(d).startswith("proven"))
-    open_d = sum(1 for d in defects.values() if defect_state(d).startswith("open"))
+    # 🔴 A COUNTER MUST NEVER PARSE ENGLISH. This read `state or status` and classified the result
+    # with `startswith`. `status` is free prose — 104 of 156 rows carried only that field, median
+    # 89 characters, max 311 — and it is conventionally written in capitals ("OPEN — measured
+    # 2026-08-23"). `startswith("open")` matched none of them, so 57 open defects fell into
+    # `defects_other` and the headline read 14 open against an actual 71. The remainder bucket is
+    # what made it survivable: a row that matched nothing was absorbed instead of noticed.
+    #
+    # So `state` is now the ONLY field consulted and it is a CLOSED set. An unrecognised or
+    # missing state RAISES. There is deliberately no `defects_other` to fall into.
+    by_state = {s: 0 for s in DEFECT_STATES}
+    for name, d in defects.items():
+        s = d.get("state") if isinstance(d, dict) else None
+        if s not in by_state:
+            raise ValueError(
+                f"defect {name!r} has state {s!r}, which is not one of {DEFECT_STATES}. "
+                "Give it one — a row the counter cannot classify must never be silently absorbed."
+            )
+        by_state[s] += 1
     return {
         "tools_declared": sum((den.get("group_sizes") or {}).values()) or None,
         "tools_concluded": concluded,
         "tools_in_cycle": sum(1 for v in tools.values() if v.get("state") == "in_cycle"),
         "tools_proven": sum(1 for v in live if v.get("state") == "proven"),
         "tools_blocked": sum(1 for v in live if v.get("state") == "blocked"),
-        "defects_proven": proven_d,
-        "defects_open": open_d,
-        # Neither counter above claims the total, so the difference is stated rather than lost.
-        # Three of these rows are shipped invariant fixes recorded with `commit`/`test` and no
-        # `state` at all — a shape the two counters would silently drop.
+        # Every state in the closed set gets its own key, so the buckets SUM to the total by
+        # construction and no row can hide in a remainder. `defects_other` is gone on purpose.
+        **{f"defects_{s}": n for s, n in by_state.items()},
         "defects_total": len(defects),
-        "defects_other": len(defects) - proven_d - open_d,
         "deferred_questions": len(ledger.get("deferred_questions") or {}),
         "last_batch": last_batch,
         "release_surface": surface,
@@ -524,6 +539,25 @@ def recompute_progress(ledger: dict) -> dict:
         "tools_concluded_including_deprecated": sum(
             1 for v in tools.values() if v.get("state") in TERMINAL),
     }
+
+
+#: Counters that USED to be derived and no longer are. `.update()` cannot remove a key, so a
+#: retired one would sit in the block forever reading whatever it last held — and `defects_other`
+#: is precisely the remainder bucket that hid 57 open defects. A counter that stops being derived
+#: must stop being stored.
+RETIRED_PROGRESS_KEYS = ("defects_other",)
+
+
+def apply_progress(ledger: dict) -> None:
+    """Write every derived counter back into `progress`, and drop the retired ones.
+
+    NOT CHECKED HERE: that no OTHER hand-typed key is loitering in the block. The three `_note`
+    fields legitimately are prose, so a blanket "unknown key" rule would need them classified
+    first. Named rather than silently skipped.
+    """
+    ledger["progress"].update(recompute_progress(ledger))
+    for retired in RETIRED_PROGRESS_KEYS:
+        ledger["progress"].pop(retired, None)
 
 
 def progress_drift(ledger: dict) -> dict:
@@ -573,7 +607,7 @@ def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
                      "note": note, "evidence_file": path.as_posix(),
                      "evidence_class": "gate-backed", "counts_toward_release": True}
     # Every counter, from one place. See recompute_progress() for why it is not an inline literal.
-    ledger["progress"].update(recompute_progress(ledger))
+    apply_progress(ledger)
     LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10), encoding="utf-8")
 
 
@@ -617,7 +651,7 @@ def cmd_audit(a) -> int:
         # rows, which is the only legitimate repair; nothing here can move a number the rows do
         # not support, and every change it makes is printed above before it is written.
         if getattr(a, "fix_progress", False):
-            ledger["progress"].update(recompute_progress(ledger))
+            apply_progress(ledger)
             LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
                               encoding="utf-8")
             print(f"  -> rewrote {len(drift)} field(s) from the rows. Re-run `audit` to confirm.")
