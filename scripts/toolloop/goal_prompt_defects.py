@@ -35,7 +35,10 @@ BUDGET = 4000
 NAMED = 3
 #: Characters of each named defect's invariant to show. Enough to RECOGNISE the row, not to
 #: understand it — a row that needs more than this has narration where its invariant should be.
-EXCERPT = 64
+#: Lowered 64 -> 48 on 2026-08-25 when three defects closed and the rows that surfaced behind them
+#: carry LONGER NAMES, pushing the emitted condition to 4032/4000. QUEUE is the elastic section
+#: exactly so a budget overflow is paid for here and never by trimming a rule.
+EXCERPT = 48
 
 DURABLE = """\
 Close the platform's CONTRACT defects in contracts/tool-deep-dive-ledger.json — the ones a \

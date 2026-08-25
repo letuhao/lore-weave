@@ -96,6 +96,11 @@ EXPECTED_TOOLS = {
     "composition_entity_override_delete",
     # ── S-03 — reference-shelf metadata edit (agent parity). Tier A (auto-write + Undo). ──
     "composition_reference_update",
+    # D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY — the READER that makes the line above satisfiable.
+    # reference_id was required by exactly one tool and produced by NONE of the 315 in the
+    # catalogue, so composition_reference_update was unreachable through MCP by construction.
+    # Tier R, VIEW-gated, bodies never projected.
+    "composition_reference_list",
     # Tier W
     "composition_publish", "composition_generate",
     "composition_decompile_arcs",  # close-21-28 P-O2a — confirm-gated arc decompiler
@@ -1262,6 +1267,68 @@ async def test_entity_override_update_and_delete():
     assert dele["success"] is True and dele["deleted"] is True
     assert dele["_meta"]["undo_hint"]["tool"] == "composition_entity_override_add"
     assert dele["_meta"]["undo_hint"]["args"]["target_entity_id"] == str(tgt)
+
+
+# ── D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY — the reader that makes the edit satisfiable ──
+
+async def test_reference_list_projects_the_id_under_the_name_its_CONSUMER_uses():
+    """🔴 THE FIELD NAME IS THE CONTRACT, not a presentation choice.
+
+    `reference_id` was required by composition_reference_update and produced by NO tool in the
+    315-tool catalogue, so the edit was unreachable through MCP by construction. This reader is
+    the supplier, and `argument_emitters` now declares it as such — a declaration R1 answerability
+    is TRANSITIVE over, so it also decides what reaches the wire.
+
+    The row's own column is `id`. Projecting it as `id` would leave the consumer to guess that
+    `id` means `reference_id`, which is exactly the naming mismatch that made a catalogue-wide
+    orphan sweep over-report by 11 of 12. Renaming this field back would break the chain silently:
+    the tool would still return the value and the model would still have nowhere to take it from.
+    """
+    import uuid as _uuid
+    from types import SimpleNamespace as NS
+
+    import app.mcp.server as srv
+
+    work = _work()
+    row = NS(id=_uuid.uuid4(), title="Tidal Almanac", author="M. Solene",
+             source_url="https://example.invalid/tidal", content="x" * 4096, created_at=None)
+    async with _patched(works_get=lambda pid: work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.list = AsyncMock(return_value=[row])
+            res = await srv.composition_reference_list(_Ctx(), project_id=str(PROJECT))
+
+    assert res["references"][0]["reference_id"] == str(row.id), (
+        "the id must be projected under the name composition_reference_update requires")
+    assert "id" not in res["references"][0], "a bare `id` beside it would be ambiguous"
+    # BODIES ARE NEVER PROJECTED — a reference is an author-pasted passage up to 20000 chars by
+    # the create model's own constraint, so a list that returned bodies would dump a corpus into
+    # the turn. The SIZE is enough to tell a stub from a real passage.
+    assert "content" not in res["references"][0]
+    assert res["references"][0]["content_chars"] == 4096
+    # K25: a capped slice must never read as the whole set.
+    assert res["returned"] == 1 and res["total"] == 1
+    assert "complete" in res["guidance"]
+
+
+async def test_reference_list_states_the_WHOLE_total_when_it_caps():
+    """`total` is exact rather than a limit+1 `more` probe: the repo hands back the whole shelf,
+    so a probe would be strictly less information than we already hold."""
+    import uuid as _uuid
+    from types import SimpleNamespace as NS
+
+    import app.mcp.server as srv
+
+    work = _work()
+    rows = [NS(id=_uuid.uuid4(), title=f"R{i}", author="", source_url="", content="",
+               created_at=None) for i in range(7)]
+    async with _patched(works_get=lambda pid: work) as s:
+        s.WorksRepo(None).get = AsyncMock(return_value=work)
+        with patch.object(srv, "ReferencesRepo") as RR:
+            RR.return_value.list = AsyncMock(return_value=rows)
+            res = await srv.composition_reference_list(_Ctx(), project_id=str(PROJECT), limit=3)
+    assert res["returned"] == 3 and res["total"] == 7
+    assert "3 of 7" in res["guidance"] and "Do NOT assume" in res["guidance"]
 
 
 # ── S-03: reference-shelf metadata edit (agent parity) ──

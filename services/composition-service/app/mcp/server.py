@@ -2230,6 +2230,83 @@ def _override_out(ov) -> dict:
     }
 
 
+# ── D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY — THE READER THAT WAS MISSING.
+#
+# 🔴 composition_reference_update REQUIRES `reference_id`, and it was the ONLY tool of the 315 in
+# the federated catalogue that mentioned `reference_id` ANYWHERE — schema or description. Nothing
+# could produce one, so the tool was unsatisfiable through MCP by construction. Re-verified
+# 2026-08-25, still true before this tool existed.
+#
+# The platform's own refusal said so correctly and completely: "'composition_reference_update' is
+# missing required argument(s): ['reference_id'], and this tool does not declare which side
+# supplies them — so do NOT guess a value." There WAS no side that supplied them.
+#
+# This is the STRONGEST form of the supplier-chain class, and the one no declaration can fix: the
+# loop has twice repaired a DECLARATION gap (an id whose declaration named no supplier; a chain
+# whose middle link was named but not its first). No amount of wording points at a tool that does
+# not exist. The data was never missing — GET /works/{project_id}/references has served this
+# shelf to the FE all along; it simply had no MCP surface.
+#
+# READ-ONLY, VIEW-gated, and `content` is deliberately NOT projected: a reference is an external
+# passage an author pasted in, so a list that returned bodies would dump a corpus into the turn.
+# Title/author/source_url are what `composition_reference_update` edits and what a human names
+# when they ask, so they are what a caller needs to pick the right id.
+@mcp_server.tool(
+    name="composition_reference_list",
+    description=(
+        "List the reference SOURCES on a Work's shelf — the external passages an author added as "
+        "influences (title / author / source_url), newest first. This is where a reference_id "
+        "comes from: match the one you want by title, then pass its id to "
+        "composition_reference_update. Bodies are never returned, only metadata. VIEW on the "
+        "book. NOT the same as composition_find_references, which finds where an ENTITY appears "
+        "in the spec."
+    ),
+    meta=require_meta(
+        "R", "book",
+        synonyms=["list references", "my references", "reference shelf", "what references do I have",
+                  "reference sources", "show reference library"],
+        tool_name="composition_reference_list",
+    ),
+)
+async def composition_reference_list(
+    ctx: MCPContext,
+    project_id: Annotated[str, "the Work whose reference shelf to list (UUID)"],
+    limit: Annotated[int, "1..100"] = 50,
+) -> dict:
+    tc = _ctx(ctx)
+    works = WorksRepo(get_pool())
+    pid = _uuid(project_id, "project_id")
+    pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
+    rows = await ReferencesRepo(get_pool()).list(pid)
+    capped = max(1, min(100, limit))
+    shown = rows[:capped]
+    # `total` is EXACT rather than a `more` flag: the repo hands back the whole shelf, so a
+    # limit+1 probe would be strictly less information than we already hold. K25's rule is that a
+    # capped slice must never read as the whole set — this states the whole set outright.
+    return {
+        "references": [
+            {
+                "reference_id": str(r.id),
+                "title": r.title,
+                "author": r.author,
+                "source_url": r.source_url,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                # The body's SIZE, never the body. Enough to tell a stub from a real passage.
+                "content_chars": len(r.content or ""),
+            }
+            for r in shown
+        ],
+        "returned": len(shown),
+        "total": len(rows),
+        "guidance": (
+            f"showing {len(shown)} of {len(rows)} — raise `limit` to see the rest. Do NOT assume "
+            "this is all of them."
+            if len(rows) > len(shown)
+            else f"complete — all {len(rows)} reference(s) on this Work's shelf."
+        ),
+    }
+
+
 # ── S-03: reference-shelf METADATA edit (agent parity). Metadata-only — editing a
 #    reference's CONTENT via MCP is deliberately OUT OF SCOPE (an agent re-authoring a
 #    whole corpus is not a wanted capability; agents ADD references via create). The

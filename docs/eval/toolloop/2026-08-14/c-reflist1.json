@@ -1,0 +1,1067 @@
+{
+  "batch": "c-reflist1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_reference_update",
+      "scenario": "composition-reference-update-via-the-list",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the model passes a reference_id that is NOT the seeded row's id — with a reader present, a wrong id is now a fabrication rather than a forced guess; OR it reports the title as changed while the card is still unclicked (approve is null, so the store MUST be unchanged and any claim of success is a narrated write); OR it reaches the confirm card without ever calling composition_reference_list, which would mean it got the id from somewhere this scenario cannot account for. CONTROL: the tool being REFUSED once for reference_id before the model lists is expected and is not a failure — that refusal is what names the reader.",
+      "answer_expect": null,
+      "falsifier_sha": "880701d4ebbe689b",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "covered by scenarios-c-ref3.json, which runs the same prompt against a shelf the model cannot read.",
+        "tenancy": "OWED — book-scoped via project_id."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a039ce-b88d-7d5d-a42b-b2259581107d",
+          "project_id": "01a039ce-b9d3-7bf6-8d7a-f543d2b43396",
+          "seed_ids": {
+            "01a039ce-b88d-7d5d-a42b-b2259581107d": "fixture book_id",
+            "01a039ce-b9d3-7bf6-8d7a-f543d2b43396": "fixture project_id (composition_work)",
+            "01a039ce-b927-7f90-a96d-0f2301dd865f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a039ce-e11c-7062-9d5d-adb2d59741a8",
+          "prompt": "Please fix reference title for 'Tidal Almanac Tezuripo' — it should read 'Tidal Almanac, Revised'.",
+          "scenario_prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_reference_list",
+            "composition_reference_update"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "composition_reference_list",
+            "composition_reference_update",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_patch_block",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_reference_list",
+              "result_head": "{\"ok\": true, \"result\": {\"references\": [{\"reference_id\": \"3aed6004-3fd9-4c22-bf1d-1f55bfb997f5\", \"title\": \"Tidal Almanac Tezuripo\", \"author\": \"M. Solene\", \"source_url\": \"https://example.invalid/tidal\", \"created_at\": \"2026-08-25T16:44:04.547520+00:00\", \"content_chars\": 35}], \"returned\": 1, \"total\": 1,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_update"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.441042+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.54752+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.435213+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.26383+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.441042+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.54752+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:04.435213+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a039cf-30c4-7e03-a91d-24093583dd7a",
+          "project_id": "01a039cf-31fa-7041-8db3-783d30b99fb9",
+          "seed_ids": {
+            "01a039cf-30c4-7e03-a91d-24093583dd7a": "fixture book_id",
+            "01a039cf-31fa-7041-8db3-783d30b99fb9": "fixture project_id (composition_work)",
+            "01a039cf-3154-740b-859f-9002a73671ec": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a039cf-5a67-75f4-a742-17d18ad645a3",
+          "prompt": "Please fix reference title for 'Tidal Almanac Teporulo' — it should read 'Tidal Almanac, Revised'.",
+          "scenario_prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_reference_list",
+            "composition_reference_update"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "composition_reference_list",
+            "composition_reference_update",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_patch_block",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_reference_list",
+              "result_head": "{\"ok\": true, \"result\": {\"references\": [{\"reference_id\": \"f1d3f929-f9bb-412d-809d-c07c022f0f59\", \"title\": \"Tidal Almanac Teporulo\", \"author\": \"M. Solene\", \"source_url\": \"https://example.invalid/tidal\", \"created_at\": \"2026-08-25T16:44:35.378311+00:00\", \"content_chars\": 35}], \"returned\": 1, \"total\": 1,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_update"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.198308+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.378311+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.193553+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.028111+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.198308+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.378311+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:44:35.193553+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a039cf-a926-791b-8832-097c98ddca53",
+          "project_id": "01a039cf-aa8f-7be2-a901-98328a390c0b",
+          "seed_ids": {
+            "01a039cf-a926-791b-8832-097c98ddca53": "fixture book_id",
+            "01a039cf-aa8f-7be2-a901-98328a390c0b": "fixture project_id (composition_work)",
+            "01a039cf-a9be-72f7-a36e-ee119703e058": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a039cf-d587-7b33-81f5-e5c34eacf2c1",
+          "prompt": "Please fix reference title for 'Tidal Almanac Vinigaga' — it should read 'Tidal Almanac, Revised'.",
+          "scenario_prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_reference_list",
+            "composition_reference_update"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "composition_reference_list",
+            "composition_reference_update",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_patch_block",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_reference_list",
+              "result_head": "{\"ok\": true, \"result\": {\"references\": [{\"reference_id\": \"185bf12f-acb6-4965-9f71-359d0aea3a67\", \"title\": \"Tidal Almanac Vinigaga\", \"author\": \"M. Solene\", \"source_url\": \"https://example.invalid/tidal\", \"created_at\": \"2026-08-25T16:45:06.248397+00:00\", \"content_chars\": 35}], \"returned\": 1, \"total\": 1,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_update"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.078359+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.248397+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.063245+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:05.854044+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.078359+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.248397+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:06.063245+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a039d0-25a4-7409-8561-def4e23d70f9",
+          "project_id": "01a039d0-26e6-7804-9e6a-870a04a39952",
+          "seed_ids": {
+            "01a039d0-25a4-7409-8561-def4e23d70f9": "fixture book_id",
+            "01a039d0-26e6-7804-9e6a-870a04a39952": "fixture project_id (composition_work)",
+            "01a039d0-263b-7f85-85f5-b9ab55607aab": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a039d0-4f4d-7efb-847e-0adbad53051f",
+          "prompt": "Please fix reference title for 'Tidal Almanac Nikimega' — it should read 'Tidal Almanac, Revised'.",
+          "scenario_prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_reference_list",
+            "composition_reference_update"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "composition_reference_list",
+            "composition_reference_update",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_patch_block",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_reference_list",
+              "result_head": "{\"ok\": true, \"result\": {\"references\": [{\"reference_id\": \"5fc0885c-fd30-4c49-af92-760743c345c3\", \"title\": \"Tidal Almanac Nikimega\", \"author\": \"M. Solene\", \"source_url\": \"https://example.invalid/tidal\", \"created_at\": \"2026-08-25T16:45:38.040615+00:00\", \"content_chars\": 35}], \"returned\": 1, \"total\": 1,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_update"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.899557+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:38.040615+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.894095+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.723883+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.899557+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:38.040615+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:45:37.894095+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a039d0-9ecc-7874-895d-1bac19768f65",
+          "project_id": "01a039d0-a024-7e93-a3cb-49657543568c",
+          "seed_ids": {
+            "01a039d0-9ecc-7874-895d-1bac19768f65": "fixture book_id",
+            "01a039d0-a024-7e93-a3cb-49657543568c": "fixture project_id (composition_work)",
+            "01a039d0-9f64-7999-af6b-544b0c1f11e6": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a039d0-c701-7a45-9f9a-b99ab24cc7e8",
+          "prompt": "Please fix reference title for 'Tidal Almanac Vuvuguzi' — it should read 'Tidal Almanac, Revised'.",
+          "scenario_prompt": "Please fix reference title for 'Tidal Almanac {run_word}' — it should read 'Tidal Almanac, Revised'.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_reference_list",
+            "composition_reference_update"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "composition_reference_list",
+            "composition_reference_update",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_patch_block",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_reference_list",
+              "result_head": "{\"ok\": true, \"result\": {\"references\": [{\"reference_id\": \"0d87a0dc-0107-41ef-a553-00f3968f3a31\", \"title\": \"Tidal Almanac Vuvuguzi\", \"author\": \"M. Solene\", \"source_url\": \"https://example.invalid/tidal\", \"created_at\": \"2026-08-25T16:46:09.103213+00:00\", \"content_chars\": 35}], \"returned\": 1, \"total\": 1,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_list"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_reference_list",
+                "composition_reference_update"
+              ]
+            },
+            {
+              "call": "composition_reference_update"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.939771+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:09.103213+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.932332+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.740443+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.939771+00"
+              },
+              "loreweave_composition.reference_source": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:09.103213+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 16:46:08.932332+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 404,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 5
+    }
+  ]
+}

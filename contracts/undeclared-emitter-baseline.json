@@ -2,8 +2,8 @@
  "_note": "FROZEN BASELINE 2026-08-25. Every REQUIRED, non-ambient opaque id (*_id / *_ref) whose emitting TOOL is not declared in argument_emitters. The refusal cannot name where to get the value and R1 cannot put the supplier on the wire, so a model that picks the tool cannot finish. This list may only SHRINK: scripts/test_a_required_id_declares_its_emitter_gate.py fails on a NEW entry AND on a stale one, so it can neither grow nor rot upward.",
  "_why_this_big": "WHY IT IS THIS BIG: the mechanism was built and wired into R1 on 2026-08-23 and then left with eleven entries. The 274 gaps carry only 41 DISTINCT argument names - book_id on 84 tools, project_id on 36, chapter_id on 23, run_id on 23 - so one VERIFIED decision retires a whole family. The registry's own bar for an entry is 'verified by calling the supplier', never inferred from a name, because a wrong emitter puts a tool that cannot supply on the wire and actively misleads the model.",
  "_refreeze": "RE-FREEZE: python -c \"import json,pathlib,sys; sys.path.insert(0,'scripts'); import test_a_required_id_declares_its_emitter_gate as g; p=pathlib.Path('contracts/undeclared-emitter-baseline.json'); d=json.loads(p.read_text(encoding='utf-8')); t=g._live_gaps(); d['tools']=t; d['count_tools']=len(t); d['count_args']=sum(len(v) for v in t.values()); p.write_text(json.dumps(d,indent=1,ensure_ascii=False)+chr(10),encoding='utf-8')\"",
- "count_tools": 85,
- "count_args": 89,
+ "count_tools": 84,
+ "count_args": 88,
  "tools": {
   "book_chapter_restore_revision": [
    "revision_id"
@@ -137,9 +137,6 @@
   ],
   "composition_outline_node_update": [
    "node_id"
-  ],
-  "composition_reference_update": [
-   "reference_id"
   ],
   "composition_scene_link_create": [
    "from_node_id",
