@@ -204,7 +204,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # `rust_crypto` over `aws_lc_rs`: pure Rust, no cmake/nasm on the build host, and
 # it covers HS256 (`hmac` + `sha2`) which is what `Validation::new(Algorithm::HS256)`
 # uses. Revisit only with a measurement — aws-lc-rs is faster and needs a toolchain.
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 # Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
 chrono = { version = "0.4", features = ["serde"] }
 
