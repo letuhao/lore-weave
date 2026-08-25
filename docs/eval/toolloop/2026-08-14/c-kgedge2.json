@@ -1,0 +1,2273 @@
+{
+  "batch": "c-kgedge2",
+  "generated_by": "fe_runner",
+  "approval_mode": "as-is",
+  "tools": [
+    {
+      "tool": "kg_propose_edge",
+      "scenario": "kg-propose-edge-with-a-projectable-glossary",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the model passes a source_entity_id or target_entity_id that no tool in the turn returned — an invented UUID is invisible to the fabrication guard, which is syntactic, and '66966666-6666-6666-6666-666666666666' parsed fine; OR it passes the SAME id for both endpoints, which the tool correctly refuses and which it did on 3 of 5 runs before; OR it passes a GLOSSARY entity id where a graph NODE id is required — the better diagnosis the previous re-run surfaced, and the two id kinds are not interchangeable. CONTROL: if kg_add_nodes still reports entities_seen: 0 then the FIXTURE is still wrong and this run says nothing about the tool — check that before reading any other number.",
+      "answer_expect": null,
+      "falsifier_sha": "96d15190451483b7",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "an entity id that does not exist must be refused.",
+        "tenancy": "OWED — another account's project must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a039fc-2dc4-7df8-af88-06ede5390cf9",
+          "project_id": "01a039fc-2ef8-7dbe-a76c-c84176a506e8",
+          "seed_ids": {
+            "01a039fc-2dc4-7df8-af88-06ede5390cf9": "fixture book_id",
+            "01a039fc-2ef8-7dbe-a76c-c84176a506e8": "fixture project_id (composition_work)",
+            "01a039fc-2e52-775a-b3a3-7f471a9799ab": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "da185eaa-07e8-4578-b72c-c4b544a6d500": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.genres[0].genre_id",
+            "1c5c9eac-d67a-4302-b87c-fa41a5537780": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.kinds[0].book_kind_id",
+            "06c4e6b2-1cd1-446a-bac9-b5381bb6fbfd": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.kinds[1].book_kind_id",
+            "45551cf5-41e1-4f9b-966f-f82e5a1346c8": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[0].attr_id",
+            "27af92f3-f23a-4708-be9d-bad239e61f3f": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[1].attr_id",
+            "4340e7bf-6327-4090-a67c-1445150ef289": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[2].attr_id",
+            "6d900dd0-d701-40af-bf1c-80db1759eb41": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[3].attr_id",
+            "3c442e58-859d-4040-91fe-9df96822842c": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[4].attr_id",
+            "d4362637-ca2d-4dce-a249-fb814ce48ad5": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[5].attr_id",
+            "b05431eb-d05c-4fac-ba0d-e16edabce0a2": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[6].attr_id",
+            "131e2544-f4c2-4036-a524-d606fe455c38": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[7].attr_id",
+            "96972b90-a650-42a3-9150-7f8bca2af4ec": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[8].attr_id",
+            "2816b636-7bce-4098-9477-0718f238f00e": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[9].attr_id",
+            "5465ea58-4499-4d72-bd91-5457287f1ec0": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[10].attr_id",
+            "0f7d18e4-b4d0-4f6f-8e73-57c3829feee3": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[11].attr_id",
+            "681c6e6d-4133-4835-997d-40bba45a761c": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[12].attr_id",
+            "21bd9a23-89da-4711-afa4-026721075c21": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[13].attr_id",
+            "2e79b185-ef0a-4090-bc2b-15c91fc496f8": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[14].attr_id",
+            "47e41568-6311-4955-aaf5-e0df9c764320": "seed[0] /v1/glossary/books/01a039fc-2dc4-7df8-af88-06ede5390cf9/adopt.attributes[15].attr_id",
+            "01a039fc-2fba-733f-bbb4-f983806b8750": "seed[1] glossary_propose_entities.results[0].entity_id",
+            "01a039fc-2fc1-7297-9f7e-de9744057680": "seed[1] glossary_propose_entities.results[1].entity_id"
+          },
+          "session_id": "01a039fc-599b-7a4a-80cb-10a7acba78e8",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_project_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_project_create",
+              "result_head": "{\"ok\": true, \"result\": {\"project_id\": \"01a039fc-2ef8-7dbe-a76c-c84176a506e8\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-0-73177fce\", \"project_type\": \"book\", \"book_id\": \"01a039fc-2dc4-7df8-af88-06ede5390cf9\", \"created\": false, \"note\": \"set this project_id as the active proje"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments: (root): Value error, mode=manual requires name and kind\"}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a039fc-2ef8-7dbe-a76c-c84176a506e8\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-0-73177fce\", \"project_type\": \"book\", \"book_id\": \"01a039fc-2dc4-7df8-af88-06ede5390cf9\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"kg_add_nodes\", \"description\": \"Add entity node(s) to the current project's knowledge graph. Pick mode: 'manual' = create ONE node (needs name + kind) \\u2014 use this BEFORE kg_propose_edge when a relationship's endpoint isn't in the graph yet; 'from_glossa"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": true, \"result\": {\"entity_id\": \"5fe7050d696716ff381f7374d21c600e\", \"name\": \"Aldric Vane\", \"kind\": \"character\", \"note\": \"node ready \\u2014 pass entity_id as a subject/object endpoint to kg_propose_edge\"}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.551694+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:43.743064+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.544069+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.378334+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.551694+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:43.646102+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:43.743064+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:33:43.544069+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:54.547895+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-25 17:33:54.547895+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a039fc-ca34-7248-8fce-0fe94870e7b9",
+          "project_id": "01a039fc-cb60-7051-8388-cbec9573cd65",
+          "seed_ids": {
+            "01a039fc-ca34-7248-8fce-0fe94870e7b9": "fixture book_id",
+            "01a039fc-cb60-7051-8388-cbec9573cd65": "fixture project_id (composition_work)",
+            "01a039fc-cac0-73b4-af6b-fd438c44704a": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "4cc28753-b5b2-4d4a-881b-08464344087c": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.genres[0].genre_id",
+            "3bd64655-137a-4dcb-bcc6-acf6a6556202": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.kinds[0].book_kind_id",
+            "bdcf0d22-4e1e-4eaf-942c-bd0c940cc282": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.kinds[1].book_kind_id",
+            "4a2304e4-e4f1-4fb0-a60e-113965e621b3": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[0].attr_id",
+            "739bc2aa-7845-45b7-9e88-723521f02d21": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[1].attr_id",
+            "947e34e1-7047-4568-97eb-0510801b03b0": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[2].attr_id",
+            "50e9fa14-cac5-43b7-a7d3-ecd7b86c4a97": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[3].attr_id",
+            "ec1a0b6d-f8f4-4f5b-a5d9-90bda9037721": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[4].attr_id",
+            "ab8eeb1d-cc69-44bd-a1b3-103747473d60": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[5].attr_id",
+            "9d6f08da-a639-45dc-8130-fc8b0a4408c6": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[6].attr_id",
+            "cba302b0-796b-4a70-bf23-032f1b40a2d1": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[7].attr_id",
+            "1525203f-cb93-46d5-90b9-827396065114": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[8].attr_id",
+            "5a822ccc-0e00-4290-ac8d-34b788ac7cf5": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[9].attr_id",
+            "73c278b6-0a35-44e9-a771-83da9691e0f7": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[10].attr_id",
+            "f9d7acb7-40f6-43a5-8fcf-66cd9ceb7ae8": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[11].attr_id",
+            "ffebd1da-165f-44b0-a624-886ef63e72e5": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[12].attr_id",
+            "1f1183f7-523d-4c44-be44-342e17c22c02": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[13].attr_id",
+            "26c8dd80-852b-4139-b667-51b265fb6629": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[14].attr_id",
+            "3d28fff1-1c55-42c4-8e94-20cc2e9e86bd": "seed[0] /v1/glossary/books/01a039fc-ca34-7248-8fce-0fe94870e7b9/adopt.attributes[15].attr_id",
+            "01a039fc-cc0c-754c-85c5-e7e778fb214e": "seed[1] glossary_propose_entities.results[0].entity_id",
+            "01a039fc-cc12-7aab-83c0-1b5f2d587d0c": "seed[1] glossary_propose_entities.results[1].entity_id"
+          },
+          "session_id": "01a039fc-f421-7c1b-89d1-6fb9ce65f648",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_add_nodes",
+            "kg_project_create"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_project_create",
+              "result_head": "{\"ok\": true, \"result\": {\"project_id\": \"01a039fc-cb60-7051-8388-cbec9573cd65\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-1-4648de58\", \"project_type\": \"book\", \"book_id\": \"01a039fc-ca34-7248-8fce-0fe94870e7b9\", \"created\": false, \"note\": \"set this project_id as the active proje"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments: (root): Value error, mode=manual requires name and kind\"}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": {\"kinds\": [{\"attribute_count\": 13, \"code\": \"character\", \"description\": \"An individual PERSON, god, immortal or named being who acts, speaks, or is addressed. NOT a group of people (that is organization), and NOT a kind of being (that is species).\", \"genre_tags\": [\"universal\", "
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": true, \"result\": {\"entity_id\": \"d29ffae737eaf8e71f19f016a99669b2\", \"name\": \"Aldric Vane\", \"kind\": \"character\", \"note\": \"node ready \\u2014 pass entity_id as a subject/object endpoint to kg_propose_edge\"}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.588949+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:23.760672+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.583255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.424149+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.588949+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:23.670713+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:23.760672+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:34:23.583255+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:34.095425+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-25 17:34:34.095425+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a039fd-689e-7ef9-b73c-7eb4f23c8c59",
+          "project_id": "01a039fd-69d8-7684-bdf7-72a9de13ec5a",
+          "seed_ids": {
+            "01a039fd-689e-7ef9-b73c-7eb4f23c8c59": "fixture book_id",
+            "01a039fd-69d8-7684-bdf7-72a9de13ec5a": "fixture project_id (composition_work)",
+            "01a039fd-692a-73ca-8b34-988f5f2d7a53": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "daf3957b-4c81-4507-9bfe-bab35f70af72": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.genres[0].genre_id",
+            "ebe39595-2b3a-440f-9525-a7d3e10dc738": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.kinds[0].book_kind_id",
+            "38ae5a55-93cf-4a48-b0e2-864304aa0e11": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.kinds[1].book_kind_id",
+            "104e1ecd-6cfb-4dad-b28d-8b1d857b50fd": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[0].attr_id",
+            "4ef212f9-5229-4603-b00c-3344b521ec9b": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[1].attr_id",
+            "ccb0b71b-e625-4fe6-aac6-171d49ae8730": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[2].attr_id",
+            "4a2c88ff-277a-4a80-bb5a-801fed2d3f1e": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[3].attr_id",
+            "a82f6644-2650-4a58-a56e-4100c9a4f0d5": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[4].attr_id",
+            "2d4bf49e-e199-4a1d-8c37-50a723085d46": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[5].attr_id",
+            "75022803-a59d-4fff-8fe6-19b42f9b4458": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[6].attr_id",
+            "4691edf7-2264-40ec-9a1e-e8d5070f4dc1": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[7].attr_id",
+            "74210ea4-f1f0-4bdb-9d1b-50503572bbd5": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[8].attr_id",
+            "21671062-fcc8-4b89-a98e-2fe5938494c3": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[9].attr_id",
+            "b6c26389-c209-4b34-b501-c6c389c0b7e6": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[10].attr_id",
+            "970abf0e-a558-47b7-b09f-1570becfa5e7": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[11].attr_id",
+            "c8bc0463-9315-4c19-836d-7e5c420c9589": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[12].attr_id",
+            "eb6bbae9-0f66-4b5c-8b76-43dd074a4757": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[13].attr_id",
+            "fded3151-190e-4905-9f63-888c42b9c252": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[14].attr_id",
+            "0a52ff9a-8f47-4103-926a-9d0267e53441": "seed[0] /v1/glossary/books/01a039fd-689e-7ef9-b73c-7eb4f23c8c59/adopt.attributes[15].attr_id",
+            "01a039fd-6a6e-7194-965d-6c1f5076f187": "seed[1] glossary_propose_entities.results[0].entity_id",
+            "01a039fd-6a77-72cd-b45c-452111ae6e26": "seed[1] glossary_propose_entities.results[1].entity_id"
+          },
+          "session_id": "01a039fd-948c-70d1-8561-fea1927dc449",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_project_create",
+              "result_head": "{\"ok\": true, \"result\": {\"project_id\": \"01a039fd-69d8-7684-bdf7-72a9de13ec5a\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-2-4fb0218e\", \"project_type\": \"book\", \"book_id\": \"01a039fd-689e-7ef9-b73c-7eb4f23c8c59\", \"created\": false, \"note\": \"set this project_id as the active proje"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments: (root): Value error, mode=manual requires name and kind\"}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a039fd-69d8-7684-bdf7-72a9de13ec5a\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-2-4fb0218e\", \"project_type\": \"book\", \"book_id\": \"01a039fd-689e-7ef9-b73c-7eb4f23c8c59\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "result_head": "{\"ok\": false, \"error\": \"'kg_propose_edge' is missing required argument(s): ['source_entity_id', 'target_entity_id']. The tool DOES declare what these are \\u2014 source_entity_id: The id of the relationship's source entity.; target_entity_id: The id of the relationship's target entity. \\u2014 so use "
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a039fd-69d8-7684-bdf7-72a9de13ec5a\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-2-4fb0218e\", \"project_type\": \"book\", \"book_id\": \"01a039fd-689e-7ef9-b73c-7eb4f23c8c59\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a039fd-69d8-7684-bdf7-72a9de13ec5a\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-2-4fb0218e\", \"project_type\": \"book\", \"book_id\": \"01a039fd-689e-7ef9-b73c-7eb4f23c8c59\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "result_head": "{\"ok\": false, \"error\": \"'kg_propose_edge' is missing required argument(s): ['source_entity_id', 'target_entity_id']. The tool DOES declare what these are \\u2014 source_entity_id: The id of the relationship's source entity.; target_entity_id: The id of the relationship's target entity. \\u2014 so use "
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": false, \"error\": \"You have already called 'kg_project_list' with these exact arguments 3 times this turn and it returned the IDENTICAL result every time \\u2014 that result is already above, in this conversation. Calling it again cannot tell you anything new. STOP calling it. Read the result yo"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": false, \"error\": \"You have already called 'kg_project_list' with these exact arguments 4 times this turn and it returned the IDENTICAL result every time \\u2014 that result is already above, in this conversation. Calling it again cannot tell you anything new. STOP calling it. Read the result yo"
+            },
+            {
+              "tool": "kg_propose_edge",
+              "result_head": "{\"ok\": false, \"error\": \"'kg_propose_edge' keeps being called with missing/blank required arguments this turn \\u2014 STOP. Tell the user you couldn't complete this rather than retrying with empty arguments. You passed a NAME where an id is required (source_entity_id='Aldric Vane', target_entity_id='M"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_propose_edge"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_propose_edge"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 37,
+              "of_the_called": [
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 37,
+              "of_the_called": [
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_propose_edge"
+            },
+            {
+              "pass_size": 37,
+              "of_the_called": [
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 37,
+              "of_the_called": [
+                "kg_propose_edge"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.158211+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:04.307651+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.151216+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:03.978083+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.158211+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:04.203973+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:04.307651+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:04.151216+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:15.1695+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:15.1695+00"
+              }
+            }
+          },
+          "answer": "I've started a new project for your story, but I need to find the unique IDs for Aldric Vane and Mira Solene in the story bible before I can record their relationship. \n\nI'll search for them now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a039fe-2269-739f-835e-cb9980f88085",
+          "project_id": "01a039fe-23a3-77bf-ab79-c17f73b66e06",
+          "seed_ids": {
+            "01a039fe-2269-739f-835e-cb9980f88085": "fixture book_id",
+            "01a039fe-23a3-77bf-ab79-c17f73b66e06": "fixture project_id (composition_work)",
+            "01a039fe-22f8-785b-bc65-c84724628e89": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "31e750cf-24f0-4919-907e-5f84ba7d955f": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.genres[0].genre_id",
+            "514f6642-155e-4b50-9800-ca718be7c8c7": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.kinds[0].book_kind_id",
+            "ceeeb620-06cd-426b-acbe-bcdfd301dc08": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.kinds[1].book_kind_id",
+            "56741b8a-f3f5-45fd-9baf-8198d5c4f8e4": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[0].attr_id",
+            "df4251a7-57e8-4b64-9eeb-78d556c62c39": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[1].attr_id",
+            "326b2eba-1105-4144-becb-6fa2caa9fdf6": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[2].attr_id",
+            "738917f0-5e38-4d58-817b-6b4b9c33f49a": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[3].attr_id",
+            "4e5c302b-6657-4c25-abc5-2bf77d7c5427": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[4].attr_id",
+            "558d90fb-d155-4487-988d-fd934ca76b5b": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[5].attr_id",
+            "4f1920bb-1489-4b8a-80e8-5bc94913b3a1": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[6].attr_id",
+            "1c9348db-b861-4bf6-a866-441124de1578": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[7].attr_id",
+            "fa8db233-4a2d-45c4-9251-758b2f06f750": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[8].attr_id",
+            "08297177-52ec-42e7-86e3-f6662753dd58": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[9].attr_id",
+            "1033da13-e6ff-4628-8bc0-6297d9835b24": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[10].attr_id",
+            "e9b3892c-530e-412b-82a5-0678ab7f7c43": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[11].attr_id",
+            "1e771b2c-8d12-4da9-81d6-8f3b0d3643b2": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[12].attr_id",
+            "107b6915-555a-4d15-b12b-8a42d37523b3": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[13].attr_id",
+            "14829fca-c657-48bc-a008-0f4ffe34ee7b": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[14].attr_id",
+            "6a279bb8-3193-4b61-b13c-1f8125927131": "seed[0] /v1/glossary/books/01a039fe-2269-739f-835e-cb9980f88085/adopt.attributes[15].attr_id",
+            "01a039fe-244e-7a1b-971b-77fa1b0f91b9": "seed[1] glossary_propose_entities.results[0].entity_id",
+            "01a039fe-2455-7416-b3c5-b134e702e801": "seed[1] glossary_propose_entities.results[1].entity_id"
+          },
+          "session_id": "01a039fe-4cdd-7cbb-ad3e-732b90953b61",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "kg_add_nodes",
+            "kg_project_create"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_project_create",
+              "result_head": "{\"ok\": true, \"result\": {\"project_id\": \"01a039fe-23a3-77bf-ab79-c17f73b66e06\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-3-c61eceba\", \"project_type\": \"book\", \"book_id\": \"01a039fe-2269-739f-835e-cb9980f88085\", \"created\": false, \"note\": \"set this project_id as the active proje"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments: (root): Value error, mode=manual requires name and kind\"}"
+            },
+            {
+              "tool": "glossary_list_system_standards",
+              "result_head": "{\"ok\": true, \"result\": {\"kinds\": [{\"attribute_count\": 13, \"code\": \"character\", \"description\": \"An individual PERSON, god, immortal or named being who acts, speaks, or is addressed. NOT a group of people (that is organization), and NOT a kind of being (that is species).\", \"genre_tags\": [\"universal\", "
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": true, \"result\": {\"entity_id\": \"07fc2ff3b69c767acfe4ece20fe1a527\", \"name\": \"Aldric Vane\", \"kind\": \"character\", \"note\": \"node ready \\u2014 pass entity_id as a subject/object endpoint to kg_propose_edge\"}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "glossary_list_system_standards"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "glossary_list_system_standards",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 40,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_propose_edge"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.720555+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:51.891331+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.715023+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.544395+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.720555+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:51.801373+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:35:51.891331+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:35:51.715023+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:02.345548+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:02.345548+00"
+              }
+            }
+          },
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a039fe-bc7e-7cba-ad52-c17710a01355",
+          "project_id": "01a039fe-bdab-74b7-a167-a9d2b5faf7d0",
+          "seed_ids": {
+            "01a039fe-bc7e-7cba-ad52-c17710a01355": "fixture book_id",
+            "01a039fe-bdab-74b7-a167-a9d2b5faf7d0": "fixture project_id (composition_work)",
+            "01a039fe-bd08-7acd-bbc8-ef2d035ab9d7": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "83d0dc86-7c5c-4802-aea8-4eb0f68c5f07": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.genres[0].genre_id",
+            "046ba863-c918-4142-8f1e-6f48916389d1": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.kinds[0].book_kind_id",
+            "7fb88071-9659-4787-aaef-cebc71f2a747": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.kinds[1].book_kind_id",
+            "b0a0b9fb-c42f-43ac-a69b-f0c3670d4d18": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[0].attr_id",
+            "5038f883-8d6e-4371-9960-03cb09ceba01": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[1].attr_id",
+            "738d2d2e-88d3-4167-bb0b-6d183a2f69f7": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[2].attr_id",
+            "36b4c64f-2e3d-4aed-b62d-3e60f4e6d46a": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[3].attr_id",
+            "ba67fdf5-f943-4089-99a6-2b943445511d": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[4].attr_id",
+            "3949c29a-750f-4191-beea-bc790a7f7bce": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[5].attr_id",
+            "d0e6f9ad-305a-4d89-a4e3-97c2420c110a": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[6].attr_id",
+            "a1f1c0bf-bb2f-40ee-858f-0ca76b5b6fbb": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[7].attr_id",
+            "00c8e8f6-7738-4a15-b16f-14ed9b7aa52e": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[8].attr_id",
+            "7cebc0af-34b9-41bd-bc35-8a21ebf5885d": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[9].attr_id",
+            "4ad30ccf-97d1-4aee-b60d-23f5a131f65d": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[10].attr_id",
+            "3925cff8-2179-427b-a831-799129c70f1b": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[11].attr_id",
+            "d03c35ed-40b6-42cd-94df-d589a3576d6c": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[12].attr_id",
+            "897be128-2a2a-4a52-8fd0-388b76709a2b": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[13].attr_id",
+            "3c76e14c-dcc6-4b8c-a7e1-9ff40f277bd1": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[14].attr_id",
+            "ea411206-1bd6-4c0a-9c8b-7f6c080e4ea2": "seed[0] /v1/glossary/books/01a039fe-bc7e-7cba-ad52-c17710a01355/adopt.attributes[15].attr_id",
+            "01a039fe-be51-799b-a7cd-e08c7485fc1c": "seed[1] glossary_propose_entities.results[0].entity_id",
+            "01a039fe-be57-7e3d-8b4a-c9bc21a70465": "seed[1] glossary_propose_entities.results[1].entity_id"
+          },
+          "session_id": "01a039fe-e6e1-751c-88f8-025bdc7c235b",
+          "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "scenario_prompt": "Record that Aldric Vane and Mira Solene know each other.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "kg_add_nodes",
+            "kg_project_create",
+            "kg_project_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "kg_project_create",
+              "result_head": "{\"ok\": true, \"result\": {\"project_id\": \"01a039fe-bdab-74b7-a167-a9d2b5faf7d0\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-4-7d97bf4c\", \"project_type\": \"book\", \"book_id\": \"01a039fe-bc7e-7cba-ad52-c17710a01355\", \"created\": false, \"note\": \"set this project_id as the active proje"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": false, \"error\": \"invalid arguments: (root): Value error, mode=manual requires name and kind\"}"
+            },
+            {
+              "tool": "kg_project_list",
+              "result_head": "{\"ok\": true, \"result\": {\"projects\": [{\"project_id\": \"01a039fe-bdab-74b7-a167-a9d2b5faf7d0\", \"name\": \"LOOP-THROWAWAY-kg-propose-edge-with-a-projectable-glossary-4-7d97bf4c\", \"project_type\": \"book\", \"book_id\": \"01a039fe-bc7e-7cba-ad52-c17710a01355\", \"is_archived\": false}, {\"project_id\": \"019ffa2a-45a0"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"kg_add_nodes\", \"description\": \"Add entity node(s) to the current project's knowledge graph. Pick mode: 'manual' = create ONE node (needs name + kind) \\u2014 use this BEFORE kg_propose_edge when a relationship's endpoint isn't in the graph yet; 'from_glossa"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "result_head": "{\"ok\": true, \"result\": {\"entity_id\": \"8c8fe16dbb395857a837a4f6ebe9ae65\", \"name\": \"Aldric Vane\", \"kind\": \"character\", \"note\": \"node ready \\u2014 pass entity_id as a subject/object endpoint to kg_propose_edge\"}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 41,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_project_create"
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 43,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_create",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_project_list"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 38,
+              "of_the_called": [
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "kg_add_nodes"
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 39,
+              "of_the_called": [
+                "kg_add_nodes",
+                "kg_project_list",
+                "kg_propose_edge",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_add_nodes"
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "kg_project_create",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "kg_add_nodes",
+              "outcome": "approved_always",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.152256+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:31.318036+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.146573+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:30.984593+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.152256+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:31.231061+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:31.318036+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-25 17:36:31.146573+00"
+              },
+              "loreweave_knowledge.entity_access_log": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:41.772376+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 414,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.entity_access_log": {
+              "before": null,
+              "after": {
+                "rows": 2,
+                "latest": "2026-08-25 17:36:41.772376+00"
+              }
+            }
+          },
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 1,
+      "wrote_count": 5,
+      "suspended_count": 4
+    }
+  ]
+}

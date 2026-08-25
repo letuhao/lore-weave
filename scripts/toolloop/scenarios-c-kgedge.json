@@ -1,0 +1,67 @@
+{
+  "_note": "kg_add_nodes -> kg_propose_edge, with a fixture the projection can actually SEE.\n\nD-SUPPLIER-RETURNS-COUNTS-NOT-THE-IDS-ITS-SUCCESSOR-NEEDS: kg_add_nodes returned only counts, so the step that CREATES the graph nodes never told the caller what they are, and kg_propose_edge REQUIRES source_entity_id + target_entity_id. The model invented '66966666-6666-6666-6666-666666666666' and used it for BOTH endpoints. The fix (return `nodes`) shipped 2026-08-23 and is verified deployed — the container's graph_schema_tools.py sha256 equals the host's and carries the projection.\n\n🔴 WHY THIS FILE EXISTS. The re-run that was supposed to measure that fix could not: the projection returned `entities_seen: 0, nodes: []`, so the new field had nothing to carry and was never on the path. The row says so itself — 'the fix is right and its measurement is owed ... entities_seen must be non-zero or the run cannot speak to this defect at all.'\n\nTHE CAUSE OF THE ZERO IS THE FIXTURE, NOT THE TOOL. scenarios-p4-approve-pilot.json seeds the glossary entities correctly (and asserts them), but nothing creates a KNOWLEDGE project for the book. The harness's `{project_id}` is the COMPOSITION project (composition_work); kg_add_nodes projects a knowledge project's glossary, and with none linked to the book it sees nothing. That file is NOT modified — its measurement stands as the historical record of the broken state.",
+  "scenarios": [
+    {
+      "id": "kg-propose-edge-with-a-projectable-glossary",
+      "tool_under_test": "kg_propose_edge",
+      "expect_tool": "kg_propose_edge",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+      "prompt_source": "Verbatim from scenarios-p4-approve-pilot.json. Unchanged on purpose: the question is whether the FIXTURE now lets the chain run, so the request must not move.",
+      "needs_target": false,
+      "approve": "approved_always",
+      "approve_why": "🔴 approved_once WAS NOT ENOUGH AND THE FIRST RUN PROVED IT. This chain mints THREE Tier-A cards — kg_project_create, kg_add_nodes, kg_propose_edge — and kg_add_nodes is the one under test. A suspended call returns NO BODY, so with a single approval the `nodes` list this defect's fix added never reaches the model at all, and the run measures nothing again (batch c-kgedge1: 4 of 5 left suspended on a kg_add_nodes card, entities_seen absent rather than zero).\n\nThis changes the APPROVAL BUDGET, not the bar: the falsifier below is unchanged, and a real author who asks to record a relationship does click through the cards. The writes land on a throwaway book's throwaway knowledge project and are torn down.",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {"genres": ["universal"], "kinds": ["character"]}
+          },
+          "why": "The book needs a `character` kind before entities of that kind can exist."
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {"kind": "character", "name": "Aldric Vane"},
+              {"kind": "character", "name": "Mira Solene"}
+            ]
+          },
+          "why": "TWO named entities, because the hard step is resolving NAMES to ids. With one the model cannot get the pair wrong and the scenario proves nothing about resolution."
+        },
+        {
+          "tool": "kg_project_create",
+          "args": {"name": "LOOP-THROWAWAY-kgedge {run_word}", "book_id": "{book_id}"},
+          "why": "🔴 THE STEP THE PILOT WAS MISSING. kg_add_nodes mode=from_glossary projects a KNOWLEDGE project's glossary into its graph; the harness's {project_id} is the COMPOSITION project and is not that. With no knowledge project linked to the book the projection sees nothing, returns entities_seen: 0, and `nodes` is empty — so the fix under test is never on the path. Linked by book_id, which is how a book binds to a knowledge project here."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "Both entities exist before the projection can be asked to see them."
+        },
+        {
+          "db": "loreweave_knowledge",
+          "query": "SELECT count(*)::text FROM knowledge_projects WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "EXACTLY ONE knowledge project bound to this book. Without it entities_seen is 0 and the run cannot speak to this defect — which is precisely what happened to the previous attempt."
+        }
+      ],
+      "falsifier": "REFUTED IF: the model passes a source_entity_id or target_entity_id that no tool in the turn returned — an invented UUID is invisible to the fabrication guard, which is syntactic, and '66966666-6666-6666-6666-666666666666' parsed fine; OR it passes the SAME id for both endpoints, which the tool correctly refuses and which it did on 3 of 5 runs before; OR it passes a GLOSSARY entity id where a graph NODE id is required — the better diagnosis the previous re-run surfaced, and the two id kinds are not interchangeable. CONTROL: if kg_add_nodes still reports entities_seen: 0 then the FIXTURE is still wrong and this run says nothing about the tool — check that before reading any other number.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "an entity id that does not exist must be refused.",
+        "tenancy": "OWED — another account's project must be refused."
+      },
+      "defects": []
+    }
+  ]
+}
