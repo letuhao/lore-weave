@@ -14424,6 +14424,41 @@
       "visibility": "legacy"
     }
   },
+  "composition_reference_list": {
+    "description": "List the reference SOURCES on a Work's shelf — the external passages an author added as influences (title / author / source_url), newest first. This is where a reference_id comes from: match the one you want by title, then pass its id to composition_reference_update. Bodies are never returned, only metadata. VIEW on the book. NOT the same as composition_find_references, which finds where an ENTITY appears in the spec.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "1..100",
+          "title": "Limit",
+          "type": "integer"
+        },
+        "project_id": {
+          "description": "the Work whose reference shelf to list (UUID)",
+          "title": "Project Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "composition_reference_listArguments",
+      "type": "object"
+    },
+    "meta": {
+      "scope": "book",
+      "synonyms": [
+        "list references",
+        "my references",
+        "reference shelf",
+        "what references do I have",
+        "reference sources",
+        "show reference library"
+      ],
+      "tier": "R"
+    }
+  },
   "composition_reference_update": {
     "description": "Edit a reference's METADATA — title / author / source_url. A cheap column write; it does NOT re-embed (fixing a typo must not pay for a re-embed). Only the fields you pass change. EDIT required (auto-applied; Undo restores the prior values). Editing a reference's CONTENT is not available here (add references via the create path).",
     "inputSchema": {
@@ -16979,7 +17014,6 @@
     "description": "List the SYSTEM standards catalogue — the entity kinds a book can adopt, by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes you want to glossary_adopt_standards; each kind's attributes come down with it. Calling this twice returns the identical list. For what a specific book ALREADY has, use glossary_book_ontology_read.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23057,7 +23091,6 @@
     "description": "Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23075,7 +23108,6 @@
     "description": "Get the signed-in user's account profile: display name, locale, avatar URL, bio, languages, email, and email-verified status. Read-only.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23127,7 +23159,6 @@
     "description": "List the user's configured AI provider credentials (e.g. OpenAI, Anthropic, a local LM Studio). Returns provider kind, display name, endpoint, status, and whether a secret is set — but NEVER the secret itself. Use to see which providers exist before registering a model.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {

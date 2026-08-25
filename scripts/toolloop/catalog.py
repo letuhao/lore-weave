@@ -113,7 +113,16 @@ def _refresh_now(allow_regression: bool = False) -> dict:
         if lost:
             raise SurfaceRegressed(_regression_report(lost))
     CACHE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+    # 🔴 THE FORMAT MUST MATCH THE COMMITTED FILE OR EVERY REFRESH IS AN UNREVIEWABLE DIFF.
+    # This wrote `indent=1` with the default `ensure_ascii=True` while the checked-in cache is
+    # `indent=2` with raw UTF-8, so a refresh that ADDED ONE TOOL produced 24788 insertions and
+    # 24757 deletions — a diff in which a real change (a tool gained a required argument, a
+    # description was reworded) cannot be seen at all. Measured 2026-08-25 after adding
+    # composition_reference_list: semantically +1 tool and 4 server-side edits, buried in 49k
+    # lines of reformatting.
+    CACHE.write_text(
+        json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8")
     return data
 
 
