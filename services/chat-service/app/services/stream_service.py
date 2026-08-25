@@ -1206,8 +1206,20 @@ def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[
 # cleared that from my immediate reasoning" is honest about its scope. It still tells an author
 # who asked to forget a STORED fact that a forget happened, so a nudge is right — but it is a
 # weaker instance than the other six and should not be cited as proof of the guard's precision.
+#: 🔴 ACKNOWLEDGING IS NOT ACTING, and the first version could not tell the difference.
+#: `\w+ed` matched "I have NOTED your instruction to stop the translation" — a conversational
+#: acknowledgement in a turn that had honestly reported an error one sentence earlier — and the
+#: guard called it a narrated write. Found 2026-08-26 when a new batch (c-cancel1) entered the
+#: corpus and the calibration test went red on a THIRD tool, which is exactly what that test is
+#: for: it asserts WHICH tools fire, not how many, so new evidence cannot be absorbed silently.
+#:
+#: Measured over the whole 2656-turn corpus before shipping: 9 fires on 3 tools -> 8 fires on 2,
+#: i.e. the one false positive removed and every true positive kept. The excluded verbs are all
+#: ones that describe RECEIVING information rather than changing anything.
+_CLAIMED_EFFECT_ACK = r"(?:noted|understood|reviewed|read|seen|heard|considered|checked|observed|noticed)"
 _CLAIMED_EFFECT_RE = re.compile(
     r"\b(?:i've|i have)\s+(?:already\s+)?"
+    rf"(?!{_CLAIMED_EFFECT_ACK}\b)"
     r"(?:\w+ed|forgotten|done|made|set|put|kept|left)\b",
     re.I,
 )
@@ -3129,8 +3141,15 @@ def _declares_uuid(props: dict | None, name: str) -> bool:
     return "uuid" in str(spec.get("description") or "").lower()
 
 
-def _name_like_dropped_ids(dropped: dict) -> str:
+def _name_like_dropped_ids(dropped: dict, *, emitter: str = "",
+                           referent_exists: bool = True) -> str:
     """A sentence naming the NAMES the model passed where ids were required — or "" .
+
+    `emitter` is the tool DECLARED to produce the id (argument_emitters); naming it is also what
+    ARMS it, since the arming path keys off catalogue names in the refusal text. `referent_exists`
+    says whether anything ELSE in the message already named a tool — when both are absent the
+    closing instruction is dropped rather than left pointing at nothing. Both default to the old
+    behaviour so a caller that has not been taught to resolve them is unchanged.
 
     🔴 WHY THE VALUE AND NOT JUST THE ARGUMENT NAME. Measured 2026-08-23,
     composition_motif_link_edit over K=5: the model resolved both endpoints to names, the
@@ -3161,12 +3180,33 @@ def _name_like_dropped_ids(dropped: dict) -> str:
         named.append(f"{nm}={v!r}")
     if not named:
         return ""
-    return (
-        "You passed a NAME where an id is required (" + ", ".join(named) + "). That is not "
-        "missing — it is the wrong kind of value, and the name is what you search WITH: look it "
-        "up with the tool named above and pass the id it returns, using that exact name as the "
-        "query."
-    )
+    head = ("You passed a NAME where an id is required (" + ", ".join(named) + "). That is not "
+            "missing — it is the wrong kind of value, and the name is what you search WITH")
+    # ── D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE ─────────────────────────────
+    # 🔴 "THE TOOL NAMED ABOVE" HAD NO REFERENT FOR HALF THE CATALOGUE. The phrase was written
+    # for composition_motif_link_edit, whose description really does say "search motifs by name
+    # with composition_motif_search". When a description names nothing, the model is told to use
+    # a tool that was never named — and it acts on it: measured in c-arcapply K=5, the model got
+    # this sentence for composition_arc_template_get and then guessed composition_arc_suggest,
+    # finally telling the author it could not find a template its own run had just created.
+    #
+    # The row's remedy, in its own order: NAME the supplier — the platform holds the catalogue at
+    # the moment it writes this — and failing that DROP the clause, because "an instruction with
+    # no referent is worse than no instruction, because the model spends its turn acting on it."
+    #
+    # Re-derived 2026-08-26 over the live catalogue: of 131 tools requiring a non-ambient *_id,
+    # 59 name a supplier in prose and 52 now declare an EMITTER, leaving 49 (37%) with no
+    # referent of any kind. The emitter map is what makes the first branch possible at all.
+    if emitter:
+        return f"{head}: look it up with `{emitter}` and pass the id it returns, using that " \
+               "exact name as the query."
+    if referent_exists:
+        return (f"{head}: look it up with the tool named above and pass the id it returns, using "
+                "that exact name as the query.")
+    # No emitter, and nothing above named a tool. Say what is true and stop — do NOT invent a
+    # remedy, and do NOT point at a tool that was never named.
+    return (f"{head}. No tool on this surface is declared to resolve it, so do not guess an id: "
+            "tell the author you need the id, or a way to identify it that this tool accepts.")
 
 
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
@@ -6974,7 +7014,26 @@ async def _stream_with_tools(
                     # calling that "missing" is the one description guaranteed not to help. The
                     # name is also the exact query string the recovery search needs, so handing it
                     # back is what makes the refusal actionable rather than merely accurate.
-                    _named = _name_like_dropped_ids(_invented_vals)
+                    # D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE — resolve the
+                    # referent HERE, where the catalogue and the registry are both in hand, rather
+                    # than gesturing at "the tool named above" and hoping something named one.
+                    # The emitter is preferred; naming it also ARMS it a few lines below, since
+                    # that path keys off catalogue names in this very text.
+                    _nl_emitter = ""
+                    try:
+                        from app.agentruntime.toolcontract import declared_emitter as _de
+                        _nl_reg = _tool_contract_registry()
+                        _nl_emitter = next(
+                            (e for a in sorted(_invented_vals or {})
+                             if (e := _de(_nl_reg, c["name"], a))), "")
+                    except Exception:  # noqa: BLE001 — a lookup must never take the turn down
+                        _nl_emitter = ""
+                    # Does anything already in the message name a real tool? If not, the closing
+                    # instruction has nowhere to point and is dropped instead of dangling.
+                    _nl_referent = bool(_tools_named_in_refusal(
+                        _ma_msg or "", cat_index or {}, set(), exclude=c["name"]))
+                    _named = _name_like_dropped_ids(
+                        _invented_vals, emitter=_nl_emitter, referent_exists=_nl_referent)
                     if _named:
                         _ma_msg = (_ma_msg or "") + " " + _named
                     # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────

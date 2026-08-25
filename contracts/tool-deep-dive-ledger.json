@@ -3907,9 +3907,13 @@
    "seen_live": "c-arcapply, K=5. The model passed arc_id='The Varisuni Ascent' — a NAME — to composition_arc_template_get, got this repair, and then called composition_arc_suggest, a guess. It never called composition_arc_template_list, which is the real supplier and which was on no pass of the wire. Its closing message to the user was 'I still can't find an arc template named \"The Varisuni Ascent\"' — about a template its own run had just created.",
    "recommendation_for_owner": "The platform holds the catalogue at the moment it writes this sentence, so it can name the supplier instead of gesturing at one. Failing that, the clause should be dropped when the description names nothing — an instruction with no referent is worse than no instruction, because the model spends its turn acting on it. NOT MY CALL; recorded for decision.",
    "denominator_correction": "🔴 THE 86 UNDER-COUNTS, and the tools it misses are the ones most likely to fail. The sweep counted tools with a REQUIRED *_id argument that is a UUID. A flat-superset op-dispatch tool declares only `op` (and sometimes an ambient id) as required - every other argument is optional with default null - so composition_authoring_run_manage's plan_run_id was never in the population, even though the handler refuses without it on 4 of 5 runs. ship_probe.py's docstring counts 15 catalogue tools whose only required argument is `op` (measured 2026-08-22).\n\nWorse for the repair specifically: those arguments carry a `title` and NO `description`, so the branch that quotes the argument's own declaration has nothing to quote and falls through to 'does not declare which side supplies them'. The tools whose requirements are invisible to the schema are also the tools the repair can say least about.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 1
+   "queue_group": 1,
+   "remeasured_2026_08_26": "RE-DERIVED, because this row's number predates the emitter map. Over the live 316-tool catalogue, counting tools with a REQUIRED non-ambient `*_id` and asking whether ANY referent exists - a tool named in the description OR a declared emitter:\n\n    131  tools require a non-ambient *_id\n     59  name a supplier in their description\n     52  declare an EMITTER (argument_emitters)\n     82  have EITHER - a referent exists\n     49  have NEITHER - the sentence is vacuous   (37%)\n\nThe row measured 45 of 86 (52%) before argument_emitters was populated. Cycle 1's 42 declarations are what shrank it, and they are also what makes this row's own first remedy possible at all.",
+   "what_shipped_2026_08_26": "THE ROW'S REMEDY, IN THE ROW'S OWN ORDER: 'it can name the supplier instead of gesturing at one ... failing that, the clause should be dropped when the description names nothing - an instruction with no referent is worse than no instruction, because the model spends its turn acting on it.'\n\n`_name_like_dropped_ids` now takes `emitter` and `referent_exists`, resolved AT THE CALL SITE where the catalogue and the registry are both in hand:\n  * emitter declared  -> \"look it up with `composition_arc_template_list` and pass the id it returns\". Naming it also ARMS it: that path keys off catalogue names in this very text.\n  * no emitter, but something above named a tool -> unchanged wording.\n  * NEITHER -> the closing instruction is DROPPED. The sentence states the problem and stops: 'No tool on this surface is declared to resolve it, so do not guess an id: tell the author you need the id, or a way to identify it that this tool accepts.' A test pins that it does NOT invent a plausible-sounding tool, which would be the fabrication this whole class is about.\n\nBoth new arguments default to the OLD behaviour, so a caller not yet taught to resolve a referent is unchanged. 12 falsifiers, all RED at HEAD.",
+   "proven_and_unproven_live_2026_08_26": "🔴 THE SCENARIO IS FIXED AND MY CHANGE IS NOT WHAT FIXED IT. Both halves stated, because only the first is a live result.\n\nPROVEN LIVE, K=5, batch c-referent1, the ORIGINAL failing scenario (c-arcapply) unchanged: composition_arc_apply called 5/5 and the template APPLIED 5/5 - structure_node, outline_node and motif_application all written - with the arc_template_id matching THIS RUN'S SEEDED template on 4 of 5 (run 4 called arc_apply twice and the first call is the one read here). The recorded original was the model guessing composition_arc_suggest and telling the author 'I still can't find an arc template named \"The Varisuni Ascent\"' about a template its own run had just created.\n\nNOT PROVEN LIVE: THE REPAIR SENTENCE NEVER FIRED - 0 of 5. composition_arc_apply's arc_template_id HAS a declared emitter, so R1 answerability forces composition_arc_template_list onto the wire and the model LISTS FIRST. It never passes a name, so `_name_like_dropped_ids` never runs. The new sentence is verified only by exercising it inside the DEPLOYED container against the exact recorded failing input:\n    _name_like_dropped_ids({'arc_id': 'The Varisuni Ascent'}, emitter=<resolved>, referent_exists=False)\n    -> \"... look it up with `composition_arc_template_list` and pass the id it returns ...\"\nwith declared_emitter on that image returning composition_arc_template_list for composition_arc_template_get.arc_id.\n\n🔴 AND THAT IS THE HONEST SHAPE OF THIS FIX: it is a FALLBACK for the cases R1 misses. The better the emitter map gets, the less often this sentence fires - which is the right direction, and it also means the branch is hard to exercise live on any tool that HAS an emitter. The branch that needed it most (49 tools with no referent at all) is exactly where R1 cannot help either.",
+   "state_reason": "Fixed 2026-08-26. Invariant: the id-repair sentence must point at a tool that EXISTS, or at nothing. Enforced at one chokepoint (_name_like_dropped_ids, with the referent resolved at its call site); 12 falsifiers RED at HEAD; deployed and sha-verified; behaviour exercised in-container on the exact recorded failing input. The live K=5 shows the original scenario now succeeding 5/5 but does NOT exercise the sentence itself (0/5) - stated in full above rather than folded into the pass."
   },
   "D-HARNESS-sweep-DOES-NOT-COVER-ACCOUNT-SCOPED-FIXTURES": {
    "status": "OPEN — harness gap, found 2026-08-23. Small, but it is the kind that accumulates into the 51-of-57 test debris this loop already has to reason around.",
@@ -4699,7 +4703,8 @@
    "not_yet_known": "WHETHER THE MODEL SAW THE TRUNCATED TEXT TOO, or only the recording is clipped. Those are very different defects - the first is a live capability bug, the second is an instrument bug - and this row does not claim either. The cap is a suspiciously round 4000, which points at a deliberate recording limit rather than a transport failure, but that is a lead, not a finding.",
    "state": "open",
    "defect_class": "instrument",
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-gbuild9-raw.json"
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-gbuild9-raw.json",
+   "third_instance_2026_08_26": "THIRD TIME IN ONE SESSION. Checking whether composition_arc_apply's arc_template_id came from composition_arc_template_list, the substring test said NO on 5 of 5 - which reads as 'the model got the id from somewhere unaccounted for', a serious finding. The list result's recorded content is exactly 4000 chars and ends mid-token ('...\"o'), so the id was simply past the cut. Settled instead from the run's own `seed_ids` map: 4 of 5 used THIS RUN'S SEEDED template.\n\nEvery instance so far has pointed the same way - the clipped read looks like a defect, not like a clipped read."
   },
   "D-A-STOP-REQUEST-PROPOSES-A-COST-BEARING-START": {
    "status": "OPEN - measured 2026-08-26, batch c-cancel1, K=5, 5/5.",
@@ -4722,6 +4727,17 @@
    "defect_class": "contract",
    "queue_group": 4,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-kgedge2-raw.json (and c-kgedge1-raw.json, the attempt with too small an approval budget)"
+  },
+  "D-THE-NARRATED-WRITE-GUARD-COUNTS-ACKNOWLEDGEMENT-AS-ACTION": {
+   "status": "FOUND AND FIXED 2026-08-26, within hours of shipping the guard it corrects.",
+   "what": "_claimed_an_effect_without_acting matched \"I have NOTED your instruction to stop the translation\" and reported it as a narrated write. The pattern was a word-boundary match on \"i've\" or \"i have\", an optional \"already\", then any word ending in -ed (plus a short list of irregulars). A bare -ed suffix cannot tell RECEIVING information from CHANGING something. The turn it fired on had honestly reported an error one sentence earlier, so the guard would have nudged a model that was already being candid.",
+   "how_it_was_caught": "🔴 BY THE CALIBRATION TEST THAT WAS WRITTEN FOR THIS, and the design detail that made it work is worth keeping: it asserts WHICH TOOLS fire, not how many. Adding batch c-cancel1 to the corpus put a third tool in the set and the test went red. A count-based assertion would have absorbed a new false positive silently every time the corpus grew.",
+   "the_fix_and_its_measurement": "Excluded verbs that describe receiving rather than acting - noted, understood, reviewed, read, seen, heard, considered, checked, observed, noticed - as a negative lookahead, so it is a PREFIX guard and not a substring ban: 'I have updated the note you asked about' still fires, and a test pins that.\n\nMEASURED OVER THE WHOLE 2656-TURN CORPUS BEFORE SHIPPING:\n    before  9 fires across 3 tools (memory_forget, plan_keep_material, translation_job_control)\n    after   8 fires across 2 tools (memory_forget, plan_keep_material)\nExactly the one false positive removed and every true positive kept. Verified on the deployed image: the acknowledgement returns False, 'I have cancelled the pending translation jobs' returns True.",
+   "what_it_does_not_cover": "The verb list is a closed set chosen from ONE observed false positive plus its obvious neighbours. Another acknowledgement verb outside it would still fire. The calibration test is the thing that would catch it - which is the argument for keeping that test asserting tool NAMES rather than a count.",
+   "state": "fixed",
+   "defect_class": "model",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-cancel1.json (the turn that exposed it) + the full recorded corpus for the before/after counts",
+   "_a_note_on_this_row_itself": "🔴 THIS ROW WAS WRITTEN TWICE. The first version pasted the regex, was written through a heredoc, and the backslash-b resolved one level early - so the ledger held two literal backspace characters where the word-boundary anchors should have been. It parsed, it looked right in a diff, and it was wrong. The same trap this session already recorded as a memory, met again inside the row DESCRIBING a regex. Patterns are now described in words here, which cannot be mangled."
   }
  },
  "deferred_questions": {
@@ -5314,7 +5330,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 75,
+  "defects_open": 74,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5329,8 +5345,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 169,
-  "defects_fixed": 57,
+  "defects_total": 170,
+  "defects_fixed": 59,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

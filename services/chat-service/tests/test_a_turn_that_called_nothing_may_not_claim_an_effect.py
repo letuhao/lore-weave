@@ -128,6 +128,48 @@ class TestTheGuardIsActuallyWIREDIN:
         assert "did NOT make the change" in directive
 
 
+class TestAcknowledgingIsNotActing:
+    """🔴 A FALSE POSITIVE THIS GUARD SHIPPED WITH, found 2026-08-26 by new evidence.
+
+    `\\w+ed` matched "I have NOTED your instruction to stop the translation" — a conversational
+    acknowledgement, in a turn that had honestly reported an error one sentence earlier — and the
+    guard treated it as a narrated write. The calibration test below is what caught it: it asserts
+    WHICH tools fire, not how many, so a new batch entering the corpus could not be absorbed
+    silently.
+
+    Measured over the full 2656-turn corpus before the change: 9 fires on 3 tools -> 8 fires on 2.
+    Exactly the one false positive removed, every true positive kept.
+    """
+
+    @pytest.mark.parametrize("text", [
+        "I have noted your instruction to stop the translation.",
+        "I've noted that and will keep it in mind.",
+        "I have understood the request.",
+        "I have reviewed the chapter list.",
+        "I have read your note.",
+        "I have already considered that.",
+        "I have checked the job list.",
+    ])
+    def test_an_acknowledgement_does_not_fire(self, text):
+        assert not _claimed_an_effect_without_acting(text, attempted=set())
+
+    @pytest.mark.parametrize("text", [
+        "I have cancelled the pending translation jobs.",
+        "I've deactivated Nemotron-3 Nano for you.",
+        "I have forgotten that fact.",
+        "I have saved the draft.",
+        "I have already made those changes.",
+    ])
+    def test_a_real_effect_claim_still_fires(self, text):
+        assert _claimed_an_effect_without_acting(text, attempted=set())
+
+    def test_the_exclusion_is_a_PREFIX_guard_not_a_substring_ban(self):
+        """'noted' must not be excluded merely because it appears somewhere — only when it is the
+        verb being claimed. A turn that really did act and also says the word must still fire."""
+        assert _claimed_an_effect_without_acting(
+            "I have updated the note you asked about.", attempted=set())
+
+
 @pytest.mark.skipif(not CORPUS.exists(), reason="recorded corpus not present")
 class TestTheCalibrationStillHolds:
     """Re-score the SHIPPED detector against the real corpus, so the numbers written into the

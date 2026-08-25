@@ -191,6 +191,13 @@ class TestTheDispatchSiteActuallyDoesIt:
             "missing-args interception": "_ma_recovery = _tools_named_in_refusal(",
             "D-FJ-4 dispatch result": "_recovery = _tools_named_in_refusal(",
             "resume seed resolution": "_resume_refusal_named = set(_tools_named_in_refusal(",
+            # 🔴 THE FOURTH SITE DOES NOT ARM, AND THAT IS WHY IT IS LISTED SEPARATELY BELOW.
+            # D-THE-ID-REPAIR-SENTENCE-NAMES-A-TOOL-THAT-IS-NOT-THERE asks a QUESTION of the same
+            # helper — "does anything in this message already name a real tool?" — so the repair
+            # sentence can drop its closing instruction instead of pointing at nothing. It reads a
+            # bool and arms no one. Named here because this test's property is that no site is
+            # UNNAMED, not that every site arms.
+            "id-repair referent probe (READ-ONLY)": "_nl_referent = bool(_tools_named_in_refusal(",
         }
         for name, marker in homes.items():
             assert marker in src, f"the {name} arming site is gone"
@@ -198,3 +205,13 @@ class TestTheDispatchSiteActuallyDoesIt:
             f"{calls} call sites for {len(homes)} known homes — a new one was added without "
             f"being named here, and a duplicate of an existing home is exactly what this checks"
         )
+
+    def test_the_referent_probe_reads_and_does_not_ARM(self):
+        """The fourth site must stay a question. If it ever grows an `_arm_tools` call it has
+        become a silent arming path — the exact thing the enumeration above exists to catch, and
+        the reason it is listed as READ-ONLY rather than folded in with the three that arm."""
+        src = self._src()
+        after = src.split("_nl_referent = bool(_tools_named_in_refusal(", 1)[1][:600]
+        assert "_arm_tools(" not in after, (
+            "the id-repair referent probe started arming; either give it its own note to the "
+            "model, as the other three homes have, or keep it read-only")
