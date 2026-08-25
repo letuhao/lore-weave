@@ -3288,13 +3288,19 @@
    ]
   },
   "D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-21",
    "severity": "a false statement about the author's own work",
    "measured": "batch 23, plan_keep_material, 4 of 5 runs. The tool was NOT advertised (surfaced 0/5) and the model called NOTHING (called_tools == []), yet answered: 'I've updated the plan to include the new details while ensuring all the existing material we've established remains intact. Your story foundation is now fully updated.' The store is unchanged — nothing was written — so the author is simply told their plan was updated when it was not.",
    "why_the_existing_guard_misses_it": "D-NARRATED-WRITE already exists and does NOT cover this shape. `_narrated_uncalled_writes` keys on a snake_case TOOL NAME appearing in prose without a matching call (NARRATED_WRITE_NUDGE_CAP=1) — it catches 'I would call plan_keep_material'. Here the model names no tool at all; it reports only the OUTCOME, so the detector never fires.",
    "the_second_half": "The tool was neither advertised NOR recorded in withheld_tools, while 42 other tools were advertised in the same turn. So there is no record that it was even considered — you cannot tell from the row whether a gate dropped it or the matcher never ranked it. That is the DQ-T3 class (stamp what was withheld and why) reaching a tool that silently never became a candidate.",
-   "not_fixed_and_why": "A detector for 'claims an outcome without acting' is not a name match — it needs care and a control, and this loop's own rule is to run the control before writing the fix. Recorded with the measurement so the next attempt starts from evidence."
+   "not_fixed_and_why": "A detector for 'claims an outcome without acting' is not a name match — it needs care and a control, and this loop's own rule is to run the control before writing the fix. Recorded with the measurement so the next attempt starts from evidence.",
+   "fixed_2026_08_25": "GUARD BUILT AND WIRED, calibrated on the recorded corpus exactly as this row's `not_fixed_and_why` demanded ('a detector for claims-an-outcome-without-acting is not a name match - it needs care and a control, and this loop's own rule is to run the control before writing the fix').\n\nTHE CONTROL, run first: 2586 recorded turns, 89 of them zero-call. 60 hand-labelled. Three candidates scored:\n    claim-only                        precision 0.86  recall 1.00  (fires on a REFUSAL)\n    claim AND no refusal   <- CHOSEN  precision 1.00  recall 1.00\n    ...minus reasoning-scoped         precision 1.00  recall 0.83\nOn the guard's real population it fires on exactly 8 of 89 and all 8 are real - four are this row's own plan_keep_material instance, four are memory_forget. ZERO false positives across the other 81, which include 48 honest refusals.\n\nWHAT MAKES IT SAFE IS THE ZERO-CALL GATE, NOT THE PHRASE: the same wording appears in 499 of the 2497 turns that DID call something, and the guard never runs there. Two of the eight are borderline ('cleared that from my immediate reasoning' is honest about scope) and are recorded as such rather than counted clean.",
+   "chokepoint": "services/chat-service/app/services/stream_service.py - _claimed_an_effect_without_acting, wired in the write-pass loop after the narrated-write guard and before the DQ-T30 read guard. SHARES NARRATED_WRITE_NUDGE_CAP so a turn can never collect two write-side nudges.",
+   "test": "services/chat-service/tests/test_a_turn_that_called_nothing_may_not_claim_an_effect.py",
+   "red_on_original": "PROVEN RED ON TWO ARMS, in place, restored by explicit write and verified by sha256:\n  ARM 1 - the detector DEFINED but never wired in: 3 failures, all from TestTheGuardIsActuallyWIREDIN. That arm exists because a helper-level test stays green when the fix is never reached, which this repo has already paid for once.\n  ARM 2 - the detector without its refusal check (calibration candidate A): 1 failure, and ONLY the corpus test caught it. The synthetic refusal cases do not contain 'I've/I have', so the unit cases stayed green - the corpus scoring is doing work the examples cannot.",
+   "what_it_does_NOT_cover": "A turn that called a READ and then over-claimed. The guard requires `attempted` to be EMPTY, which is the conservative half and is what the measurement supports. That shape is real and is left for a fix with its own evidence.",
+   "a_near_miss_the_repos_own_test_caught": "🔴 MY NEW DIRECTIVE SITE WAS UNARMED AND I DID NOT NOTICE. test_stalled_rail_nudge_stays_on_the_pinned_rail counts directive INJECTION sites against ARMED ones and requires the two counts to be EQUAL - it read '4 directive injection site(s) but 3 armed'. I had set `_directive_before_this_pass = True` but without the `# D-FJ-19` marker the counter reads, so the seam that stops two passes being welded into one sentence would have been dead for the new site.\n\nWorth recording for the test's DESIGN, not just the catch: its own comment says it used to assert a literal `== 2` and that DQ-T30's third site turned it red while conforming - 'a test that fails on a conforming change teaches the next author to edit the number, which is how the real guarantee gets quietly dropped'. Pairing the counts is strictly stronger, and it is why a fourth site could not slip past. Verified mine by stashing: 17 passed at HEAD."
   },
   "D-USAGE-LOG-DROPPED-FOR-FAILED-AND-CANCELLED": {
    "state": "open",
@@ -5081,7 +5087,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 79,
+  "defects_open": 78,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5097,7 +5103,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 164,
-  "defects_fixed": 48,
+  "defects_fixed": 49,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

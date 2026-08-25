@@ -1166,6 +1166,79 @@ def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[
     )
 
 
+# P2-FABRICATED-WRITE — the shape neither guard above can see.
+#
+# 🔴 THE MEASURED INSTANCE, batch 23, `plan_keep_material`, 4 of 5 runs. The tool was not
+# advertised (surfaced 0/5), the model called NOTHING (`called_tools == []`), and it answered:
+#
+#     "I've updated the plan to include the new details while ensuring all the existing
+#      material we've established remains intact. Your story foundation is now fully updated."
+#
+# The store is unchanged. The author is told their plan was updated when it was not.
+#
+# `_narrated_uncalled_writes` structurally cannot catch it: that guard keys on a snake_case TOOL
+# NAME in prose, and here the model names no tool at all — it reports only the OUTCOME.
+# `_unanswered_data_question_reads` keys on the REQUEST matching a read tool's vocabulary, and
+# this is a write.
+#
+# CALIBRATED ON THE RECORDED CORPUS, NOT ON INTUITION — 2586 recorded turns, per the defect's own
+# instruction that "a detector for 'claims an outcome without acting' is not a name match; it
+# needs care and a control". Three candidates were scored against 60 hand-labelled zero-call
+# turns; the two rejected ones are named so the choice can be re-checked rather than trusted:
+#
+#     claim-only                          precision 0.86  recall 1.00   (fired on a REFUSAL:
+#                                                                        "a fact that I haven't
+#                                                                         actually recorded")
+#     claim AND no refusal   <-- CHOSEN   precision 1.00  recall 1.00
+#     ...minus reasoning-scoped           precision 1.00  recall 0.83   (missed "I've cleared
+#                                                                        that from my memory")
+#
+# On the guard's ACTUAL population — all 89 recorded zero-call turns — it fires on exactly 8,
+# and all 8 are real: four are the `plan_keep_material` instance above, four are `memory_forget`
+# claiming a fact was forgotten with nothing recorded. ZERO false positives across the other 81,
+# which include 48 honest refusals ("I cannot cancel ... there are no active jobs").
+#
+# WHAT MAKES IT SAFE IS THE ZERO-CALL GATE, NOT THE PHRASE. The same phrasing appears in 499 of
+# the 2497 turns that DID call something — it is ordinary language for reporting real work, and
+# this guard never runs there.
+#
+# TWO OF THE EIGHT ARE BORDERLINE and are recorded as such rather than counted clean: "I have
+# cleared that from my immediate reasoning" is honest about its scope. It still tells an author
+# who asked to forget a STORED fact that a forget happened, so a nudge is right — but it is a
+# weaker instance than the other six and should not be cited as proof of the guard's precision.
+_CLAIMED_EFFECT_RE = re.compile(
+    r"\b(?:i've|i have)\s+(?:already\s+)?"
+    r"(?:\w+ed|forgotten|done|made|set|put|kept|left)\b",
+    re.I,
+)
+#: Any refusal marker anywhere in the answer disqualifies it. Deliberately whole-answer rather
+#: than sentence-scoped: the one false positive the looser candidate produced was a refusal whose
+#: NEGATION sat in a different clause from the verb ("I cannot 'forget' a fact that I haven't
+#: actually recorded"), and sentence-splitting that reliably is a harder problem than this guard
+#: needs to solve. Erring toward silence is correct here — a missed nudge costs one false
+#: sentence; a wrongly-nudged honest refusal teaches the model to stop refusing.
+_REFUSAL_MARKER_RE = re.compile(
+    r"\b(?:i cannot|i can't|i can not|can't|cannot|i'm sorry|i am sorry|unable to)\b", re.I,
+)
+
+
+def _claimed_an_effect_without_acting(text: str, *, attempted: set[str]) -> bool:
+    """Did this turn assert a completed change while calling NOTHING at all?
+
+    `attempted` counts successes AND failures, exactly as `_narrated_uncalled_writes` does: a
+    model that TRIED and got a real error has honest feedback to report and must not be nudged.
+    Requiring it to be EMPTY — rather than "made no WRITE call" — is what the measurement
+    supports, and it is the conservative half: a turn that called a read and then over-claimed is
+    a real defect this does NOT cover, and is left for a fix with its own evidence.
+    """
+    if attempted:
+        return False
+    body = text or ""
+    if _REFUSAL_MARKER_RE.search(body):
+        return False
+    return bool(_CLAIMED_EFFECT_RE.search(body))
+
+
 def _rail_write_step_stalled(
     rail_progress: list | None, *, catalog_index: dict, attempted: set[str],
     intent_slugs: frozenset[str] = frozenset(),
@@ -4780,6 +4853,62 @@ async def _stream_with_tools(
                             "Do not re-read anything — you have already read enough. Never "
                             "report a change as done, and never tell the author to go and "
                             "check for it, unless a tool call actually returned a result."
+                        )})
+                        continue
+
+                # P2-FABRICATED-WRITE — the turn called NOTHING and is ending by telling the
+                # author a change was made. No tool is named, so the guard above is silent by
+                # construction; the store is untouched, so nothing downstream will contradict it.
+                # Measured: `plan_keep_material`, 4 of 5 runs, "I've updated the plan ... Your
+                # story foundation is now fully updated" with called_tools == [].
+                #
+                # Shares NARRATED_WRITE_NUDGE_CAP with the guard above deliberately: both are
+                # write-side, and a turn must never collect two write nudges. Runs only when that
+                # guard did not claim the slot.
+                if (not turn_attempted) and _claimed_an_effect_without_acting(
+                    "".join(turn_text_parts), attempted=turn_attempted,
+                ):
+                    _fw_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_fw_guards.values()):
+                        logger.warning(
+                            "P2-FABRICATED-WRITE (session=%s): the turn called nothing and "
+                            "claimed an effect — NOT nudging, held by: %s",
+                            session_id,
+                            ", ".join(k for k, v in _fw_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        logger.warning(
+                            "P2-FABRICATED-WRITE (session=%s): the turn called NO tool and is "
+                            "ending with a claim that something was done — nudging once",
+                            session_id,
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      "fabricated_write:zero_calls", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # Deliberately does NOT quote the sentence back or name a tool. The
+                            # runtime measured two things and may assert only those: that no tool
+                            # ran, and that the text reads as a completed change. Telling the
+                            # model WHICH claim was wrong would assert a reading of intent this
+                            # guard never made — the same false-report shape it exists to stop.
+                            "[SYSTEM DIRECTIVE] This turn called no tool at all, and your reply "
+                            "reads as though a change was completed. Nothing was written and the "
+                            "author will find nothing.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool that actually makes the change, for real, with "
+                            "complete arguments; or\n"
+                            "(b) tell the author plainly that you did NOT make the change, and "
+                            "why.\n"
+                            "If what you changed was only your own understanding, say exactly "
+                            "that and say their saved data is untouched. Never report a change "
+                            "as done unless a tool call actually returned a result."
                         )})
                         continue
 
