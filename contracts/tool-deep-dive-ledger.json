@@ -1448,7 +1448,7 @@
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
    "note": "Called 3/3 from 'What is in this book?' (its own declared synonym). Read-clean 3/3. Absent case truthful and specific ('1 chapter', 'no structured story plan'). Tenancy refused. It was ALSO the tool the model reached for when asked for the outline — see the composition_list_outline selection observation.",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true
   },
   "plan_propose_spec": {
@@ -1459,7 +1459,7 @@
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
    "note": "Called 3/3 against a seeded book; Tier-A card raised and required before any write. On an EMPTY book it is not reached (0/3) — the turn bootstraps the glossary ontology first, which is defensible sequencing rather than a miss, but it is recorded rather than waived. Tenancy refused.",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true
   },
   "glossary_entity_set_attributes": {
@@ -1470,7 +1470,7 @@
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
    "note": "Called 3/3, wrote glossary_entities + entity_revisions after the Tier-A card was granted. Absent case is an honest miss (\"I couldn't find an element named 'Aldric Vane'\") with the store unchanged — the inverse of the failure this loop has seen twice. Tenancy probed at its REAL boundary (an entity in another user's book, since a placeholder id only reaches validation): refused, and the row re-read UNCHANGED.",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true
   },
   "book_chapter_create": {
@@ -1481,7 +1481,7 @@
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
    "note": "D-XWIRE-RESULT found and fixed here. From the chat panel the model passed the chapter_id book_list had just returned as book_id; refused 'book not accessible', 0/3 chapters created, and the model then wandered into an unrelated book of the user's. After the fix: 3/3 on both surfaces, exactly one chapter per request, 0->1 on an empty book. Tenancy refused.",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true
   },
   "composition_diagnostics": {
@@ -1492,7 +1492,7 @@
    "gate": "scripts/toolloop/gate.py check -> 56 passed, 0 failed",
    "state": "proven",
    "note": "Called 3/3, read-clean across SIX runs (3 with approvals cleared, 3 with the account's 46 standing approvals in place). Absent case reports the one real condition rather than inventing problems. OBSERVATION: with approvals cleared it proposed a Tier-A write (composition_error_block_edit) on 3/3 and suspended on the card; under standing approvals it proposed no write at all. The store never changed in either state.",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true
   },
   "composition_outline_node_edit": {
@@ -1502,7 +1502,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Surfaced 3/3, called 2/3, wrote loreweave_composition.outline_node 3/3 — the RIGHT store. Before the R2 supersession union it was surfaced 0/3 and its deprecated sibling composition_outline_node_update took the words; one run then renamed the MANUSCRIPT chapter instead. Tenancy refused with schema-valid args (node re-read unchanged). OBSERVATION carried: on an EMPTY outline, 1 of 3 runs still renamed a manuscript chapter — an absent outline node must not silently redirect to the other graph."
   },
@@ -1513,7 +1513,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "D-DECLARE-THE-USERS-WORD found and fixed here. It declared 'add a kind' (the column name) and the author said 'category'; surfaced 0/3, and the model ran glossary_adopt_standards instead — adopting a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13) from a request to add ONE category. After declaring 'category'/'new category'/'start tracking': surfaced 3/3, called 1/3, wrote book_kinds 3/3. Tenancy refused (0 rows written). Empty-case scaffolding recorded."
   },
@@ -1523,7 +1523,7 @@
    "tier": "A",
    "cycle": "batch-5",
    "group": "B",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "RE-EARNED after the 2026-08-14 withdrawal. Called 3/3 from 'Compile the plan I already proposed for this book into a planning package', reached via the model's own chain composition_package_tree -> plan_compile (run_id read from the store, never typed). DATA: the approved run wrote outline_node x3 — matching the seeded THREE-chapter spec exactly — plus structure_node, plan_run and generation_job, and the prose said 'three chapters' truthfully. SHIP: gate exercised both ways (card standing 3/3 with nothing written, then approved and written); empty case exercised — before the fixture waited for the async spec job the tool refused 3/3 with 'no spec to compile', naming exactly what was missing; tenancy refused. The withdrawal itself was the finding: the old gate's LIVE bars asked only about the TURN."
   },
@@ -1534,7 +1534,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Called 3/3 and store unchanged 3/3 on BOTH the seeded and the empty fixture, from a prompt written off its own description (it declares no synonyms — one of the 36). Tenancy is NOT APPLICABLE by design: scope=none, the system catalogue is identical for every user and has nothing to leak; recorded as such rather than as a pass, because calling it a tenancy pass would be a category error."
   },
@@ -1545,7 +1545,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Called 3/3 from pasted notes, store UNCHANGED 3/3 — exactly its declared contract (returns candidates, writes nothing), which is the falsifier that mattered here. Held on the empty fixture too (called 2/3, store unchanged 3/3). Tenancy refused 'book not accessible'."
   },
@@ -1556,7 +1556,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "THE v2 INCIDENT TOOL, and its own prompt run verbatim. Fixture asserts exactly TWO outline nodes. Called 3/3, store UNCHANGED 3/3, reply names exactly the two seeded chapters. On 2026-08-13 this sentence had the model use the Tier-A outline WRITE it could see, take outline_node 7 -> 10, and describe the result as 'your current plan'. Empty-outline case also clean (called 3/3, unchanged) — that is where it previously reached for the write. Tenancy refused at PROJECT scope; the seeded node was not disclosed to another account."
   },
@@ -1567,7 +1567,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Called 3/3 from 'set up my story bible with the standard categories'; after the confirm card was granted it wrote 5 glossary tables 3/3. Its fixture IS the absent case — seed_assert demands 0 book_kinds before the turn, so a silent no-op could not pass. Tenancy refused 'book not accessible'. Declared this session (it had no synonyms)."
   },
@@ -1578,7 +1578,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Called 3/3, store unchanged 3/3 on both fixtures. scope=USER, so the tenancy boundary is the caller: probed as claude-test2, it returned only that account's own projects and not the harness user's. Declared this session."
   },
@@ -1589,7 +1589,7 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "state": "proven",
    "note": "Called 3/3, store unchanged 3/3 on both fixtures, no fabricated edge types — the specific risk in its falsifier, since an invented schema invites writes that will be rejected. Tenancy refused 'project not found' at PROJECT scope. Declared this session."
   },
@@ -1613,7 +1613,9 @@
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "PROVEN, gate-passed 2026-08-14 (batch4-rest). CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase — store unchanged 3/3. THE v1 MISS WAS MY SCENARIO: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. SHIP: tenancy EXERCISED — a knowledge_projects row owned by the other account, verified present at call time, was refused; the control is that a harness-owned project returns {found:false} while a nonexistent one returns the SAME 'project not found', so ownership is the discriminator and the message does not leak existence. Empty case EXERCISED: an entity with no stored facts returns found:false, no invented biography. ANSWER UNVERIFIED in the LIVE runs (all three suspended on a Tier-A card, so no final prose) — see OBS-READ-TURN-REACHES-FOR-WRITES."
+   "note": "PROVEN, gate-passed 2026-08-14 (batch4-rest). CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase — store unchanged 3/3. THE v1 MISS WAS MY SCENARIO: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. SHIP: tenancy EXERCISED — a knowledge_projects row owned by the other account, verified present at call time, was refused; the control is that a harness-owned project returns {found:false} while a nonexistent one returns the SAME 'project not found', so ownership is the discriminator and the message does not leak existence. Empty case EXERCISED: an entity with no stored facts returns found:false, no invented biography. ANSWER UNVERIFIED in the LIVE runs (all three suspended on a Tier-A card, so no final prose) — see OBS-READ-TURN-REACHES-FOR-WRITES.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch4-rest.json",
+   "evidence_file_backfilled_2026_08_25": "The row carried NO evidence_file while claiming `gate-backed`. Its own note cites the batch in prose - 'PROVEN, gate-passed 2026-08-14 (batch4-rest)' - and that file exists and carries this tool's entry, so the citation was recoverable WITHOUT guessing. It is the ONLY one of 43 that was: the other 42 name no file, and each has entries in two to five files on disk, so choosing one would have invented the citation rather than recovered it."
   },
   "settings_provider_inventory": {
    "state": "proven",
@@ -1643,7 +1645,7 @@
    "tier": "R",
    "cycle": "batch-5",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged 3/3, and the ANSWER matched the fixture exactly: two chapters seeded, zero translations, and the reply said 'there is no translation for this book — both of the existing chapters are still untranslated'. SHIP: tenancy refused; empty case exercised on a book with its chapters removed, returning empty coverage AND an empty untranslated list, which is structurally distinguishable from the populated case. 🔴 THE SAME TURN ALSO CALLED TWO WRITE TOOLS THE USER DID NOT ASK FOR — translation_start_job and translation_retranslate_dirty, both ok=true/done — and claimed to have started work, including a re-translation of 'a changed segment' that cannot exist over zero translations. That is D-READ-TURN-REACHES-FOR-WRITES, a TURN-level defect with its own row; this tool's own bars all pass."
   },
@@ -1653,7 +1655,7 @@
    "tier": "A",
    "cycle": "batch-5",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 from 'Remember that the Obsidian Trench is only navigable at low tide.' DATA read from NEO4J, not from a count: the approved run wrote 3/3 with the diff naming neo4j.Fact.total AND neo4j.Fact.project — the fact lands and carries its project, so D-MEMORY-FACT-STORED-UNSCOPED holds under approval. SHIP: gate exercised both ways; idempotency exercised — the same sentence twice returned the IDENTICAL fact_id, so merge_fact merges rather than duplicates, which is also why a node count can never settle this tool; tenancy refused against another account's project with the nonexistent-project control run."
   },
@@ -1696,7 +1698,7 @@
    "tier": "W",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, gated 3/3 ('Please confirm the extraction to save them'), store unchanged without approval — the correct outcome for a cost-gated Tier-W tool. ITS AUDIT FOUND A DEFECT AND IT IS FIXED: the empty case minted a confirm card over a zero estimate, and re-probing found the same shape one layer deeper (chapters present, no kinds adopted, llm_calls still 0). Both refuse now — D-EXTRACTION-CONFIRMS-A-NO-OP, a8bfa2047, re-verified live in all three states."
   },
@@ -1706,7 +1708,7 @@
    "tier": "R",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 from 'What worlds do I have set up?', store unchanged, and the reply named this account's real worlds with counts (28 total, paginated with explicit guidance to stop unless more are needed). Tenancy is covered by construction rather than by a probe and that is stated: it takes no book/project argument, its boundary is the caller identity, and the read returned only this account's worlds."
   },
@@ -1716,7 +1718,7 @@
    "tier": "R",
    "cycle": "batch-6",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 once the fixture could seed a job at all — the first attempt failed because DOMAIN_BASE pointed the 'translation' domain at catalog-service (8207), which answers /health with 200. Store unchanged. SHIP: an unknown job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours'; a FRESH job reports status 'running' with the per-chapter row also running, rather than presenting undone work as a result."
   },
@@ -1748,7 +1750,7 @@
    "tier": "A",
    "cycle": "batch-7",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 and gated 3/3, store unchanged without approval. SHIP is the strong part: another account's REAL map (world+map rows inserted under that owner) is refused with 'map not found', one string that does not leak existence; a nonexistent map gives the same; and a single-point polygon is refused with 'polygon needs at least 3 [x,y] points' — it will not accept a region that could enclose nothing. 🔴 ITS RUN ALSO FOUND D-NIL-UUID-MINTS-A-CARD: all three calls carried map_id=00000000-…-0000, an invented placeholder that PARSES, so a Tier-A card was minted for a call that answers 'map not found'. Fixed at the arg chokepoint (deabb4e47)."
   },
@@ -1791,7 +1793,7 @@
    "tier": "W",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 from 'Plan my ontology for this book...', card raised 3/3, store unchanged — it plans and does not write. CONTROL read BEFORE concluding: intent_gate withheld 0 tools, so the 'ontology' wording opened the gate (DQ-T31) and this measures the TOOL rather than the DQ-T3 stamp. Empty goal refused with 'goal is required'; tenancy refused."
   },
@@ -1801,7 +1803,7 @@
    "tier": "R",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and the answer is exactly right: 'You have two writing rules' naming BOTH seeded rules with their bodies. The two-rule fixture exists because the measured failure for this shape is a COUNT (DQ-T30's original evidence was 'one rule' over two) — that under-count did NOT occur. Empty book returns {rules: [], total: 0}; tenancy refused."
   },
@@ -1811,7 +1813,7 @@
    "tier": "R",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and the framing is correct: 'You have several models REGISTERED'. Kept deliberately apart from settings_provider_inventory, whose live-inventory question this tool answers wrongly (D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY) — from THIS side the tool does not over-claim. Tenancy is the one honest n/a: its boundary is the caller identity."
   },
@@ -1821,7 +1823,7 @@
    "tier": "A",
    "cycle": "batch-8",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, card raised 3/3, store unchanged — its contract is 'proposes into the review inbox, never writes' and it held. An invalid fact_type is refused with the full enum AND the value sent back; tenancy refused. The prose twin memory_remember was NOT called instead, so the declaration overlap the falsifier warned about did not bite."
   },
@@ -1842,7 +1844,7 @@
    "tier": "A",
    "cycle": "batch-9",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, card raised 3/3, store unchanged without approval. IDEMPOTENCY is the headline and it holds: called twice at the boundary on a fixture that already had one work row, the count stayed at 1 and both calls returned the SAME project_id — 'create (or get, idempotently)' is what it does. Tenancy refused."
   },
@@ -1852,7 +1854,7 @@
    "tier": "R",
    "cycle": "batch-9",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and the counts are real: active 31, completed 1079, failed 53, cancelled 17. 🔴 THIS TOOL'S ANSWER IS WHAT EXPOSED D-PAGE-READ-AS-A-TOTAL — batch 7's jobs_list reply had claimed '10 background jobs running' off a 10-item page, and 31 vs 10 is what sent me to the boundary. Cross-checking two tools' answers against each other is the control that found it."
   },
@@ -1895,7 +1897,7 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and its one must-not-fail property holds: across three runs NO secret, key prefix or token appeared in the reply — it names providers and says 'credentials configured'. Tenancy is covered by construction (no scope argument; the boundary is the caller)."
   },
@@ -1905,7 +1907,7 @@
    "tier": "W",
    "cycle": "batch-10 (re-run)",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 on the clean re-run, and the registered-model set was UNCHANGED on every run — which is the whole audit for a DESTRUCTIVE account-scoped tool. The reply is exactly right: 'the request to delete LOOP-THROWAWAY-scratch has been prepared, please confirm the card', and it resolved the ALIAS to an id via settings_list_models rather than inventing one. A nonexistent id and ANOTHER ACCOUNT'S model both return 'not accessible' — the same string, so the refusal cannot enumerate. That tenancy boundary had been reporting `n/a` until this cycle added a user_model_id scope to the probe. The first attempt's 2 failures were MY fixture: a registered model outlives the book teardown, so three repeats left three identical rows."
   },
@@ -1915,7 +1917,7 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and the answer matches the seeded fixture exactly: 'There is one translation version for this chapter: Vietnamese (vi), Version 1 is active (status: completed)'. The fixture waited up to 900s for the worker to land the version, because starting the job is not the same as having one. Empty case returns languages [] / total 0; tenancy refused."
   },
@@ -1925,7 +1927,7 @@
    "tier": "A",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 with op=`list` — the READ op, which is what a plain 'what have I flagged?' reaches, and NOT one of the mutating ops (resolve|dismiss|reopen) the falsifier warned about. Store unchanged. 🔴 IT RAISED A TIER-A CARD FOR A READ on 3/3: the tier is declared on the TOOL while its op enum spans read and write, so seeing flagged passages needs the same approval as resolving one. Recorded as OBS-READ-OP-GATED-BY-A-WHOLE-TOOL-TIER. Tenancy UNPROBED — op=list requires chapter_id or project_id conditionally, neither in `required`."
   },
@@ -1935,7 +1937,7 @@
    "tier": "R",
    "cycle": "batch-10",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and it resolved the NAME 'Aldric Vane' to an entity_id rather than inventing one — the step that has failed three times elsewhere in this loop. Empty case is honest (a freshly proposed entity appears nowhere). 🔴 ABSENT CASE FAILED: a nonexistent entity_id returns the SAME zero-reference payload as a real-but-unused entity, so a mistyped name reads as 'appears nowhere'. Recorded as D-ABSENT-ENTITY-READS-AS-UNUSED. Also called glossary_entity_set_attributes on this READ question — the fourth occurrence of D-READ-TURN-REACHES-FOR-WRITES; gated, store clean."
   },
@@ -1945,7 +1947,7 @@
    "tier": "R",
    "cycle": "batch-11 (re-run)",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3 and the COUNT is right: 'one item waiting for your review — Mira Solene', on a book holding THREE entities with exactly one tagged. That fixture exists because batch 2 measured the alternative and could not tell a fabrication from a reading. Empty book returns items []; tenancy refused. THE SEED FAILED FIRST, LOUDLY, AND WAS RIGHT TO: glossary_propose_entities tags EVERY proposed entity 'ai-suggested' itself, so 'tag exactly one' left all three tagged. Inverted to strip the tag from the two that must not be queued."
   },
@@ -1955,7 +1957,7 @@
    "tier": "A",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, card raised 3/3, store unchanged without approval. Absent case is a good shape: a nonexistent entity_id comes back PER ITEM as {status: skipped, reason: 'entity not found in this book'} with written 0 — a batch tool that reported one number would hide which item failed. Tenancy refused."
   },
@@ -1965,7 +1967,7 @@
    "tier": "R",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged. 🔴 AND IT RAISED A CONFIRM CARD ON 3/3 DESPITE BEING TIER R — the SPEND consent axis gates it independently of tier, so the paid query I had budgeted was never actually bought. A read-tier tool that costs money is gated on the axis that matters, which is the right design and worth recording as a positive. It is also the tool that displaced glossary_deep_research in batch 9, because it is ALWAYS_ON_CORE."
   },
@@ -1975,7 +1977,7 @@
    "tier": "R",
    "cycle": "batch-11",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, real payload. A FRESH book returns 25 motifs, all carrying book_id: null — the PLATFORM library, which is exactly what 'shared library' means and what the tool's own synonyms say. So the payload is right and 'this book has 25 motifs in its shared library' is defensible. The nuance recorded rather than filed: the summary cannot show which rows are the book's OWN versus shared, because every row here is null, and I could not prove a wrong answer from that."
   },
@@ -2007,7 +2009,7 @@
    "tier": "A",
    "cycle": "batch-12 (A/B)",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 with 'rename Aldrik Vayne to Aldric Vane' — every declared phrase paired 'rename' with a NOUN. B-arm, prompt UNCHANGED, declaration widened with the bare verb and the misspelling framing: surfaced 3/3, CALLED 3/3, card raised, store unchanged (entity count 1, cached_name still the misspelling). It resolved the WRONG spelling to the right row rather than creating a new entity — the create-instead-of-edit shape did not occur. Renaming a nonexistent entity is refused; tenancy refused."
   },
@@ -2028,7 +2030,7 @@
    "tier": "R",
    "cycle": "batch-12 (A/B)",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 — declared 'how are they connected' against 'How are the CHARACTERS in this story connected', a pronoun apart. B-arm, prompt UNCHANGED: surfaced 3/3, CALLED 3/3, store unchanged. And the EMPTY answer is exemplary — 'I don't see any characters or relationships recorded in the connection map for this project yet' — the exact opposite of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance. Tenancy refused."
   },
@@ -2049,7 +2051,7 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, honest empty: 'no items in the triage queue'. Neither the false PRESENCE conformance_status produced nor the false ABSENCE story_search produced."
   },
@@ -2059,7 +2061,7 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, plain honest empty: 'you don't have any saved views (lenses)'."
   },
@@ -2069,7 +2071,7 @@
    "tier": "A",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, card raised 3/3, and user_default_models UNCHANGED — 2 rows before and after, a number READ from the store rather than assumed (my draft guessed 0). That is the whole audit for an account-scoped setting that changes which model every later turn uses, this harness's own included. An unknown capability is refused with the closed set."
   },
@@ -2079,7 +2081,7 @@
    "tier": "R",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and correct on the seeded fixture: 'no outdated segments... all up to date' over a translation completed and unchanged since. 🔴 ITS AUDIT FOUND that a chapter NEVER TRANSLATED returns the IDENTICAL payload ({segments: [], dirty_count: 0}), so the same sentence would be false there — an instance of D-ABSENT-ENTITY-READS-AS-UNUSED."
   },
@@ -2089,7 +2091,7 @@
    "tier": "W",
    "cycle": "batch-13",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "prose-note (pre-gate)",
    "counts_toward_release": true,
    "note": "Called 3/3, gated, store unchanged — and live it did the RIGHT thing: with a completed translation and nothing changed it declined to spend, answering 'no changes have been detected in the source text that would require a re-translation'. 🔴 ITS AUDIT FOUND THE HOLE ANYWAY: on a chapter with NO translation it minted a card titled 'Re-translate 0 changed segment(s)'. Same invariant as D-EXTRACTION-CONFIRMS-A-NO-OP, in this service's other tool, found by probing the sibling after fixing the first. FIXED and re-verified live."
   },
@@ -3606,7 +3608,9 @@
     "kg_ontology_propose": "'adopting the same template twice must not duplicate the ontology' — the seed is EMPTY.",
     "translation_patch_block": "'patching the same block to the same text twice must not create two human versions' — seed is two SQL steps; the probe needs the block id they create."
    },
-   "state": "open"
+   "state": "fixed",
+   "state_reason": "STALE-OPEN, closed 2026-08-25 by reading the evidence rather than the row. All SIX are exercised: composition_scene_link_edit, kg_ontology_propose and composition_decompile_arcs measured STRICTLY IDEMPOTENT from the store; composition_motif_bind_edit only after a control refuted the first reading; translation_patch_block idempotent in effect; and composition_authoring_run_manage in c-authrun5.json, which is the file its row actually cites. The fixture primitive this defect asked for - composition_outline_node_edit op=create minting outline_node rows - was built and used; scene_link_edit's audit says so outright ('it took a fixture the loop did not have').",
+   "a_trap_worth_recording": "🔴 I nearly filed a gate hole against composition_authoring_run_manage. Its ship_audit in rebaseline.json begins 'OWED - traced to the bottom...', the current gate REFUSES that entry, and the tool reads proven. The row does not cite rebaseline.json - it cites c-authrun5.json, where idempotency is properly exercised and the gate passes. rebaseline holds a superseded copy. That is the SAME error cycle 2 fixed in the instrument, made by hand one cycle later: reading an evidence file the ledger does not cite."
   },
   "D-REBIND-DUPLICATES-INSTEAD-OF-ARCHIVING-THE-PRIOR-SCENES__RETRACTED": {
    "status": "RETRACTED 2026-08-23, within the hour, by the control I ran against my own claim",
@@ -4463,6 +4467,18 @@
    "why_fixed_and_not_grandfathered": "The thirteen grandfathered files PREDATE the rule and their measurements are on record, so editing them would change nothing that happened. These three were last written 2026-08-23, 08-23 and 08-25 - AFTER the rule shipped on 08-21 - and each already uses {run_word} elsewhere in the same seed. They are the rule applied halfway, not history. rebaseline.json in particular is a live 41-tool re-run set that would carry the trap into every future run.",
    "the_fix": "`{run_id}` removed from name/title/label values only; `code` keeps it, which is exactly where the rule says a hex nonce belongs. Uniqueness is preserved because {run_word} is the SAME nonce, and the edit asserts a name never loses its last nonce.",
    "test": "scripts/test_toolloop_name_nonce_is_not_id_shaped.py"
+  },
+  "D-THE-EVIDENCE-LABEL-WAS-NEVER-CHECKED-AGAINST-ITS-OWN-DEFINITION": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "scripts/toolloop (the loop's own instrument)",
+   "invariant": "A label that grades evidence must be DERIVED from the evidence. The ledger already wrote the rule down - 'gate-backed when it CITES an evidence file that exists and that gate.py can re-check' - and a definition nothing evaluates is a comment.",
+   "what": "43 of the 173 live rows carrying `evidence_class: gate-backed` cited NO evidence file at all. The headline '173 of 198 gate-backed' was overstated by 42; the re-checkable figure is 131, and 67 rows are prose. The 25/173 split the ledger reported was counted from the LABEL, so a row saying gate-backed was gate-backed by construction.",
+   "the_repair_that_would_have_been_worse": "Every one of those 43 tools DOES have an entry in some evidence file - TWO TO FIVE files each. A sweep could have 'recovered' a citation for all 43 and taken the number to 173 for real. That would have invented the one thing the label guarantees: a SPECIFIC named measurement that can be re-run. Exactly one row named its own file in prose - 'PROVEN, gate-passed 2026-08-14 (batch4-rest)' - and only that one was backfilled. 42 were relabelled, not re-cited.",
+   "the_fix": "gate.is_gate_backed(tool,row) evaluates the definition: the row cites a file, the file exists, and that file carries an entry for THIS tool. evidence_split is computed from it and never from the stored word, and every row's stored label was corrected to match.",
+   "test": "scripts/test_toolloop_progress_is_derived_gate.py::TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans",
+   "red_on_original": "PROVEN RED in memory on a deepcopy: restoring the original mislabel flags 67 rows, and the counter stays at 131 under the injected ledger - proving it reads the evidence and not the word. A fourth case pins the subtler half: citing a REAL file that does not carry this tool's entry is not a citation either, which is the mistake I made by hand this cycle.",
+   "sibling_of": "D-THE-DEFECT-COUNTER-PARSED-ENGLISH-AND-A-REMAINDER-HID-THE-MISS - same shape, one field over: a number derived from what a row SAYS about itself rather than from what it holds."
   }
  },
  "deferred_questions": {
@@ -5051,12 +5067,12 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 80,
+  "defects_open": 79,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
-   "gate_backed": 173,
-   "prose_note_pre_gate": 25,
+   "gate_backed": 131,
+   "prose_note_pre_gate": 67,
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
@@ -5066,8 +5082,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 162,
-  "defects_fixed": 45,
+  "defects_total": 163,
+  "defects_fixed": 47,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

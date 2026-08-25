@@ -197,3 +197,64 @@ def test_a_state_the_counter_cannot_classify_stops_the_count(bad):
 
     with pytest.raises(ValueError, match="not one of"):
         gate.recompute_progress(led)
+
+
+class TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans:
+    """🔴 A LABEL THAT NOTHING CHECKS AGAINST ITS OWN DEFINITION.
+
+    The ledger states the rule in its own progress block: a conclusion is `gate-backed` when it
+    **cites an evidence file that exists and that gate.py can re-check**. Nothing enforced it.
+    Measured 2026-08-25: **43 of the 173 rows carrying the label cited no file at all**, so the
+    headline "173 of 198 gate-backed" was overstated by 42 and the re-checkable figure is 131.
+
+    The tempting repair is worse than the defect. Every one of those 43 tools DOES have an entry
+    in some evidence file — two to five files each — so a sweep could have "recovered" a citation
+    for all of them. That would have invented exactly what the label is supposed to guarantee: a
+    specific, named measurement that can be re-run. Only one row named its own file in prose
+    ("PROVEN, gate-passed 2026-08-14 (batch4-rest)") and only that one was backfilled.
+    """
+
+    def test_every_row_label_matches_the_derived_truth(self):
+        led = _ledger()
+        wrong = {
+            t: (r.get("evidence_class"), gate.GATE_BACKED if gate.is_gate_backed(t, r)
+                else gate.PROSE_NOTE)
+            for t, r in led["tools"].items()
+            if r.get("counts_toward_release") is not False
+            and r.get("evidence_class") != "renamed"
+            and r.get("evidence_class") != (gate.GATE_BACKED if gate.is_gate_backed(t, r)
+                                            else gate.PROSE_NOTE)
+        }
+        assert not wrong, (
+            "these rows label themselves something the evidence does not support "
+            f"{{tool: (stored, derived)}}: {wrong}")
+
+    def test_a_row_that_cites_nothing_is_not_gate_backed(self):
+        """The exact shape of the 43. A detailed note is not a citation."""
+        assert not gate.is_gate_backed("anything", {
+            "state": "proven", "evidence_class": "gate-backed",
+            "note": "Called 3/3, read-clean 3/3, absent case truthful — pages of real prose."})
+
+    def test_a_row_that_cites_a_file_NOT_carrying_its_entry_is_not_gate_backed(self):
+        """Citing a real file is not enough — it has to be a file about THIS tool. This is the
+        error I made by hand while investigating: reading composition_authoring_run_manage's
+        ship_audit out of rebaseline.json, which is not the file its row cites."""
+        real = "docs/eval/toolloop/2026-08-14/rebaseline.json"
+        assert (ROOT / real).exists(), "fixture file went missing"
+        # The contrast is the assertion: SAME file, one tool it carries and one it does not.
+        assert gate.is_gate_backed("jobs_pause", {"evidence_file": real}), (
+            "jobs_pause has an entry in that batch, so citing it IS a citation")
+        assert not gate.is_gate_backed("a_tool_that_is_not_in_that_batch",
+                                       {"evidence_file": real})
+
+    def test_the_split_counts_the_derived_truth_not_the_label(self):
+        """Flip a label and the counter must NOT move — it reads the evidence, not the word."""
+        led = copy.deepcopy(_ledger())
+        victim = next(t for t, r in led["tools"].items()
+                      if gate.is_gate_backed(t, r) and r.get("counts_toward_release") is not False)
+        before = gate.recompute_progress(led)["evidence_split"]["gate_backed"]
+        led["tools"][victim]["evidence_class"] = "prose-note (pre-gate)"
+        after = gate.recompute_progress(led)["evidence_split"]["gate_backed"]
+        assert after == before, (
+            "the counter followed the LABEL. It must follow whether the row cites a re-checkable "
+            "file, which is what the ledger's own definition says.")

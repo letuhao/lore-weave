@@ -35,6 +35,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import hashlib
 import pathlib
@@ -53,6 +54,45 @@ LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 
 MIN_REPEATS = 3
 TERMINAL = ("proven", "blocked")
+
+#: The two evidence classes. `renamed` is a redirect row and is neither.
+GATE_BACKED = "gate-backed"
+PROSE_NOTE = "prose-note (pre-gate)"
+
+
+@functools.lru_cache(maxsize=512)
+def _tools_in_batch(path: str) -> frozenset:
+    """Which tools an evidence file actually carries an entry for. Cached — recompute reads ~130."""
+    try:
+        d = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return frozenset()
+    if not isinstance(d, dict):
+        return frozenset()
+    return frozenset(x["tool"] for x in (d.get("tools") or [])
+                     if isinstance(x, dict) and x.get("tool"))
+
+
+def is_gate_backed(tool: str, row: dict) -> bool:
+    """🔴 THE LEDGER'S OWN DEFINITION, APPLIED — not the label the row wrote about itself.
+
+    The definition has always been written down: "a conclusion is 'gate-backed' when it CITES an
+    evidence file that exists and that gate.py can re-check". Nothing checked a row against it,
+    and 43 of the 173 rows carrying the label cited NO FILE AT ALL. The headline "173 of 198
+    gate-backed" was overstated by 42; the re-checkable figure is 131.
+
+    CITATION IS THE POINT, and the tempting shortcut is what makes that worth saying. All 43 of
+    those tools DO have an entry in some file on disk — two to five files each. Picking one and
+    calling it the citation would invent the very thing the label is supposed to guarantee: that
+    a specific, named measurement can be re-run. A row that does not cite one is not gate-backed,
+    however much evidence exists near it.
+    """
+    ev = row.get("evidence_file")
+    if not ev:
+        return False
+    p = ROOT / ev
+    return p.exists() and tool in _tools_in_batch(p.as_posix())
+
 
 #: A defect row's `state`, CLOSED. The prose stays in `status`; only this is ever counted.
 #: `withdrawn` is a defect that turned out not to be one; `superseded` folded into another row
@@ -476,7 +516,8 @@ def recompute_progress(ledger: dict) -> dict:
     def counts(v: dict) -> bool:
         return v.get("counts_toward_release") is not False
 
-    live = [v for v in tools.values() if counts(v)]
+    live_items = [(t, v) for t, v in tools.items() if counts(v)]
+    live = [v for _, v in live_items]
     concluded = sum(1 for v in live if v.get("state") in TERMINAL)
     surface = den.get("federated_tools")
 
@@ -529,12 +570,14 @@ def recompute_progress(ledger: dict) -> dict:
         "shippable_denominator": surface,
         "concluded_in_release_surface": concluded,
         "remaining_in_release_surface": (surface - concluded) if surface is not None else None,
+        # DERIVED from whether the row cites a re-checkable file, never from the label it wrote
+        # about itself. See is_gate_backed() for what trusting the label cost.
         "evidence_split": {
             **(ledger.get("progress", {}).get("evidence_split") or {}),
-            "gate_backed": sum(1 for v in live if v.get("evidence_class") == "gate-backed"),
+            "gate_backed": sum(1 for t, v in live_items if is_gate_backed(t, v)),
             "prose_note_pre_gate": sum(
-                1 for v in live
-                if v.get("state") in TERMINAL and v.get("evidence_class") != "gate-backed"),
+                1 for t, v in live_items
+                if v.get("state") in TERMINAL and not is_gate_backed(t, v)),
         },
         "tools_concluded_including_deprecated": sum(
             1 for v in tools.values() if v.get("state") in TERMINAL),
