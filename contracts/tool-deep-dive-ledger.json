@@ -4444,6 +4444,25 @@
    "the_trap_inside_the_fix": "🔴 Reading the evidence's `prompt` unconditionally is ALSO wrong, and it reported seven world_* tools as measured on 'List my worlds.' - the exact sentence this gate's docstring already calls meaningless for them, arriving by a new route. THE BATCH SCHEMA DRIFTED: 72 rows carry `scenario_prompt` (the opening) beside `prompt` (the turn measured), and 58 older rows carry `prompt` alone holding the OPENING. `scenario_prompt`'s presence is the discriminator.",
    "what_it_changed": "unreachable went 0 -> 1. Not a regression: the gate had been reading the wrong sentences and scoring them green. The single entry is translation_job_control, whose measured turn is an anaphoric 'Cancel that job.' after a supplier turn - a structural limit of answerability on a pronoun, recorded in the baseline with the reason rather than closed.",
    "test": "scripts/test_a_measured_turn_reaches_its_tool_gate.py"
+  },
+  "D-A-SHRINK-ONLY-BASELINE-THAT-NOBODY-SHRANK": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "scripts (the loop's own instrument)",
+   "invariant": "A list that may only SHRINK has to be shrunk BY THE COMMIT THAT FIXES AN ENTRY. A guard that fails on a stale entry only works if somebody runs it.",
+   "what": "undeclared-required-args-baseline.json froze 55 tools / 104 required arguments that ship with no description. Its gate fails both ways by design - on a NEW undeclared argument and on a STALE entry - so the list cannot rot upward.\n\nFive composition_authoring_run_* tools had `run_id` DECLARED in 4af064764 / d288305b3, with a description that even names the supplier ('list the book's runs with composition_authoring_run_list and pass the id it returns'). The baseline was never re-frozen, so the gate had been RED at HEAD ever since - found only by running the whole scripts suite.",
+   "the_fix": "Re-frozen from the live catalogue: 104 -> 99 args. The five tools STAY in the file because each still has other undeclared arguments; only `run_id` left.",
+   "test": "scripts/test_required_args_are_declared_gate.py::TestTheListMayOnlyShrink::test_the_baseline_is_not_stale"
+  },
+  "D-A-RULE-APPLIED-HALFWAY-IS-STILL-THE-DEFECT": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "scripts/toolloop (scenario fixtures)",
+   "invariant": "A nonce in a DISPLAY NAME must not be id-shaped. `{run_id}` is hex and belongs in CODES; `{run_word}` is the same nonce rendered pronounceable and belongs in anything a person reads as a name. A name carrying BOTH still carries the hex.",
+   "what": "Three scenario files seeded 'Emberfall Vein {run_id} {run_word}' - the word nonce added, the hex nonce left in place. The original defect (2026-08-21) was a model reading a fixture's hex tail back as an identifier: \"I'm having trouble accessing the map 'The Ashen Coast' (ID: a671b6c9)\". A name with both tokens hands it the same wrong answer.\n\nscenarios-c-silentlen.json (3 sites), scenarios-idem-outline.json (1), scenarios-rebaseline.json (1).",
+   "why_fixed_and_not_grandfathered": "The thirteen grandfathered files PREDATE the rule and their measurements are on record, so editing them would change nothing that happened. These three were last written 2026-08-23, 08-23 and 08-25 - AFTER the rule shipped on 08-21 - and each already uses {run_word} elsewhere in the same seed. They are the rule applied halfway, not history. rebaseline.json in particular is a live 41-tool re-run set that would carry the trap into every future run.",
+   "the_fix": "`{run_id}` removed from name/title/label values only; `code` keeps it, which is exactly where the rule says a hex nonce belongs. Uniqueness is preserved because {run_word} is the SAME nonce, and the edit asserts a name never loses its last nonce.",
+   "test": "scripts/test_toolloop_name_nonce_is_not_id_shaped.py"
   }
  },
  "deferred_questions": {
@@ -5047,8 +5066,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 160,
-  "defects_fixed": 43,
+  "defects_total": 162,
+  "defects_fixed": 45,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

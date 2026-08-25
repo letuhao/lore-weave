@@ -19,7 +19,7 @@
           "args": {
             "op": "create",
             "code": "emberfall-vein-b27-{run_id}",
-            "name": "Emberfall Vein {run_id} {run_word}",
+            "name": "Emberfall Vein {run_word}",
             "kind": "trope"
           }
         },
@@ -68,7 +68,7 @@
           "args": {
             "op": "create",
             "code": "emberfall-vein-b27-{run_id}",
-            "name": "Emberfall Vein {run_id} {run_word}",
+            "name": "Emberfall Vein {run_word}",
             "kind": "trope"
           }
         },
@@ -117,7 +117,7 @@
           "args": {
             "op": "create",
             "code": "emberfall-vein-b27-{run_id}",
-            "name": "Emberfall Vein {run_id} {run_word}",
+            "name": "Emberfall Vein {run_word}",
             "kind": "trope"
           }
         },
