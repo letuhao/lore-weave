@@ -1,0 +1,268 @@
+{
+ "_note": "FROZEN BASELINE 2026-08-25. Every REQUIRED, non-ambient opaque id (*_id / *_ref) whose emitting TOOL is not declared in argument_emitters. The refusal cannot name where to get the value and R1 cannot put the supplier on the wire, so a model that picks the tool cannot finish. This list may only SHRINK: scripts/test_a_required_id_declares_its_emitter_gate.py fails on a NEW entry AND on a stale one, so it can neither grow nor rot upward.",
+ "_why_this_big": "WHY IT IS THIS BIG: the mechanism was built and wired into R1 on 2026-08-23 and then left with eleven entries. The 274 gaps carry only 41 DISTINCT argument names - book_id on 84 tools, project_id on 36, chapter_id on 23, run_id on 23 - so one VERIFIED decision retires a whole family. The registry's own bar for an entry is 'verified by calling the supplier', never inferred from a name, because a wrong emitter puts a tool that cannot supply on the wire and actively misleads the model.",
+ "_refreeze": "RE-FREEZE: python -c \"import json,pathlib,sys; sys.path.insert(0,'scripts'); import test_a_required_id_declares_its_emitter_gate as g; p=pathlib.Path('contracts/undeclared-emitter-baseline.json'); d=json.loads(p.read_text(encoding='utf-8')); t=g._live_gaps(); d['tools']=t; d['count_tools']=len(t); d['count_args']=sum(len(v) for v in t.values()); p.write_text(json.dumps(d,indent=1,ensure_ascii=False)+chr(10),encoding='utf-8')\"",
+ "count_tools": 85,
+ "count_args": 89,
+ "tools": {
+  "book_chapter_restore_revision": [
+   "revision_id"
+  ],
+  "book_chapter_set_part": [
+   "part_id"
+  ],
+  "book_scene_get": [
+   "scene_id"
+  ],
+  "book_structure_part_archive": [
+   "part_id"
+  ],
+  "book_task_provide_input": [
+   "task_id"
+  ],
+  "composition_arc_delete": [
+   "node_id"
+  ],
+  "composition_arc_extract_template": [
+   "node_id"
+  ],
+  "composition_arc_get": [
+   "node_id"
+  ],
+  "composition_arc_import_analyze": [
+   "import_source_id"
+  ],
+  "composition_arc_move": [
+   "node_id"
+  ],
+  "composition_arc_restore": [
+   "node_id"
+  ],
+  "composition_arc_template_drift": [
+   "node_id"
+  ],
+  "composition_arc_update": [
+   "node_id"
+  ],
+  "composition_authoring_run_accept_unit": [
+   "run_id"
+  ],
+  "composition_authoring_run_close": [
+   "run_id"
+  ],
+  "composition_authoring_run_create": [
+   "plan_run_id"
+  ],
+  "composition_authoring_run_gate": [
+   "run_id"
+  ],
+  "composition_authoring_run_get": [
+   "run_id"
+  ],
+  "composition_authoring_run_pause": [
+   "run_id"
+  ],
+  "composition_authoring_run_reject_unit": [
+   "run_id"
+  ],
+  "composition_authoring_run_resume": [
+   "run_id"
+  ],
+  "composition_authoring_run_revert_all": [
+   "run_id"
+  ],
+  "composition_authoring_run_review": [
+   "run_id"
+  ],
+  "composition_authoring_run_start": [
+   "run_id"
+  ],
+  "composition_canon_rule_delete": [
+   "rule_id"
+  ],
+  "composition_canon_rule_restore": [
+   "rule_id"
+  ],
+  "composition_canon_rule_update": [
+   "rule_id"
+  ],
+  "composition_entity_override_add": [
+   "target_entity_id"
+  ],
+  "composition_entity_override_delete": [
+   "override_id"
+  ],
+  "composition_entity_override_restore": [
+   "override_id"
+  ],
+  "composition_entity_override_update": [
+   "override_id"
+  ],
+  "composition_get_generation_job": [
+   "job_id"
+  ],
+  "composition_get_mine_job": [
+   "job_id"
+  ],
+  "composition_get_outline_node": [
+   "node_id"
+  ],
+  "composition_library_translate": [
+   "model_ref"
+  ],
+  "composition_motif_bind": [
+   "node_id"
+  ],
+  "composition_motif_link_create": [
+   "from_motif_id",
+   "to_motif_id"
+  ],
+  "composition_motif_link_delete": [
+   "link_id"
+  ],
+  "composition_motif_suggest_for_chapter": [
+   "node_id"
+  ],
+  "composition_motif_unbind": [
+   "node_id"
+  ],
+  "composition_outline_node_delete": [
+   "node_id"
+  ],
+  "composition_outline_node_move": [
+   "node_id"
+  ],
+  "composition_outline_node_restore": [
+   "node_id"
+  ],
+  "composition_outline_node_update": [
+   "node_id"
+  ],
+  "composition_reference_update": [
+   "reference_id"
+  ],
+  "composition_scene_link_create": [
+   "from_node_id",
+   "to_node_id"
+  ],
+  "composition_scene_link_delete": [
+   "link_id"
+  ],
+  "composition_scene_link_restore": [
+   "link_id"
+  ],
+  "composition_structure_template_archive": [
+   "template_id"
+  ],
+  "composition_structure_template_clone": [
+   "template_id"
+  ],
+  "composition_structure_template_restore": [
+   "template_id"
+  ],
+  "composition_structure_template_update": [
+   "template_id"
+  ],
+  "composition_task_provide_input": [
+   "task_id"
+  ],
+  "glossary_propose_merge": [
+   "winner_id"
+  ],
+  "glossary_propose_restore_revision": [
+   "revision_id"
+  ],
+  "glossary_task_provide_input": [
+   "task_id"
+  ],
+  "kg_adopt_template": [
+   "source_schema_id"
+  ],
+  "kg_build_wiki": [
+   "model_ref"
+  ],
+  "kg_entity_edge_timeline": [
+   "entity_id"
+  ],
+  "kg_propose_edge": [
+   "source_entity_id",
+   "target_entity_id"
+  ],
+  "kg_triage_place_edge": [
+   "triage_id"
+  ],
+  "lore_entity": [
+   "entity_id"
+  ],
+  "memory_forget": [
+   "fact_id"
+  ],
+  "plan_apply_revision": [
+   "run_id"
+  ],
+  "plan_bootstrap_propose": [
+   "run_id"
+  ],
+  "plan_compile": [
+   "arc_id"
+  ],
+  "plan_find_missing_material": [
+   "run_id"
+  ],
+  "plan_get_missing_material": [
+   "run_id"
+  ],
+  "plan_handoff_autofix": [
+   "run_id"
+  ],
+  "plan_interpret_feedback": [
+   "run_id"
+  ],
+  "plan_keep_material": [
+   "run_id"
+  ],
+  "plan_link": [
+   "run_id"
+  ],
+  "plan_pass_status": [
+   "run_id"
+  ],
+  "plan_review_checkpoint": [
+   "run_id"
+  ],
+  "plan_run_pass": [
+   "pass_id",
+   "run_id"
+  ],
+  "plan_self_check": [
+   "run_id"
+  ],
+  "plan_validate": [
+   "run_id"
+  ],
+  "settings_model_register": [
+   "provider_credential_id"
+  ],
+  "translation_patch_block": [
+   "base_version_id"
+  ],
+  "translation_save_edited_version": [
+   "edited_from_version_id"
+  ],
+  "translation_set_active_version": [
+   "version_id"
+  ],
+  "world_map_remove_marker": [
+   "marker_id"
+  ],
+  "world_map_remove_region": [
+   "region_id"
+  ],
+  "world_map_update_marker": [
+   "marker_id"
+  ],
+  "world_map_update_region": [
+   "region_id"
+  ]
+ }
+}
