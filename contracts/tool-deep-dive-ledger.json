@@ -3881,9 +3881,13 @@
    "what": "glossary_create_evidence requires attr_value_id ('the attribute value the evidence supports (UUID; must belong to the entity)'), and its description says where to get it: 'get it from the entity's attributes'. The only tool that returns one is glossary_get_entity (services/glossary-service/internal/api/entity_handler.go: AttrValueID string `json:\"attr_value_id\"`). It is federated — present in the 223-tool inventory — and it was advertised in ZERO of the 130 surface snapshots across the five runs.",
    "measured": "K=5, c-evidence4, throwaway book, seed creates the entity AND its `occupation` attribute value.\n  glossary_create_evidence: advertised in 18-32 snapshots per run, CALLED 4/5\n  every one of those 4 calls failed: \"missing required argument(s): ['attr_value_id']\"\n  glossary_get_entity / glossary_entity_id / glossary_get_entity_evidence: advertised 0/5 runs\n  no tool the model DID call returned an attr_value_id in its result (checked every TOOL_CALL_RESULT of rep0: 13 results, zero containing the string).\nThe model supplied entity_id, chapter_id, chapter_index, chapter_title and a real original_text quoted from the chapter. It got everything right except the one field nothing on its surface could give it.",
    "recommendation_for_owner": "Three candidate fixes, cheapest first. NOT MY CALL — recorded for decision.\n  (a) glossary_entity_set_attributes returns {\"updated\": [\"description\"]} — the NAMES of the fields it wrote and not the attr_value_id it just created. Returning the id would close the chain inside a call the model already makes (measured: it called set_attributes in all 5 runs).\n  (b) accept an attribute CODE + entity_id instead of a raw uuid, the way other tools take a name.\n  (c) co-advertise the id-supplier whenever a tool requiring that id is advertised.\n(a) and (c) are general; (b) is per-tool.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 1
+   "queue_group": 1,
+   "proven_live_2026_08_26": "🔴 PROVEN LIVE, K=5, batch c-attrval1 (scenarios-c-evidence2.json unchanged), real provider, throwaway book per run.\n\nTHE ROW'S DEFECT IS ITS TITLE, AND THE TITLE NO LONGER HOLDS:\n    glossary_get_entity advertised   5/5 runs   (this row measured 0 of 130 snapshots)\n\nR1 answerability is transitive over argument_emitters, and glossary_create_evidence.attr_value_id <- glossary_get_entity was declared 2026-08-23. That is this row's own option (c) - 'co-advertise the id-supplier whenever a tool requiring that id is advertised' - and it is general rather than per-tool, which is why it was the right one to have built.\n\nTHE CHAIN COMPLETES, on 2 of 5 runs, ending in a real write:\n    glossary_search -> book_list -> book_read -> glossary_book_ontology_read ->\n    glossary_list_system_standards -> glossary_propose_entities -> glossary_get_entity ->\n    glossary_create_evidence  -> ok: true, attr_value_id 01a03a21-1290-7100-bfe3-79bde7df3d8a\nThe row's measurement was 4/5 CALLED and 4/4 of those FAILING on the missing argument. Now the argument arrives.",
+   "the_store_diff_is_read_per_TABLE_not_off_the_headline": "The batch summary line reads 'WROTE 5/5' and that is an aggregate across three tables (evidences, glossary_entities, entity_access_log). Read per table, loreweave_glossary.evidences moved on exactly the two runs where glossary_create_evidence was called - runs 2 and 4 - and is null on the other three. Checked rather than inferred, because 'wrote 5/5' beside 'called 2/5' would otherwise read as the seed or some other tool having written the evidence.",
+   "what_it_does_not_cover": "COMPLETION IS 2 OF 5, not 5 of 5, and that is a different question from this row's. The other three runs stop before the evidence step - they search, list the book, read the chapter, and in one case reach glossary_get_entity and stop there. Nothing in those runs is blocked on an id: the supplier is on the wire in all five. Whether a seven-call chain fits in a turn is the same budget question D-A-TWO-ENDPOINT-EDGE-NEEDS-N-SEQUENTIAL-CONFIRM-CARDS raises, not a supplier gap.\n\nThis row's options (a) and (b) are UNTOUCHED and remain the owner's: (a) have glossary_entity_set_attributes return the attr_value_id it just created, closing the chain inside a call the model already makes; (b) accept an attribute CODE + entity_id instead of a raw uuid. Both would shorten the chain, which is exactly what the 2/5 completion rate suggests is now the binding constraint - so they are worth MORE now than when they were written, not less. Neither was decided here.",
+   "state_reason": "Fixed 2026-08-26 by work already shipped - R1 answerability made transitive over argument_emitters, this row's own option (c) - and measured here for the first time. The supplier goes from advertised in 0 of 130 snapshots to 5 of 5 runs, and the tool from 0 successful calls to a completed chain writing real evidence on 2 of 5. Completion rate and options (a)/(b) are recorded as open questions, not claimed."
   },
   "D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK": {
    "status": "OPEN — measured 2026-08-23, incidental to c-evidence4. NOT yet isolated: indexing latency is an untested candidate cause.",
@@ -5330,7 +5334,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 74,
+  "defects_open": 73,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5346,7 +5350,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 170,
-  "defects_fixed": 59,
+  "defects_fixed": 60,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },
