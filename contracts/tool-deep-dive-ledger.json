@@ -4479,6 +4479,19 @@
    "test": "scripts/test_toolloop_progress_is_derived_gate.py::TestTheEvidenceLabelMeansWhatTheLedgerSaysItMeans",
    "red_on_original": "PROVEN RED in memory on a deepcopy: restoring the original mislabel flags 67 rows, and the counter stays at 131 under the injected ledger - proving it reads the evidence and not the word. A fourth case pins the subtler half: citing a REAL file that does not carry this tool's entry is not a citation either, which is the mistake I made by hand this cycle.",
    "sibling_of": "D-THE-DEFECT-COUNTER-PARSED-ENGLISH-AND-A-REMAINDER-HID-THE-MISS - same shape, one field over: a number derived from what a row SAYS about itself rather than from what it holds."
+  },
+  "D-THE-STOP-SIGNAL-WAS-COMPUTED-FROM-A-DIFFERENT-RULE-THAN-THE-DEFINITION": {
+   "state": "fixed",
+   "date": "2026-08-25",
+   "service": "scripts/toolloop (the loop's own instrument)",
+   "invariant": "A loop's STOP signal must be computed from the loop's own definition of done. If the verdict comes from one rule and the definition from another, it will always stop early.",
+   "what": "problem_remaining.py printed a four-part CLEARED definition at the bottom of every run AND checked it in `_definition_complete` AND correctly found that 13 of 16 problems failed it - then called them CLEARED anyway, because the verdict was the TOOL COUNT. The summary line read `cleared=16 remaining=0` and the script signed off with 'No problem remains. Stopping is legitimate.', with the twelve unmet problems printed above as a warning nobody had to act on.\n\nP7-FALSE-ABSENCE had written the diagnosis into its own status field, in capitals: 'NOW READS CLEARED BY TOOL COUNT AND ITS INVARIANT STILL FAILS'. The instrument was told and kept printing the other number.",
+   "the_fix": "The verdict is derived from the definition and gets its own value - `tools_proven_invariant_open` - so the honest count is the one in the headline:\n    before   problems=16 cleared=16 remaining=0\n    after    problems=16 cleared=3  TOOLS PROVEN / INVARIANT OPEN=12  empty=1\nThe stop line now refuses: 'STOPPING IS NOT YET LEGITIMATE... no further TOOL RUN can close these - each needs its invariant written, enforced at one chokepoint, and a falsifier RED.'",
+   "and_the_backlog_it_printed_before_stopping": "Same shape, second instance in the same script. The DQ list was HAND-TYPED in tool-resolution-problems.json, last edited 2026-08-22: it named 10 open questions while 18 were open. DQ-T36..T43 were opened after it and none was added - and three of those were sitting in the SAME FILE under `unregistered` with ledger rows reading `open`. Now derived from the ledger (17 open, after DQ-T3 was recorded as answered), a row with no state counts OPEN because forgetting to state an answer must not retire a question, and the hand-typed list is marked superseded so editing it changes nothing.",
+   "a_refactor_that_was_part_of_the_fix": "The three rule helpers were CLOSURES inside main(), so the only way to test them was to re-implement them or parse printed output - both of which are extra things that can drift, and my first attempt at the test did BOTH and failed because it matched 'CLEARED' inside 'NOT CLEARED'. Lifted to module level; the tests now call the real functions.",
+   "test": "scripts/test_toolloop_problem_verdict_is_derived_gate.py",
+   "red_on_original": "The guards assert RELATIONS against the shipped contracts, not snapshots: unmet > cleared for the real partition, and the derived DQ set STRICTLY CONTAINS the hand-typed one. Neither has to be edited when a problem is genuinely closed, and both would have been red on the original.",
+   "sibling_of": "D-THE-DEFECT-COUNTER-PARSED-ENGLISH... and D-THE-EVIDENCE-LABEL-WAS-NEVER-CHECKED-AGAINST-ITS-OWN-DEFINITION. Third instance in one day of the same shape: a headline derived from something other than the thing it claims to count."
   }
  },
  "deferred_questions": {
@@ -4499,7 +4512,8 @@
    "evidence": "Measured 2026-08-13. filter_intent_gated_setup_tools drops five glossary tools (adopt_standards, propose_kinds, plan, propose_batch, book_sync_apply) at catalog assembly unless the glossary_shaping skill is injected or a pinned rail names them - so they are un-seeded, un-findable AND un-loadable. That is deliberate (N5a-FULL, the confirmed over-reach) and it IS instrumented via record_surface_withheld(stage='intent_gate'), but only into telemetry the model never sees: from the model's side they are indistinguishable from tools that do not exist. The gate's own docstring records the cost of the opposite error - guidance naming a tool the capability floor had made unreachable produced 40,597 characters of one repeated paragraph before the author hit Stop. So both directions have a measured failure and the choice is a product decision.",
    "decision": "ANSWERED 2026-08-14 by the owner: option (a) — stamp withheld tools the way T7-D2 stamps always-on ones, naming the gate and how to open it. NOTE FOR WHOEVER BUILDS IT: three prose interventions were measured this session and none moved tool_list off 0/3, so the prior is against prose working here. Build it and MEASURE it; if the measurement refuses it, say so rather than shipping it.",
    "recommendation": "RECOMMEND (b) - keep them wholly invisible, and fix the GATE instead (DQ-T31). Naming a tool the model cannot call is the retry loop N5a-FULL exists to stop. The reason a user's request cannot reach an intent-gated tool is not that the tool is hidden; it is that the gate keys on vocabulary rather than on what was asked. Fix that and (a) stops being needed. DECIDE THESE TWO TOGETHER: (b) here is only defensible if T31 gets its declaration arm - otherwise the tools are both unreachable and unmentioned.",
-   "recommendation_status": "RECOMMENDATION ONLY - the owner decides. Added 2026-08-23."
+   "recommendation_status": "RECOMMENDATION ONLY - the owner decides. Added 2026-08-23.",
+   "state": "ANSWERED 2026-08-25 (recorded, not decided here) — option (a) was chosen and SHIPPED as defect DQ-T3-WITHHELD-NOT-ABSENT, commit 5ddffdece, state `fixed`. The DQ row itself never carried the answer, so a backlog derived from the ledger counted it OPEN while the hand-typed list had it under `answered_and_shipped`. NOTE the defect's own caveat: its live arm reads 'VOID x2'; it is unit-proven with falsifiers RED on both halves and md5-verified on deploy."
   },
   "DQ-T4": {
    "question": "Should glossary-service's non-ambient tools DECLARE book_id required, or should they BECOME ambient? Options seen, none chosen: (a) declare required, as T10-D1 did for the three legacy entity-detail reads - honest, zero behaviour change; (b) tag them WithAmbientBook and switch to bookToolAuthAmbient, so a model inside a book studio may omit book_id exactly as it can for glossary_get_entity and glossary_search; (c) per-tool, on whether the tool is reachable from a studio surface at all.",
@@ -5082,8 +5096,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 163,
-  "defects_fixed": 47,
+  "defects_total": 164,
+  "defects_fixed": 48,
   "defects_withdrawn": 11,
   "defects_superseded": 1
  },

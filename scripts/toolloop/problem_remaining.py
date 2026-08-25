@@ -19,6 +19,7 @@ exits non-zero: a denominator you can reorder by editing is not a denominator.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import pathlib
 import sys
@@ -50,6 +51,81 @@ def state_of(ledger: dict, tool: str) -> str:
     if row.get("counts_toward_release") is False:
         return "EXCLUDED"
     return row.get("state") or "?"
+
+
+def open_dqs(ledger: dict) -> list[tuple[str, str]]:
+    """Every deferred question that is not answered, READ FROM THE LEDGER.
+
+    🔴 IT USED TO BE A HAND-TYPED LIST in tool-resolution-problems.json
+    (`deferred_questions_backlog.registered_open`), last edited 2026-08-22. DQ-T36..T43 were
+    opened after that and NONE of them was in it, so the loop's own "check the backlog before you
+    stop" printed 10 questions while 16 were open. Three of the missing ones were even filed in
+    the same file under `unregistered`, with ledger rows reading `open` beside them.
+
+    A question counts as ANSWERED only when its own state says so. A row with no state at all is
+    OPEN — the safe direction, because forgetting to state one must not retire the question.
+    """
+    out = []
+    for k, v in (ledger.get("deferred_questions") or {}).items():
+        if not isinstance(v, dict):
+            continue
+        st = str(v.get("state") or v.get("status") or "").strip()
+        head = st.upper()
+        if head.startswith(("ANSWERED", "SHIPPED", "CLOSED", "WITHDRAWN")):
+            continue
+        out.append((k, st.splitlines()[0][:60] if st else "no state recorded — counted OPEN"))
+    return sorted(out, key=lambda kv: (len(kv[0]), kv[0]))
+
+
+def _is_empty(p: dict) -> bool:
+    """No tools left — every one moved out on a named cause.
+
+    🔴 0 of 0 SATISFIES `done == n` AND READS AS "CLEARED". P11-DISTRIBUTION emptied on
+    2026-08-23 when its last tool moved to P5 on measured cause, and the headline promoted it
+    to cleared without a single tool having been proven under it. Emptying a problem is a
+    statement about where its tools BELONG, not about whether its invariant holds — P11's own
+    open defect (a low-rate tool cannot be proven without sampling for a verdict) outlived the
+    tool that surfaced it.
+    """
+    return not (p.get("tools") or [])
+
+
+def _definition_complete(p: dict) -> tuple[bool, str]:
+    """Does the problem meet the CLEARED definition, beyond its tools reading proven?
+
+    Reads the problem's OWN words first. P8-ANSWERABILITY carries
+    `blocked_on_dq_2026_08_23` beginning "P8 CANNOT BE CLEARED WITHOUT DQ-T32" in a field
+    that is not `status`, and the headline still called it CLEARED — so scanning only
+    `status` would have missed the plainest possible statement that it is not.
+    """
+    for key, val in p.items():
+        if key in ("tools", "cycle") or not isinstance(val, str):
+            continue
+        if "CANNOT BE CLEARED" in val.upper():
+            return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
+    own = (p.get("status") or "").strip()
+    if _is_empty(p):
+        return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
+                       "under it and its invariant is untouched")
+    if own and not own.upper().startswith(("CLEARED", "FIXED")):
+        return False, f"its own status says: {own.splitlines()[0][:70]}"
+    if not (p.get("cleared_note") or "").strip():
+        return False, "no cleared_note — condition (4), what the fix does NOT cover, is unwritten"
+    return True, ""
+
+
+# 🔴 THE VERDICT WAS THE TOOL COUNT AND THE DEFINITION WAS A FOOTNOTE.
+# `_definition_complete` was already right and already flagged 13 of 16 — but the headline
+# word stayed CLEARED, the summary line read `cleared=16 remaining=0`, and the script signed
+# off with "No problem remains. Stopping is legitimate." A loop whose STOP signal is computed
+# from a different rule than its own definition will always stop early. So the verdict is now
+# derived from the definition, and the count that gets quoted is the honest one.
+def verdict(p: dict, done: int, n: int) -> str:
+    if done < n:
+        return "in_progress"
+    if _is_empty(p):
+        return "empty"
+    return "cleared" if _definition_complete(p)[0] else "tools_proven_invariant_open"
 
 
 def main() -> int:
@@ -110,40 +186,8 @@ def main() -> int:
     # the loop's own progress line was the last place that would have said so.
     cleared = [r for r in rows if r[3] == len(r[1]["tools"])]
 
-    def _is_empty(p: dict) -> bool:
-        """No tools left — every one moved out on a named cause.
-
-        🔴 0 of 0 SATISFIES `done == n` AND READS AS "CLEARED". P11-DISTRIBUTION emptied on
-        2026-08-23 when its last tool moved to P5 on measured cause, and the headline promoted it
-        to cleared without a single tool having been proven under it. Emptying a problem is a
-        statement about where its tools BELONG, not about whether its invariant holds — P11's own
-        open defect (a low-rate tool cannot be proven without sampling for a verdict) outlived the
-        tool that surfaced it.
-        """
-        return not (p.get("tools") or [])
-
-    def _definition_complete(p: dict) -> tuple[bool, str]:
-        """Does the problem meet the CLEARED definition, beyond its tools reading proven?
-
-        Reads the problem's OWN words first. P8-ANSWERABILITY carries
-        `blocked_on_dq_2026_08_23` beginning "P8 CANNOT BE CLEARED WITHOUT DQ-T32" in a field
-        that is not `status`, and the headline still called it CLEARED — so scanning only
-        `status` would have missed the plainest possible statement that it is not.
-        """
-        for key, val in p.items():
-            if key in ("tools", "cycle") or not isinstance(val, str):
-                continue
-            if "CANNOT BE CLEARED" in val.upper():
-                return False, f"`{key}` says it CANNOT BE CLEARED: {val.split('.')[0][:80]}"
-        own = (p.get("status") or "").strip()
-        if _is_empty(p):
-            return False, ("EMPTY — every tool moved out on a named cause; nothing was proven "
-                           "under it and its invariant is untouched")
-        if own and not own.upper().startswith(("CLEARED", "FIXED")):
-            return False, f"its own status says: {own.splitlines()[0][:70]}"
-        if not (p.get("cleared_note") or "").strip():
-            return False, "no cleared_note — condition (4), what the fix does NOT cover, is unwritten"
-        return True, ""
+    verdicts = {p["id"]: verdict(p, done, len(p["tools"])) for _i, p, _s, done in rows}
+    by = collections.Counter(verdicts.values())
 
     unsound = [(r, _definition_complete(r[1])[1]) for r in cleared
                if not _definition_complete(r[1])[0]]
@@ -151,13 +195,17 @@ def main() -> int:
     proven_tools = sum(r[3] for r in rows)
 
     print(
-        f"problems={len(rows)} cleared={len(cleared)} remaining={len(rows) - len(cleared)}  |  "
+        f"problems={len(rows)}  cleared={by['cleared']}  "
+        f"TOOLS PROVEN / INVARIANT OPEN={by['tools_proven_invariant_open']}  "
+        f"empty={by['empty']}  in_progress={by['in_progress']}  |  "
         f"tools_in_denominator={blocked_tools} proven={proven_tools} "
         f"still_blocked={blocked_tools - proven_tools}"
     )
+    # The tool count is still shown, because it is what the denominator rule is written in — but
+    # it is no longer the verdict. `cleared` above means the four-part definition, nothing less.
     if unsound:
-        print(f"⚠ {len(unsound)} of {len(cleared)} 'CLEARED' problem(s) do NOT meet the "
-              f"definition printed below — every tool reads proven, but:")
+        print(f"⚠ {len(unsound)} of the {len(cleared)} problem(s) whose TOOLS all read proven do "
+              f"NOT meet the definition printed below:")
         for (i, p, _s, _d), why in unsound:
             print(f"    {p['id']:<24} {why}")
     print()
@@ -167,6 +215,8 @@ def main() -> int:
         mark = ("EMPTY" if _is_empty(p) else "CLEARED") if done == n else f"{done}/{n}"
         fs = len(p["false_statement_tools"])
         fs_note = f"  [{fs} tool(s) made a FALSE STATEMENT to the author]" if fs else ""
+        mark = {"cleared": "CLEARED", "empty": "EMPTY",
+                "tools_proven_invariant_open": "TOOLS PROVEN"}.get(verdicts[p["id"]], mark)
         gap = "" if done < n else ("" if _definition_complete(p)[0]
                                    else "  ⚠ TOOLS PROVEN, DEFINITION NOT MET")
         print(f"  C{i:<3} {p['id']:<24} {mark:>8}  {p['title']}{fs_note}{gap}")
@@ -178,10 +228,24 @@ def main() -> int:
     nxt = next((r for r in rows if r[3] < len(r[1]["tools"])), None)
     print()
     if nxt is None:
-        print("No problem remains — every tool in the denominator reads `proven`.")
-        print("Stopping is legitimate. Check the DQ backlog before you do:")
-        for k in probs["deferred_questions_backlog"]["registered_open"]:
-            print(f"  open {k}")
+        # 🔴 THIS USED TO SAY "Stopping is legitimate" ON THE TOOL COUNT ALONE, with the twelve
+        # unmet problems printed above it as a warning nobody had to act on. A stop signal
+        # computed from a different rule than the definition will always stop early.
+        print("No problem has a tool left to run — every tool in the denominator reads `proven`.")
+        if unsound:
+            print()
+            print(f"🔴 STOPPING IS NOT YET LEGITIMATE. {len(unsound)} problem(s) have every tool "
+                  f"proven and do NOT meet the CLEARED definition. A tool clearing its gate is not "
+                  f"an invariant fix, and no further TOOL RUN can close these — each needs its "
+                  f"invariant written, enforced at one chokepoint, and a falsifier proven RED:")
+            for (_i, p, _s, _d), why in unsound:
+                print(f"    {p['id']:<26} {why}")
+        else:
+            print("Every problem also meets the four-part definition. Stopping is legitimate.")
+        print()
+        print("DQ backlog, DERIVED from the ledger (never the hand-typed list):")
+        for k, why in open_dqs(ledger):
+            print(f"  open {k:<8} {why}")
         return 0
 
     i, p, states, done = nxt

@@ -1,0 +1,160 @@
+"""The loop's own STOP signal must be computed from the loop's own definition.
+
+🔴 MEASURED 2026-08-25. `problem_remaining.py` printed a four-part CLEARED definition at the
+bottom of every run, checked it in `_definition_complete`, correctly found that **13 of 16
+problems failed it** — and then called them CLEARED anyway, because the verdict was the TOOL
+COUNT. The summary line read `cleared=16 remaining=0`, and the script signed off with:
+
+    No problem remains — every tool in the denominator reads `proven`.
+    Stopping is legitimate.
+
+with the twelve unmet problems printed above it as a warning nobody had to act on. One of them,
+P7-FALSE-ABSENCE, had written the diagnosis into its own status field in capitals: "NOW READS
+'CLEARED' BY TOOL COUNT AND ITS INVARIANT STILL FAILS".
+
+A stop signal computed from a different rule than the definition will always stop early. Two
+things are pinned here: the verdict follows the definition, and no further TOOL RUN can close a
+problem whose invariant is unwritten — which is why `in_progress` and `tools_proven_invariant_open`
+must stay distinguishable.
+
+SECOND, AND THE SAME SHAPE: the DQ backlog this script printed before stopping was a HAND-TYPED
+list in `contracts/tool-resolution-problems.json`, last edited 2026-08-22. It named 10 open
+questions while 18 were open — DQ-T36..T43 were opened after it and none was added, and three of
+those were filed in that same file under `unregistered` with ledger rows reading `open`. It is
+now derived from the ledger, and the hand-typed list is marked superseded.
+"""
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
+PROBLEMS = ROOT / "contracts" / "tool-resolution-problems.json"
+
+_spec = importlib.util.spec_from_file_location(
+    "problem_remaining", ROOT / "scripts" / "toolloop" / "problem_remaining.py")
+pr = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(pr)
+
+
+def _ledger() -> dict:
+    return json.loads(LEDGER.read_text(encoding="utf-8"))
+
+
+class TestTheDqBacklogIsDerived:
+    def test_every_unanswered_question_is_listed(self):
+        """The set is the ledger's, not a list someone remembered to update."""
+        led = _ledger()
+        listed = {k for k, _ in pr.open_dqs(led)}
+        expected = {
+            k for k, v in led["deferred_questions"].items()
+            if isinstance(v, dict)
+            and not str(v.get("state") or v.get("status") or "").strip().upper().startswith(
+                ("ANSWERED", "SHIPPED", "CLOSED", "WITHDRAWN"))
+        }
+        assert listed == expected
+
+    def test_a_question_with_no_state_counts_as_OPEN(self):
+        """The safe direction. Forgetting to state an answer must not retire the question."""
+        led = copy.deepcopy(_ledger())
+        led["deferred_questions"]["DQ-TEST"] = {"question": "?"}
+        assert "DQ-TEST" in {k for k, _ in pr.open_dqs(led)}
+
+    def test_it_is_bigger_than_the_hand_typed_list_it_replaced(self):
+        """RED on the original defect: the frozen list is still in the file, and still short.
+
+        Not a snapshot of 17 — that would rot the same way. The assertion is the RELATION: the
+        derived set strictly contains the hand-typed one, so the stale list can never again be
+        the thing that gets read.
+        """
+        led = _ledger()
+        probs = json.loads(PROBLEMS.read_text(encoding="utf-8"))
+        hand = set(probs["deferred_questions_backlog"]["registered_open"])
+        derived = {k for k, _ in pr.open_dqs(led)}
+        assert hand < derived, (
+            f"the hand-typed list is not a strict subset of the derived one: "
+            f"only-in-hand={sorted(hand - derived)}")
+        assert probs["deferred_questions_backlog"].get("_SUPERSEDED_2026_08_25"), (
+            "the hand-typed list must be marked superseded, or someone will edit it and "
+            "believe it did something")
+
+
+class TestAProblemIsClearedOnlyByItsDefinition:
+    def _rows(self):
+        probs = json.loads(PROBLEMS.read_text(encoding="utf-8"))
+        return {p["id"]: p for p in probs["problems"]}
+
+    def test_a_problem_whose_own_status_denies_it_is_not_cleared(self):
+        """Read the problems' own words. Several say NOT CLEARED in capitals."""
+        for pid, p in self._rows().items():
+            own = (p.get("status") or "").strip().upper()
+            if own.startswith(("CLEARED", "FIXED")) or not own:
+                continue
+            ok, why = pr._definition_complete(p)
+            assert not ok, f"{pid} says {own[:40]!r} and the checker called it complete"
+            assert why
+
+    def test_a_problem_that_says_CANNOT_BE_CLEARED_anywhere_is_not_cleared(self):
+        """P8 carries it in `blocked_on_dq_2026_08_23`, not in `status`. Scanning one field
+        would miss the plainest possible statement that a problem is not cleared."""
+        p = {"tools": ["x"], "status": "CLEARED", "cleared_note": "all four hold",
+             "some_other_field": "🔴 P8 CANNOT BE CLEARED WITHOUT DQ-T32."}
+        ok, why = pr._definition_complete(p)
+        assert not ok and "CANNOT BE CLEARED" in why
+
+    def test_an_emptied_problem_is_not_cleared(self):
+        """0 of 0 satisfies done == n. Emptying a problem says where its TOOLS belong, not that
+        its invariant holds."""
+        ok, why = pr._definition_complete({"tools": [], "status": "CLEARED",
+                                          "cleared_note": "x"})
+        assert not ok and "EMPTY" in why
+
+    def test_tools_all_proven_is_not_by_itself_cleared(self):
+        """The defect, in one assertion: every condition but (4) satisfied."""
+        ok, why = pr._definition_complete({"tools": ["a"], "status": "CLEARED"})
+        assert not ok and "cleared_note" in why
+
+
+class TestTheVerdictItself:
+    """`verdict()` is the thing the headline prints. Pinned directly — no re-implementation and
+    no parsing of printed output, both of which are extra things that can drift. The three rule
+    helpers were closures inside main() until 2026-08-25; lifting them out is what made it
+    possible to test the real ones."""
+
+    def test_all_tools_proven_but_definition_unmet_is_its_OWN_verdict(self):
+        p = {"tools": ["a"], "status": "DIAGNOSED — the fix is not written"}
+        assert pr.verdict(p, 1, 1) == "tools_proven_invariant_open"
+
+    def test_cleared_requires_the_definition(self):
+        p = {"tools": ["a"], "status": "CLEARED", "cleared_note": "does not cover X"}
+        assert pr.verdict(p, 1, 1) == "cleared"
+
+    def test_empty_is_not_cleared(self):
+        assert pr.verdict({"tools": []}, 0, 0) == "empty"
+
+    def test_unfinished_is_in_progress(self):
+        assert pr.verdict({"tools": ["a", "b"], "status": "CLEARED",
+                           "cleared_note": "x"}, 1, 2) == "in_progress"
+
+    def test_the_real_partition_has_more_unmet_than_cleared(self):
+        """RED on the original defect, against the SHIPPED contract rather than a fixture.
+
+        The headline said cleared=16 remaining=0. Asserting the relation rather than the number
+        13, so the guard does not have to be edited every time a problem is genuinely closed.
+        """
+        probs = json.loads(PROBLEMS.read_text(encoding="utf-8"))
+        led = _ledger()
+        counts = {}
+        for prob in probs["problems"]:
+            done = sum(1 for t in prob["tools"]
+                       if pr.state_of(led, t) == "proven")
+            counts[prob["id"]] = pr.verdict(prob, done, len(prob["tools"]))
+        unmet = [k for k, v in counts.items() if v == "tools_proven_invariant_open"]
+        cleared = [k for k, v in counts.items() if v == "cleared"]
+        assert unmet, "the whole point of the fix is that these are visible"
+        assert len(unmet) > len(cleared), (
+            f"cleared={sorted(cleared)} unmet={sorted(unmet)} — if this ever flips, the loop is "
+            f"genuinely nearly done and this assertion should be replaced by a stricter one")
