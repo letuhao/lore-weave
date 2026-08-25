@@ -29,43 +29,63 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 BUDGET = 4000
 #: How many contract defects to NAME. The rest are counted and pointed at, never silently dropped.
-NAMED = 6
+#: Lowered 6 -> 3 when the ANTI-CHEAT and RUN-ENDS sections were added: QUEUE is the elastic
+#: section precisely so the durable half never gets cut to fit, and the full list is one query
+#: away (`defect_class == contract`). Losing a name here is recoverable; losing a rule is not.
+NAMED = 3
+#: Characters of each named defect's invariant to show. Enough to RECOGNISE the row, not to
+#: understand it — a row that needs more than this has narration where its invariant should be.
+EXCERPT = 64
 
 DURABLE = """\
 Close the platform's CONTRACT defects in contracts/tool-deep-dive-ledger.json — the ones a \
 stronger model fails identically.
 
-OBJECTIVE. A defect is done when its invariant is NAMED, enforced at ONE chokepoint, a falsifier \
-is proven RED on an ORIGINAL instance, the owning suite is green, and the fix is demonstrated by \
-a LIVE run through the real chat path. Then `state: fixed` with the evidence on the row. Never \
-weaken a bar, a scenario or an expectation to fit; if a bar is wrong, say so and leave it failing.
+OBJECTIVE. A defect is DONE when its invariant is NAMED, enforced at ONE chokepoint, a falsifier \
+is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the fix is shown by a \
+LIVE run through the real chat path. Then `state: fixed` with the evidence on the row.
 
-UNIT. ONE defect per cycle. DO NOT BATCH ON A BROKEN PLATFORM — a batch measures the platform, \
-not the fix, which is why GPT-4 mini failed architecture v1. Do not open the next until this one \
-is fixed, or re-scoped on a DIFFERENT named cause, and recorded as such.
+THE RUN ENDS ONLY WHEN `python scripts/toolloop/goal_prompt_defects.py --check` reports no open \
+contract defect, or says every one left is DQ-blocked. NOTHING ELSE ENDS IT. One defect fixed is \
+ONE CYCLE, never the run: the moment a row reaches `fixed`, open the next one IN THE SAME TURN.
 
-METHOD, every cycle, in order:
-1 INVESTIGATE BEFORE THEORISING. `docker logs infra-<svc>-1`, the run's tool calls in \
-loreweave_chat.chat_messages.tool_calls (args, ok, error, per session_id), the batch JSON under \
-docs/eval/toolloop/, and the store diffs it records. Read what happened, then reason.
-2 NAME THE INVARIANT, AND FIX THE CLASS. One cause filed under 15 names is still one cause. \
-Prefer a registration-time lint that FAILS THE BUILD over a per-tool repair.
-3 RUN THE CONTROL THAT COULD REFUTE YOU, BEFORE writing the fix. For any detector or guard, \
-measure PRECISION and RECALL on the recorded corpus and record the candidates you rejected.
-4 DEPLOY AND VERIFY BY CONTENT — sha256 read from INSIDE the container against the host source; \
-restart ai-gateway if a tool description changed; refresh the catalogue cache.
-5 PROVE IT LIVE. Real provider, K>=5, throwaway fixture. Surfaced/called/store-moved, not vibes.
+NEVER STOP FOR — asking whether to go on; offering to redirect or hand back; "want me to…", \
+"unless you…", or "next I'll…" followed by silence; a finished cycle; a green suite; \
+a long report; a tidy stopping point. Any turn that has not moved a row to `fixed` \
+MUST END IN A TOOL CALL, not in prose. Reporting is not progress. The DERIVED count is.
 
-EVIDENCE. A fix is proven by a RUN, never by the code looking right, and never by a helper test \
-alone — assert the CALL SITE. A failed attempt is RECORDED, not silently retried until it passes. \
-Every fix states what it does NOT cover. Run the WHOLE owning suite, not the file you touched.
+BLOCKED IS NOT STOPPED. A defect needing an owner decision gets its DQ recorded on the row and \
+you MOVE TO THE NEXT ONE. Stop only when --check itself says everything left is blocked, then \
+paste its output.
 
-STOP. Never write to the dogfood book: one throwaway fixture per scenario, provisioned and torn \
-down. A read-only TOOL does not make a read-only TURN. Auth only via /v1/auth/login using \
-git-ignored docs/dev/LOCAL_TEST_ENV.md; never scrape a token, never invent a credential. SELECT \
-before any DML. Everything through the provider layer; there is no local model. DQs get a \
-RECOMMENDATION from you and are DECIDED BY THE OWNER — never decide one to unblock a defect. \
-Report honestly: if a defect cannot move, say why and leave it open."""
+UNIT. ONE defect per cycle — a floor on rigour, not a cap on effort. DO NOT BATCH ON A BROKEN \
+PLATFORM: a batch measures the platform, not the fix, which is why GPT-4 mini failed v1.
+
+METHOD, in order. 1 INVESTIGATE BEFORE THEORISING: `docker logs infra-<svc>-1`, tool calls in \
+loreweave_chat.chat_messages.tool_calls, the batch JSON under \
+docs/eval/toolloop/, the store diffs. Read what happened, then reason. 2 NAME THE INVARIANT AND \
+FIX THE CLASS: one cause under 15 names is one cause; prefer a registration-time gate that FAILS \
+THE BUILD; check FIRST whether the mechanism EXISTS and is merely EMPTY. 3 RUN THE \
+CONTROL THAT COULD REFUTE YOU, before writing the fix — measure PRECISION and RECALL, and record \
+what you rejected. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the container vs the host; \
+restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, K>=5, throwaway \
+fixture.
+
+EVIDENCE. Proven by a RUN, never by the code looking right, never by a helper test alone — assert \
+the CALL SITE. Run the whole owning suite SERIALLY. A failed attempt is RECORDED, not quietly \
+retried. Every fix states what it does NOT cover.
+
+ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; if a bar is wrong, say so and \
+leave it RED. A baseline may only SHRINK — never re-freeze one larger to go green. Never split a \
+defect to inflate the count, and never re-scope to something trivial: a re-scope must name a \
+DIFFERENT cause. Never write `fixed` when the live run exercised only part of the fix — say which \
+part is unproven. Re-derive every number you rely on; a ledger claim is a lead, not a fact.
+
+SAFETY. Never write to the dogfood book: one throwaway fixture per scenario, torn down. A \
+read-only TOOL does not make a read-only TURN. Auth only via /v1/auth/login using git-ignored \
+docs/dev/LOCAL_TEST_ENV.md; never scrape a token, never invent a credential. SELECT before any \
+DML. Everything through the provider layer; there is no local model. DQs get a RECOMMENDATION \
+from you and are DECIDED BY THE OWNER — never decide one yourself to unblock a defect."""
 
 
 def rows() -> tuple[list[tuple[str, str]], dict]:
@@ -84,7 +104,7 @@ def rows() -> tuple[list[tuple[str, str]], dict]:
                         ("invariant", "what", "measured", "status", "severity") if v.get(f)), "")
             contract.append((v.get("queue_group") or 4, bool(v.get("blocked_by_dq")),
                              not v.get("queue_anchor"), k,
-                             " ".join(inv.split())[:86], v.get("blocked_by_dq")))
+                             " ".join(inv.split())[:EXCERPT], v.get("blocked_by_dq")))
     # DQ-blocked LAST and never NEXT: they cannot be closed without an owner decision, and a
     # resume pointer aimed at one sends the next session to wait rather than to work. Within a
     # group the ANCHOR sorts first — otherwise the next session starts on whichever row happens
