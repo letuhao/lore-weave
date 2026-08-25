@@ -3502,6 +3502,140 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
     )
 
 
+#: A dispatch refusal that names REQUIRED ARGUMENTS but names no TOOL.
+#:
+#: 🔴 A FLAT-SUPERSET OP-DISPATCH TOOL MAKES EVERY REPAIR PATH BLIND. 18 catalogue tools declare
+#: only `op` as required, because one schema serves several ops — so `_missing_required_names`
+#: finds nothing missing, the call DISPATCHES, and the server refuses with the per-op requirement
+#: it knew all along. None of the repair machinery above ever runs: no supplier is named, and
+#: `_tools_named_in_refusal` arms nothing because the sentence contains no tool name.
+#:
+#: The server already computed the answer. Measured 2026-08-25 across every service's MCP layer:
+#: 45 such refusal strings, all of one shape — `op=create requires from_motif_id, to_motif_id,
+#: and kind`.
+#:
+#: 🔴 THE FIRST REGEX SILENTLY DROPPED THE LAST ARGUMENT OF A THREE-ITEM LIST, because a repeating
+#: `,\s*item` group happily consumed ", and" as an item. It parsed, it looked right, and it
+#: under-counted exactly the arguments a model most needs named. Three candidates were compared
+#: against the real strings before this one was kept.
+_PER_OP_REQUIRES_RE = re.compile(
+    r"\brequires?\s+([a-z0-9_]+(?:[,\s]+(?:and\s+)?[a-z0-9_]+)*)", re.I)
+_ARG_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def _args_named_in_refusal(text: str, props: dict | None) -> list[str]:
+    """Argument names a refusal demands — kept ONLY if the tool actually declares them.
+
+    🔴 THE SCHEMA IS THE PRECISION GUARD, and it is structural rather than textual on purpose.
+    A word-matcher over refusal prose will happily report `and`, `a` or `dictionary` as arguments;
+    requiring the refusing tool's own schema to declare the token makes that impossible by
+    construction instead of by careful wording.
+
+    MEASURED 2026-08-25 on the 70 service refusal strings that are NOT the per-op shape — the
+    population where a greedy matcher does its damage: the guard rejects 66 of them outright, and
+    the 4 that survive are real ("scope=dirty requires chapter_id", "delete_attribute requires
+    genre_code"), where naming the supplier is equally right.
+    """
+    known = set(props or ())
+    if not known:
+        return []
+    # Named `found` rather than the obvious `out`: the four-space-indented annotated-empty-list
+    # declaration of a variable called `out` is the literal anchor of an existing falsifier
+    # (test_the_LIVE_placeholder_is_caught), and a second occurrence makes that anchor ambiguous
+    # — a stale anchor, which the membrane gate rejects without running a suite. The anchor is
+    # DESCRIBED here rather than quoted, because quoting it is itself a second occurrence; that
+    # is how this comment failed the gate on its first attempt.
+    found: list[str] = []
+    for m in _PER_OP_REQUIRES_RE.finditer(text or ""):
+        for tok in _ARG_TOKEN_RE.findall(m.group(1)):
+            if tok in known and tok not in found:
+                found.append(tok)
+    return found
+
+
+def _enum_values(prop: dict) -> list[str]:
+    """The closed set a property accepts, including the `anyOf[{enum}, {null}]` shape Pydantic
+    emits for an optional enum — which is how EVERY enum on a flat-superset tool is declared, so
+    reading only a top-level `enum` would find none of them."""
+    if not isinstance(prop, dict):
+        return []
+    vals = prop.get("enum")
+    if not vals:
+        for alt in prop.get("anyOf") or []:
+            if isinstance(alt, dict) and alt.get("enum"):
+                vals = alt["enum"]
+                break
+    return [str(v) for v in vals] if isinstance(vals, list) else []
+
+
+def _where_each_argument_comes_from(tool: str, args: list[str], registry: dict,
+                                    props: dict | None = None) -> str:
+    """One sentence per demanded argument saying where to GET it.
+
+    Three outputs, because there are three situations and one sentence for all of them is the
+    defect this file keeps re-learning:
+
+      * an emitter is DECLARED -> name it. Naming it also ARMS it: the caller appends this text
+        to the refusal, and `_tools_named_in_refusal` keys off catalogue names in that text. So
+        the supplier reaches the wire, which is the difference between an instruction the model
+        can follow and one it cannot.
+      * the argument is an ENUM -> list the values. It is a choice from a closed set, not a
+        lookup and not a question.
+      * neither -> take it from the request, or ASK. `composition_authoring_run_manage` op=create
+        needs `budget_usd` and `pause_after_each_unit`: how much money to spend and whether to
+        pause between units are DECISIONS, no tool can supply them, and the platform's whole
+        repair vocabulary is about FINDING values rather than requesting them. Without this the
+        turn has no legal move at all — told not to guess and given nowhere to go.
+
+    🔴 THE ENUM ARM EXISTS BECAUSE THE FIRST VERSION OVER-ASKED, caught by running it against the
+    real refusal strings in the deployed container before any live run. It told the model to "ASK
+    THE AUTHOR" for `composition_motif_link_edit.kind` — an enum of composed_of | precedes |
+    variant_of, on a turn whose request said "mark A as coming BEFORE B". Asking the author to
+    spell that out is worse than the refusal it replaced.
+    ⚠️ AND THE LAST ARM SAYS "take it from the request, or ask" RATHER THAN A FLAT "ask", for the
+    same reason one step further: "op=create requires code and name" is answered by the author's
+    own sentence on most turns, and a flat instruction to ask would send the model back to a
+    user who has already said it.
+
+    Returns "" when there is nothing useful to add, so the caller never appends an empty sentence.
+    """
+    from app.agentruntime.toolcontract import declared_emitter
+
+    sourced: dict[str, list[str]] = {}
+    choose: list[tuple[str, list[str]]] = []
+    ask: list[str] = []
+    for a in args:
+        emitter = None
+        try:
+            emitter = declared_emitter(registry, tool, a)
+        except Exception:  # noqa: BLE001 — a contract lookup must never take the turn down
+            emitter = None
+        if emitter:
+            sourced.setdefault(emitter, []).append(a)
+            continue
+        vals = _enum_values((props or {}).get(a) or {})
+        if vals:
+            choose.append((a, vals))
+        else:
+            ask.append(a)
+    parts: list[str] = []
+    for emitter, names in sorted(sourced.items()):
+        parts.append(
+            f"Call {emitter} to get {' and '.join(names)}, then call this again with "
+            f"{'them' if len(names) > 1 else 'it'}."
+        )
+    for a, vals in choose:
+        parts.append(f"{a} is a choice from: {' | '.join(vals)}.")
+    if ask:
+        parts.append(
+            f"No tool supplies {' and '.join(ask)} — take "
+            f"{'those values' if len(ask) > 1 else 'that value'} from the author's request, or "
+            f"ASK THE AUTHOR for {'them' if len(ask) > 1 else 'it'}, then call this again. "
+            "Do NOT guess."
+        )
+    return " ".join(parts)
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -7629,6 +7763,42 @@ async def _stream_with_tools(
                 # the branch was not reached, the text was empty, the named tool was absent from
                 # cat_index, or it was already active. Each has a different fix. A mechanism that
                 # logs only its successes cannot be diagnosed when it stops succeeding.
+                #
+                # ── D-A-PER-OP-REFUSAL-NAMES-ARGUMENTS-AND-NO-MOVE ───────────────────────────
+                # A flat-superset op-dispatch tool declares only `op` as required, so nothing
+                # above this point ever saw a missing argument: the call dispatched and the
+                # SERVER refused with the per-op requirement. That refusal names arguments and no
+                # TOOL, so the arming below finds nothing and the turn is left with an
+                # instruction it cannot act on. Say where each one comes from — which both gives
+                # the model a move and puts the supplier's NAME into `_refusal_text`, so the
+                # existing arming picks it up instead of needing a second arming path.
+                if _refusal_text:
+                    # Bound in TWO steps rather than one expression, and not for style: the
+                    # single-expression form repeats a string that an anchored falsifier
+                    # (test_THE_DECLARATION_IS_THE_SOURCE_NOT_A_TOOL_NAME_LIST) requires to occur
+                    # EXACTLY ONCE in this file, and a two-occurrence anchor is a stale anchor.
+                    # The membrane gate catches that without running a suite — it caught this.
+                    _po_def = cat_index.get(c["name"]) or plain_index.get(c["name"]) or {}
+                    _po_props = (
+                        (_po_def.get("function", {}).get("parameters", {}) or {})
+                        .get("properties") or {}
+                    )
+                    _po_args = _args_named_in_refusal(_refusal_text, _po_props)
+                    # Only when the refusal named NO tool of its own: composition_arc_template_edit
+                    # already says "Call composition_arc_template_list to get the id", and adding a
+                    # second sentence beside a correct one is noise, not help.
+                    _po_already = any(
+                        n in _refusal_text for n in (cat_index or {}) if n != c["name"])
+                    if _po_args and not _po_already:
+                        _po_help = _where_each_argument_comes_from(
+                            c["name"], _po_args, _tool_contract_registry(), _po_props)
+                        if _po_help:
+                            _refusal_text = f"{_refusal_text} {_po_help}"
+                            _tool_content = (_tool_content or "") + "\n\n[SYSTEM] " + _po_help
+                            logger.info(
+                                "per-op refusal from %s named %s and no tool — appended: %s",
+                                c["name"], _po_args, _po_help[:160],
+                            )
                 if _refusal_text and discovery:
                     _recovery = _tools_named_in_refusal(
                         _refusal_text, cat_index, active_tool_names,

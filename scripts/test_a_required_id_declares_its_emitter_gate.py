@@ -25,6 +25,19 @@ The ledger row that says the map "holds THREE real entries" is itself stale; it 
 argument names**, because the same id recurs across a family: `book_id` on 84 tools, `project_id`
 on 36, `chapter_id` on 23, `run_id` on 23. One verified decision covers a whole row.
 
+🔴 THIS GATE IS BLIND TO 18 TOOLS, AND THE BLINDNESS IS THE SAME ONE THE RUNTIME HAD.
+A flat-superset op-dispatch tool declares only `op` as required, because one schema serves several
+ops — so `composition_motif_link_edit.from_motif_id` is OPTIONAL in the schema and never enters
+this gate's population, even though `op=create` genuinely requires it and the server refuses
+without it. The debt this file reports therefore UNDER-COUNTS by whatever those 18 tools' per-op
+requirements are, and re-freezing after declaring one of them does not move the number.
+
+Discovered 2026-08-25, the cycle after this gate shipped, while fixing
+D-A-PER-OP-REFUSAL-NAMES-ARGUMENTS-AND-NO-MOVE. Stated here rather than quietly widened: the
+per-op requirement lives in the server's `raise ValueError("op=create requires …")` and in the
+tool's prose, not in the schema, so reading it would mean parsing one of those — a different
+instrument with its own precision problem, not a tweak to this one.
+
 🔴 WHY A BASELINE RATHER THAN A FLAT BAN — the same reason the sibling gate
 (`test_required_args_are_declared_gate.py`) gives, and it is not laziness. An emitter declaration
 is a claim that a specific tool RETURNS that id, and the registry's own standard for entering one
