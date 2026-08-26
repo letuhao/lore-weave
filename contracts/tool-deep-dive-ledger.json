@@ -4340,7 +4340,7 @@
    "state": "fixed"
   },
   "D-BOOK-SYNC-HAS-NOTHING-TO-APPLY-AND-A-DIVERGENCE-CANNOT-BE-SEEDED-SAFELY": {
-   "status": "OPEN - named 2026-08-24. It became visible only once the intent gate was satisfied.",
+   "status": "OPEN - the row's BLOCKER is REFUTED (2026-08-26): a divergence CAN be seeded within the safety rules, and was, 5/5. With a real diff on the table the tool is still not called - for a different reason, filed as D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE.",
    "what": "glossary_book_sync_apply applies a DIFF between a book's adopted standards and the system standards. With the gate satisfied and the tool advertised 5 of 5, the model does exactly the right thing on every run: calls glossary_book_sync_available first, finds the diff EMPTY, and tells the author so — 'there are currently no upstream changes to apply. Your story bible is up to date with the latest standards.'\n\ncalled 0/5 is therefore CORRECT BEHAVIOUR, not a failure. There was nothing to apply.\n\nThe scenario's own seed_assert says as much and always did: 'Standards adopted, nothing upstream changed since.' The fixture was never built to create a divergence — which nobody could see while the gate kept the tool off the wire entirely.",
    "why_a_divergence_cannot_be_seeded_within_the_safety_rules": "Probed directly on a throwaway book, torn down after: adopting a NARROW slice ({genres:['universal'], kinds:['character']}) and then calling glossary_book_sync_available returns {\"updates\": []}. A partial adopt does not leave the rest pending, so the obvious cheap divergence does not exist.\n\nWhat WOULD create one is the SYSTEM standards changing after the book adopted — and system standards are shared across every book and every user of this deployment. Writing them to make a test pass is a larger violation than the dogfood book this loop already refuses to touch: it would change what every other author's sync sees. I am not doing it.\n\nRECOMMENDATION: a test-only way to seed a divergence scoped to ONE book — a system-standard version pinned per book, or a fixture hook that records the book as adopted at an older revision. Until then this tool cannot be exercised, and that is a property of what the fixture can safely build rather than of the tool.",
    "retracted_2026_08_24": [
@@ -4349,7 +4349,11 @@
    "theory_2026_08_24": "Seed a divergence by updating source_hash on the throwaway book's OWN adopted rows, after the adopt step creates them. Then glossary_book_sync_available should report updates, and the tool under test becomes reachable for the first time.\n\nREFUTED IF: sync_available still returns {\"updates\": []} after the seed (then source_hash is not the axis the diff turns on and I have misread the query), or the rows come back with a status the apply path refuses (e.g. everything reads 'retired' because the JOIN fails rather than the hash differing) — which would mean I seeded the wrong KIND of divergence and must say so rather than accept a green run.",
    "state": "open",
    "defect_class": "contract",
-   "queue_group": 3
+   "queue_group": 3,
+   "the_blocker_was_REFUTED_2026_08_26": "The row concluded: 'what WOULD create one is the SYSTEM standards changing - and system standards are shared across every book and every user of this deployment ... I am not doing it.' The refusal was right; the PREMISE was wrong.\n\nbook_sync_handler.go states the rule symmetrically, in its own header:\n    update available  <=>  source resolves live AND its hash != book.source_hash\n`source_hash` is a column on the BOOK's row - 'the standard's content_hash at copy time'. So the diff is a comparison between two sides and perturbing EITHER creates it. One of those sides is book-scoped.\n\nTWO SAFE METHODS, both measured:\n  1. Book-scoped SQL: UPDATE the throwaway book's own book_kinds.source_hash. Probed - updates went from [] to 2. Nothing shared is touched. (SELECT ran first, per the rule.)\n  2. THE PRODUCT'S OWN PATH, which is what the scenario uses: create a RUN-UNIQUE user-tier kind, adopt it into the throwaway book, then glossary_user_patch it. An author editing their own standard is exactly the journey this tool exists for. Probed - updates [] -> 1, with mine={name:'Loop Kind X'} vs theirs={name:'Loop Kind X RENAMED'}.\n\n🔴 THE SCOPING IS THE SAFETY ARGUMENT, and it is why method 2 is not the violation the row feared: patching an EXISTING user standard would diverge every other book of this account that adopted it, INCLUDING the dogfood book. A standard created for this run is adopted by exactly one throwaway book, so nothing else can see the divergence.",
+   "what_the_live_run_then_showed": "batch c-booksync1, K=5, zero errored runs:\n    glossary_book_sync_available called 5/5 and returned a REAL diff on every run\n    the model reported it correctly: 'there is one update available ... Would you like me to apply this change?'\n    glossary_book_sync_apply: surfaced 0/5, called 0/5\n\nSo the row's own reading - 'called 0/5 is CORRECT BEHAVIOUR, there was nothing to apply' - no longer holds. There IS something to apply, the model FOUND it, and it could not act because the tool was not on the wire. The cause moved from the FIXTURE to the SURFACE, which is a different cause and is filed as its own row rather than folded in here.",
+   "what_is_still_owed_here": "This row cannot close until glossary_book_sync_apply can be reached. The fixture problem it names is solved and the method is written down; the remaining blocker is not this row's subject. When the surface defect is fixed, re-run scenarios-c-booksync.json - it seeds the divergence and asserts it in seed_assert, so a regression of the SEEDING fails the fixture rather than quietly producing an empty diff that reads as 'nothing to do'.",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; direct probes of both seeding methods on throwaway books, 2026-08-26"
   },
   "D-AUTHORING-RUN-CREATE-APPROVE-THEN-FAIL-ON-A-CROSSWIRED-PLAN-RUN-ID": {
    "status": "CAUSE NAMED and FIXED 2026-08-24; live proof pending.",
@@ -4897,6 +4901,16 @@
    "defect_class": "instrument",
    "queue_group": 4,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-motiflink10.json and c-motiflink11.json"
+  },
+  "D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE": {
+   "status": "OPEN - measured 2026-08-26, batch c-booksync1, K=5, 5 of 5 runs.",
+   "what": "R1 answerability's whole promise is that a tool whose OWN declared vocabulary answers the request reaches the wire. For glossary_book_sync_apply it matched, logged the match, logged NO skip reason, and the tool is still absent from the final advertised surface.\n\nThe prompt contains its declared synonym verbatim ('Apply the standard updates'). Confirmed three ways:\n  * answerable_tools(), called inside the DEPLOYED chat-service container against the live catalogue, returns glossary_book_sync_apply as answerable.\n  * the service log: 'R1 answerability: request matches [book_steering_list, glossary_book_sync_apply, glossary_book_sync_available]', on every session.\n  * the service's OWN advertised log, emitted AFTER the surface builder returns, lists 34 activated tools including glossary_book_sync_AVAILABLE and NOT glossary_book_sync_APPLY.\n\nThe forcing loop has exactly three skip branches - suppressed by a loop breaker, absent from the turn's catalog, and wrong tier under ask/plan mode - and EVERY one of them logs. None fired. So the tool was dropped by a path that says nothing.",
+   "why_it_matters": "R1 is the mechanism this loop has leaned on repeatedly - it is what makes a declared emitter reach the wire, and several fixes are built on that guarantee. A silent hole in it means those fixes hold only where nothing else drops the tool, and nobody would see the difference: the log says 'matched' and the tool simply is not there.",
+   "not_investigated": "WHERE the drop happens. `_add()` has two silent early returns (a falsy td, and a name already seen) and neither should fire here, so the drop is likely further downstream - a budget or a filter applied between the builder and the wire. Settling it means instrumenting the path, not another batch.",
+   "state": "open",
+   "defect_class": "contract",
+   "queue_group": 2,
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; answerable_tools() in the deployed container; chat-service advertised log, 2026-08-26"
   }
  },
  "deferred_questions": {
@@ -5508,7 +5522,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 72,
+  "defects_open": 73,
   "deferred_questions": 21,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5523,7 +5537,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 178,
+  "defects_total": 179,
   "defects_fixed": 68,
   "defects_withdrawn": 12,
   "defects_superseded": 1
