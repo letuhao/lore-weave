@@ -60,7 +60,7 @@ from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
+from app.db.neo4j_repos.entities import list_entities_filtered
 from app.db.neo4j_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -1388,7 +1388,16 @@ async def kg_add_nodes(
     ],
     name: Annotated[str | None, "mode=manual: the entity's name."] = None,
     kind: Annotated[
-        AuthorableKind | None, "mode=manual: the entity kind (closed set)."
+        str | None,
+        # 🔴 str, NOT AuthorableKind. A Literal here is validated by the tool layer BEFORE any
+        # code runs, so `kind='person'` was rejected with "Input should be 'character', ... (you
+        # sent 'person')" and the alias map that exists to fold it never saw the value. The
+        # normaliser was written, wired into KgCreateNodeArgs, and unreachable from THIS tool —
+        # the one the model actually calls. Same trade kg_create_node already made: the closed
+        # set moves from the TYPE into the description (guidance) and the validator (enforcement).
+        "mode=manual: the entity kind — one of: character, location, organization, concept, "
+        "item. Ordinary synonyms are accepted and folded to these (person → character, "
+        "place → location, group → organization, thing → item).",
     ] = None,
     entity_ids: Annotated[
         list[str] | None,
@@ -1463,8 +1472,12 @@ async def kg_create_node(
     ctx: MCPContext,
     name: Annotated[str, "the entity's name"],
     kind: Annotated[
-        AuthorableKind,
-        "the entity kind (closed set)",
+        str,
+        # Same reason as kg_add_nodes: a Literal here is validated before any code runs, so
+        # KgCreateNodeArgs' fold — which was written FOR this tool — could never see an alias
+        # either. The map has been unreachable from every MCP call since it was added.
+        "the entity kind — one of: character, location, organization, concept, item. Ordinary "
+        "synonyms are accepted and folded to these (person → character, place → location).",
     ],
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:

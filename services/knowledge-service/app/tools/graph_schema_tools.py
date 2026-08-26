@@ -633,9 +633,16 @@ class KgAddNodesArgs(ProjectScopedArgs):
         if self.mode == "manual":
             if not self.name or not self.kind:
                 raise ValueError("mode=manual requires name and kind")
-            from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
-            if self.kind.strip() not in AUTHORABLE_KINDS:
-                raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
+            from app.db.neo4j_repos.entities import AUTHORABLE_KINDS, canonical_kind
+            # TOLERATE AT THE EDGE, STORE THE CANONICAL VALUE — the same rule kg_create_node
+            # applies, and it was missing HERE, on the unified tool the model actually calls.
+            self.kind = canonical_kind(self.kind)
+            if self.kind not in AUTHORABLE_KINDS:
+                raise ValueError(
+                    f"kind must be one of {sorted(AUTHORABLE_KINDS)} — you sent "
+                    f"{self.kind!r}. Ordinary synonyms are folded automatically "
+                    "(person → character, place → location); this one matched none of them."
+                )
         return self
 
 
@@ -1035,8 +1042,12 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "kind": {
                 "type": "string",
-                "enum": ["character", "location", "organization", "concept", "item"],
-                "description": "mode=manual: the entity kind (closed set).",
+                # 🔴 NO `enum` HERE ANY MORE, and that is the fix rather than an omission. A
+                # closed enum is validated by the tool layer BEFORE any code runs, so the alias
+                # map that folds `person` -> `character` could never see the value. The closed set
+                # moves into the DESCRIPTION (guidance) and the validator (enforcement); this
+                # schema must mirror the MCP signature, which a guard checks.
+                "description": "mode=manual: the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location, group → organization, thing → item).",
             },
             "entity_ids": {
                 "type": "array",
@@ -1089,8 +1100,8 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
             },
             "kind": {
                 "type": "string",
-                "enum": ["character", "location", "organization", "concept", "item"],
-                "description": "the entity kind (closed set)",
+                # Same reason as kg_add_nodes above — see that note.
+                "description": "the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location, group → organization, thing → item).",
             },
             "project_id": _PROJECT_ID_PROP,
         },

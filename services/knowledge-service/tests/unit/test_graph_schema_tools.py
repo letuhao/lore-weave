@@ -1755,6 +1755,23 @@ async def test_kg_graph_query_scope_multi_without_project_ids_is_tool_error():
     assert "project_ids" in (res.error or "")
 
 
+class _CountResult(str):
+    """A tag that ALSO answers `.single()`.
+
+    🔴 THE HANDLER STOPPED USING `_records` FOR THE COUNT AND THESE MOCKS DID NOT FOLLOW. The
+    scalar read moved to `await result.single()` because `_records` drains rows as
+    `{k: dict(rec[k])}` and a scalar `count(e)` makes that raise — a defect the LIVE probe caught
+    after a green suite. The follow-up mock update was verified by re-running ONE test file, so
+    these two siblings shipped red and stayed red until the next full run. A subset run hides the
+    regression it was supposed to catch.
+    """
+
+    total: int = 0
+
+    async def single(self):
+        return {"total": self.total}
+
+
 @pytest.mark.asyncio
 async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
     """K37/OUT-5 (2026-07-24) — the graph read's Cypher LIMIT was a SILENT cap. The handler
@@ -1771,9 +1788,9 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
     # COUNT for an honest `nodes_total`. A fake answering every read with edge rows was modelling
     # a handler that no longer exists, and it failed on the SHAPE rather than on the behaviour
     # under test — which is still the over-fetch, asserted unchanged below.
-    def _tag(cypher: str) -> str:
+    def _tag(cypher: str):
         if "count(e) AS total" in cypher:
-            return "total"
+            tag = _CountResult("total"); tag.total = 8; return tag
         return "isolated" if "NOT EXISTS" in cypher else "edges"
 
     async def _fake_run_read(session, cypher, **kw):
@@ -1838,7 +1855,7 @@ async def test_kg_graph_query_not_truncated_when_within_limit(monkeypatch):
     # Three reads now (edges / isolated / count) — see the note in the sibling test.
     async def _fake_run_read(session, cypher, **kw):
         if "count(e) AS total" in cypher:
-            return "total"
+            tag = _CountResult("total"); tag.total = 4; return tag
         return "isolated" if "NOT EXISTS" in cypher else "edges"
 
     monkeypatch.setattr(gst, "run_read", _fake_run_read)

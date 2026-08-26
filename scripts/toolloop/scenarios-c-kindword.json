@@ -1,0 +1,36 @@
+{
+  "_note": "D-NODE-KIND-ENUM-REJECTS-THE-ORDINARY-WORD. Existing kg_add_nodes scenarios say 'as a character' — they hand the model the canonical word, so they could never surface this. The prompt here describes a human being the way an author would, and does NOT name the enum.",
+  "scenarios": [
+    {
+      "id": "add-a-person-to-the-graph",
+      "tool_under_test": "kg_add_nodes",
+      "expect_tool": "kg_add_nodes",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Add Aldric Vane to my knowledge graph — he's a person in this story, the cartographer.",
+      "prompt_source": "🔴 THE ORDINARY WORD, ON PURPOSE, and this is not steering: the defect IS that a human being described as a 'person' is rejected. The prompt deliberately does NOT say 'character' — every existing kg_add_nodes scenario does, which is why none of them could surface this. The original measurement (p4-ctxid rep0/rep4) died exactly here.",
+      "needs_target": false,
+      "approve": "approved_once",
+      "approve_why": "Tier A, and the target is the run's OWN throwaway project, torn down. The write under test IS the node creation; leaving it unapproved would measure whether the model reaches the card, not whether the kind is accepted.",
+      "seed": [],
+      "falsifier": "REFUTED IF: the call is rejected for its `kind` — 'Input should be character, location, ...' — which is the defect verbatim; OR the model retries kg_add_nodes more than twice without recovering; OR a node is stored with kind='person' rather than the canonical 'character', which would mean the alias reached the graph and created a second vocabulary.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; it mints a real graph node.",
+        "absent_case": "an unknown kind must still be refused — covered by the unit guard test_an_unknown_kind_is_still_refused.",
+        "idempotency": "adding the same name twice is not covered here.",
+        "tenancy": "project-scoped."
+      },
+      "defects": [],
+      "_problem": "D-NODE-KIND-ENUM-REJECTS-THE-ORDINARY-WORD",
+      "answer_expect": {
+        "all_of": [
+          "Aldric"
+        ],
+        "why": "Weak on the TEXT deliberately — the name is in the prompt. The assertion is the trace: the call must SUCCEED, and the stored kind must be 'character' rather than the word the model sent."
+      },
+      "_no_seed_assert_why": "🔴 I WROTE ONE AND IT WAS WRONG TWICE OVER. seed_assert runs psql, and an Entity lives in Neo4j (D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH) — and my note claimed the harness would SKIP such an assertion. It does not: it REFUSES the whole batch, correctly, because a scenario whose assertion cannot execute measures nothing. Removed rather than left as decoration.\n\nNothing is lost for THIS scenario: the assertion it needs is on the CALL, not the store — kg_add_nodes must succeed and the stored kind must come back 'character'. The falsifier reads the tool result directly."
+    }
+  ]
+}

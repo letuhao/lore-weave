@@ -3370,7 +3370,8 @@
    "what_is_NOT_covered": "- scope=world AND scope=multi ARE UNCHANGED. kg_world_query and kg_multi_query still project nodes from edges only, so an edgeless node is still invisible there. Same defect, different handlers, and not fixed here - naming it rather than letting the row read as catalogue-wide.\n- THE CAP AND ITS TRUNCATION FLAG ARE UNIT-GUARDED, NOT LIVE-EXERCISED. The live project held ONE node; the 3,172-node outlier that motivated the cap was never queried.\n- THE REST/FE ROUTE IS DELIBERATELY UNTOUCHED (`isolated` defaults to None). Two consumers with different needs: a drawing of 3,172 unconnected dots is not useful, while an agent told a populated project has 0 nodes has been told something false. Whether the FE should show them is a product question I am not deciding.\n- The harness flagged 'READ-INTENT TURN WROTE TO THE STORE in 1/5' - loreweave_knowledge.extraction_pending gained a row on one run. A graph READ does not enqueue extraction; the likeliest source is a provisioning tail landing inside the measured window. UNEXPLAINED, and recorded as unexplained rather than dismissed.",
    "red_able": "services/knowledge-service/tests/unit/test_an_edgeless_node_is_visible_to_the_graph_read.py, 14 guards. Three inverse edits, each restored by inverse edit:\n    drop the isolated nodes from the slice   -> 5 guards red (the original defect)\n    stop passing them from the MCP handler   -> the wiring guard\n    let nodes_total report the SLICE again   -> the false-zero guard\nEach reds the named guards and nothing else.",
    "suite": "knowledge-service, serially: 4,261 passed, 563 skipped, 3 FAILED - the same three that fail at HEAD (D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD), left RED. Two sibling mocks in test_graph_schema_tools.py were UPDATED, not weakened: kg_graph_query now issues three reads and their fakes answered every read with edge rows, so they failed on the SHAPE rather than on the over-fetch behaviour they assert, which is unchanged.",
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-edgeless1.json"
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-edgeless1.json",
+   "a_regression_this_fix_shipped_and_a_later_suite_caught": "🔴 THE `.single()` REPAIR BROKE TWO SIBLING TESTS AND I DID NOT NOTICE. When the live probe showed `'int' object is not iterable`, the count read moved from `_records(total_result)` to `await total_result.single()`. I verified that by re-running ONE test file - the new one - and shipped. `test_kg_graph_query_overfetches_and_signals_truncation` and its sibling had mocks returning a plain tag string, and `.single()` on a str raises.\n\nThey stayed red until the next FULL suite run, in a later cycle, which is exactly the standing lesson: a subset run hides the regression it was meant to catch. Repaired by giving the mocks a `_CountResult` that answers `.single()`, with the reason written beside them so the next person changing that read sees why the shim exists."
   },
   "D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED": {
    "state": "fixed",
@@ -3637,13 +3638,18 @@
    "defect_class": "model"
   },
   "D-NODE-KIND-ENUM-REJECTS-THE-ORDINARY-WORD": {
-   "status": "OPEN — measured, the root blocker of both failing runs",
+   "status": "FIXED - proven 2026-08-26 by direct probe against the deployed build (person -> character, place -> location) and a K=5 chat batch: 5/5 succeeded on ONE call with zero enum rejections.",
    "what": "kg_add_nodes' `kind` enum is character|location|organization|concept|item. The model sends 'person' for a human being — the ordinary English word — and every call is rejected: \"Input should be 'character', 'location', ... (you sent 'person')\". Both failing runs died here: the nodes are never created, so the edge can never resolve, and the model retried four times without recovering.",
    "note": "The error message is GOOD — it names the value sent and lists the alternatives — and the model still could not use it. A rejection the model cannot act on is a rejection that costs the turn, however well worded.",
-   "measured_by": "docs/eval/toolloop/2026-08-14/p4-ctxid-raw.json rep0, rep4",
-   "state": "open",
+   "measured_by": "direct MCPDirect probe before and after, 2026-08-26; docs/eval/toolloop/2026-08-14/c-kindword1.json",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 3
+   "queue_group": 3,
+   "the_alias_map_ALREADY_EXISTED_and_could_not_be_reached": "🔴 THE FIX WAS WRITTEN, WIRED, AND UNREACHABLE FROM EVERY MCP CALL. `KIND_ALIASES` maps person -> character and its comment quotes THIS defect; `canonical_kind` folds it; `KgCreateNodeArgs` calls it. But both MCP tools declared `kind: AuthorableKind` - a Literal, validated by the TOOL layer before any code runs. Measured against the deployed build:\n\n    kg_add_nodes(kind='person')  -> Input should be 'character', ... (you sent 'person')\n    kg_add_nodes(kind='place')   -> identical\n\nSo the map has never once folded an alias from an MCP call. Every unit test of the args model passed throughout, because the args model was never reached - the rejection happens a layer above it. Only calling the deployed tool shows this.\n\nAND IT WAS BROKEN AT BOTH ENDS: kg_create_node (legacy) had the same Literal, so the fold written FOR it could not see an alias either.",
+   "the_fix": "The closed set moves out of the TYPE and into the DESCRIPTION (guidance) and the VALIDATOR (enforcement) - the trade kg_create_node's args model had already made, now made consistently at every layer:\n  * both MCP signatures take `str` instead of `AuthorableKind`, with a description naming the five kinds AND the accepted synonyms\n  * `KgAddNodesArgs._gate_manual_kind` calls `canonical_kind` BEFORE the membership check - it was validating without folding\n  * the two hand-written OpenAI schemas drop their `enum` to match, which a pre-existing guard (test_mcp_inputschema_mirrors_bespoke_openai_schema) caught the moment they disagreed\n  * the refusal for a genuinely unknown kind now echoes the value and says the fold was tried\n\nTHE CLOSED SET IS UNCHANGED. `spaceship` is still refused, and `faction` - the RETIRED misnomer, deliberately absent from KIND_ALIASES because an alias map is a way to resurrect a retired term without anyone noticing - is still refused too. Both pinned.",
+   "proof": "DIRECT, deployed build, throwaway project:\n    kind='person'    -> OK, stored kind='character'\n    kind='place'     -> OK, stored kind='location'\n    kind='character' -> OK, unchanged\nBefore, the first two were refused at the tool layer.\n\nLIVE, K=5, prompt using the ORDINARY word and never naming the enum ('he's a person in this story, the cartographer'):\n    kg_add_nodes called 5/5, ONE call per run, zero retries\n    enum rejections 0/5 · stored as 'character' 5/5\nThe original measurement had the model retry FOUR times and lose both of that batch's runs.",
+   "what_is_NOT_covered": "- THE CHAT PATH DID NOT EXERCISE THE FOLD. On 5/5 the model sent 'character' itself, so the alias never had to fire. The description now lists both the canonical set and the synonyms, which is the likeliest reason - but I did NOT run a stripped-description control, and this loop has already caught itself crediting a declaration that a control showed made no difference. The live proof of the FOLD is the direct probe.\n- THE SCHEMA NO LONGER MACHINE-CHECKS THE ENUM. That is the trade, taken deliberately: a closed type rejects before the fold can run. Enforcement moved to the validator, which is tested; guidance moved to the description, which is tested. A caller bypassing both would get a ValueError rather than a schema error.\n- ALIASES BEYOND THE MEASURED ONE ARE UNMEASURED. Only `person` was ever observed live; the other eleven are its obvious siblings, listed so the next ordinary word does not cost another batch. None has been seen in a real run.",
+   "red_able": "services/knowledge-service/tests/unit/test_the_ordinary_word_reaches_the_alias_map.py, 20 guards. Three inverse edits, each restored byte-identical:\n    re-close the tool type       -> 20 errors (the original defect: the fold unreachable)\n    the args model stops folding -> 16 guards\n    the refusal stops echoing    -> the unknown-kind guard\n🔴 MY PROVER REPORTED THE FIRST ONE GREEN AND WAS WRONG: re-closing the type raises NameError at import, so pytest reports ERROR rather than FAILED, and the script counted only lines starting with FAILED. A falsifier that watches for one failure shape is the same blindness as a monitor that greps only for success."
   },
   "D-AFFIRMATIVE-FOLLOW-UP-LOSES-THE-PRIOR-INTENT": {
    "status": "OPEN — measured 2026-08-23, 10 runs across 2 tools",
@@ -5568,7 +5574,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 72,
+  "defects_open": 71,
   "deferred_questions": 22,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5584,7 +5590,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 180,
-  "defects_fixed": 69,
+  "defects_fixed": 70,
   "defects_withdrawn": 13,
   "defects_superseded": 1
  },
