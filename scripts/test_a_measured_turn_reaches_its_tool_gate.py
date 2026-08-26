@@ -214,3 +214,93 @@ def test_the_gate_is_red_able_on_the_original_instance():
         "world_map_update_region" not in _baseline(), (
         "either the declaration was widened (remove it from the baseline) or the gate went inert"
     )
+
+
+# ── PER SCENARIO, not per tool ───────────────────────────────────────────────────────────
+#
+# 🔴 THE GATE ABOVE READS ONE TURN PER TOOL, and a tool is measured by SEVERAL scenarios with
+# different wordings. `measured_turns()` picks the turn the tool was CONCLUDED on and never
+# looks at the others, so a tool that reaches its own vocabulary in the batch that concluded it
+# and misses in five other scenarios passes — and those five will surface 0/N whenever they are
+# run. Measured 2026-08-27: the per-tool baseline holds ONE entry, while 25 scenario turns
+# cannot reach their own tool, across 5 tools of which 4 are not in that baseline at all.
+#
+# THIS IS ALSO WHERE D-A-FIFTH-OF-SCENARIOS-DO-NOT-ASK-FOR-THEIR-OWN-TOOL ENDS UP, and the
+# re-derivation reverses that row. Judged on the turn fe_runner actually measures rather than on
+# `prompt`:
+#
+#     108  scenarios cannot reach their tool from the FIRST turn   <- what the row measured
+#      25  from the MEASURED turn                                  <- what is real
+#
+# and the split of those 25 is not what the row claimed either:
+#
+#      22  SYNONYM gap on a Tier A/W tool     ("Attach the pattern called …" -> motif_bind_edit)
+#       2  a Tier R read tool
+#       1  a tool the offline tier scan does not know
+#       0  read-verb prompt on a write tool   <- the 84 the row was closed on
+#
+# Every one of the 25 is a DECLARATION gap: the sentence asks for exactly what the tool does and
+# the tool has not declared those words. Rewriting the prompts would be fixing the wrong half,
+# which is the mistake that row already made once.
+
+SCENARIO_BASELINE = ROOT / "contracts" / "unreachable-scenario-turns-baseline.json"
+
+
+def unreachable_scenarios() -> set[str]:
+    """{file::id} for every scenario whose MEASURED turn cannot reach its own tool."""
+    # From fe_runner, which OWNS the rule (its turn loop asserts against it). An earlier draft
+    # imported it out of a TEST module by path — and a falsifier that edited that module was a
+    # SILENT NO-OP, because the function had already moved. Import from the home, not from a
+    # neighbour that re-exports it.
+    sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
+    from fe_runner import measured_turn  # noqa: PLC0415
+    defs = _catalog()
+    names = {td["function"]["name"] for td in defs}
+    out = set()
+    for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for s in d.get("scenarios", []):
+            tool = s.get("tool_under_test")
+            if not tool or tool in EXEMPT or tool not in names:
+                continue
+            if tool not in answerable_tools(measured_turn(s), defs):
+                out.add(f"{f.name}::{s.get('id')}")
+    return out
+
+
+def _scenario_baseline() -> set[str]:
+    if not SCENARIO_BASELINE.exists():
+        return set()
+    return set(json.loads(SCENARIO_BASELINE.read_text(encoding="utf-8"))["scenarios"])
+
+
+def test_the_per_scenario_scan_sees_more_than_the_per_tool_one():
+    """ANTI-VACUITY, and the reason this exists beside the gate above rather than inside it. If
+    the two ever agreed, one of them would be dead weight."""
+    per_tool = set(_baseline())
+    tools_here = {s.split("::")[0] for s in unreachable_scenarios()}
+    assert len(unreachable_scenarios()) > len(per_tool), (
+        "the per-scenario scan no longer finds more than the per-tool baseline — re-derive "
+        "whether it is still needed"
+    )
+    assert tools_here, "the scan found nothing at all"
+
+
+def test_no_NEW_scenario_turn_fails_to_reach_its_own_tool():
+    """THE GATE. Shrink-only, like its per-tool sibling."""
+    new = sorted(unreachable_scenarios() - _scenario_baseline())
+    assert not new, (
+        "these scenarios' MEASURED turn cannot reach the tool they test, so the tool will "
+        "surface 0/N before a run is spent:\n  " + "\n  ".join(new)
+        + "\n\nThis is a DECLARATION gap in almost every case measured so far: widen the tool's "
+          "synonyms. Rewriting the prompt is fixing the wrong half unless the prompt genuinely "
+          "asks for something else."
+    )
+
+
+def test_a_scenario_that_became_reachable_leaves_the_baseline():
+    stale = sorted(_scenario_baseline() - unreachable_scenarios())
+    assert not stale, f"no longer unreachable, remove from {SCENARIO_BASELINE.name}: {stale}"

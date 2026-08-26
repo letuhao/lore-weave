@@ -1,0 +1,32 @@
+{
+ "_what": "Scenarios whose MEASURED turn (follow_ups[-1], else prompt) cannot reach their own tool through answerable_tools. Shrink-only. Almost every one is a DECLARATION gap: the sentence asks for what the tool does and the tool has not declared those words.",
+ "_derived_by": "pytest scripts/test_a_measured_turn_reaches_its_tool_gate.py",
+ "count": 25,
+ "scenarios": [
+  "scenarios-b20-rerun.json::composition-motif-bind-edit",
+  "scenarios-b22-rerun.json::composition-motif-bind-edit",
+  "scenarios-b36-rerun.json::translation-job-control",
+  "scenarios-b36-rerun2.json::translation-job-control",
+  "scenarios-batch20.json::composition-motif-bind-edit",
+  "scenarios-batch22.json::composition-motif-bind-edit",
+  "scenarios-batch26.json::composition-motif-bind-edit",
+  "scenarios-batch36.json::translation-job-control",
+  "scenarios-batch4.json::memory-recall-entity",
+  "scenarios-batch4.json::translation-coverage",
+  "scenarios-batch6-batch.json::glossary-propose-batch-v2",
+  "scenarios-c-ask.json::translation-job-control-asked",
+  "scenarios-c-gbuild-control.json::gbuild-control-unique-capability",
+  "scenarios-c-jobid.json::cancel-a-job-the-author-cannot-name",
+  "scenarios-c-planapply2.json::plan-bootstrap-apply-compiled-answered",
+  "scenarios-c-reference.json::composition-reference-update-seeded",
+  "scenarios-c-surfrec2.json::translation-job-control-refederated",
+  "scenarios-c-tjc3.json::translation-job-control-domain-question",
+  "scenarios-c-two.json::translation-job-control-refederated",
+  "scenarios-p4-confirm-batch.json::composition-arc-apply",
+  "scenarios-p4-confirm-batch.json::composition-derivative-edit",
+  "scenarios-p4-confirm-batch.json::composition-motif-adopt",
+  "scenarios-p4-confirm-batch.json::jobs-cancel",
+  "scenarios-p4-confirm-batch.json::jobs-pause",
+  "scenarios-rebaseline.json::translation-job-control"
+ ]
+}
