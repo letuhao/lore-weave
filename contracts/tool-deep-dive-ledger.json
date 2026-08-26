@@ -3776,13 +3776,17 @@
    "queue_group": 4
   },
   "D-EMPTY-ID-REACHES-THE-DATABASE-UNVALIDATED": {
-   "status": "OPEN — measured 2026-08-23",
+   "status": "FIXED - proven 2026-08-26 against the deployed build over the real MCP surface, 6/6, plus a K=5 chat batch with zero driver errors. Read what_is_NOT_covered: the chat path does not TRIGGER the refusal.",
    "what": "jobs_cancel and jobs_pause accept an EMPTY job_id and let it reach the query layer, so the caller gets a raw driver error: \"invalid input for query argument $2: '' (invalid UUID '': length must be between 32..36 characters)\". Compare composition_derivative_edit on the same input: \"project_id must be a UUID — received ''\" — the field named, the rule stated.",
    "why_it_matters": "The kit's whole argument-repair story rests on a refusal the model can act on. A driver's UUID-length complaint names no argument the model passed and no rule it broke; it is the same 'rejection the caller cannot act on' class as kg_add_nodes' enum, one layer lower.",
-   "measured_by": "direct MCPDirect probe, 2026-08-23",
-   "state": "open",
+   "measured_by": "direct MCPDirect probe of all three tools before and after, 2026-08-26; docs/eval/toolloop/2026-08-14/c-jobid1.json (K=5, 0 driver errors)",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 3
+   "queue_group": 3,
+   "rederived_and_it_is_three_tools_not_two": "The row names jobs_cancel and jobs_pause. Probed against the deployed build, the same driver error came back from THREE tools and for TWO kinds of bad input:\n\n    jobs_cancel('')            invalid input for query argument $2: '' (invalid UUID '')\n    jobs_cancel('not-a-uuid')  ... (invalid UUID 'not-a-uuid': length ... got 10)\n    jobs_pause  - identical, both inputs\n    jobs_get    - identical, both inputs        <- NOT in the row\n\nOne cause under three names: all three call the same `store.get_job`, which passes the raw string to `$2::uuid`. And it was never only about EMPTY - any unparseable id does it, which is the likelier failure in practice (a model that drops or repeats a uuid segment).",
+   "the_fix": "`_job_uuid` in the jobs MCP server, applied BEFORE the store call at both chokepoints - `_control` (which serves cancel and pause) and `jobs_get`. The wording mirrors composition's `_uuid`, deliberately: name the field, state the rule, ECHO the value. Echoing is the part that carries information the caller cannot otherwise get - a duplicated segment is visible in its own string and invisible in 'badly formed'.\n\nIt also names the SUPPLIER: 'Get it from jobs_list, which returns the service and job_id together.' A caller holding no valid id needs the source, not just the complaint.\n\nAFTER, on the deployed build, all six cases:\n    job_id must be a UUID - received ''. Get it from jobs_list, which returns the service\n    and job_id together; a repeated or dropped group is the usual cause.\ndriver_error=False on 6 of 6.",
+   "what_is_NOT_covered": "- THE CHAT PATH DOES NOT TRIGGER IT, so the refusal's live proof is the direct MCP probe rather than a batch. Measured K=5: the model called jobs_list FIRST on 5/5, got real ids, and asked which job to stop - it never sent a malformed id. Zero driver errors across the batch, which shows no regression; it does not exercise the branch. Engineering a prompt to force a malformed id would be building a scenario to hit my own fix.\n- THE REST ROUTER HAS THE SAME DEFECT AND IS UNTOUCHED. app/routers/jobs.py types job_id as `str` at two call sites into the same store function, so a malformed id there still reaches asyncpg. Named rather than swept: this row is about the tool surface, and a 500-to-400 change on a public route is a separate decision.\n- `service` IS STILL UNVALIDATED. An unknown service string is not a UUID problem and does not hit this path, but nothing checks it against the known set either. Not measured.",
+   "red_able": "services/jobs-service/tests/test_a_malformed_job_id_names_the_argument.py, 10 guards including an AST check that NO tool taking a job_id reaches the store unvalidated. Three inverse edits, each restored byte-identical:\n    cancel/pause forward a raw id again  -> 3 guards (the original defect)\n    jobs_get forwards a raw id           -> the class guard (the instance the row missed)\n    the message stops naming/echoing     -> 6 guards\nWhole jobs-service suite green: 117 passed, 13 skipped."
   },
   "D-STORE-SNAPSHOT-CANNOT-SEE-THE-JOB-PROJECTION": {
    "status": "OPEN — VERIFIED by column list, 2026-08-23",
@@ -4926,6 +4930,17 @@
    "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; answerable_tools() in the deployed container; chat-service advertised log, 2026-08-26",
    "narrowed_by_reading_the_path_2026_08_26": "Traced as far as reading can take it, and the drop is genuinely silent:\n  * The 'request matches' log lives INSIDE _advertise_discovery_tools (line 1838, def at 1696), so the DISCOVERY path demonstrably ran - the tool did not fall down the plain-path branch that has no R1 forcing at all.\n  * The forcing loop is at 1894, after that log, and its three skip branches all log. Counted across the whole 40-minute window: ZERO 'NOT forced' lines, zero catalog_miss, zero permission_tier. So _add(_ans_td) was reached.\n  * `advertised` at the log site (4534) is the list ITERATED to build the SSE payload - it is the wire, not an activation registry - and it is emitted long after the builder returns at 1953. The tool is absent from it on all five sessions.\n  * The breaker de-advertise filter that could remove it (4312) is in the ELSE branch, the plain path, which this turn did not take.\n\nSo: added, and gone by the time the surface is sent, with nothing in between that says so. The next step is a counter or a log at the point `out` becomes `advertised`, not another batch and not more reading - which is why this is recorded rather than guessed at.",
    "withdrawn_because": "🔴 I FILED THIS AS A NEW DEFECT AND IT WAS ALREADY ON THE LEDGER. Same tool (glossary_book_sync_apply), same symptom (R1 matches, the tool is absent from the wire), same cause - two advertise sites handed two DIFFERENT catalogues, the per-pass one built from a catalog the tool was already filtered out of.\n\nThe standing rule is explicit that a defect must not be split to inflate the count, so this row is withdrawn rather than kept as a sibling. What the investigation ADDED is folded into the original row: a live re-confirmation, and permanent observability that turned a multi-hour trace into two log lines.\n\nWHAT I SHOULD HAVE DONE FIRST: searched the ledger for the tool NAME before opening a row. The existing row names glossary_book_sync_apply in its own `measured` field."
+  },
+  "D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT": {
+   "status": "OPEN - measured 2026-08-26, batch c-jobid1, K=5, 1 of 5 runs.",
+   "what": "Asked 'Cancel my translation job — stop the runaway translation run', the model checked jobs_list, found no running translation, and then called translation_start_job AND translation_retranslate_dirty on the book - minting a confirm token for each. Asked to STOP work, it proposed STARTING it, twice, on two spend-bearing tools.\n\nIts own reply shows it knew better: 'I've checked your active jobs, but I don't see any translation jobs currently running.' The correct turn ends there.",
+   "no_harm_and_why": "Nothing executed. Both tools returned needs_confirm=true with a token, so the Tier-W cards stopped it exactly as designed, and the target was the run's own throwaway book. The only store change was a chapter_segments row from the coverage read. The GUARD held; the intent was still inverted.",
+   "why_it_matters": "A confirm card is the last line, not the only one. A model that answers 'stop this' by proposing two new spend-bearing writes is one click away from doing the opposite of what was asked, and the click is a human's to make on a card that says 'start translation' when they asked to cancel one.",
+   "not_investigated": "Whether the empty jobs_list result is what turns 'cancel' into 'start' - the model may be treating 'no translation job found' as 'there should be one'. n=1 of 5, so the trigger is not established.",
+   "state": "open",
+   "defect_class": "model",
+   "queue_group": 4,
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-jobid1.json, rep 3"
   }
  },
  "deferred_questions": {
@@ -5553,8 +5568,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 179,
-  "defects_fixed": 68,
+  "defects_total": 180,
+  "defects_fixed": 69,
   "defects_withdrawn": 13,
   "defects_superseded": 1
  },

@@ -336,6 +336,9 @@ async def jobs_get(
     job_id: Annotated[str, "The job's id (UUID)."],
 ) -> dict:
     tool_ctx = build_tool_context(ctx, settings.internal_service_token)
+    # jobs_get shares the defect the row filed against cancel/pause — same store call, same
+    # driver error. One cause under three names.
+    job_id = _job_uuid(job_id)
     job = await store.get_job(get_pool(), str(tool_ctx.user_id), service, job_id)
     if job is None:
         # H13 anti-oracle: a non-owner / missing job is indistinguishable. Return a
@@ -365,10 +368,43 @@ async def jobs_get(
 #      service ships no control endpoint.
 
 
+def _job_uuid(value: str, field: str = "job_id") -> str:
+    """Validate a caller-supplied job id, naming the FIELD and echoing what arrived.
+
+    🔴 WITHOUT THIS THE DRIVER ANSWERS, AND IT NAMES NOTHING THE CALLER SENT. Measured 2026-08-26
+    on all three job tools, for an empty string AND for 'not-a-uuid':
+
+        invalid input for query argument $2: '' (invalid UUID '': length must be
+        between 32..36 characters, got 0)
+
+    `$2` is a position in a query the caller never saw. The kit's whole argument-repair story
+    rests on a refusal the model can act on, and this is one layer below where that story reaches.
+    The wording mirrors composition's `_uuid`, deliberately: echoing the value back is what
+    carries information the caller cannot otherwise get — a duplicated or dropped uuid segment is
+    visible in its own string and invisible in "badly formed".
+
+    Returns the string (not a UUID object) because the query casts with `$2::uuid` and every
+    caller here passes a str; converting would change what the store receives for no gain.
+    """
+    from uuid import UUID
+
+    try:
+        UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(
+            f"{field} must be a UUID — received {value!r}. Get it from jobs_list, which returns "
+            "the service and job_id together; a repeated or dropped group is the usual cause."
+        ) from None
+    return str(value)
+
+
 async def _control(ctx: MCPContext, service: str, job_id: str, action: str) -> dict:
     """Shared owner-scoped control path for `jobs_cancel` / `jobs_pause`."""
     tool_ctx = build_tool_context(ctx, settings.internal_service_token)
     owner = str(tool_ctx.user_id)
+    # Validate BEFORE the store: an unparseable id reaches asyncpg and the caller gets a query
+    # position instead of a named argument. Covers jobs_cancel and jobs_pause, which share this.
+    job_id = _job_uuid(job_id)
     job = await store.get_job(get_pool(), owner, service, job_id)
     if job is None:
         # Anti-oracle: a non-owned OR nonexistent job is indistinguishable. NEVER
