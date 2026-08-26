@@ -3789,14 +3789,17 @@
    "defect_class": "model"
   },
   "D-THE-SCENARIO-ASKS-A-DIFFERENT-QUESTION-THAN-THE-TOOL-ANSWERS": {
-   "status": "OPEN — measured 2026-08-23, affects 7 blocked rows",
+   "status": "FIXED — verified 2026-08-27 with the row's OWN instrument: 0 of 6 before, 6 of 6 after. The corrected prompts were built as scenarios-c-ask.json and the row was never closed.",
    "what": "Of the 25 still-blocked tools, 9 are not matched by their OWN recorded prompt. Seven of those nine have a prompt that asks a READ question about a tool that WRITES or ACTS:\n    jobs_cancel / jobs_pause  'What background jobs do I have running?'  -> cancel / pause\n    memory_forget             'What do I know about the Obsidian Trench?' -> forget a fact\n    kg_triage_schema_write    'Show me the graph triage queue.'           -> WRITE schema\n    catalog_get_book          'What public books are in the catalogue?'   -> open ONE book\n    translation_job_control   'What is the status of the translation job?'-> control the job\nThe remaining two, propose_edit and tool_load, declare NO synonyms at all — already on file as the only two the answerability sweep could never match.\n\nThe model answers the question it was asked — it lists the jobs, shows the queue, reads the memory — and never calls the write tool, because nobody asked it to. These rows do not measure the tool they name.",
    "it_explains_an_earlier_finding": "jobs_cancel and jobs_pause were recorded this session as 'turn 1 lists the jobs and asks'. Of course it does: the prompt asked for a list. I read that as the model hesitating, and it was the model complying.",
    "and_it_refutes_the_obvious_fix": "A bag-of-words matcher — 'all synonym tokens present, any order' — recovers 0 of the 9 and adds 9 false advertisements across the 25 prompts (mean surface 1.9 -> 2.2 tools per request). Zero benefit, real cost. DQ-T32's framing (the matcher needs a CONTIGUOUS phrase) is real — a controlled A/B on composition_reference_update proves it — but it explains NONE of this population. The failure here is not word order; the prompt does not contain the request at all.",
    "buildable": "A prompt that asks for the tool's actual action. That is a NEW question and must be labelled one — unlike a re-run, it does not inherit the old row's conclusion. Distinguish this from composition_reference_update, where the ORIGINAL prompt did match and my rewrite was the regression.",
-   "measured_by": "answerable_tools() over the 315-tool catalogue against each blocked tool's recorded prompt",
-   "state": "open",
-   "defect_class": "instrument"
+   "measured_by": "answerable_tools() over the live 316-tool catalogue against both the old and the scenarios-c-ask.json prompts, 2026-08-27; ledger tool states",
+   "state": "fixed",
+   "defect_class": "instrument",
+   "rederived_with_the_same_measurement_that_opened_it": "The row measured `answerable_tools()` against each blocked tool's recorded prompt. Re-run against the deployed matcher and the live catalogue, old prompt vs the one in scenarios-c-ask.json:\n\n    tool                      OLD    NEW\n    jobs_cancel               miss   MATCH   'Cancel job - stop the background job ...'\n    jobs_pause                miss   MATCH   'Pause job - hold the background job ...'\n    memory_forget             miss   MATCH   'That was wrong - forget that ...'\n    kg_triage_schema_write    miss   MATCH   'Add the edge type to the schema ...'\n    catalog_get_book          miss   MATCH   'Open public book - show me its detail ...'\n    translation_job_control   miss   MATCH   'Cancel job - stop translation ...'\n                              0/6    6/6\n\nExactly what the row said was 'buildable': a prompt that asks for the tool's actual action. It was built — the whole `-asked` batch — and every one of the six tools is now `proven`.",
+   "the_population_is_gone_too": "The row opens 'Of the 25 still-blocked tools, 9 are not matched by their OWN recorded prompt'. There are no blocked tools left: `tools_blocked` is 0 and all 203 rows read `proven`. The remaining two of the nine — propose_edit and tool_load — were the no-synonyms pair, closed separately today: propose_edit gained six synonyms (recall and precision both re-verified against the matcher), and tool_load turned out not to be a contract defect at all and is now its own MODEL row.",
+   "what_is_NOT_covered": "- THE OLD PROMPTS ARE STILL ON DISK. scenarios-rebaseline.json and scenarios-p4-confirm-batch.json still carry 'What background jobs do I have running?' for jobs_cancel and jobs_pause. They are historical batches and re-running one would measure the wrong question again; nothing marks them as superseded by the -asked versions.\n- NOTHING PREVENTS THE NEXT ONE. A scenario whose prompt asks a READ question about a WRITE tool is still writable, and no gate compares a scenario's prompt against its tool_under_test via answerable_tools. That check is exactly the measurement used above and would be cheap — recorded as the obvious next instrument rather than built here, because it belongs to scenario authoring rather than to this row.\n- THE MATCH IS THE MATCHER'S OPINION, not proof the model calls the tool. All six are independently `proven` by live batches, which is the stronger evidence; this measurement only shows the prompt now ASKS for what the tool does."
   },
   "D-NO-SYNONYMS-MEANS-TWO-OPPOSITE-THINGS": {
    "status": "FIXED as a CONTRACT defect — the propose_edit half is done and re-verified against the deployed matcher 2026-08-26. The tool_load half was never a contract defect and is now filed where it belongs, as model behaviour.",
@@ -5856,7 +5859,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 59,
+  "defects_open": 58,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5872,7 +5875,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 189,
-  "defects_fixed": 89,
+  "defects_fixed": 90,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },
