@@ -5055,14 +5055,19 @@
    "what_is_NOT_covered": "- ONLY THE DEFECTS BLOCK IS CHECKED. `tools` rows and `deferred_questions` are not scanned for the same drift; nothing there steers the pointer today, but nothing stops a third name appearing there either.\n- THE ALIAS LIST IS A GUESS BEYOND `dq`. `dq_blocked`, `blocked_by` and `deferred_question` were never observed in the file - they are the shapes I judged most likely to be typed next. Each is unit-tested as detectable, but only `dq` was ever real.\n- THE GENERATOR IS PINNED TO THE FIELD NAME BY A SUBSTRING CHECK on its source. If it is ever rewritten to read the field a different way (a helper, a constant), that guard reds even though nothing is broken - a false alarm, chosen over the silent version.\n- NO LIVE CHAT RUN, and none applies: this is the ledger and its generator, not a platform tool. The proof is the generator's own output before and after."
   },
   "D-A-READ-INTENT-TURN-WRITES-TO-EXTRACTION-PENDING": {
-   "status": "OPEN - observed 2026-08-26 in two independent batches.",
+   "status": "FIXED 2026-08-26 — traced to the platform's per-turn bookkeeping, which the row had listed as its open question. The harness stops mis-attributing it; it still reports it.",
    "what": "A turn whose only tool call is settings_list_models (Tier R, user scope, and in another service entirely) left a row behind in loreweave_knowledge.extraction_pending on 1 of 5 runs, in BOTH c-listmodels1 and c-listmodels2:\n    {\"before\": null, \"after\": {\"rows\": 1}}\nThe harness flags it as 'a READ-INTENT TURN WROTE TO THE STORE - a defect whatever it said', and it is right to.",
    "why_it_matters": "A read turn that writes is either a real side effect nobody declared, or an unrelated background job the harness attributes to the turn. Both matter: the first is a tier violation, the second means every read scenario in this loop carries a false store-write signal that trains the reader to ignore it.",
    "not_investigated": "WHICH code writes the row. settings_list_models cannot - it is a different service and never touches knowledge - so the likely cause is a chat-session side effect (an extraction enqueue on message create) that happens to land inside the measurement window. That is a guess; it was not traced, and 1-of-5 is exactly the shape of a race rather than a per-turn effect.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "instrument",
    "queue_group": 4,
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-listmodels1.json and c-listmodels2.json, store_diff on rep0 of each"
+   "measured_by": "handlers.py::handle_chat_turn traced 2026-08-26; sweep of all evidence files (349 runs / 90 batches; 295 bookkeeping-only, 54 with a real change)",
+   "the_cause_traced": "knowledge-service `app/events/handlers.py::handle_chat_turn` queues into `extraction_pending` on the `chat.turn_completed` event, for EVERY turn whose project has extraction enabled — whatever tool ran, whatever the intent. The row guessed 'a chat-session side effect ... that is a guess; it was not traced'. The guess was right and is now traced.\n\nIt is ASYNCHRONOUS, which explains the 1-of-5 shape the row flagged as 'exactly the shape of a race': the enqueue sometimes lands before the run's `after` snapshot and sometimes after it.",
+   "measured_not_reasoned": "A trace alone is a theory, so the claim was checked against every evidence file on disk:\n    349 runs across 90 BATCHES touch extraction_pending, spanning composition_arc_apply, catalog_get_book, jobs_cancel, kg_triage_schema_write and book_sync\nNo TOOL spans 90 batches. Turn-level bookkeeping does.\n\nAnd the precision of the fix, from the same sweep:\n    295 runs where it is the ONLY store change   -> a pure false signal, now silent\n     54 runs where a real change sits beside it  -> still flagged, because the real change is what triggers",
+   "what_was_NOT_done_and_why": "THE TABLE IS NOT HIDDEN. The `WROTE n/N: tables` summary line still lists it — only the VIOLATION excludes it, and a guard asserts the display is built from the unfiltered diff. The defect was mis-attribution, not visibility.\n\nTHE EXCLUSION IS ONE TABLE, and adding to that set weakens what fe_runner calls 'the strongest assertion in the loop'. The bar written beside the constant is that a table must be TRACED to a per-turn writer AND shown to span unrelated tools in the evidence — both recorded there, and a guard fails if the justification is removed.",
+   "red_able": "scripts/test_turn_bookkeeping_is_not_a_read_violation.py, 7 guards. Inverse edit — the OVER-BROAD version, dropping any run that MENTIONS the table — reds test_a_real_write_ALONGSIDE_bookkeeping_still_fails, which is exactly the 54-run case it would have hidden. Source restored byte-identical.\n\n🔴 AND THE FIRST VERSION OF THAT GUARD WAS VACUOUS. It re-implemented the predicate in the test file, so the same injection passed all 7. The predicate was extracted into `fe_runner.read_intent_violations` and the guard now calls the SHIPPED one. Fourth time today that a test copying the logic it guards would have stayed green through the defect.",
+   "what_is_NOT_covered": "- THE OTHER 54 RUNS ARE UNEXAMINED. They carry a real store change beside the bookkeeping and are still flagged, correctly — but whether each of those is a genuine read-intent violation was not reviewed here.\n- NO OTHER PER-TURN WRITER WAS LOOKED FOR. extraction_pending is the one that surfaced; whether the platform writes anything else on chat.turn_completed is unmeasured, so the set may be incomplete rather than complete.\n- NO BATCH WAS RE-RUN to see the new output live. The predicate is unit-proven in both directions and the report line is unchanged; a batch would only re-observe the same store_diffs already on disk."
   },
   "D-REGISTRY-LIST-WORKFLOWS-UNDER-DECLARES-ITS-PAYLOAD-TOO": {
    "status": "OPEN - BLOCKED on DQ-T49. The inaccuracy is confirmed, the obvious fix is measured WORSE and reverted with a control, and what is left is a trade between an honest description and correct answers - which is not mine to make.",
@@ -5802,7 +5807,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 64,
+  "defects_open": 63,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5818,7 +5823,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 188,
-  "defects_fixed": 83,
+  "defects_fixed": 84,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },

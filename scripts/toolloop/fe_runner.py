@@ -757,13 +757,33 @@ def report(results, scenarios, repeats):
         if susp:
             print(f"    ^ left SUSPENDED on a Tier-A approval card in {susp}/{len(rs)} runs "
                   f"— not a refusal by the model, a card waiting for a click")
-        if wrote and sc.get("intent") == "read":
+        # D-A-READ-INTENT-TURN-WRITES-TO-EXTRACTION-PENDING — the violation is computed over the
+        # tables a TOOL could have touched, not over every row the platform writes while a turn
+        # happens. `extraction_pending` is queued by knowledge-service's `handle_chat_turn` on
+        # the `chat.turn_completed` event, for EVERY turn whose project has extraction enabled,
+        # whatever tool ran. Traced to that handler, and the evidence on disk agrees: it appears
+        # in 349 runs across 90 batches, spanning composition_arc_apply, catalog_get_book,
+        # jobs_cancel, kg_triage_schema_write and book_sync — no tool spans 90 batches.
+        #
+        # It is asynchronous, which is why it showed up on 1 of 5 runs rather than all five: the
+        # enqueue sometimes lands before the "after" snapshot and sometimes after.
+        #
+        # MEASURED PRECISION of this exclusion over every evidence file: 295 runs where it is the
+        # ONLY change (a pure false signal) stop being flagged; the 54 where it appears BESIDE a
+        # real change still are, because the real change is what triggers. The store LINE above
+        # is unchanged and still lists it — this hides nothing, it stops mis-attributing.
+        _real = read_intent_violations(wrote)
+        if _real and sc.get("intent") == "read":
             # The strongest assertion in the loop, and it needs no per-tool knowledge: a turn
             # that asked to LOOK must not change anything. Measured 2026-08-13: five read
             # turns took outline_node from 3 to 6 while the reply called it "your current
             # plan".
-            print(f"    ^ READ-INTENT TURN WROTE TO THE STORE in {len(wrote)}/{len(rs)} runs "
+            print(f"    ^ READ-INTENT TURN WROTE TO THE STORE in {len(_real)}/{len(rs)} runs "
                   f"— a defect whatever it said")
+        elif wrote and sc.get("intent") == "read":
+            print(f"    ^ {len(wrote)}/{len(rs)} runs touched only turn-bookkeeping "
+                  f"({', '.join(sorted(TURN_BOOKKEEPING_TABLES))}) — written for every turn by "
+                  f"chat.turn_completed, not by the tool under test")
     print("\nA scenario is only informative across REPEATS — the consumer is stochastic, so "
           "'1/5 called' is a finding and '5/5 surfaced, 0/5 called' is a different finding "
           "from '0/5 surfaced'.")
@@ -884,6 +904,31 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
         })
     return {"batch": batch_id, "generated_by": "fe_runner",
             "approval_mode": APPROVAL_MODE, "tools": tools}
+
+
+#: Tables the PLATFORM writes for every turn, whatever tool ran — so a row here is not
+#: evidence that the tool under test wrote anything.
+#:
+#: `extraction_pending` is queued by knowledge-service `handle_chat_turn` on the
+#: `chat.turn_completed` event whenever the turn's project has extraction enabled. Adding a
+#: table here WEAKENS the loop's strongest assertion, so the bar is: it must be traced to a
+#: per-turn writer in the platform AND shown to span unrelated tools in the evidence on disk.
+#: This one appears in 349 runs across 90 batches, over composition, catalog, jobs, kg and
+#: book-sync scenarios alike.
+TURN_BOOKKEEPING_TABLES = frozenset({"loreweave_knowledge.extraction_pending"})
+
+
+def read_intent_violations(wrote: list[dict]) -> list[dict]:
+    """The runs a read-intent scenario is actually accountable for.
+
+    A NAMED function rather than an inline comprehension, because the guard for this has to
+    call the SHIPPED predicate. The first version of that guard re-implemented it and passed
+    an over-broad injection — dropping every run that MENTIONS the bookkeeping table, which
+    would have hidden the 54 runs where a real write appears beside it. A test that copies the
+    logic it is guarding cannot fail when that logic changes.
+    """
+    return [r for r in wrote
+            if any(t not in TURN_BOOKKEEPING_TABLES for t in (r.get("store_diff") or {}))]
 
 
 def preflight_seed_asserts(scenarios) -> list[str]:
