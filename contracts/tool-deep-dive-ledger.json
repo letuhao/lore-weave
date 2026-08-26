@@ -3737,13 +3737,18 @@
    "measured_by": "status/is_archived/deleted_at vocabularies read from loreweave_composition and loreweave_glossary, 2026-08-27; _active_counts exercised against a real book"
   },
   "D-IDEMPOTENCY-PROBE-CANNOT-MEASURE-A-CONFIRM-GATED-TOOL": {
-   "status": "OPEN — instrument gap, measured 2026-08-23",
+   "status": "FIXED 2026-08-27. The mechanism was ALREADY SHIPPED and this row was never updated; the work was the guard that keeps it red-able.",
    "what": "idempotency_probe calls the tool twice and reads the store between. For a CONFIRM-GATED (Tier-W) tool that measures nothing: the call only MINTS a confirm_token and writes nothing until the token is redeemed, so both diffs are empty and the probe's own guard correctly says 'two no-ops ... proves nothing'.\n\nMeasured on composition_decompile_arcs. With the outline_node fixture in place it stopped answering 'no chapters to decompile' and started returning a confirm_token — real progress, and still unmeasurable by this instrument.",
    "what_the_probe_would_have_to_do": "call -> redeem -> call -> redeem, comparing the store across the SECOND redemption. The redemption path is already known and used by the seeds: POST /v1/{domain}/actions/confirm. This is a bounded extension, not a redesign.",
    "why_it_matters_beyond_one_tool": "The scenario's own question is 'decompiling a book that ALREADY has an arc layer must not silently duplicate it' — which can only be asked AFTER a first confirmation. Every Tier-W tool in the denominator has an idempotency case in the same position.",
    "measured_by": "docs/eval/toolloop/2026-08-14/idem-decompile2.json",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_mechanism_already_existed": "`idempotency_probe._redeem_if_gated` exists and is called at BOTH call sites — the exact call -> redeem -> call -> redeem this row asked for, over the same route the seeds use (POST /v1/{domain}/actions/confirm). Checking that FIRST is METHOD step 2 and it saved building a second copy of a working mechanism.\n\nWHAT WAS MISSING: no test in the repository mentioned `_redeem_if_gated` or `confirm_token`, so the whole redemption path could have been deleted and every suite would have stayed green. That is the third row this week whose remaining work turned out to be the guard.",
+   "proven_live": "composition_decompile_arcs — the tool this row was written from — K=5, throwaway fixture per rep, zero errored:\n\n    diff_first  non-empty   5/5      (the redemption landed; before, both were empty)\n    diff_second non-empty   5/5\n    confirm recorded        5/5      ['query: 200']\n    verdict                 5/5      IDEMPOTENT IN EFFECT — no row was added or removed\n    'proves nothing'        0/5\n\nAnd that verdict IS the scenario's own question answered: outline_node held at 3 rows across both redemptions, so decompiling a book that already has an arc layer does not duplicate it.",
+   "red_able": "scripts/test_the_probe_can_measure_a_confirm_gated_tool.py, 8 guards, five falsifiers proven RED and restored: redeem only the FIRST call, split the tool prefix instead of mapping the domain, try only the query convention, keep only the LAST attempt, and swallow a transport failure.\n\nTwo hard-won properties are pinned because a rewrite would lose them: the PREFIX IS NOT THE DOMAIN (`kg_*` -> knowledge, `plan_*` -> composition, and the kg PATH segment is `kg`, not `knowledge` — a 404 otherwise), and EVERY ATTEMPT IS RECORDED, because keeping only the last made a 400 with the real reason look like a meaningless 422.",
+   "what_is_NOT_covered": "- ONE GATED TOOL WAS EXERCISED LIVE. The redemption path is shared, but every other Tier-W tool's idempotency case is still unmeasured.\n- THE kg CONVENTION IS UNPROVEN LIVE. Both shapes are tried and the guard pins the URL and that both are attempted, but no kg_* tool was actually redeemed in this cycle.\n- A REDEMPTION THAT FAILS STILL PRODUCES A VERDICT. It is recorded in `confirm` rather than raising, so a reader who does not look at that field can still read a two-no-op verdict as a statement about the tool. The probe does not refuse on it.",
+   "evidence": "scripts/test_the_probe_can_measure_a_confirm_gated_tool.py (live guard); K=5 probe run over scenarios-idem-decompile.json"
   },
   "D-STORE-SNAPSHOT-IS-BLIND-TO-THE-AUTHORING-RUN-TABLES__RETRACTED": {
    "status": "RETRACTED 2026-08-23, one commit after filing — refuted by direct measurement",
@@ -5955,7 +5960,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 50,
+  "defects_open": 49,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5971,7 +5976,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 191,
-  "defects_fixed": 99,
+  "defects_fixed": 100,
   "defects_withdrawn": 16,
   "defects_superseded": 1
  },
