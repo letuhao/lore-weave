@@ -617,6 +617,44 @@ def progress_drift(ledger: dict) -> dict:
     return out
 
 
+#: The ONE field that marks a defect row as waiting on an owner decision. The generator
+#: (`goal_prompt_defects.py`) reads this name and no other: it sorts these last, never points
+#: NEXT at one, and `--check` ends the whole run when every open contract row carries it.
+DQ_FIELD = "blocked_by_dq"
+
+#: Names that MEAN the same thing and are not it. `dq` is not hypothetical — see below.
+DQ_ALIASES = ("dq", "dq_blocked", "blocked_by", "deferred_question")
+
+
+def dq_alias_drift(ledger: dict) -> dict:
+    """{row: [alias, ...]} for every defect marked blocked under a name the generator cannot see.
+
+    🔴 A SECOND NAME FOR THE SAME CONCEPT SILENTLY DISABLED THE RESUME POINTER. Measured
+    2026-08-26: five OPEN rows carried `dq` (DQ-T31, T44, T45, T46, T47) while seven carried
+    `blocked_by_dq`, and the generator reads only the latter. So the queue offered rows whose
+    next step is an owner decision as if they were actionable — it pointed NEXT at
+    D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE, blocked on DQ-T44, and every row it
+    displayed was blocked while seven unblocked ones existed and had to be derived by hand.
+
+    Worse, `--check` ENDS THE RUN when everything left is blocked. Under-counting blocked rows
+    means the stop condition cannot be reached honestly: the run is told to keep going by an
+    instrument that cannot see the blocks. The count and the pointer are the two things this
+    loop steers by, and one typo'd field name broke both.
+
+    This is the same question `progress_drift` asks — does the ledger agree with itself? — so
+    it is answered in the same place, and an alias FAILS the audit rather than being migrated
+    silently: a row rewritten by a tool is a row nobody re-read.
+    """
+    out = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        found = [f for f in DQ_ALIASES if row.get(f)]
+        if found:
+            out[name] = found
+    return out
+
+
 def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
     """🔴 THE GATE USED TO SAY "may be recorded" AND WRITE NOTHING.
 
@@ -677,9 +715,13 @@ def cmd_audit(a) -> int:
     # 198 — so "audit clean" was true and the file's own summary was wrong by 158. Both are the
     # same question (does the ledger agree with itself?) and they are now answered together.
     drift = progress_drift(ledger)
-    if not orphans and not drift:
+    # 🔴 THE THIRD SEAM: the rows can agree with the headline and still be invisible to the
+    # thing that STEERS the run. See dq_alias_drift — one row blocked under the wrong field
+    # name is a row the queue offers as actionable and the stop condition cannot count.
+    aliases = dq_alias_drift(ledger)
+    if not orphans and not drift and not aliases:
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
-              "and `progress` agrees with them")
+              "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
     if orphans:
         print(f"REFUSED — {len(orphans)} tool(s) have evidence on disk and NO ledger row:")
@@ -698,6 +740,14 @@ def cmd_audit(a) -> int:
             LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
                               encoding="utf-8")
             print(f"  -> rewrote {len(drift)} field(s) from the rows. Re-run `audit` to confirm.")
+    if aliases:
+        print(f"REFUSED — {len(aliases)} defect row(s) mark a DQ block under a name the "
+              f"generator cannot read. It reads `{DQ_FIELD}` and nothing else, so these rows are "
+              "offered as actionable and the run's stop condition cannot count them:")
+        for name, found in sorted(aliases.items()):
+            print(f"  {name:58} {found}")
+        print(f"  -> rename the field to `{DQ_FIELD}` on each row. NOT auto-migrated on purpose: "
+              "a row rewritten by a tool is a row nobody re-read.")
     return 1
 
 
