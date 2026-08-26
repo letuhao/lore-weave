@@ -5198,6 +5198,17 @@
    "red_able": "services/chat-service/tests/test_the_sequence_lock_is_real_sql.py, 4 guards run against the REAL database: the statement is valid SQL, the WRONG overload genuinely fails (anti-vacuity — if both spellings worked the first test would prove nothing), two concurrent allocators for the same session SERIALISE (the second blocks until the first commits), and calling it outside a transaction RAISES.\n\nExplicit opt-in via CHAT_DB_URL. Falling back to DATABASE_URL made all four FAIL rather than skip in an ordinary run, because that variable points at the container-internal host — and a live-DB test that breaks the default suite is one somebody deletes. Chat suite: 3,608 passed, 7 skipped.",
    "what_is_NOT_covered": "- THE VOICE SURFACE STILL HAS THE RACE, named above.\n- THE REAL-SQL GUARD DOES NOT RUN BY DEFAULT. It skips without CHAT_DB_URL, so CI will not catch the next broken statement unless that variable is wired up. Naming it rather than pretending the coverage exists.\n- THE SECOND BATCH CAME BACK 2/5 ReadTimeout (c-motiflink16). That is NOT this defect — the 500s it fixed are separately confirmed gone — but it does mean the scenario is still unreliable, and the timeout row is reopened rather than closed by this fix.\n- THE TIMEOUT PRESENTATION IS A SEPARATE DEFECT, now measured rather than inferred: it persists at 2/5 with the race fixed. Whatever causes it, it is not this.",
    "the_confirming_batch_REFUTED_half_of_what_i_inferred": "🔴 c-motiflink16 (K=5, concurrency 3) LANDED AFTER I WROTE THIS ROW AND SHOWED 2 OF 5 ReadTimeout. I had recorded, in this row's own what_is_NOT_covered, that the two presentations sharing a fate was an INFERENCE from 'them sharing a scenario and vanishing together'. They did not vanish together.\n\nSo this row's claim is narrowed to what is measured: the DUPLICATE-KEY 500 is fixed — 6 'interrupt-persist detached' events since deploy with zero unique-constraint violations, and c-motiflink15 clean 5/5. The ReadTimeout failures are a DIFFERENT cause and are back on their own row, which was wrongly superseded into this one."
+  },
+  "D-A-FIFTH-OF-SCENARIOS-DO-NOT-ASK-FOR-THEIR-OWN-TOOL": {
+   "status": "OPEN - censused 2026-08-27 while closing D-THE-SCENARIO-ASKS-A-DIFFERENT-QUESTION-THAN-THE-TOOL-ANSWERS.",
+   "what": "That row fixed seven scenarios and asked for a gate so the class could not recur. Before building one, the population: `answerable_tools()` over the live catalogue against every scenario's own prompt.\n\n    495 scenarios name a federated tool_under_test\n    109 (22%) have a prompt whose own tool is NOT answerable from it\n      7 name a tool that declares NO synonyms, so it cannot match by construction",
+   "why_a_blanket_gate_would_be_WRONG": "🔴 THE 109 ARE TWO DIFFERENT DEFECTS AND A GATE CANNOT TELL THEM APART. Sampled three:\n\n  world_get                   <- 'List my worlds.'                    SCENARIO defect: the prompt asks for a LIST and the tool gets ONE world.\n  registry_set_skill_enabled  <- 'What skills do I have available?'   SCENARIO defect: a read question for a tool that ENABLES.\n  composition_motif_bind_edit <- 'Attach the pattern called Emberfall Binding to this book's opening arc.'   NOT a scenario defect at all — that asks for exactly what the tool does. The MATCHER misses it, which is a missing synonym.\n\nSo a gate failing on 'prompt does not match its tool' would demand a prompt rewrite for cases that need a SYNONYM, and the loop has already measured twice today that rewriting a prompt which was fine makes things worse (composition_reference_update, and the registry_list_workflows description). Precision has to come first.",
+   "the_shape_a_gate_would_take": "The repo already has the pattern for a large seeded population: a shrink-only baseline, like contracts/undeclared-emitter-baseline.json, or the OUT-2 lint's ALLOW list which seeded its 14 offenders as tracked debt. That is the right container — but only once the 109 are SPLIT, because a baseline mixing two defects cannot be worked down by either fix.",
+   "the_next_measurement": "Classify the 109 by whether the prompt asks for the tool's ACTION. A cheap approximation: does the prompt's verb match the tool's tier — a read verb ('what', 'show', 'list') on a Tier A/W tool is the scenario defect; an action verb that still misses is a synonym gap. Neither half is expensive to fix once separated; the expense is doing it blind.",
+   "state": "open",
+   "defect_class": "instrument",
+   "queue_group": 4,
+   "measured_by": "answerable_tools() over the live 316-tool catalogue against all 495 scenarios in scripts/toolloop/, 2026-08-27"
   }
  },
  "deferred_questions": {
@@ -5859,7 +5870,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 58,
+  "defects_open": 59,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5874,7 +5885,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 189,
+  "defects_total": 190,
   "defects_fixed": 90,
   "defects_withdrawn": 15,
   "defects_superseded": 1
