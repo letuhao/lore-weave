@@ -1,0 +1,4352 @@
+[
+  {
+    "text": "The plan doesn't quite pass the linter yet. There are 3 warnings currently flagged:\n\n*   **Unplanned Content:** \"Chapter I — The Ember Codex\" has been written, but it isn't currently part of the formal plan.\n*   **Stale/Missing Conformance:** The two main arcs (\"Arc I - The Emberfall\" and \"Arc II - The Reckoning\") have never had a conformance check run on them.\n\nTo get everything in sync, we should run a conformance check on those arcs and then decide if we need to update the plan to include the first chapter. Would you like me to run the conformance check now?",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379176731",
+        "toolCallName": "composition_diagnostics",
+        "parentMessageId": "64f2eb2e-9e2e-4146-9b7b-b79014bb532a"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379176731",
+        "delta": "{\"book_id\": \"01a03bf0-4738-7606-a87a-8e1b2b1348ca\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379176731"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "64f2eb2e-9e2e-4146-9b7b-b79014bb532a",
+        "toolCallId": "call_3336168379176731",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf0-4738-7606-a87a-8e1b2b1348ca\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-4935-7934-8889-71f481f2cce7\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-4944-7393-b2bb-d90e38dd8f17\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf0-47ca-7e23-a523-5bc4e569eb50\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 34,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 13443
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_diagnostics",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      }
+    ],
+    "run_id": "e83de67d-9067-4e1a-89c4-0eb303d409a6",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 134,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379176731": "{\"book_id\": \"01a03bf0-4738-7606-a87a-8e1b2b1348ca\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379176731",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf0-4738-7606-a87a-8e1b2b1348ca\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-4935-7934-8889-71f481f2cce7\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-4944-7393-b2bb-d90e38dd8f17\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf0-47ca-7e23-a523-5bc4e569eb50\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "composition_diagnostics"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Run the golden linter on the plan this book already has — does it pass?",
+    "session_id": "01a03bf0-724b-7457-8016-08ef1fc1430b",
+    "scenario": "plan-validate-on-an-existing-run",
+    "rep": 0,
+    "book_id": "01a03bf0-4738-7606-a87a-8e1b2b1348ca",
+    "project_id": "01a03bf0-489d-7cee-a862-56b8c7c4973a",
+    "seed_ids": {
+      "01a03bf0-4738-7606-a87a-8e1b2b1348ca": "fixture book_id",
+      "01a03bf0-489d-7cee-a862-56b8c7c4973a": "fixture project_id (composition_work)",
+      "01a03bf0-47ca-7e23-a523-5bc4e569eb50": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03bf0-491f-757d-9721-9c31e4becb27": "seed[0] plan_propose_spec.run_id",
+      "01a03bf0-4922-7f99-9e8b-ac5e6ee54ae3": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a03bf0-4929-75c5-ad56-05acbd7b984a": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a03bf0-4947-7b6f-8ce8-774166693ab9": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a03bf0-4940-7804-8048-f4323ba5a3da": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a03bf0-4926-7ba7-8092-de53da2f8f01": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a03bf0-48aa-7f57-b682-3da6ce029006": "seed[1] plan_compile.work_id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.122829+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:39:58.276092+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.402766+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:39:58.276092+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.108869+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:57.898786+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.122829+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:39:58.276092+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.402766+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:39:58.276092+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:39:58.108869+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The plan isn't quite passing the \"golden linter\" yet. There are three warnings currently flagged:\n\n*   **Unplanned Content:** \"Chapter I — The Ember Codex\" has been written, but it isn't currently linked to the story plan.\n*   **Stale/Unverified Arcs:** Both \"Arc I - The Emberfall\" and \"Arc II - The Reckoning\" have never had a conformance check run on them.\n\nEssentially, the prose is moving faster than the plan's validation. Would you like me to run a conformance check on those arcs to see if the writing matches the structure?",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379176732",
+        "toolCallName": "composition_diagnostics",
+        "parentMessageId": "f25f68dd-234a-4954-a9ee-e8be4f37242a"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379176732",
+        "delta": "{\"book_id\": \"01a03bf0-be15-72f4-b302-14ad535dd353\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379176732"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "f25f68dd-234a-4954-a9ee-e8be4f37242a",
+        "toolCallId": "call_3336168379176732",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf0-be15-72f4-b302-14ad535dd353\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-bfd5-71a8-a106-1ed51bc61cbc\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-bfe5-7326-8cee-a75fed588f21\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf0-bea3-7598-8385-1627d5c610d3\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 34,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 13443
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_diagnostics",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      }
+    ],
+    "run_id": "17ba962e-8661-4a99-8a8f-9ef9bb60ca9b",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 127,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379176732": "{\"book_id\": \"01a03bf0-be15-72f4-b302-14ad535dd353\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379176732",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf0-be15-72f4-b302-14ad535dd353\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-bfd5-71a8-a106-1ed51bc61cbc\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf0-bfe5-7326-8cee-a75fed588f21\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf0-bea3-7598-8385-1627d5c610d3\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "composition_diagnostics"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Run the golden linter on the plan this book already has — does it pass?",
+    "session_id": "01a03bf0-e6cd-79d7-b128-83ecd92fe2d5",
+    "scenario": "plan-validate-on-an-existing-run",
+    "rep": 1,
+    "book_id": "01a03bf0-be15-72f4-b302-14ad535dd353",
+    "project_id": "01a03bf0-bf4b-7b5c-b4b5-872f6d68c2eb",
+    "seed_ids": {
+      "01a03bf0-be15-72f4-b302-14ad535dd353": "fixture book_id",
+      "01a03bf0-bf4b-7b5c-b4b5-872f6d68c2eb": "fixture project_id (composition_work)",
+      "01a03bf0-bea3-7598-8385-1627d5c610d3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03bf0-bfbf-7d39-b7b4-6d759717430f": "seed[0] plan_propose_spec.run_id",
+      "01a03bf0-bfc3-7486-9dd5-82dd0e584667": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a03bf0-bfc8-7e79-8632-544d531d52dc": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a03bf0-bfe8-77a3-b669-847b39e42595": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a03bf0-bfe1-7cc4-adb6-638c07d470e5": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a03bf0-bfc6-759f-896f-2bf9b9ae9e0f": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a03bf0-bf51-724e-a95c-dc41d1477f98": "seed[1] plan_compile.work_id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.496932+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:40:28.645056+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.770662+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:40:28.645056+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.491092+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.323242+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.496932+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:40:28.645056+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.770662+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:40:28.645056+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:28.491092+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The plan doesn't quite pass the linter yet. There are 3 warnings currently flagged:\n\n*   **Unplanned Content:** \"Chapter I — The Ember Codex\" has been written, but it isn't currently part of the formal plan.\n*   **Stale/Missing Conformance:** The two main arcs (\"Arc I - The Emberfall\" and \"Arc II - The Reckoning\") have never had a conformance check run on them.\n\nEssentially, the story has started moving faster than the plan! To fix this, we should run a conformance check on those arcs to sync the plan with what you've written, or I can help you update the plan to include Chapter I.",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379176733",
+        "toolCallName": "composition_diagnostics",
+        "parentMessageId": "c482c761-f370-4d6d-8843-b55b3bbcc571"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379176733",
+        "delta": "{\"book_id\": \"01a03bf1-3264-7412-b7ec-fee22568b59a\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379176733"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "c482c761-f370-4d6d-8843-b55b3bbcc571",
+        "toolCallId": "call_3336168379176733",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf1-3264-7412-b7ec-fee22568b59a\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-3444-74e1-ac9e-b6b1907b186f\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-3451-77e1-96fd-d9e6ae1416d3\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf1-32f8-7476-aa3c-70ac0ffdbd8d\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 34,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 13443
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_diagnostics",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      }
+    ],
+    "run_id": "2c5dc3d8-07cf-43e6-bfb0-4c0686a3b059",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 142,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379176733": "{\"book_id\": \"01a03bf1-3264-7412-b7ec-fee22568b59a\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379176733",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf1-3264-7412-b7ec-fee22568b59a\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-3444-74e1-ac9e-b6b1907b186f\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-3451-77e1-96fd-d9e6ae1416d3\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf1-32f8-7476-aa3c-70ac0ffdbd8d\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "composition_diagnostics"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Run the golden linter on the plan this book already has — does it pass?",
+    "session_id": "01a03bf1-5bb2-7566-b2ba-1f734d3f0e20",
+    "scenario": "plan-validate-on-an-existing-run",
+    "rep": 2,
+    "book_id": "01a03bf1-3264-7412-b7ec-fee22568b59a",
+    "project_id": "01a03bf1-3398-77c3-b39a-cfe182c31c8a",
+    "seed_ids": {
+      "01a03bf1-3264-7412-b7ec-fee22568b59a": "fixture book_id",
+      "01a03bf1-3398-77c3-b39a-cfe182c31c8a": "fixture project_id (composition_work)",
+      "01a03bf1-32f8-7476-aa3c-70ac0ffdbd8d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03bf1-3431-7d56-9342-d11e64ed3430": "seed[0] plan_propose_spec.run_id",
+      "01a03bf1-3434-7fd3-bdbb-3d51e7ba12d8": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a03bf1-343a-7225-9041-ca21bad5a309": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a03bf1-3454-7846-984f-0fc23af192a2": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a03bf1-344e-7136-a20c-0b2ba42b10af": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a03bf1-3437-79af-b300-27b0f388169d": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a03bf1-339d-74ea-9532-7b0f96d48740": "seed[1] plan_compile.work_id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.269268+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:40:58.449374+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.570388+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:40:58.449374+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.264044+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.10419+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.269268+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:40:58.449374+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.570388+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:40:58.449374+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:40:58.264044+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The plan is currently flagged with a few warnings, so it hasn't \"passed\" a full conformance check yet. Here is the breakdown of what the diagnostics found:\n\n*   **Unplanned Content:** \"Chapter I — The Ember Codex\" has been written, but it isn't currently linked to the story plan.\n*   **Stale/Unchecked Arcs:** Both \"Arc I - The Emberfall\" and \"Arc II - The Reckoning\" have never had a formal conformance run. This means the system hasn't yet verified if the prose you've written actually aligns with the beats and structure you laid out in the plan.\n\n**To get a clean pass, we should:**\n1.  Link Chapter I to the plan (if it's meant to be part of Arc I).\n2.  Run a conformance check on the arcs to ensure the story is tracking correctly against your outline.\n\nWould you like me to run a conformance check on the arcs now?",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379176734",
+        "toolCallName": "composition_diagnostics",
+        "parentMessageId": "fa319f12-559f-4b29-9cbe-1931d002e5f9"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379176734",
+        "delta": "{\"book_id\": \"01a03bf1-a69b-7e0f-921f-f67b5f5395ae\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379176734"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "fa319f12-559f-4b29-9cbe-1931d002e5f9",
+        "toolCallId": "call_3336168379176734",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf1-a69b-7e0f-921f-f67b5f5395ae\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-a873-764d-ae18-3552d3c18de1\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-a882-7b94-aa0a-57d1006cd60b\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf1-a733-7192-b0cb-e3364812f828\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 34,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 13443
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_diagnostics",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      }
+    ],
+    "run_id": "eb9c266a-8410-4b39-9a0f-326cab82cdb2",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 200,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379176734": "{\"book_id\": \"01a03bf1-a69b-7e0f-921f-f67b5f5395ae\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379176734",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf1-a69b-7e0f-921f-f67b5f5395ae\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-a873-764d-ae18-3552d3c18de1\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf1-a882-7b94-aa0a-57d1006cd60b\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf1-a733-7192-b0cb-e3364812f828\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "composition_diagnostics"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Run the golden linter on the plan this book already has — does it pass?",
+    "session_id": "01a03bf1-cf1a-72f2-a680-91c85be3b9b7",
+    "scenario": "plan-validate-on-an-existing-run",
+    "rep": 3,
+    "book_id": "01a03bf1-a69b-7e0f-921f-f67b5f5395ae",
+    "project_id": "01a03bf1-a7e0-77a9-8985-45ad637c828e",
+    "seed_ids": {
+      "01a03bf1-a69b-7e0f-921f-f67b5f5395ae": "fixture book_id",
+      "01a03bf1-a7e0-77a9-8985-45ad637c828e": "fixture project_id (composition_work)",
+      "01a03bf1-a733-7192-b0cb-e3364812f828": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03bf1-a85d-7997-b72b-8d3db06bdf6c": "seed[0] plan_propose_spec.run_id",
+      "01a03bf1-a860-7bc7-a441-0313a2212dc5": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a03bf1-a866-77dc-ad70-b95556d8223f": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a03bf1-a887-79db-9bbd-c72d8678ce32": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a03bf1-a87e-798b-9cd2-dcd2477f51b0": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a03bf1-a863-7af3-b9c3-773be4628778": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a03bf1-a7e6-7102-ba06-e7edd35dc09c": "seed[1] plan_compile.work_id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.037996+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:41:28.194546+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.345341+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:41:28.194546+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.03173+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:27.858974+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.037996+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:41:28.194546+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.345341+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:41:28.194546+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:28.03173+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "The plan isn't quite passing the linter yet. There are 3 warnings currently flagged:\n\n*   **Unplanned Content:** \"Chapter I — The Ember Codex\" has been written, but it isn't currently part of the formal plan.\n*   **Stale/Missing Conformance:** The two main arcs (\"Arc I - The Emberfall\" and \"Arc II - The Reckoning\") haven't had a conformance check run on them yet.\n\nEssentially, the story is moving faster than the plan is being updated! Would you like me to run a conformance check on those arcs to see if they align with what you've written so far?",
+    "tool_calls": [
+      {
+        "type": "TOOL_CALL_START",
+        "toolCallId": "call_3336168379176735",
+        "toolCallName": "composition_diagnostics",
+        "parentMessageId": "51236764-8338-45e9-9170-f2af00806b67"
+      },
+      {
+        "type": "TOOL_CALL_ARGS",
+        "toolCallId": "call_3336168379176735",
+        "delta": "{\"book_id\": \"01a03bf2-1caf-7baa-832d-ee747ff54a84\"}"
+      },
+      {
+        "type": "TOOL_CALL_END",
+        "toolCallId": "call_3336168379176735"
+      },
+      {
+        "type": "TOOL_CALL_RESULT",
+        "messageId": "51236764-8338-45e9-9170-f2af00806b67",
+        "toolCallId": "call_3336168379176735",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf2-1caf-7baa-832d-ee747ff54a84\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf2-1e84-7b80-a8fc-30a6aace3c47\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf2-1e95-7678-985b-cc705acfdc2c\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf2-1d3d-77ca-9f87-a8bcb945d972\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}",
+        "role": "tool"
+      }
+    ],
+    "surface": {
+      "phase": "Idle",
+      "pinned_count": 0,
+      "hot_seed_count": 34,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [
+          "confirm_action",
+          "tool_list",
+          "tool_load",
+          "web_search"
+        ],
+        "frontend": [
+          "glossary_confirm_action",
+          "glossary_propose_entity_edit",
+          "propose_edit"
+        ],
+        "activated": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "run_subagent",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      "servers": {
+        "ui": {
+          "tools": 4
+        },
+        "other": {
+          "tools": 7
+        },
+        "book": {
+          "tools": 5
+        },
+        "chat": {
+          "tools": 2
+        },
+        "composition": {
+          "tools": 8
+        },
+        "glossary": {
+          "tools": 7
+        },
+        "knowledge": {
+          "tools": 10
+        }
+      },
+      "schema_tokens": {
+        "frontend": 1853,
+        "mcp": 13443
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "ToolRunning",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": "composition_diagnostics",
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      },
+      {
+        "phase": "Idle",
+        "pinned_count": 0,
+        "hot_seed_count": 34,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [
+            "confirm_action",
+            "tool_list",
+            "tool_load",
+            "web_search"
+          ],
+          "frontend": [
+            "glossary_confirm_action",
+            "glossary_propose_entity_edit",
+            "propose_edit"
+          ],
+          "activated": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "run_subagent",
+            "workflow_list",
+            "workflow_load"
+          ]
+        },
+        "servers": {
+          "ui": {
+            "tools": 4
+          },
+          "other": {
+            "tools": 7
+          },
+          "book": {
+            "tools": 5
+          },
+          "chat": {
+            "tools": 2
+          },
+          "composition": {
+            "tools": 8
+          },
+          "glossary": {
+            "tools": 7
+          },
+          "knowledge": {
+            "tools": 10
+          }
+        },
+        "schema_tokens": {
+          "frontend": 1853,
+          "mcp": 13443
+        }
+      }
+    ],
+    "run_id": "797601d7-a5de-4b40-a4c9-760120b31917",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 9,
+      "TOOL_CALL_START": 1,
+      "TOOL_CALL_ARGS": 1,
+      "TOOL_CALL_END": 1,
+      "TOOL_CALL_RESULT": 1,
+      "TEXT_MESSAGE_START": 1,
+      "TEXT_MESSAGE_CONTENT": 134,
+      "TEXT_MESSAGE_END": 1,
+      "RUN_FINISHED": 1
+    },
+    "error": null,
+    "_args": {
+      "call_3336168379176735": "{\"book_id\": \"01a03bf2-1caf-7baa-832d-ee747ff54a84\"}"
+    },
+    "approvals": [],
+    "pending": null,
+    "status": "success",
+    "results": [
+      {
+        "id": "call_3336168379176735",
+        "content": "{\"ok\": true, \"result\": {\"book_id\": \"01a03bf2-1caf-7baa-832d-ee747ff54a84\", \"items\": [{\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc I - The Emberfall\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf2-1e84-7b80-a8fc-30a6aace3c47\", \"title\": \"Arc I - The Emberfall\"}}, {\"kind\": \"conformance_never_run\", \"severity\": \"warn\", \"title\": \"arc \\\"Arc II - The Reckoning\\\" \\u2014 never_run\", \"detail\": \"run composition_conformance_run to refresh it\", \"node_ref\": {\"kind\": \"arc\", \"id\": \"01a03bf2-1e95-7678-985b-cc705acfdc2c\", \"title\": \"Arc II - The Reckoning\"}}, {\"kind\": \"unplanned_chapter\", \"severity\": \"warn\", \"title\": \"chapter \\\"Chapter I \\u2014 The Ember Codex\\\" is written but not planned\", \"node_ref\": {\"kind\": \"chapter\", \"id\": \"01a03bf2-1d3d-77ca-9f87-a8bcb945d972\", \"title\": \"Chapter I \\u2014 The Ember Codex\"}}], \"counts\": {\"conformance_never_run\": 2, \"unplanned_chapter\": 1}, \"total\": 3, \"refs_capped\": false}}"
+      }
+    ],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "call": "composition_diagnostics"
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      },
+      {
+        "surface": [
+          "book_chapter_save_draft",
+          "book_list",
+          "book_read",
+          "book_steering_list",
+          "book_update_details",
+          "chat_search_sessions",
+          "composition_arc_suggest",
+          "composition_diagnostics",
+          "composition_error_block_edit",
+          "composition_find_references",
+          "composition_outline_node_edit",
+          "composition_package_tree",
+          "confirm_action",
+          "conversation_search",
+          "glossary_adopt_standards",
+          "glossary_book_ontology_read",
+          "glossary_book_sync_available",
+          "glossary_confirm_action",
+          "glossary_entity_set_attributes",
+          "glossary_extract_entities_from_doc",
+          "glossary_list_system_standards",
+          "glossary_propose_entities",
+          "glossary_propose_entity_edit",
+          "kg_add_nodes",
+          "kg_list_templates",
+          "kg_project_create",
+          "kg_project_list",
+          "kg_propose_edge",
+          "kg_propose_fact",
+          "kg_schema_read",
+          "kg_sync_available",
+          "kg_view_read",
+          "load_skill",
+          "memory_remember",
+          "plan_compile",
+          "plan_propose_spec",
+          "propose_edit",
+          "run_subagent",
+          "tool_list",
+          "tool_load",
+          "web_search",
+          "workflow_list",
+          "workflow_load"
+        ]
+      }
+    ],
+    "pending_approval": null,
+    "prior_turns": [],
+    "prompt": "Run the golden linter on the plan this book already has — does it pass?",
+    "session_id": "01a03bf2-4619-7d10-8f88-1f8a1bf45889",
+    "scenario": "plan-validate-on-an-existing-run",
+    "rep": 4,
+    "book_id": "01a03bf2-1caf-7baa-832d-ee747ff54a84",
+    "project_id": "01a03bf2-1df3-71a4-950c-a08c3b27c119",
+    "seed_ids": {
+      "01a03bf2-1caf-7baa-832d-ee747ff54a84": "fixture book_id",
+      "01a03bf2-1df3-71a4-950c-a08c3b27c119": "fixture project_id (composition_work)",
+      "01a03bf2-1d3d-77ca-9f87-a8bcb945d972": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03bf2-1e6d-7f4e-9915-9a27ca15e52f": "seed[0] plan_propose_spec.run_id",
+      "01a03bf2-1e71-77d1-8571-aae96af39bc2": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a03bf2-1e77-79b2-9b47-fd3fbee0c33d": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a03bf2-1e99-7e2f-96ca-dd80bb5d753a": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a03bf2-1e91-7155-a0e2-ba69ced4393d": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a03bf2-1e74-768a-9680-0d8e8d55b2ad": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a03bf2-1df9-7501-a589-1f1c36ba4d9b": "seed[1] plan_compile.work_id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.265271+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:41:58.421199+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.556264+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:41:58.421199+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.258449+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.077296+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.265271+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-26 02:41:58.421199+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.556264+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-26 02:41:58.421199+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 02:41:58.258449+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 414,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

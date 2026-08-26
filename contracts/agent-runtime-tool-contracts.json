@@ -812,6 +812,79 @@
     "composition_reference_update": {
       "reference_id": "composition_reference_list"
     },
-    "_added_2026_08_25_third": "_added_2026_08_25_third — composition_reference_update.reference_id <- composition_reference_list, a tool that DID NOT EXIST until this entry was written.\n\nEvery other row in this map points at a supplier that was already there and merely undeclared. This one is the class's strongest form: reference_id was required by exactly one tool and mentioned by NO tool in the 315-tool catalogue, so no declaration could have fixed it — the reader had to be BUILT. The data was never missing; GET /works/{project_id}/references has served the same shelf to the FE all along.\n\nVERIFIED BY CALLING THE NEW TOOL: composition_reference_list{project_id} returns references[] whose rows carry `reference_id` verbatim (the projection renames the row's `id` to the name the consumer needs, so there is no naming mismatch to resolve). Bodies are not projected."
+    "_added_2026_08_25_third": "_added_2026_08_25_third — composition_reference_update.reference_id <- composition_reference_list, a tool that DID NOT EXIST until this entry was written.\n\nEvery other row in this map points at a supplier that was already there and merely undeclared. This one is the class's strongest form: reference_id was required by exactly one tool and mentioned by NO tool in the 315-tool catalogue, so no declaration could have fixed it — the reader had to be BUILT. The data was never missing; GET /works/{project_id}/references has served the same shelf to the FE all along.\n\nVERIFIED BY CALLING THE NEW TOOL: composition_reference_list{project_id} returns references[] whose rows carry `reference_id` verbatim (the projection renames the row's `id` to the name the consumer needs, so there is no naming mismatch to resolve). Bodies are not projected.",
+    "composition_authoring_run_accept_unit": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_close": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_gate": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_get": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_pause": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_reject_unit": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_resume": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_revert_all": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_review": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "composition_authoring_run_start": {
+      "run_id": "composition_authoring_run_list"
+    },
+    "plan_apply_revision": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_bootstrap_propose": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_find_missing_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_get_missing_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_handoff_autofix": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_interpret_feedback": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_keep_material": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_link": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_pass_status": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_review_checkpoint": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_run_pass": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_self_check": {
+      "run_id": "composition_package_tree"
+    },
+    "plan_validate": {
+      "run_id": "composition_package_tree"
+    },
+    "composition_authoring_run_create": {
+      "plan_run_id": "composition_package_tree"
+    },
+    "_added_2026_08_26": "THE run_id FAMILY — 24 declarations, the single largest argument class on the platform and 29% of the whole undeclared-emitter baseline. This is not new capability: both emitters were already shipped tools, and the composition server's OWN refusal already told the model to read a plan run from composition_package_tree's runs.recent. The map is what the runtime reads, so an undeclared supplier is an ABSENT one twice over — the refusal cannot name it and R1 cannot put it on the wire.\n\nWHAT IT WAS SAYING INSTEAD. With plan_run_id undeclared, the dispatch-refusal ask-path built for D-A-PER-OP-REFUSAL-NAMES-ARGUMENTS-AND-NO-MOVE emitted 'No tool supplies plan_run_id ... ASK THE AUTHOR for it'. That is FALSE, and it sends the model to ask a human for a UUID no human has — worse than the 'do NOT guess' it replaced, because it manufactures an impossible request out of a value the platform could have fetched.\n\nVERIFIED BY CALLING THEM, 2026-08-26, not read off a description:\n  * composition_authoring_run_list returns run_id AND plan_run_id verbatim (10 items on a real book), and composition_authoring_run_get ACCEPTS the run_id it returned.\n  * composition_package_tree returns runs.recent[].run_id, and plan_pass_status and plan_validate both ACCEPT it (throwaway book, seeded plan run, torn down). The same value is what an authoring run carries as its plan_run_id — checked across both tools on one book.\n  * The package_tree field was spelled `id` until this change and is now `run_id`, so the consumer has no rename to perform on a value it must reproduce exactly.\n\nplan_compile KEEPS plan_propose_spec. Compile follows propose in the same breath and that chain is proven live; package_tree is the answer for a run that ALREADY exists, which is the case this family had no answer for."
   }
 }

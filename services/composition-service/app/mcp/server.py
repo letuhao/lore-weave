@@ -3414,7 +3414,7 @@ async def composition_authoring_run_create(
         raise ValueError(
             f"no plan run {args.plan_run_id} on this book — plan_run_id must be a PLAN run of "
             f"this same book. Read the book's existing plan runs from "
-            f"composition_package_tree's `runs.recent`; only if the book has no plan at all does "
+            f"composition_package_tree's `runs.recent[].run_id`; only if the book has no plan does "
             f"plan_propose_spec create one. It is not the authoring run's own id and never a "
             f"chapter id."
         )
@@ -3957,7 +3957,8 @@ class _AuthoringRunManageArgs(ForbidExtra):
     # description was missing; the earlier note that "no tool lists an existing run" was wrong.
     plan_run_id: str | None = Field(default=None, description=(
         "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the "
-        "book ALREADY has a plan, read its id from composition_package_tree's `runs.recent` — "
+        "book ALREADY has a plan, read its id from composition_package_tree's "
+        "`runs.recent[].run_id` — "
         "do NOT propose a new plan just to obtain one. Only when the book has no plan at all is "
         "the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). "
         "Not the authoring run's own id, which is `run_id`, and never a chapter id."))
@@ -6838,9 +6839,18 @@ async def composition_package_tree(
         #
         # (The lesson is DR-16's, and I walked into it twice: a doc sentence is a claim about the
         # world at the time it was written. Check the world.)
+        # 🔴 SPELLED `run_id`, NOT `id`, AND THE SPELLING IS THE WHOLE POINT. This block is the
+        # only supplier of a plan run_id for an EXISTING run, and 13 plan_* tools require one
+        # under that exact name. Returning it as `id` left the consumer a rename to perform, on a
+        # value it must reproduce verbatim — the same silent-break shape composition_reference_list
+        # was built to avoid (it projects the row's `id` AS `reference_id` for its one consumer).
+        # Verified by calling it, 2026-08-26: this value is accepted by plan_pass_status and
+        # plan_validate, and it is the same id composition_authoring_run_list returns as
+        # `plan_run_id`. `id` is NOT kept alongside: two names for one value asks the model which
+        # to pass, which is the question this rename exists to remove.
         out["runs"] = {
             "recent": [
-                {"id": str(r.id), "status": r.status, "mode": r.mode}
+                {"run_id": str(r.id), "status": r.status, "mode": r.mode}
                 for r in (rows or [])
             ],
         }
