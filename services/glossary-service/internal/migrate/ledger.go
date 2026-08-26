@@ -177,6 +177,14 @@ var chain = []Step{
 	// applied it under the old name costs one no-op statement. Renaming main's three would
 	// have re-run kind rewrites and a vote-table build instead.
 	{"0059_attr_lookup_index", UpAttrLookupIndex},
+	// 🔴 0060/0061 — the RUNNING database had lost the cache+search-aware
+	// recalculate_entity_snapshot that 0028 installs, so glossary_search could not match an
+	// entity by its own name (D-GLOSSARY-READS-RETURN-ok-true-result-null-ON-A-SEEDED-BOOK).
+	// A NEW entry, never an edit to 0028: ApplyOnce records by NAME, so DDL added to an applied
+	// step is a silent no-op on every existing database. The backfill MUST follow the restore —
+	// run first, it would call the broken body and repair nothing while reporting success.
+	{"0060_glossary_recalc_restore", UpGlossaryRecalcRestore},
+	{"0061_backfill_null_cached_name", BackfillNullCachedName},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
