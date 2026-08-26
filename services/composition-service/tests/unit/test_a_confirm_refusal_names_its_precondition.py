@@ -58,3 +58,56 @@ def test_the_transition_reason_that_already_worked_is_untouched():
     caught that — pinned here too so a future edit to this effect cannot quietly undo it."""
     seg = GATE[GATE.index("except TransitionConflictError as exc:"):][:900]
     assert '"detail": str(exc)' in seg
+
+
+# ── the file-wide gate ────────────────────────────────────────────────────────────────────────
+# The per-handler tests above pin the instance this row was filed from. This one is the CLASS,
+# and it is AST-based on purpose: my first attempt at the sweep was a text transform, and text
+# cannot see scope. It produced ten sites where `exc` was unbound (UnboundLocalError at runtime)
+# and then, "repairing" that, broke an existing guarantee by mis-reading the multi-line raise
+# form. Both were caught by the suite rather than by review.
+
+_NAMEABLE = frozenset({"KeyError", "ValueError", "TypeError", "InvalidOperation",
+                       "BookClientError"})
+#: LookupError is HERE, not above — see test_the_LOOKUP_failure_stays_UNIFORM.
+_OPAQUE = frozenset({"OwnershipError", "InsufficientGrant", "ConfirmTokenInvalid", "LookupError"})
+
+
+def _bare_action_errors():
+    """Every `action_error` raise that is lexically INSIDE an `except … as exc` whose types are
+    all nameable, and that still carries no reason. AST, so `exc` really is in scope."""
+    import ast
+
+    tree = ast.parse(SRC)
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler) or not node.name:
+            continue
+        tp = node.type
+        parts = tp.elts if isinstance(tp, ast.Tuple) else ([tp] if tp else [])
+        names = {n.id for n in parts if isinstance(n, ast.Name)}
+        if not names or (names & _OPAQUE) or not names <= _NAMEABLE:
+            continue
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Raise) or sub.exc is None:
+                continue
+            call = sub.exc
+            if not (isinstance(call, ast.Call)
+                    and getattr(call.func, "id", "") == "HTTPException"):
+                continue
+            for kw in call.keywords:
+                if kw.arg == "detail" and isinstance(kw.value, ast.Dict):
+                    keys = {k.value for k in kw.value.keys if isinstance(k, ast.Constant)}
+                    if keys == {"code"}:
+                        out.append((sub.lineno, sorted(names)))
+    return out
+
+
+def test_no_NAMEABLE_failure_in_this_file_is_silent():
+    """The class, enforced. A new handler that swallows its reason fails here rather than being
+    discovered by a model that cannot act on the refusal."""
+    bare = _bare_action_errors()
+    assert not bare, (
+        "these refusals name a precondition the caller could act on and say nothing: "
+        + "; ".join(f"line {ln} (except {'/'.join(n)})" for ln, n in bare)
+    )

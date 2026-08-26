@@ -296,7 +296,7 @@ async def confirm_action(
             try:
                 book_uuid = UUID(str(book_target))
             except (ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_uuid, envelope_user, GrantLevel.EDIT)
             except (OwnershipError, InsufficientGrant) as exc:
@@ -312,7 +312,7 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
         except (OwnershipError, InsufficientGrant) as exc:
@@ -326,7 +326,7 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
         except (OwnershipError, InsufficientGrant) as exc:
@@ -342,7 +342,7 @@ async def confirm_action(
             try:
                 book_id = UUID(str(payload["book_id"]))
             except (KeyError, ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
             except (OwnershipError, InsufficientGrant) as exc:
@@ -359,7 +359,7 @@ async def confirm_action(
             try:
                 book_id = UUID(str(payload["book_id"]))
             except (ValueError, TypeError) as exc:
-                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+                raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
             except (OwnershipError, InsufficientGrant) as exc:
@@ -373,7 +373,7 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
         except (OwnershipError, InsufficientGrant) as exc:
@@ -393,7 +393,7 @@ async def confirm_action(
         try:
             book_id = UUID(str(payload["book_id"]))
         except (KeyError, ValueError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
         except (OwnershipError, InsufficientGrant) as exc:
@@ -406,7 +406,7 @@ async def confirm_action(
     try:
         project_id = UUID(str(payload["project_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     work = await works.get(project_id)
     if work is None:
@@ -441,7 +441,7 @@ async def _execute_publish(
     try:
         chapter_id = UUID(str(payload["chapter_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     # Canonization gate (CM1 / OI-1): a chapter is publishable ONLY when all its
     # composition scenes are 'done' and no unresolved canon contradiction survives
@@ -463,7 +463,7 @@ async def _execute_publish(
         # Surface book-service's client errors as a uniform action_error; a 5xx is
         # an upstream failure (the action did not complete).
         logger.warning("composition.publish book-service error: %s", exc)
-        raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=502, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     return {
         "outcome": "action_done",
@@ -507,7 +507,7 @@ async def _execute_generate(
         target_id = UUID(str(target_id_raw))
         model_ref = UUID(str(model_ref_raw))
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     guide = str(payload.get("guide") or "")
     reasoning = str(payload.get("reasoning") or "auto")
     max_out = payload.get("max_output_tokens")
@@ -564,7 +564,7 @@ async def _execute_generate(
                 body_kwargs["max_output_tokens"] = int(max_out)
             body = engine_router.GenerateChapterBody(**body_kwargs)
     except (ValueError, TypeError) as exc:  # pydantic ValidationError ⊂ ValueError
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     try:
         if target_kind == "scene":
@@ -688,7 +688,7 @@ async def _execute_motif_adopt(
     try:
         motif_id = UUID(str(payload["motif_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     retag = payload.get("retag_genres")
     if retag is not None and not isinstance(retag, list):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -699,7 +699,7 @@ async def _execute_motif_adopt(
     try:
         book_uuid = UUID(str(book_label)) if book_label else None
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     # book_shared MUST carry a book — a shared clone without a (gated) book is a tenancy defect.
     if book_shared and book_uuid is None:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -831,7 +831,7 @@ async def _execute_decompile(
     try:
         per = max(1, int(payload.get("chapters_per_arc") or 10))
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     # Replay guard: a re-submitted token returns the prior outcome, never a second mutation.
     await _claim_or_replay(token, claims)
     result = await decompile_arcs(
@@ -858,7 +858,7 @@ async def _execute_derive(
     try:
         source_pid = UUID(str(payload["source_project_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     source = await works.get(source_pid)
     if source is None or source.source_work_id is not None:
         # gone since propose, or somehow a derivative — uniform refusal (anti-oracle).
@@ -882,7 +882,7 @@ async def _execute_derive(
             entity_overrides=overrides,
         )
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret, ttl=120)
     pool = get_pool()
@@ -908,7 +908,7 @@ async def _execute_arc_import(
     try:
         import_source_id = UUID(str(payload["import_source_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     # Re-check ownership at confirm (the import_source row is per-user, no visibility
     # column — a foreign id is a uniform action_error, never an oracle).
@@ -1021,7 +1021,7 @@ async def _execute_authoring_run_create(
     try:
         plan_run_id = UUID(str(payload["plan_run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     scope = payload.get("scope") or []
     if not isinstance(scope, list) or not all(isinstance(s, str) for s in scope):
         raise HTTPException(status_code=400, detail={"code": "action_error"})
@@ -1031,11 +1031,11 @@ async def _execute_authoring_run_create(
     try:
         budget_usd = Decimal(str(payload["budget_usd"]))
     except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     try:
         level = int(payload.get("level", 3))
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     if "pause_after_each_unit" not in payload:
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     pause_after_each_unit = bool(payload["pause_after_each_unit"])
@@ -1189,7 +1189,7 @@ async def _execute_authoring_run_start(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     await _apply_pause_override(svc, run_id, payload)
@@ -1228,7 +1228,7 @@ async def _execute_bootstrap_apply(
     try:
         proposal_id = UUID(str(payload["proposal_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
 
     svc = await get_bootstrap_service()
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
@@ -1279,7 +1279,7 @@ async def _execute_authoring_run_resume(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     await _apply_pause_override(svc, run_id, payload)
@@ -1318,7 +1318,7 @@ async def _execute_authoring_run_revert_all(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
