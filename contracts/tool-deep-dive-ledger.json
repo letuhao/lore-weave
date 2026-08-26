@@ -4910,7 +4910,8 @@
    "state": "open",
    "defect_class": "contract",
    "queue_group": 2,
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; answerable_tools() in the deployed container; chat-service advertised log, 2026-08-26"
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; answerable_tools() in the deployed container; chat-service advertised log, 2026-08-26",
+   "narrowed_by_reading_the_path_2026_08_26": "Traced as far as reading can take it, and the drop is genuinely silent:\n  * The 'request matches' log lives INSIDE _advertise_discovery_tools (line 1838, def at 1696), so the DISCOVERY path demonstrably ran - the tool did not fall down the plain-path branch that has no R1 forcing at all.\n  * The forcing loop is at 1894, after that log, and its three skip branches all log. Counted across the whole 40-minute window: ZERO 'NOT forced' lines, zero catalog_miss, zero permission_tier. So _add(_ans_td) was reached.\n  * `advertised` at the log site (4534) is the list ITERATED to build the SSE payload - it is the wire, not an activation registry - and it is emitted long after the builder returns at 1953. The tool is absent from it on all five sessions.\n  * The breaker de-advertise filter that could remove it (4312) is in the ELSE branch, the plain path, which this turn did not take.\n\nSo: added, and gone by the time the surface is sent, with nothing in between that says so. The next step is a counter or a log at the point `out` becomes `advertised`, not another batch and not more reading - which is why this is recorded rather than guessed at."
   }
  },
  "deferred_questions": {
