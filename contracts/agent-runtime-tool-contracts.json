@@ -889,6 +889,10 @@
     "memory_forget": {
       "fact_id": "memory_search"
     },
-    "_added_2026_08_26_second": "memory_forget.fact_id <- memory_search, and the emitter DID NOT EXIST as a supplier until the same day. memory_remember returns a fact_id, but that id is gone by the next turn, and memory_search — the only route a later turn has — returned {snippet, source_type, score, text} and NO id at either detail level. So the emitter map was empty here for the honest reason: nothing emitted one.\n\nTwo changes made the claim true, in this order: memory_search gained a FACT leg (it read chapters and :Passage nodes, never a :Fact), and its hits now project `fact_id`, spelled the way memory_forget spells it. Verified by calling it — a search hit carries the same id a direct memory_remember returned, and memory_forget accepts it."
+    "_added_2026_08_26_second": "memory_forget.fact_id <- memory_search, and the emitter DID NOT EXIST as a supplier until the same day. memory_remember returns a fact_id, but that id is gone by the next turn, and memory_search — the only route a later turn has — returned {snippet, source_type, score, text} and NO id at either detail level. So the emitter map was empty here for the honest reason: nothing emitted one.\n\nTwo changes made the claim true, in this order: memory_search gained a FACT leg (it read chapters and :Passage nodes, never a :Fact), and its hits now project `fact_id`, spelled the way memory_forget spells it. Verified by calling it — a search hit carries the same id a direct memory_remember returned, and memory_forget accepts it.",
+    "kg_propose_edge": {
+      "source_entity_id": "kg_add_nodes",
+      "target_entity_id": "kg_add_nodes"
+    }
   }
 }

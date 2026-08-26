@@ -1309,8 +1309,26 @@ async def kg_propose_fact(
 )
 async def kg_propose_edge(
     ctx: MCPContext,
-    source_entity_id: Annotated[str, "The id of the relationship's source entity."],
-    target_entity_id: Annotated[str, "The id of the relationship's target entity."],
+    # D-ENTITY-ID-MEANS-TWO-DIFFERENT-IDS-IN-ADJACENT-TOOLS — a GLOSSARY entity id and a graph
+    # :Entity NODE id are different objects with the same shape and the same name. These
+    # arguments require the NODE id (existing_entity_node_ids matches on Entity.id, and
+    # KG_ENDPOINT_NOT_NODE rejects anything else up front), and "the id of the source entity"
+    # invites the other one. Measured 2026-08-26, batch c-kgedge3: on 3 of 3 edge calls the
+    # model passed the GLOSSARY entity ids — matched exactly against the run's own seed_ids —
+    # well-formed UUIDs naming real objects of the wrong family. Say which family, and say
+    # where one comes from; a caller holding the wrong id has no other way to find out.
+    source_entity_id: Annotated[
+        str,
+        "The graph NODE id of the relationship's source — NOT a glossary entity id. Get it "
+        "from kg_add_nodes (which returns each node's id) or kg_graph_query; if the entity "
+        "exists only in the glossary, kg_add_nodes with mode=from_glossary turns it into a "
+        "node first.",
+    ],
+    target_entity_id: Annotated[
+        str,
+        "The graph NODE id of the relationship's target — NOT a glossary entity id. Same "
+        "source as source_entity_id.",
+    ],
     edge_type: Annotated[str, "The relationship edge-type code (see kg_schema_read)."],
     source_kind: Annotated[
         str | None, "Optional — the source entity's node kind, for validation."

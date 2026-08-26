@@ -673,7 +673,17 @@ async def test_propose_edge_fails_fast_when_endpoint_not_a_node(monkeypatch):
     assert not res.success
     assert res.code == "KG_ENDPOINT_NOT_NODE"
     assert res.detail == {"missing": ["b"]}
-    assert "kg_project_entities_to_nodes" in res.error
+    # D-ENTITY-ID-MEANS-TWO-DIFFERENT-IDS-IN-ADJACENT-TOOLS (2026-08-26) — this asserted
+    # `"kg_project_entities_to_nodes" in res.error`, which PINNED A DEAD TOOL into the
+    # refusal. That tool is visibility=legacy, and since 2026-08-25 drop_superseded_tools
+    # drops every legacy tool from every turn catalogue unconditionally — measured withheld
+    # on 5 of 5 runs of batch c-kgedge3. The BAR is unchanged (the refusal must name the
+    # remedy); only the tool it names has to be one the model can actually call.
+    assert "kg_add_nodes" in res.error
+    assert "from_glossary" in res.error
+    assert "kg_project_entities_to_nodes" not in res.error, (
+        "the refusal names a legacy tool the turn catalogue drops"
+    )
     # never parked — the whole point of fail-fast.
     triage_repo.park.assert_not_awaited()
 

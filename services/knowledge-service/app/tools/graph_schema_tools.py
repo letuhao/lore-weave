@@ -2100,11 +2100,23 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
         )
     missing = [eid for eid in endpoint_ids if eid not in present]
     if missing:
+        # 🔴 THIS REFUSAL NAMED A TOOL THE TURN CANNOT SEE. It said "project the glossary
+        # entities into the graph first (kg_project_entities_to_nodes)" — and that tool is
+        # `visibility: legacy`, which since 2026-08-25 means DROPPED from every turn catalogue
+        # unconditionally ("a legacy tool is a DEAD tool", drop_superseded_tools). Measured
+        # 2026-08-26 over batch c-kgedge3: withheld on 5 of 5 runs, recorded at stages
+        # `superseded` AND `domain_not_selected`. So the platform's own remedy for this exact
+        # failure instructed the model to call something that was provably not on its wire —
+        # and naming a tool is also what ARMS it, so an unreachable name arms nothing.
+        #
+        # Name the live replacement, and say which id family the caller is holding: the whole
+        # reason to be here is that a glossary entity id was passed where a node id is needed.
         raise ToolExecutionError(
-            "edge endpoint(s) are not yet graph nodes: "
+            "edge endpoint(s) are not graph nodes: "
             + ", ".join(missing)
-            + " — project the glossary entities into the graph first "
-            "(kg_project_entities_to_nodes), then propose the edge",
+            + " — these look like glossary entity ids, and an edge needs GRAPH NODE ids. "
+            "Call kg_add_nodes with mode=from_glossary to turn the book's glossary entities "
+            "into nodes (one call, one confirmation), then use the node ids it returns.",
             code="KG_ENDPOINT_NOT_NODE",
             detail={"missing": missing},
         )
