@@ -4831,13 +4831,16 @@
    "measured_by": "docs/eval/toolloop/2026-08-14/c-existingrun1.json, all 5 runs"
   },
   "D-A-TIER-R-TOOL-WRITES-TO-THE-STORE": {
-   "status": "OPEN - measured 2026-08-26, batches c-existingrun2 and c-existingrun-control, K=5 each, 10 of 10 runs.",
+   "status": "OPEN - BLOCKED on DQ-T45. Investigated 2026-08-26: the write is not an audit row, it is a LIFECYCLE TRANSITION into a status that gates a cost-bearing operation.",
    "what": "plan_validate is declared Tier R - a READ - and the harness flagged 'READ-INTENT TURN WROTE TO THE STORE in 5/5 runs' on both builds. The store diff is loreweave_composition.plan_run: row count 1 -> 1, but `latest` advances during the turn. Only plan_validate and composition_package_tree ran, and package_tree is a pure read.\n\nThe tool's own description says what it does: 'run the S1-S8 golden linter (+ fidelity report)', and it returns a `fidelity_report_id` - so it PERSISTS a report. That may be entirely intended; what is not obviously intended is that a tool doing it is classified R, which is the tier that decides whether a turn needs a confirm card and whether a read-only turn is allowed to reach it.",
    "not_yet_investigated": "I have NOT read the write path or established whether any other Tier-R tool does this - so this is one measured instance, not a class. The next step is a sweep of Tier-R tools against store diffs, which the harness already computes.",
    "state": "open",
    "defect_class": "contract",
    "queue_group": 3,
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-existingrun2.json and c-existingrun-control.json, 10 of 10 runs"
+   "measured_by": "PlanForgeService.validate + authoring_run_service._APPROVED_PLAN_STATUSES; a sweep of 318 all-Tier-R turns across every batch; plan_run status census on the live store, 2026-08-26",
+   "investigated_2026_08_26": "The row admitted it had not read the write path. Read now, and it is worse than the row guessed. `plan_validate` (Tier R) calls TWO writes in PlanForgeService.validate:\n    save_artifact(created_by, run_id, 'validation_report', report)   - the report\n    if all_pass: update_run(book_id, run_id, status='validated')     - a STATE TRANSITION\n\n🔴 AND THAT STATUS IS AN AUTHORISATION GATE. authoring_run_service.py:113 reads\n    _APPROVED_PLAN_STATUSES = ('validated', 'compiled')\nso a plan in 'validated' is authorised to start an autonomous authoring run - the multi-chapter drafting run that SPENDS LLM tokens. A tool the platform classifies as a READ moves a plan into the approved set.\n\nWHAT TIER R MEANS HERE, from the SDK's own definition (sdks/go/loreweave_mcp/meta.go):\n    R = read - no confirm, doesn't count against the write budget\n    A = auto-commit + activity/Undo strip\nSo this transition needs no confirmation, is invisible to the write budget, AND never appears in the activity/Undo strip. The plan's status changes and the author has no record that it did.",
+   "the_sweep_the_row_asked_for": "'A sweep of Tier-R tools against store diffs' - run across all 1,360 recorded turns, restricted to the 318 turns where EVERY tool called was Tier R (any non-R tool would explain a write). Three distinct shapes came out, and only one is this defect:\n\n  1. plan_run, 10x, tools {plan_validate, composition_package_tree} - THIS defect.\n  2. entity_access_log, with glossary reads - an access AUDIT row. A read recording that it read is correct, and is NOT the same thing as advancing a lifecycle.\n  3. extraction_pending, 32x, under tools that CANNOT enqueue extraction - jobs_list, tool_load, settings_list_models, registry_list_workflows, catalog_get_book. The common factor is the TURN, not the tool, so something outside the tool call writes it.\n\n🔴 A CONFOUND WAS CHASED AND REFUTED BEFORE ANY OF THIS WAS BELIEVED. The harness snapshots AFTER seeding (deliberately - its docstring says a seed inside the window would make every scenario report a change), but a seed's ASYNC tail could still land after the snapshot and read as a turn write. Tested by dating every write against fixture creation, which the UUIDv7 book_id encodes: the median gap is 15-40s and the MINIMUM across all tables is 10.5s, so no write sits in the seed's immediate wake. The writes happen during the turn.",
+   "dq": "DQ-T45"
   },
   "D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD": {
    "status": "OPEN - found 2026-08-26 while running the knowledge-service suite serially for another cycle. NOT caused by that cycle: proven by stashing its app/ edits and re-running, which reproduces all three.",
@@ -5075,6 +5078,16 @@
    "my_recommendation": "Do NOT add five tools. The measured shape says the cheap half is already done: where a repository supports listing archived rows, exposing it costs one optional argument and no catalogue slot - that is what was done for canon rules today. For these five the repositories have no such support, so any fix is new capability in the service FIRST and a surface decision second. My recommendation is to treat them by BLAST RADIUS rather than uniformly: glossary_entity_restore has a MEASURED live failure (batch 25, 5 of 5 runs, the model correctly answered 'I can't see her in the trash without an ID'), so it is the one with evidence behind it. The other four have none yet.",
    "the_cost_stated_plainly": "Five tools against a 316-tool catalogue, at a measured median schema size of ~300 tokens, is roughly 1,500 tokens of surface for undo paths an author uses rarely. A per-domain flag on an existing lister would cost a tenth of that - but four of these five families have no lister to put it on, which is the whole reason this is a decision and not a wiring fix.",
    "what_I_am_NOT_recommending": "I have not measured how often an author actually needs any of these five undos, and without that the ranking above is a judgement about evidence, not about value. Deciding it here would be deciding a DQ to unblock tools, which the standing rule forbids."
+  },
+  "DQ-T45": {
+   "state": "open",
+   "raised": "2026-08-26",
+   "blocked_by": "a product decision about what constitutes plan APPROVAL, which the standing rule keeps with the owner: a DQ is never decided to unblock a defect.",
+   "question": "Does a golden-linter PASS constitute approval of a plan for a cost-bearing authoring run? plan_validate is Tier R (no confirm, no write budget, no activity/Undo entry) and sets status='validated' when all hard rules pass; _APPROVED_PLAN_STATUSES = ('validated','compiled') then authorises an autonomous multi-chapter run that spends LLM tokens.",
+   "the_numbers_that_make_it_a_decision": "Measured on the live store: 329 plan runs - 223 proposed, 65 compiled, 37 VALIDATED, 3 checkpoint, 1 pending. So 'validated' is not a vestigial state: 37 runs are currently authorised by it. And the EXPLICIT approval path (plan_review_checkpoint, which sets 'validated' when a human approves) accounts for only 3. The implicit transition is doing the great majority of the approving.",
+   "the_options_and_what_each_COSTS": "(a) Remove the implicit transition - the linter reports, plan_review_checkpoint approves. Honest, and it makes the Tier-R classification true. COST: it DE-AUTHORISES the 37 runs currently sitting in 'validated', and the explicit path is barely used, so this is a workflow change and not a no-op.\n(b) Reclassify plan_validate to Tier A (auto-commit + activity/Undo strip) so the transition is at least visible and undoable. COST: Tier A raises a confirm card in this runtime - measured on plan_bootstrap_apply and memory_forget, both A, both suspended on a card - so running a LINTER would demand a click, and it would break the read-intent journey proved at K=5 in c-existingrun2.\n(c) Leave it and document. COST: a read keeps authorising spend, invisibly.",
+   "my_recommendation": "(a), but NOT as written. The defensible split is that validate should record its verdict and NOT advance the run, while the authoring gate keeps accepting 'compiled' (which plan_compile sets on the normal path, 65 runs). That makes the tier honest without inventing a new one. The 37 existing runs need a decision of their own - de-authorise, or backfill them to 'compiled' if they genuinely compiled - and THAT is the part I will not guess at, because it decides whether someone's queued authoring run still starts tomorrow.",
+   "what_I_did_NOT_measure": "Whether any flow depends on validate specifically (rather than compile) reaching an approved status - i.e. whether a run can be 'validated' without ever being 'compiled'. The status census shows both populated but not the transition ORDER, and that is what would settle whether (a) is safe."
   }
  },
  "carried_observations": [
@@ -5479,7 +5492,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 72,
-  "deferred_questions": 20,
+  "deferred_questions": 21,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
