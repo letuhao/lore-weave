@@ -274,10 +274,20 @@ def pending_approval(out) -> dict | None:
 
 
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
-                    thinking=False, effort="off", timeout=TURN_TIMEOUT,
+                    thinking=False, effort="off", timeout=None,
                     permission_mode="write", approve=None, max_approvals=3,
                     enabled_skills=None):
     """One real turn, including the approvals a user would have clicked.
+
+    🔴 `timeout=None` MEANS "READ THE GLOBAL NOW", AND THE DEFAULT USED TO BE `TURN_TIMEOUT`
+    ITSELF — which binds at IMPORT, so `--turn-timeout` set the module global long after this
+    signature had frozen the old value, and the flag reached the AsyncClient but never the
+    per-turn request that overrides it. The flag was inert.
+
+    That is not a cosmetic bug. D-THE-MOTIF-LINK-SCENARIO-TIMES-OUT-6-OF-10 records "raising the
+    per-turn timeout to 300s changed nothing: 3 of 5 both times" as evidence that the timeouts
+    are not a slow turn. The experiment never ran at 300s; it ran at 180 both times. That
+    conclusion is UNSUPPORTED and is re-opened on the row.
 
     `approve` is the outcome to send when the run suspends on a Tier-A card — `approved_once`,
     `approved_always`, `denied`, `denied_always`, or None to leave it suspended. None is the
@@ -285,6 +295,10 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
     would make the harness itself the thing that wrote, and the store diff would then be evidence
     about me rather than about the product.
     """
+    # Resolved HERE, not in the signature: see the note above. `None` is the only value that
+    # can mean "whatever --turn-timeout set", because a default is evaluated once at import.
+    if timeout is None:
+        timeout = TURN_TIMEOUT
     body = {"content": content, "thinking": thinking, "reasoning_effort": effort,
             # The FE sends this on every message (useChatMessages, default 'write'); omitting it
             # falls back to the ACCOUNT pref before 'write', so a harness that leaves it out runs
@@ -322,6 +336,11 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
         except httpx.HTTPError as e:
             if attempt == 2:
                 out["error"] = f"{type(e).__name__}: {e}"
+                # 🔴 CAPTURED HERE, WHERE THE ERROR IS ACTUALLY RECORDED. The first attempt at
+                # this hooked `run_scenario`, which never sees the exception: BOTH handlers in
+                # this function swallow it into `out["error"]` and return. A forced-timeout run
+                # proved it — 3 of 3 genuine ReadTimeouts and `dead_turn: null` on every one.
+                out["dead_turn"] = capture_dead_turn(session_id)
                 return out
 
     # Resume loop — one pass per card, capped. The cap is not politeness: a model that
@@ -347,6 +366,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
                 break
         except httpx.HTTPError as e:
             out["error"] = f"resume {type(e).__name__}: {e}"
+            out["dead_turn"] = capture_dead_turn(session_id)
             break
     out["pending_approval"] = pending_approval(out)
     return out
@@ -374,6 +394,57 @@ def _resume_outcome(kind: str | None, approve: bool) -> str:
     if kind == "tool_approval":
         return "approved_once" if approve else "denied"
     return "applied" if approve else "dismissed"
+
+
+def capture_dead_turn(session_id: str, since: str = "20m") -> dict:
+    """Everything a TIMED-OUT turn leaves behind, captured AT THE MOMENT it happens.
+
+    🔴 THE EVIDENCE IS GONE BY THE TIME ANYONE LOOKS, and that is the whole reason
+    D-THE-MOTIF-LINK-SCENARIO-TIMES-OUT-6-OF-10 has an unexplained residual. Its own record
+    says so twice: the original sessions' logs had ROTATED before they were read, and two
+    later batches run with `docker logs -f` open both came back 0/5 — at a 10% rate, catching
+    one is a lottery and a scenario batch is not a cheap way to buy a ticket.
+
+    So the capture stops being a thing someone runs afterwards and becomes a thing the failure
+    does to itself. Two readings, both cheap, both taken only on the error path:
+
+      * THE STORE SIGNATURE the row already identified — a timed-out session holds TWO user
+        rows about TURN_TIMEOUT apart (the runner's retry) and ZERO assistant rows. "The turn
+        produced nothing, twice" is a different fact from "the tool was slow", and the counts
+        say which.
+      * THE SERVICE LOG for this session id, from the last `since` window.
+
+    Best-effort by construction: a capture that raises would replace a timeout with a harness
+    crash and destroy the very run it exists to explain."""
+    out: dict = {"session_id": session_id}
+    try:
+        from provision import oracle  # noqa: PLC0415 — the oracle lives beside the loop
+        rows = oracle.db_query(
+            CHAT_DB,
+            "SELECT role, count(*), min(created_at)::text, max(created_at)::text "
+            f"FROM chat_messages WHERE session_id = '{session_id}' GROUP BY role")
+        out["rows_by_role"] = {r[0]: {"n": int(r[1]), "first": r[2], "last": r[3]}
+                               for r in rows if len(r) >= 4}
+        # 🔴 A SESSION THAT DOES NOT EXIST HAS NO ASSISTANT ROW EITHER, and reporting the same
+        # signature for both would hand a later reader a dead-turn diagnosis for a session id
+        # that was never created. The signature is USER ROWS WITH NO ANSWER — which is also
+        # exactly what the row measured: two user rows about TURN_TIMEOUT apart, zero assistant.
+        out["user_rows"] = out["rows_by_role"].get("user", {}).get("n", 0)
+        out["no_assistant_row"] = bool(out["user_rows"]) and "assistant" not in out["rows_by_role"]
+    except (RuntimeError, OSError, ValueError, IndexError) as e:
+        out["store_error"] = f"{type(e).__name__}: {e}"[:200]
+    try:
+        import subprocess  # noqa: PLC0415
+        p = subprocess.run(["docker", "logs", "--since", since, "infra-chat-service-1"],
+                           capture_output=True, text=True, errors="replace", timeout=120)
+        # Python logging goes to the container's STDERR; reading stdout alone finds nothing,
+        # which is a mistake this loop has already made once against this very container.
+        lines = [ln for ln in (p.stdout + p.stderr).splitlines() if session_id in ln]
+        out["log_lines"] = lines[-60:]
+        out["log_line_count"] = len(lines)
+    except Exception as e:  # noqa: BLE001 — never let the capture kill the run
+        out["log_error"] = f"{type(e).__name__}: {e}"[:200]
+    return out
 
 
 async def run_scenario(client, auth, sc, idx, fx):
@@ -428,6 +499,20 @@ async def run_scenario(client, auth, sc, idx, fx):
         "measured_turn() and the turn loop disagree about which turn is measured — they are "
         "the same rule and must not drift")
     prior = []
+    try:
+        return await _drive_turns(client, auth, sc, idx, fx, sid, turns, prior)
+    except Exception as e:  # noqa: BLE001 — a BACKSTOP, not the main path
+        # The two handlers inside send_turn swallow every httpx error into `out["error"]`, so
+        # they carry the capture; this catches an error that escapes some OTHER way (a bad
+        # session response, a JSON shape) and still has a session id to capture against.
+        try:
+            e.dead_turn = capture_dead_turn(sid)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+
+
+async def _drive_turns(client, auth, sc, idx, fx, sid, turns, prior):
     for _ti, _prompt in enumerate(turns):
         res = await send_turn(client, auth, sid, _prompt,
                               book_id=fx.book_id,
@@ -653,6 +738,15 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
                 except Exception as e:  # noqa: BLE001 — one bad repeat must not kill the run
                     r = {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
                          "surface": None, "surfaces": [], "error": f"{type(e).__name__}: {e}"}
+                    # 🔴 AN ERRORED RUN USED TO CARRY A STRING AND NOTHING ELSE, which is why
+                    # D-THE-MOTIF-LINK-SCENARIO-TIMES-OUT-6-OF-10 still has an unexplained
+                    # residual: by the time anyone read the batch the service log had rotated,
+                    # and two deliberate capture attempts both came back 0/5 because a 10% rate
+                    # makes catching one a lottery. The failure now brings its own evidence.
+                    dead = getattr(e, "dead_turn", None)
+                    if dead:
+                        r["dead_turn"] = dead
+                        r["session_id"] = dead.get("session_id")
                 after = await asyncio.to_thread(snapshot, fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id,
                     fx.run_id, auth.user_id)
                 r["store"] = {"before": before, "after": after}
