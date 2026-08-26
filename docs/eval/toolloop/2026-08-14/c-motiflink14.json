@@ -1,0 +1,547 @@
+[
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "run_id": null,
+    "events": {},
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions/01a03ec9-ef15-7f23-9361-8ce1d9a39146/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [],
+    "prior_turns": [],
+    "prompt": "Link motifs — mark Throwaway Loop Alpha Gosekato as coming before Throwaway Loop Beta Gosekato.",
+    "session_id": "01a03ec9-ef15-7f23-9361-8ce1d9a39146",
+    "scenario": "composition-motif-link-edit-approved",
+    "rep": 0,
+    "book_id": "01a03ec9-b48e-7539-a09c-ab3147a56fba",
+    "project_id": "01a03ec9-b5c4-77b7-a55c-53634e4f18c4",
+    "seed_ids": {
+      "01a03ec9-b48e-7539-a09c-ab3147a56fba": "fixture book_id",
+      "01a03ec9-b5c4-77b7-a55c-53634e4f18c4": "fixture project_id (composition_work)",
+      "01a03ec9-b51c-7b5d-8374-9bee1cac72fc": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03ec9-b634-74fb-b704-ec66db72df5d": "seed[0] composition_motif_edit.id",
+      "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+      "01a03ec9-b6c9-74f5-8863-5b5e2af9c740": "seed[1] composition_motif_edit.id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.801995+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.795504+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.62855+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.801995+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:56:41.795504+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "run_id": null,
+    "events": {},
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions/01a03eca-5d47-7f34-89e9-a1d4e8ea5551/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [],
+    "prior_turns": [],
+    "prompt": "Link motifs — mark Throwaway Loop Alpha Veputuno as coming before Throwaway Loop Beta Veputuno.",
+    "session_id": "01a03eca-5d47-7f34-89e9-a1d4e8ea5551",
+    "scenario": "composition-motif-link-edit-approved",
+    "rep": 1,
+    "book_id": "01a03eca-2296-7392-b54e-30ff27b25465",
+    "project_id": "01a03eca-2404-76e4-8966-c745799cbe16",
+    "seed_ids": {
+      "01a03eca-2296-7392-b54e-30ff27b25465": "fixture book_id",
+      "01a03eca-2404-76e4-8966-c745799cbe16": "fixture project_id (composition_work)",
+      "01a03eca-2342-7f5b-8324-4cf60b0be426": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03eca-24c4-7a71-bcf2-4d9e5b50b707": "seed[0] composition_motif_edit.id",
+      "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+      "01a03eca-256e-7684-b59a-be2f3a45ab07": "seed[1] composition_motif_edit.id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:10.024518+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:10.019991+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:09.826848+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:10.024518+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:10.019991+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "run_id": null,
+    "events": {},
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions/01a03eca-bd9a-74ae-9102-f75e65a52285/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [],
+    "prior_turns": [],
+    "prompt": "Link motifs — mark Throwaway Loop Alpha Nipasevo as coming before Throwaway Loop Beta Nipasevo.",
+    "session_id": "01a03eca-bd9a-74ae-9102-f75e65a52285",
+    "scenario": "composition-motif-link-edit-approved",
+    "rep": 2,
+    "book_id": "01a03eca-90d1-70f5-9680-b03955069bc7",
+    "project_id": "01a03eca-9246-7419-a246-bf18f2b9559c",
+    "seed_ids": {
+      "01a03eca-90d1-70f5-9680-b03955069bc7": "fixture book_id",
+      "01a03eca-9246-7419-a246-bf18f2b9559c": "fixture project_id (composition_work)",
+      "01a03eca-9179-74fc-8034-86c4bd9a1334": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03eca-92cf-7bcd-b822-2528dc41c494": "seed[0] composition_motif_edit.id",
+      "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+      "01a03eca-9391-7599-8163-b0f606b826a7": "seed[1] composition_motif_edit.id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.25164+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.245396+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.04112+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.25164+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:57:38.245396+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "run_id": null,
+    "events": {},
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions/01a03ecb-325f-7e4d-9066-475bfc9c863c/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [],
+    "prior_turns": [],
+    "prompt": "Link motifs — mark Throwaway Loop Alpha Gotimali as coming before Throwaway Loop Beta Gotimali.",
+    "session_id": "01a03ecb-325f-7e4d-9066-475bfc9c863c",
+    "scenario": "composition-motif-link-edit-approved",
+    "rep": 3,
+    "book_id": "01a03eca-ff5c-7e18-a6a0-350df854fa95",
+    "project_id": "01a03ecb-00d6-7149-b71e-faba5c5b5e00",
+    "seed_ids": {
+      "01a03eca-ff5c-7e18-a6a0-350df854fa95": "fixture book_id",
+      "01a03ecb-00d6-7149-b71e-faba5c5b5e00": "fixture project_id (composition_work)",
+      "01a03ecb-000e-7cbe-8010-82a664831481": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03ecb-0160-7230-8ad2-cba2218a1499": "seed[0] composition_motif_edit.id",
+      "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+      "01a03ecb-0210-7885-9107-fcd1ae2d36b7": "seed[1] composition_motif_edit.id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.555682+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.549419+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.350598+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.555682+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:06.549419+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": null,
+    "surfaces": [],
+    "run_id": null,
+    "events": {},
+    "error": "HTTPStatusError: Server error '500 Internal Server Error' for url 'http://localhost:5174/v1/chat/sessions/01a03ecb-a150-7d19-818b-1495f2d592bd/messages'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [],
+    "prior_turns": [],
+    "prompt": "Link motifs — mark Throwaway Loop Alpha Zukavole as coming before Throwaway Loop Beta Zukavole.",
+    "session_id": "01a03ecb-a150-7d19-818b-1495f2d592bd",
+    "scenario": "composition-motif-link-edit-approved",
+    "rep": 4,
+    "book_id": "01a03ecb-7339-72d8-aad5-f0c043e2f5c7",
+    "project_id": "01a03ecb-7495-7ef7-a637-a9ccbec1739d",
+    "seed_ids": {
+      "01a03ecb-7339-72d8-aad5-f0c043e2f5c7": "fixture book_id",
+      "01a03ecb-7495-7ef7-a637-a9ccbec1739d": "fixture project_id (composition_work)",
+      "01a03ecb-73d6-7b65-a3f8-b7c38ade1d3c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a03ecb-750c-7c62-be8c-18e3a680435c": "seed[0] composition_motif_edit.id",
+      "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_motif_edit.owner_user_id",
+      "01a03ecb-75a5-79d1-a8af-cc00ec5d7021": "seed[1] composition_motif_edit.id"
+    },
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:36.187836+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:36.181309+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:35.990536+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:36.187836+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-26 15:58:36.181309+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 455,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

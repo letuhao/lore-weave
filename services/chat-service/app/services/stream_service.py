@@ -57,6 +57,7 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
+from app.db.message_sequence import next_sequence_num
 from app.services.id_ledger import IdLedger
 from app.services.request_mood import request_mood, standing_grant_applies
 from app.db.conversation_search import (
@@ -9979,11 +9980,10 @@ async def _persist_terminal_assistant(
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
-                    "WHERE session_id = $1 AND branch_id = 0",
-                    session_id,
-                )
+                # D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE — this is the
+                # DETACHED writer: an aborted turn's reply is persisted after cancel, and the
+                # client's retry races it. One lock, held to COMMIT, covers both.
+                seq = await next_sequence_num(conn, session_id)
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO chat_messages
@@ -11036,11 +11036,10 @@ async def _emit_chat_turn(
                 # a global MAX would jump the assistant PAST branched-away seqs
                 # (and past a W3 compact boundary) while user messages stay low
                 # — the review-impl H1 asymmetric-visibility bug.
-                seq = await conn.fetchval(
-                    "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages "
-                    "WHERE session_id = $1 AND branch_id = 0",
-                    session_id,
-                )
+                # D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE — this is the
+                # DETACHED writer: an aborted turn's reply is persisted after cancel, and the
+                # client's retry races it. One lock, held to COMMIT, covers both.
+                seq = await next_sequence_num(conn, session_id)
                 input_tok = getattr(last_usage, "prompt_tokens", None) if last_usage else None
                 output_tok = getattr(last_usage, "completion_tokens", None) if last_usage else None
 
