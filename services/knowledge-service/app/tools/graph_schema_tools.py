@@ -71,6 +71,8 @@ from app.extraction.injection_defense import neutralize_injection
 from app.ontology.validation import validate_edge
 from app.routers.public.graph_views import (
     _GRAPH_READ_CYPHER,
+    _ISOLATED_NODES_CYPHER,
+    _NODE_TOTAL_CYPHER,
     _TIMELINE_CYPHER,
     _deprecated_edge_codes,
     _records,
@@ -191,7 +193,8 @@ TRIAGE_GROUP_REF_FIELDS = (
 )
 
 
-def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False) -> dict:
+def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False,
+                   nodes_total: int | None = None) -> dict:
     """Apply the L1/L2 field projection to a graph result's `nodes` + `edges` lists
     in place and stamp coverage `meta`. `detail` is the per-item FIELD lever, so summary
     projects fields but never silently drops rows — meta reports both totals.
@@ -210,7 +213,11 @@ def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: boo
     out["edges"] = edges_p
     out["meta"] = {
         "detail": detail,
-        "nodes_total": nmeta["total"],
+        # `nodes_total` is the partition's TRUE size when the caller counted it, and only falls
+        # back to the slice's own length when it did not. The fallback is what shipped, and it
+        # made an empty slice report an empty PROJECT — see the isolated-node note in the
+        # kg_graph_query handler.
+        "nodes_total": nmeta["total"] if nodes_total is None else nodes_total,
         "nodes_returned": nmeta["returned"],
         "edges_total": emeta["total"],
         "edges_returned": emeta["returned"],
@@ -1563,8 +1570,40 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         )
         records = await _records(result)
 
+        # ── D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ ───────────────────────────────────
+        # The Cypher above walks EDGES, so a node with no active relation cannot appear — and
+        # kg_add_nodes answers "node ready" for exactly such a node, because placing an edge
+        # needs an approved card. This read then reported `nodes: [], nodes_total: 0` on a
+        # project whose store held entities: a FALSE ZERO from the tool whose declared job is
+        # "read a knowledge graph as nodes + edges".
+        #
+        # Measured on this instance: 4,887 of 5,351 entities (91%) are isolated, and 440 of 455
+        # projects have no edges at all — so for almost every project this read was answering
+        # "nothing" about a populated store. The per-project isolated count is p50 2 / p90 7 /
+        # p99 41, with ONE outlier at 3,172, which is why the rows are capped and the TOTAL is
+        # counted separately rather than inferred from what came back.
+        iso_result = await run_read(
+            session, _ISOLATED_NODES_CYPHER,
+            user_id=str(owner), project_id=project_str, limit=args.limit + 1,
+        )
+        iso_records = [r["node"] for r in await _records(iso_result)]
+        total_result = await run_read(
+            session, _NODE_TOTAL_CYPHER, user_id=str(owner), project_id=project_str,
+        )
+        # 🔴 NOT `_records`, AND THE UNIT TESTS COULD NOT HAVE TOLD ME. That helper drains a
+        # result as `{k: dict(rec[k])}` — it assumes every value is a MAPPING, because every
+        # other caller returns node/relationship properties. A scalar `count(e)` makes it raise
+        # `'int' object is not iterable`, which is exactly what the live probe hit after a green
+        # suite: every unit test here monkeypatches `_records`, so no test touches the real
+        # driver shape. `.single()` is the convention for a scalar (see facts.py's
+        # invalidate_facts_for_day).
+        total_record = await total_result.single()
+        nodes_total = int(total_record["total"]) if total_record is not None else 0
+
     edges_truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
+    iso_truncated = len(iso_records) > args.limit
+    iso_records = iso_records[: args.limit]
 
     deprecated = await _deprecated_edge_codes(ctx.graph_schemas_repo, project_str)
     slice_ = build_graph_slice(
@@ -1573,6 +1612,7 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
         as_of_chapter=args.as_of_chapter,
         deprecated_edge_codes=deprecated,
         view_code=args.view,
+        isolated=iso_records,
     )
     out = slice_.model_dump(mode="json")
     # L1/L2 reference-first (§6b): project node/edge fields per `detail` (summary =
@@ -1580,7 +1620,11 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
     return _project_graph(
         out, args.detail,
         node_ref=GRAPH_NODE_REF_FIELDS, edge_ref=GRAPH_EDGE_REF_FIELDS,
-        truncated=edges_truncated,
+        truncated=edges_truncated or iso_truncated,
+        # The TRUE size of the partition, counted rather than inferred from what came back.
+        # `nodes_total` was len(nodes-in-the-slice), so a capped read reported its own slice as
+        # the whole set — and an EMPTY slice reported the project as empty. K25's rule.
+        nodes_total=nodes_total,
     )
 
 

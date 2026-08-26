@@ -1766,9 +1766,21 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
 
     seen = {}
 
+    # 🔴 THE FAKE MUST DISPATCH ON THE QUERY. kg_graph_query issues THREE reads now — the edge
+    # walk, the isolated-node read (D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ), and a cheap
+    # COUNT for an honest `nodes_total`. A fake answering every read with edge rows was modelling
+    # a handler that no longer exists, and it failed on the SHAPE rather than on the behaviour
+    # under test — which is still the over-fetch, asserted unchanged below.
+    def _tag(cypher: str) -> str:
+        if "count(e) AS total" in cypher:
+            return "total"
+        return "isolated" if "NOT EXISTS" in cypher else "edges"
+
     async def _fake_run_read(session, cypher, **kw):
-        seen["limit"] = kw.get("limit")
-        return object()
+        tag = _tag(cypher)
+        if tag == "edges":
+            seen["limit"] = kw.get("limit")   # the over-fetch under test
+        return tag
 
     # `_records` yields limit+1 (=4) valid edge rows → the cap bites at limit=3.
     def _rec(i):
@@ -1779,6 +1791,10 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
         }
 
     async def _fake_records(result):
+        if result == "isolated":
+            return []                      # no isolated nodes in this fixture
+        if result == "total":
+            return [{"total": 8}]          # the partition is bigger than the slice
         return [_rec(i) for i in range(4)]
 
     @asynccontextmanager
@@ -1809,13 +1825,23 @@ async def test_kg_graph_query_not_truncated_when_within_limit(monkeypatch):
                 "obj": {"id": f"o{i}", "kind": "character"}}
 
     async def _fake_records(result):
+        if result == "isolated":
+            return []
+        if result == "total":
+            return [{"total": 4}]
         return [_rec(i) for i in range(2)]  # < limit
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", AsyncMock(return_value=object()))
+    # Three reads now (edges / isolated / count) — see the note in the sibling test.
+    async def _fake_run_read(session, cypher, **kw):
+        if "count(e) AS total" in cypher:
+            return "total"
+        return "isolated" if "NOT EXISTS" in cypher else "edges"
+
+    monkeypatch.setattr(gst, "run_read", _fake_run_read)
     monkeypatch.setattr(gst, "_records", _fake_records)
     monkeypatch.setattr(gst, "neo4j_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))

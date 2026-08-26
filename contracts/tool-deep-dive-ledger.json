@@ -3339,7 +3339,7 @@
    "queue_group": 4
   },
   "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-21 (batch 33)",
    "registered": "2026-08-22",
    "service": "knowledge-service / kg",
@@ -3347,7 +3347,17 @@
    "measured": "kg_add_nodes answers 'node ready'. kg_graph_query is `MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)`, so it projects nodes FROM EDGES and an edgeless node is structurally invisible. Every node this fixture can create is edgeless, because placing an edge needs an approved card.",
    "correction": "Batch 32's write-up blamed the MODEL for fabricating an absence. The control showed the model's 'no information in the book's connection map' was TRUE. The diagnosis was retracted in a dedicated commit.",
    "defect_class": "contract",
-   "queue_group": 2
+   "queue_group": 2,
+   "status": "FIXED - proven live 2026-08-26, batch c-edgeless1, K=5, zero errored runs.",
+   "reproduced_2026_08_26": "Direct probe on a throwaway project, before any change:\n    kg_add_nodes mode=manual -> {'entity_id': ..., 'note': 'node ready'}\n    Neo4j                    -> the node exists, 0 edges\n    kg_graph_query           -> {'nodes': [], 'edges': [], 'meta': {'nodes_total': 0}}\n    memory_recall_entity     -> found: true, BY EXACT NAME\nSo a reader existed and only for a caller who already knew the answer. The graph read - the tool whose declared job is 'read a knowledge graph as nodes + edges' - reported a populated project as empty.",
+   "the_scale_is_the_surprise": "Measured across the instance before designing anything:\n    5,351 entities / 455 projects · 4,887 (91%) with no active edge\n    440 of the 455 projects have NO edges AT ALL\n    isolated per project: p50 2 · p90 7 · p99 41 · max 3,172\nSo 'the graph has no edges' is the ORDINARY state of a project here, not a corner case, and this read was answering 'nothing' about almost every project it was asked about.\n\n⚠️ THE DENOMINATOR IS CONTAMINATED: most of those 455 projects are this harness's own throwaways, which is why p50 is 2. The SHAPE - most nodes isolated, one large outlier - is what the design rests on, not the percentage.",
+   "the_obvious_fix_was_REFUTED_by_that_measurement": "'Also return isolated nodes' would have re-run this repo's own 146K-token composition_list_outline incident on the 3,172-node project. So the fix is capped rows plus a SEPARATELY COUNTED total:\n  * a second Cypher read for nodes with no active RELATES_TO, same partition predicates as the edge read (user_id + project_id + archived_at IS NULL), over-fetched limit+1\n  * `nodes_total` now comes from a cheap COUNT over the partition instead of len(slice). It was the slice's own length, so a capped read reported its slice as the whole set and an EMPTY slice reported the PROJECT as empty. That number was the actual lie.\n  * isolated nodes still pass the view's node-kind facet and are deduped against edge endpoints, so a lens cannot be bypassed and a node cannot arrive twice.",
+   "proof": "LIVE, K=5, throwaway project, the node SEEDED so the turn arrives holding nothing:\n    'Show the graph - what is in this project's knowledge graph?'\n    -> kg_graph_query 5/5, returns the node, meta.nodes_total = 1, edges []\n    -> the reply names 'Vaskir Thorne' 5/5 - a name only the graph read could supply\nThe answer is now truthful AND useful: 'Vaskir Thorne (Character). There are currently no relationships (edges) recorded in the graph.' Every falsifier clause passes.\n\nThis closes the loop on the row's own `correction`: batch 32 blamed the MODEL for fabricating an absence, and the control showed the model was telling the truth about what the tool returned. The tool is now the one telling the truth.",
+   "a_green_suite_shipped_a_crash_and_the_live_probe_caught_it": "🔴 WORTH RECORDING BECAUSE THE SUITE WAS NO HELP. The first deploy raised `kg_graph_query error: 'int' object is not iterable` on the very first live call, with 4,261 unit tests green.\n\n`_records` drains a result as `{k: dict(rec[k])}` - it assumes every value is a MAPPING, because every other caller returns node or relationship properties. A scalar `count(e)` makes it raise. EVERY unit test in this area monkeypatches `_records`, so not one of them touches the real driver shape. `.single()` is the convention for a scalar (facts.py's invalidate_facts_for_day). Now guarded, and the guard pins the PREMISE too - a test that `_records` really does reject a scalar - so the rule can be revisited rather than obeyed if that ever changes.",
+   "what_is_NOT_covered": "- scope=world AND scope=multi ARE UNCHANGED. kg_world_query and kg_multi_query still project nodes from edges only, so an edgeless node is still invisible there. Same defect, different handlers, and not fixed here - naming it rather than letting the row read as catalogue-wide.\n- THE CAP AND ITS TRUNCATION FLAG ARE UNIT-GUARDED, NOT LIVE-EXERCISED. The live project held ONE node; the 3,172-node outlier that motivated the cap was never queried.\n- THE REST/FE ROUTE IS DELIBERATELY UNTOUCHED (`isolated` defaults to None). Two consumers with different needs: a drawing of 3,172 unconnected dots is not useful, while an agent told a populated project has 0 nodes has been told something false. Whether the FE should show them is a product question I am not deciding.\n- The harness flagged 'READ-INTENT TURN WROTE TO THE STORE in 1/5' - loreweave_knowledge.extraction_pending gained a row on one run. A graph READ does not enqueue extraction; the likeliest source is a provisioning tail landing inside the measured window. UNEXPLAINED, and recorded as unexplained rather than dismissed.",
+   "red_able": "services/knowledge-service/tests/unit/test_an_edgeless_node_is_visible_to_the_graph_read.py, 14 guards. Three inverse edits, each restored by inverse edit:\n    drop the isolated nodes from the slice   -> 5 guards red (the original defect)\n    stop passing them from the MCP handler   -> the wiring guard\n    let nodes_total report the SLICE again   -> the false-zero guard\nEach reds the named guards and nothing else.",
+   "suite": "knowledge-service, serially: 4,261 passed, 563 skipped, 3 FAILED - the same three that fail at HEAD (D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD), left RED. Two sibling mocks in test_graph_schema_tools.py were UPDATED, not weakened: kg_graph_query now issues three reads and their fakes answered every read with edge rows, so they failed on the SHAPE rather than on the over-fetch behaviour they assert, which is unchanged.",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-edgeless1.json"
   },
   "D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED": {
    "state": "fixed",
@@ -5425,7 +5435,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 74,
+  "defects_open": 73,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5441,7 +5451,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 176,
-  "defects_fixed": 64,
+  "defects_fixed": 65,
   "defects_withdrawn": 12,
   "defects_superseded": 1
  },

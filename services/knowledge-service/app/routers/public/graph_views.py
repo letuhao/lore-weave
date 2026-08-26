@@ -223,6 +223,41 @@ LIMIT $limit
 """
 
 
+# 🔴 D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ. `_GRAPH_READ_CYPHER` projects nodes FROM EDGES,
+# so a node with no active relation cannot appear in a graph read at all — and `kg_add_nodes`
+# answers "node ready" for exactly such a node, because placing an edge needs an approved card.
+# The agent then reads `nodes: [], nodes_total: 0` on a project whose store holds entities.
+#
+# MEASURED ON THIS INSTANCE 2026-08-26: 5,351 entities across 455 projects, of which 4,887 (91%)
+# have no active edge, and 440 of the 455 projects have NO edges at all. The per-project isolated
+# count is p50 2, p90 7, p99 41 — and max 3,172. So the rows are cheap for virtually every project
+# and ruinous for two, which is why this is capped and counted rather than simply unioned in.
+_ISOLATED_NODES_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+  AND NOT EXISTS {
+    MATCH (e)-[r:RELATES_TO]-()
+    WHERE r.valid_until IS NULL
+  }
+RETURN properties(e) AS node
+ORDER BY e.name ASC, e.id ASC
+LIMIT $limit
+"""
+
+#: The TRUE node count for the partition — every non-archived entity, connected or not. Separate
+#: from the slice so a capped read can still state the whole set's size, which is K25's rule: a
+#: capped slice must never read as the whole set.
+_NODE_TOTAL_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.archived_at IS NULL
+RETURN count(e) AS total
+"""
+
+
 def _node_dict(props: dict[str, Any]) -> GraphNode:
     return GraphNode(
         id=str(props.get("id", "")),
@@ -239,14 +274,25 @@ def build_graph_slice(
     as_of_chapter: int | None,
     deprecated_edge_codes: list[str],
     view_code: str | None,
+    isolated: list[dict[str, Any]] | None = None,
 ) -> GraphSlice:
     """Pure assembly of a `GraphSlice` from raw `{rel, subj, obj}` records.
 
     Applies BOTH filters: the view lens (edge-type + node-kind allow-sets;
-    empty facet = identity) and the temporal as-of predicate. A node only
-    appears if it is the endpoint of at least one surviving edge AND passes
-    the node-kind facet. Extracted from the handler so the filter logic is
-    unit-testable without a live Neo4j.
+    empty facet = identity) and the temporal as-of predicate. A node appears
+    if it is the endpoint of at least one surviving edge — or if it is passed
+    in `isolated` — AND passes the node-kind facet. Extracted from the handler
+    so the filter logic is unit-testable without a live Neo4j.
+
+    🔴 `isolated` DEFAULTS TO NONE SO THE REST CALLER IS UNTOUCHED, and that is a decision about
+    two consumers with genuinely different needs rather than laziness. This function serves the
+    FE's graph VIEW and the agent's graph READ. A picture of 3,172 unconnected dots is not a
+    useful drawing; an agent told `nodes_total: 0` about a project that holds 3,172 entities has
+    been told something FALSE. The MCP handler passes them; the router does not.
+
+    Isolated nodes still pass the node-kind facet — a lens that excludes a kind must exclude it
+    however the node was reached — and are deduped against edge endpoints, so a node that IS
+    connected can never arrive twice.
     """
     scope = build_view_scope(view)
     edges: list[GraphEdge] = []
@@ -282,6 +328,13 @@ def build_graph_slice(
         on = _node_dict(obj)
         nodes.setdefault(sn.id, sn)
         nodes.setdefault(on.id, on)
+    for props in isolated or []:
+        if not scope.allows_node_kind(str(props.get("kind", ""))):
+            continue
+        n = _node_dict(props)
+        # `setdefault`, not assignment: an edge endpoint already placed above wins, and a node
+        # that turned out to be connected must never appear twice.
+        nodes.setdefault(n.id, n)
     warnings = deprecated_edge_warnings(view, deprecated_edge_codes)
     return GraphSlice(
         as_of_chapter=as_of_chapter,
