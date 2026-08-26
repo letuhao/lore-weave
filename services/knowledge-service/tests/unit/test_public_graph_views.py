@@ -120,10 +120,19 @@ def test_build_graph_slice_deprecated_warning():
 
 
 def test_build_timeline_orders_and_maps():
+    # 🔴 THIS FIXTURE PINNED THE BUG THE CODE WAS FIXED FOR. It supplied `valid_from`/`valid_to`
+    # and asserted they came back as the narrative interval — but F3's ordinal model keeps that
+    # interval in `valid_from_ordinal`/`valid_to_ordinal`, the bare `valid_from` is a WALL-CLOCK
+    # datetime, and `valid_to` is not a Neo4j property at all (neo4j_repos/temporal.py: an open
+    # fact stores valid_to_ordinal = NULL). Commit 3dca8c87a moved the reader onto the ordinals
+    # and this test has been red at HEAD ever since, asserting the wall clock IS the ordinal.
+    # The assertions below are unchanged; only the property names are now the real ones.
     recs = [
-        {"rel": {"valid_from": 1, "valid_to": 10, "schema_version": 2, "source_chapter": "ch1"},
+        {"rel": {"valid_from_ordinal": 1, "valid_to_ordinal": 10, "schema_version": 2,
+                 "source_chapter": "ch1"},
          "obj": {"id": "revenge", "name": "Revenge"}},
-        {"rel": {"valid_from": 10, "valid_to": None, "schema_version": 2, "source_chapter": "ch10"},
+        {"rel": {"valid_from_ordinal": 10, "valid_to_ordinal": None, "schema_version": 2,
+                 "source_chapter": "ch10"},
          "obj": {"id": "seek_dao", "name": "Seek Dao"}},
     ]
     tl = build_timeline("kai", "PURSUES", recs)

@@ -319,9 +319,14 @@ async def test_kg_triage_list_default_is_bounded_and_summary():
     from app.tools.graph_schema_tools import TRIAGE_LIMIT_DEFAULT
 
     assert TRIAGE_LIMIT_DEFAULT <= 25  # the OUT-2 page ceiling
+    # `sample_triage_id` was added to the grouped listing by 68464ea9b ("the triage listing told
+    # the agent to place an edge and gave it no id") — the supplier-returns-its-successor's-id
+    # pattern. This fake was never given the field, so the handler raised AttributeError and the
+    # test has been red at HEAD since. The assertions below are unchanged.
     group = SimpleNamespace(
         signature="dup:allies:a->b", item_type="proposed_edge", count=4,
         status="pending", sample_payload={"blob": "x" * 800}, suggested_actions=["map", "drop_edge"],
+        sample_triage_id=uuid4(),
     )
     triage_repo = AsyncMock()
     triage_repo.list_grouped = AsyncMock(return_value=([group], True))  # has_more from the repo

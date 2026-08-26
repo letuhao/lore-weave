@@ -52,6 +52,7 @@
   "TRIAGE_GROUP_REF_FIELDS": [
     "count",
     "item_type",
+    "sample_triage_id",
     "signature",
     "status",
     "suggested_actions"

@@ -4937,14 +4937,18 @@
    "blocked_by_dq": "DQ-T45"
   },
   "D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD": {
-   "status": "OPEN - found 2026-08-26 while running the knowledge-service suite serially for another cycle. NOT caused by that cycle: proven by stashing its app/ edits and re-running, which reproduces all three.",
+   "status": "FIXED 2026-08-26 — the knowledge-service suite is GREEN for the first time since 2026-08-12: 4311 passed, 0 failed. All three were tests pinning behaviour their own service had deliberately changed.",
    "what": "Three guards fail on the committed tree:\n  test_response_shape_snapshot::test_response_shapes_match_committed_snapshot - the MCP response-shape snapshot has drifted from contracts/mcp-response-shapes/knowledge.json. This is the guard that exists to catch a re-bloated summary payload, so while it is red it is protecting nothing.\n  test_graph_schema_tools::test_kg_triage_list_default_is_bounded_and_summary\n  test_public_graph_views::test_build_timeline_orders_and_maps",
    "why_it_matters_beyond_three_reds": "A permanently red suite is a suite nobody can use to detect a regression, and the snapshot guard in particular is a DRIFT detector - the longer it stays red the more drift it is silently accumulating. It also means every cycle touching this service has to re-prove which failures are its own, which is the cost that surfaced it here.",
    "not_investigated": "I have not looked at the CAUSE of any of the three, only established that they predate the change that found them. Whether the snapshot needs regenerating (an intentional shape change never committed) or a payload genuinely re-bloated is the first question, and the two answers point opposite ways.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "instrument",
    "queue_group": 4,
-   "measured_by": "git stash of services/knowledge-service/app + pytest, 2026-08-26"
+   "measured_by": "services/knowledge-service full suite 4311 passed / 0 failed, 2026-08-26; the one-line snapshot diff; git log -S for each field's originating commit",
+   "the_cause_of_each_and_they_pointed_the_SAME_way": "The row asks the right first question — 'whether the snapshot needs regenerating or a payload genuinely re-bloated, and the two answers point opposite ways'. Investigated one at a time; all three turned out to be the test, not the code:\n\n  test_build_timeline_orders_and_maps — the fixture fed `valid_from`/`valid_to` and asserted they came back as the NARRATIVE interval. F3's ordinal model keeps that interval in `valid_from_ordinal`/`valid_to_ordinal`; the bare `valid_from` is a WALL-CLOCK datetime and `valid_to` is not a Neo4j property at all (temporal.py: an open fact stores valid_to_ordinal = NULL, and a grep finds no bare `valid_to` ever written). Commit 3dca8c87a moved the reader onto the ordinals — so this test had been asserting that the wall clock IS the ordinal, which is precisely the bug that commit fixed. Property names corrected; every assertion left as it was.\n\n  test_kg_triage_list_default_is_bounded_and_summary — the SimpleNamespace fake was never given `sample_triage_id`, added to the grouped listing by 68464ea9b ('the triage listing told the agent to place an edge and gave it no id'). The handler raised AttributeError before reaching a single assertion. One field added to the fake.\n\n  test_response_shapes_match_committed_snapshot — the same field reached TRIAGE_GROUP_REF_FIELDS and the committed snapshot was never regenerated.",
+   "regenerating_the_snapshot_was_justified_not_convenient": "This is the guard that exists to catch a re-bloated payload, so 'just regenerate it' is the exact move that would hide the thing it protects. Two checks before running it:\n\n  IS THE FIELD A BODY OR A REFERENCE? The code's own comment answers: 'An id is a reference, not a body: §6b exists to hand back cheap ids the agent can act on. kg_triage_place_edge needs this one.' A single UUID per GROUP is the supplier-returns-its-successor's-id pattern this loop has spent cycles adding elsewhere — the opposite of a bloat.\n\n  DID TWO WEEKS OF RED ACCUMULATE OTHER DRIFT? That was the real risk: a regeneration silently absorbing everything that changed while nobody was watching. The written diff is ONE LINE — `sample_triage_id` added to TRIAGE_GROUP_REF_FIELDS and nothing else. Nothing was absorbed.",
+   "red_able": "The two fixture repairs are self-falsifying — reverting either restores the exact failure quoted above. The one that needed proving is the SNAPSHOT, because a guard that is red is indistinguishable from a guard that is broken: with the fix in place, appending a synthetic field to MEMORY_SEARCH_REF_FIELDS makes it fail with 'ref-field set changed ... you likely re-bloated a summary payload'. It is protecting again, not merely green. Snapshot restored byte-identical (sha256 equal).",
+   "what_is_NOT_covered": "- WHY NOBODY NOTICED FOR TWO WEEKS. Three guards went red on 2026-08-12 and stayed red through every cycle that touched this service, each of which had to re-derive which failures were its own. Nothing alerts on a suite that is red at HEAD, and this fix does not add such an alert.\n- THE OTHER SERVICES WERE NOT CHECKED for red-at-HEAD suites. chat, composition, provider-registry and agent-registry were all run green during this session's cycles, but no sweep was done across every service.\n- THE SNAPSHOT'S OTHER SERVICES are unexamined. Only knowledge.json was regenerated; whether glossary/composition/jobs snapshots have their own quiet drift is unmeasured."
   },
   "D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH": {
    "status": "OPEN - hit 2026-08-26 while writing scenarios-c-factsearch.json.",
@@ -5016,14 +5020,16 @@
    "measured_by": "docs/eval/toolloop/2026-08-14/c-jobid1.json, rep 3"
   },
   "D-THE-KNOWLEDGE-SUITE-HAS-BEEN-RED-FOR-TWO-WEEKS": {
-   "status": "OPEN - found 2026-08-26 while running the owning suite for the schema-write fix.",
+   "status": "WITHDRAWN — DUPLICATE of D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD, which was filed earlier the same day for the same three tests. Fixed there.",
    "what": "`pytest tests/` in knowledge-service is 4290 passed / 3 FAILED, and all three have been red since 2026-08-12 - proven pre-existing by stashing the working tree and re-running them on a clean checkout:\n    test_response_shape_snapshot::test_response_shapes_match_committed_snapshot\n    test_graph_schema_tools::test_kg_triage_list_default_is_bounded_and_summary\n    test_public_graph_views::test_build_timeline_orders_and_maps\nThe snapshot one is a one-line drift: TRIAGE_GROUP_REF_FIELDS gained `sample_triage_id` in 68464ea9b ('the triage listing told the agent to place an edge and gave it no id') and contracts/mcp-response-shapes/knowledge.json was never regenerated. The other two are from the same CP-5.11 day (3dca8c87a).",
    "why_it_matters": "A DRIFT GUARD THAT IS ALREADY RED PROTECTS NOTHING. The snapshot test exists precisely to catch a response payload re-bloating; while it is failing for an unrelated stale field, the next real bloat lands on an already-red test and nobody can tell the difference. The same goes for the suite as a whole: a standing 3-failure baseline trains every later reader to skim past failures, which is exactly how I shipped a regression earlier in this run.",
    "not_investigated": "Whether the CODE or the TEST is right in the two non-snapshot cases. The snapshot is clearly stale (the field was added deliberately, to fix a real defect), but regenerating a drift snapshot to make a suite green is precisely how a guard gets quietly weakened, so it is filed rather than fixed in a cycle that was about something else.",
-   "state": "open",
+   "state": "withdrawn",
    "defect_class": "instrument",
    "queue_group": 3,
-   "measured_by": "clean-tree baseline via git stash, knowledge-service suite, 2026-08-26"
+   "measured_by": "clean-tree baseline via git stash, knowledge-service suite, 2026-08-26",
+   "🔴_i_filed_this_without_searching_the_ledger": "My SECOND duplicate in this run. The first was D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE, and the lesson recorded then was to search the ledger for the TOOL NAME first. This one names no tool — it names three TESTS — and I searched for neither. The existing row was filed hours earlier, in this same session, by me.\n\nWhat this row DID add, and what has been folded into the original rather than lost: the DATING (git log -S puts both fields at 2026-08-12, so 'red at HEAD' is 'red for two weeks') and the specific cause of the snapshot drift (TRIAGE_GROUP_REF_FIELDS gained sample_triage_id in 68464ea9b). A duplicate that carries new evidence is still a duplicate; the evidence belongs on the original.",
+   "superseded_by": "D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD"
   },
   "D-THE-RESUME-POINTER-AIMS-AT-A-BLOCKED-ROW": {
    "status": "FIXED 2026-08-26. The cause was not a missing filter - it was TWO FIELD NAMES for one concept, and I had introduced the second one myself earlier in this run.",
@@ -5789,7 +5795,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 67,
+  "defects_open": 65,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5805,8 +5811,8 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 188,
-  "defects_fixed": 81,
-  "defects_withdrawn": 14,
+  "defects_fixed": 82,
+  "defects_withdrawn": 15,
   "defects_superseded": 1
  },
  "observations": [
