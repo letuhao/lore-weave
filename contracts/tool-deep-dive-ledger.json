@@ -4951,14 +4951,21 @@
    "what_is_NOT_covered": "- WHY NOBODY NOTICED FOR TWO WEEKS. Three guards went red on 2026-08-12 and stayed red through every cycle that touched this service, each of which had to re-derive which failures were its own. Nothing alerts on a suite that is red at HEAD, and this fix does not add such an alert.\n- THE OTHER SERVICES WERE NOT CHECKED for red-at-HEAD suites. chat, composition, provider-registry and agent-registry were all run green during this session's cycles, but no sweep was done across every service.\n- THE SNAPSHOT'S OTHER SERVICES are unexamined. Only knowledge.json was regenerated; whether glossary/composition/jobs snapshots have their own quiet drift is unmeasured."
   },
   "D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH": {
-   "status": "OPEN - hit 2026-08-26 while writing scenarios-c-factsearch.json.",
+   "status": "FIXED 2026-08-26 — `db: \"neo4j\"` now routes to cypher-shell, proven in both directions: a graph assertion PASSES when the fixture matches and REFUSES when it does not, which is the seed_assert's real job the row said was missing.",
    "what": "A scenario's `seed_assert` runs `psql` against a named Postgres database. Facts, entities and events live in NEO4J, so an assertion over them cannot be written: the harness refused the batch with 'db_query failed (neo4j): psql: error: ... database \"neo4j\" does not exist'.\n\nTHE REFUSAL IS CORRECT AND IS NOT THE DEFECT - a scenario whose assertion cannot execute measures nothing, and declining to start is the right call. The defect is that a whole class of seeded state cannot be preflighted at all, so a graph-seeded scenario runs with no guard that its seed landed.",
    "the_workaround_used": "store_snapshot._neo4j already emits `neo4j.Fact.project` {rows, latest}, so the before/after Fact count IS in every run's store_diff and the falsifier can read it. That covers the count; it does not cover a seed_assert's real job, which is to refuse to START when the fixture is wrong.",
    "candidate_direction_NOT_MEASURED": "seed_assert already dispatches on a `db` field; a 'neo4j' value could route to cypher-shell the way store_snapshot._neo4j already does, reusing that helper rather than adding a second way to reach the graph. Not built and not measured - the expect-value comparison for a Cypher scalar is the open question.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "instrument",
    "queue_group": 4,
-   "measured_by": "scripts/toolloop/scenarios-c-factsearch.json, batch refusal 2026-08-26"
+   "measured_by": "assert_seeded + preflight_seed_asserts exercised against the live graph, 2026-08-26; store_snapshot re-run through the unified reader",
+   "the_chokepoint_is_db_query_not_the_call_sites": "The candidate direction was right and the placement mattered. Both seed-assert paths go through `oracle.db_query(c['db'], sql)` — `preflight_seed_asserts` (every query once, before the batch spends a turn) and `assert_seeded` (per-run, against the real fixture) — so the dispatch lives THERE. Routing at each call site would have been two chances to diverge, and the preflight is exactly the half that would have been forgotten.",
+   "the_open_question_answered_itself": "The row recorded 'the expect-value comparison for a Cypher scalar is the open question'. It needs no new rule: cypher-shell `--format plain` prints a header line then the rows, the same shape psql's `-tA` gives, so `rows[0][0]` compared as a stripped string is identical on both stores. Pinned by a guard that asserts the two return the same shape.",
+   "one_reader_not_two_and_the_second_one_held_a_password": "The row's own instruction was to reuse the existing helper 'rather than adding a second way to reach the graph'. store_snapshot._neo4j had an inline cypher-shell call; it now calls oracle.cypher_query, and a guard fails if a second one appears in the harness.\n\n🔴 WRITING THAT GUARD FOUND A THIRD READER, AND IT HARDCODED THE CREDENTIAL. memory_forget_idempotency_probe.py ran its own cypher-shell with `-p loreweave_dev_neo4j` written into the tree. Unified onto the shared reader, which asks the container that owns the connection — and a second guard now fails on that literal anywhere in the harness.\n\nThe guard is SCOPED to the harness, and its first version was not: it asserted nothing under scripts/ reaches the graph except oracle, which was never true. scripts/seed_fengshen_demo.py is a one-off DEMO SEEDER outside the measurement path — excluded by name rather than silently.",
+   "a_diagnosis_defect_found_by_exercising_the_path": "The first preflight run rejected a VALID query and blamed the JVM. cypher-shell prints four lines of 'WARNING: A restricted method in java.lang.System has been called' to stderr on every invocation, so a bare [:400] truncation showed only those — a syntax error in the caller's Cypher arrived as a Java module warning. Warnings are now stripped before the message is built:\n    BEFORE: cypher_query failed: WARNING: A restricted method in java.lang.System ...\n    AFTER : cypher_query failed: 42I06: syntax error ... Invalid input 'RETURN', expected: a parameter, '&', ')', ':', 'WHERE', '{' or '|'\nThis is the same class as the harness's own recorded lesson about an ExceptionGroup burying a clear server error — an instrument that reports the wrong cause costs more than one with no message.",
+   "proof": "assert_seeded against the live graph (455 Facts):\n    expect '455'    -> PASSED, the batch would start\n    expect '999999' -> REFUSED: 'SEED ASSERTION FAILED: the seeded facts are present / expected 999999, store says 455'\npreflight_seed_asserts, which is the half that runs before any turn is spent:\n    valid Cypher  -> accepted\n    broken Cypher -> rejected, naming the real syntax error\nstore_snapshot still reads the graph through the shared runner (neo4j.Fact.total = 455), and Postgres is untouched (`SELECT 1` -> [['1']]).",
+   "what_is_NOT_covered": "- NO SCENARIO USES IT YET. The capability is proven directly; scenarios-c-factsearch.json, the file that hit this, still carries the recorded reason it has no graph assertion. Rewriting it is a separate change and would want its own batch.\n- READ-ONLY IS BY CONVENTION, NOT ENFORCED. `cypher_query` will happily run a write — nothing rejects a CREATE/MERGE the way a scenario author might assume. The Postgres side has the same property, so this is not a regression, but a seed_assert that mutates the graph would corrupt the very fixture it is checking.\n- ONE CELL PER ROW. The parser returns each line as a single cell; a multi-column Cypher RETURN is not split the way psql's `-F|` splits columns. Every assertion this loop writes is a scalar, so it was not built — but a two-column query would silently come back joined.\n- THE DEMO SEEDER IS UNTOUCHED and still has its own cypher-shell call, named above.",
+   "red_able": "scripts/test_a_seed_assertion_can_address_the_graph.py, 8 guards: the defect verbatim (db='neo4j' reaches the graph at all), shape-parity with a Postgres scalar, Postgres unaffected, a bad query RAISES rather than reporting zero, an unreachable graph is not silently clean, one reader in the harness, no hardcoded password, and the snapshot still reads through it. Whole scripts suite: 516 passed."
   },
   "D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW": {
    "status": "FIXED - proven on the deployed build for this row's own quoted instance, and guarded as a CLASS over 40 declared pairs. Read what_is_NOT_covered: the live chat path did not trigger a missing-arg refusal at all, and that is measured, not assumed.",
@@ -5795,7 +5802,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 65,
+  "defects_open": 64,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5811,7 +5818,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 188,
-  "defects_fixed": 82,
+  "defects_fixed": 83,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },

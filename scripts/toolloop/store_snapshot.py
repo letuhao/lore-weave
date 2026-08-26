@@ -60,6 +60,14 @@ import pathlib
 import subprocess
 import sys
 
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+# ONE way to reach the graph. `oracle.cypher_query` is the same runner a seed_assert
+# now uses (D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH); duplicating it here would be the
+# 'second way to reach the graph' that defect's own row warned against.
+from scripts.eval.tool_liveness import oracle  # noqa: E402
+
 #: The owning stores. A tool that writes outside these is out of scope for the book-scoped diff —
 #: and that gap is stated rather than hidden, because a snapshot whose silence is read as "nothing
 #: happened" is exactly the failure this file exists to prevent.
@@ -210,19 +218,9 @@ def _neo4j(project_id: str | None) -> dict:
     a project-scoped count, and that is precisely the case that surfaced here (339 of 343 facts
     carry a project; the one this turn wrote did not).
     """
-    pw = subprocess.run(["docker", "exec", "infra-knowledge-service-1", "printenv",
-                         "NEO4J_PASSWORD"], capture_output=True, text=True).stdout.strip()
-    if not pw:
-        return {}
-
     def q(cypher: str) -> str:
-        out = subprocess.run(
-            ["docker", "exec", "-i", "infra-neo4j-1", "cypher-shell", "-u", "neo4j", "-p", pw,
-             "--format", "plain", cypher],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
-        lines = [ln.strip() for ln in out.stdout.splitlines()
-                 if ln.strip() and not ln.startswith("WARNING")]
-        return lines[-1] if len(lines) >= 2 else "0"
+        rows = oracle.cypher_query(cypher)
+        return rows[0][0] if rows and rows[0] else "0"
 
     snap = {"neo4j.Fact.total": {"rows": int(q("MATCH (f:Fact) RETURN count(f);") or 0),
                                  "latest": "-"}}

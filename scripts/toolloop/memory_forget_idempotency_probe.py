@@ -2,10 +2,14 @@ import json,sys,subprocess,uuid
 sys.path.insert(0,".")
 from scripts.eval.tool_liveness.mcp_direct import MCPDirect, MCPToolError
 from scripts.toolloop.provision import Throwaway
+from scripts.eval.tool_liveness import oracle
 def cypher(q):
-    r=subprocess.run(["docker","exec","infra-neo4j-1","cypher-shell","-u","neo4j","-p","loreweave_dev_neo4j","--format","plain",q],
-                     capture_output=True,text=True,timeout=60)
-    return (r.stdout or r.stderr).strip()
+    # ONE graph reader (D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH). This had its own
+    # cypher-shell call with the password HARDCODED, which is both a second way to reach
+    # the graph and a credential in the tree; oracle.cypher_query reads it from the
+    # container that owns the connection.
+    rows = oracle.cypher_query(q)
+    return rows[0][0] if rows and rows[0] else ""
 m=MCPDirect(); fx=Throwaway("memidem", mcp=m).build()
 try:
     tok=f"Emberfall {uuid.uuid4().hex[:6]}"
