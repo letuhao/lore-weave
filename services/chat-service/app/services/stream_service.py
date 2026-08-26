@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from contextvars import ContextVar
 from collections import Counter
 import logging
 import re
@@ -1693,6 +1694,13 @@ def _agentruntime_wire_surface(*, pass_number: int) -> list[dict]:
     return payload
 
 
+#: The tools R1 answerability FORCED onto this pass, recorded by the builder and checked again at
+#: the wire. A ContextVar rather than a return value for the same reason `record_surface_withheld`
+#: is one: the two points are far apart, and threading a value through every caller in between is
+#: how a check ends up not being written at all.
+_R1_FORCED: "ContextVar[frozenset[str]]" = ContextVar("_r1_forced", default=frozenset())
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1859,6 +1867,8 @@ def _advertise_discovery_tools(
     # refusal — never from a name, a prefix or a guess. A tool with no declaration adds nothing, so
     # this can only widen the surface where the platform has already written down who supplies what.
     _r1_seed = set(_answerable)
+    # What R1 actually put on this pass — recorded so the WIRE can check the guarantee held.
+    _r1_forced: set[str] = set()
     _forced_suppliers: dict[str, str] = {}
     if _r1_seed:
         # Local import, mirroring the other reader of this registry a thousand lines below — the
@@ -1914,6 +1924,7 @@ def _advertise_discovery_tools(
             # ask/plan mode still governs WHAT may run; answerability governs what is VISIBLE.
             continue
         _add(_ans_td)
+        _r1_forced.add(_ans_name)
     for name in active_tool_names:
         # oneshot-deadvertise (2026-07-25): a COMPLETED one-shot create is dropped from the
         # wire so a weak model cannot loop on it (schema-gating — "absent from the schema, the
@@ -1950,6 +1961,10 @@ def _advertise_discovery_tools(
             )
             continue
         _add(td)
+    # 🔴 R1 IS A GUARANTEE, SO IT HAS TO BE CHECKABLE DOWNSTREAM. Publish what this pass forced;
+    # the wire compares and records a narrowing for anything that vanished between here and there.
+    _R1_FORCED.set(frozenset(n for n in _r1_forced
+                             if n in {(d.get("function") or {}).get("name") for d in out}))
     return out
 
 
@@ -4371,6 +4386,54 @@ async def _stream_with_tools(
                 # instrument below records exactly what goes to the wire.
                 if settings.agentruntime_arm:
                     advertised = _agentruntime_wire_surface(pass_number=iteration + 1)
+                # ── D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE ──────────────────────
+                # R1 answerability is a GUARANTEE — "a tool whose own declared vocabulary answers
+                # the request reaches the wire" — and several fixes are built on it. It was
+                # possible for the builder to force a tool and for that tool to be absent here,
+                # with nothing in between saying so: every skip INSIDE the builder logs, so the
+                # log read "matched" and the tool simply was not on the surface.
+                #
+                # MEASURED 2026-08-26 (batch c-booksync1, K=5): glossary_book_sync_apply matched
+                # on 5/5 (its declared synonym is in the request verbatim), no skip was logged,
+                # and it was absent from the advertised set on all 6 passes of every run while its
+                # sibling glossary_book_sync_available was present. Calling the builder directly
+                # in the deployed container returns the tool, so the drop is downstream of it.
+                #
+                # This does not FIX the drop — it makes it impossible for the next one to be
+                # silent. `advertised` is final at this point (the comment above says so), so a
+                # forced name missing here was removed by something that never registered it.
+                _r1_promised = _R1_FORCED.get()
+                # 🔴 LOG THE KEPT CASE TOO, not only the broken one. This file's own note says
+                # "R1 HAS NO OBSERVABILITY, AND THAT COST TWO MEASUREMENTS" — and a check that
+                # speaks only on failure cannot tell "the guarantee held" from "the check never
+                # ran", which is exactly the ambiguity that cost a third. Measured 2026-08-26:
+                # the broken-case warning stayed silent on a batch where the tool was provably
+                # absent from the wire, and there was no way to tell which of the two it meant.
+                logger.info(
+                    "R1 answerability: %d promised for pass %s, %d on the wire (session=%s)",
+                    len(_r1_promised), iteration + 1,
+                    len(_r1_promised & {
+                        (td.get("function") or {}).get("name")
+                        for td in advertised if isinstance(td, dict)
+                    }), session_id,
+                )
+                if _r1_promised:
+                    _wire_names = {
+                        (td.get("function") or {}).get("name")
+                        for td in advertised if isinstance(td, dict)
+                    }
+                    for _lost in sorted(_r1_promised - _wire_names):
+                        instrument.record_surface_withheld(
+                            _lost, stage="r1_forced_then_dropped",
+                            reason="R1 answerability forced it onto this pass and it is absent "
+                                   "from the final wire — removed downstream of the builder by a "
+                                   "narrowing that registered nothing",
+                        )
+                        logger.warning(
+                            "R1 answerability BROKEN: %s was forced onto pass %s and is NOT on "
+                            "the wire (session=%s)", _lost, iteration + 1, session_id,
+                        )
+                    _R1_FORCED.set(frozenset())
                 # ── CP-0.1 / CP-0.2 · THE INSTRUMENT, at the one chokepoint every pass goes through ──
                 # Emitted on EVERY pass, deliberately unlike the `schema_tokens` chunk above, which
                 # reports once per turn (`schema_tokens_reported`). Once-per-turn is precisely the

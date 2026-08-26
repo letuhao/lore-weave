@@ -4042,7 +4042,10 @@
    "state": "open",
    "defect_class": "contract",
    "queue_group": 4,
-   "blocked_by_dq": "DQ-T31"
+   "blocked_by_dq": "DQ-T31",
+   "reconfirmed_live_2026_08_26": "Still live, and now visible in ONE pair of log lines instead of a source trace. Batches c-booksync1/2/3, and the mechanism reads verbatim off the chat-service log:\n\n    R1 answerability: request matches ['book_steering_list', 'glossary_book_sync_apply',\n                                       'glossary_book_sync_available']      <- 3, one-off build\n    R1 answerability: request matches ['book_steering_list',\n                                       'glossary_book_sync_available']      <- 2, per-pass build\n    R1 answerability: 2 promised for pass 1, 2 on the wire\n\nThe tool is not merely dropped after matching - on the SECOND call it cannot be matched at all, because it is absent from the catalogue that call is handed. R1 kept its promise over the input it was given, which is exactly what this row says.\n\nAND THE DIVERGENCE IS NOW SEEDABLE, which it was not when this row was written: scripts/toolloop/scenarios-c-booksync.json creates a run-unique user-tier standard, adopts it, and patches it, so glossary_book_sync_available returns a REAL diff 5/5 and the model correctly asks to apply it. The only thing standing between that turn and a completed apply is this row. See D-BOOK-SYNC-HAS-NOTHING-TO-APPLY-AND-A-DIVERGENCE-CANNOT-BE-SEEDED-SAFELY, whose own blocker was refuted by the same work.",
+   "observability_added_2026_08_26": "🔴 THIS ROW SAYS THE MECHANISM WAS 'ESTABLISHED BY INSTRUMENTING R1' - ad hoc, and then the instrument went away. It is now permanent, because the same question cost hours again:\n\n  * `_R1_FORCED` (a ContextVar, the same no-plumbing posture record_surface_withheld uses) carries what the builder actually forced onto a pass.\n  * At the wire - where `advertised` is final - the promise is compared against what is being sent. Anything missing is recorded through record_surface_withheld with stage='r1_forced_then_dropped' and logged at WARNING.\n  * The KEPT case logs too: 'N promised for pass P, M on the wire'. That line is what diagnosed this in minutes. A check that speaks only on failure cannot tell 'the guarantee held' from 'the check never ran' - and on the first deployed version the warning stayed silent on a batch where the tool was provably absent, which read as a passing check. The kept-case line removed that ambiguity immediately.\n\nIt does NOT fix this row: R1 still cannot rescue a tool it is not shown. It makes the next instance visible in one line instead of a trace through three call sites.",
+   "red_able": "services/chat-service/tests/test_r1_is_a_guarantee_the_wire_can_check.py, 7 guards. Three inverse edits, each restored byte-identical: the builder stops recording what it forced; the drop is recorded under an unregistered stage; the promise is never cleared between passes. Whole chat-service suite green (3,561 passed), 0 stale falsifier anchors."
   },
   "D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN": {
    "status": "OPEN - measured 2026-08-23. It explains one blocked tool and is worth a sweep for others.",
@@ -4903,15 +4906,16 @@
    "measured_by": "docs/eval/toolloop/2026-08-14/c-motiflink10.json and c-motiflink11.json"
   },
   "D-R1-MATCHED-THE-TOOL-AND-IT-NEVER-REACHED-THE-WIRE": {
-   "status": "OPEN - measured 2026-08-26, batch c-booksync1, K=5, 5 of 5 runs.",
+   "status": "WITHDRAWN 2026-08-26 - a DUPLICATE of D-R1-CANNOT-RESCUE-AN-INTENT-GATED-TOOL-BY-CONSTRUCTION, which established the same mechanism on the SAME tool on 2026-08-23.",
    "what": "R1 answerability's whole promise is that a tool whose OWN declared vocabulary answers the request reaches the wire. For glossary_book_sync_apply it matched, logged the match, logged NO skip reason, and the tool is still absent from the final advertised surface.\n\nThe prompt contains its declared synonym verbatim ('Apply the standard updates'). Confirmed three ways:\n  * answerable_tools(), called inside the DEPLOYED chat-service container against the live catalogue, returns glossary_book_sync_apply as answerable.\n  * the service log: 'R1 answerability: request matches [book_steering_list, glossary_book_sync_apply, glossary_book_sync_available]', on every session.\n  * the service's OWN advertised log, emitted AFTER the surface builder returns, lists 34 activated tools including glossary_book_sync_AVAILABLE and NOT glossary_book_sync_APPLY.\n\nThe forcing loop has exactly three skip branches - suppressed by a loop breaker, absent from the turn's catalog, and wrong tier under ask/plan mode - and EVERY one of them logs. None fired. So the tool was dropped by a path that says nothing.",
    "why_it_matters": "R1 is the mechanism this loop has leaned on repeatedly - it is what makes a declared emitter reach the wire, and several fixes are built on that guarantee. A silent hole in it means those fixes hold only where nothing else drops the tool, and nobody would see the difference: the log says 'matched' and the tool simply is not there.",
    "not_investigated": "WHERE the drop happens. `_add()` has two silent early returns (a falsy td, and a name already seen) and neither should fire here, so the drop is likely further downstream - a budget or a filter applied between the builder and the wire. Settling it means instrumenting the path, not another batch.",
-   "state": "open",
+   "state": "withdrawn",
    "defect_class": "contract",
    "queue_group": 2,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-booksync1.json; answerable_tools() in the deployed container; chat-service advertised log, 2026-08-26",
-   "narrowed_by_reading_the_path_2026_08_26": "Traced as far as reading can take it, and the drop is genuinely silent:\n  * The 'request matches' log lives INSIDE _advertise_discovery_tools (line 1838, def at 1696), so the DISCOVERY path demonstrably ran - the tool did not fall down the plain-path branch that has no R1 forcing at all.\n  * The forcing loop is at 1894, after that log, and its three skip branches all log. Counted across the whole 40-minute window: ZERO 'NOT forced' lines, zero catalog_miss, zero permission_tier. So _add(_ans_td) was reached.\n  * `advertised` at the log site (4534) is the list ITERATED to build the SSE payload - it is the wire, not an activation registry - and it is emitted long after the builder returns at 1953. The tool is absent from it on all five sessions.\n  * The breaker de-advertise filter that could remove it (4312) is in the ELSE branch, the plain path, which this turn did not take.\n\nSo: added, and gone by the time the surface is sent, with nothing in between that says so. The next step is a counter or a log at the point `out` becomes `advertised`, not another batch and not more reading - which is why this is recorded rather than guessed at."
+   "narrowed_by_reading_the_path_2026_08_26": "Traced as far as reading can take it, and the drop is genuinely silent:\n  * The 'request matches' log lives INSIDE _advertise_discovery_tools (line 1838, def at 1696), so the DISCOVERY path demonstrably ran - the tool did not fall down the plain-path branch that has no R1 forcing at all.\n  * The forcing loop is at 1894, after that log, and its three skip branches all log. Counted across the whole 40-minute window: ZERO 'NOT forced' lines, zero catalog_miss, zero permission_tier. So _add(_ans_td) was reached.\n  * `advertised` at the log site (4534) is the list ITERATED to build the SSE payload - it is the wire, not an activation registry - and it is emitted long after the builder returns at 1953. The tool is absent from it on all five sessions.\n  * The breaker de-advertise filter that could remove it (4312) is in the ELSE branch, the plain path, which this turn did not take.\n\nSo: added, and gone by the time the surface is sent, with nothing in between that says so. The next step is a counter or a log at the point `out` becomes `advertised`, not another batch and not more reading - which is why this is recorded rather than guessed at.",
+   "withdrawn_because": "🔴 I FILED THIS AS A NEW DEFECT AND IT WAS ALREADY ON THE LEDGER. Same tool (glossary_book_sync_apply), same symptom (R1 matches, the tool is absent from the wire), same cause - two advertise sites handed two DIFFERENT catalogues, the per-pass one built from a catalog the tool was already filtered out of.\n\nThe standing rule is explicit that a defect must not be split to inflate the count, so this row is withdrawn rather than kept as a sibling. What the investigation ADDED is folded into the original row: a live re-confirmation, and permanent observability that turned a multi-hour trace into two log lines.\n\nWHAT I SHOULD HAVE DONE FIRST: searched the ledger for the tool NAME before opening a row. The existing row names glossary_book_sync_apply in its own `measured` field."
   }
  },
  "deferred_questions": {
@@ -5523,7 +5527,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 73,
+  "defects_open": 72,
   "deferred_questions": 21,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5540,7 +5544,7 @@
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 179,
   "defects_fixed": 68,
-  "defects_withdrawn": 12,
+  "defects_withdrawn": 13,
   "defects_superseded": 1
  },
  "observations": [
