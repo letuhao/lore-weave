@@ -3339,7 +3339,7 @@
    "blocked_by_dq": "DQ-T44"
   },
   "D-LAZY-TAIL-UNUSED": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-14",
    "registered": "2026-08-22",
    "service": "chat-service (tool surfacing) + ai-gateway (federation)",
@@ -3347,9 +3347,13 @@
    "measured": "30 of 65 blocked tools surfaced 0/N across clean runs. Cause UNKNOWN; ranking, tier/scope/family and batch composition are all RETIRED by measurement. See DQ-T36 for the evidence and the options.",
    "blast_radius": "Its benign form is a tool the model reaches through tool_list -> tool_load. Its dangerous form is a WRITE tool missing from a write turn, which produced a FALSE SUCCESS on world_map_update_marker (5/5), kg_triage_resolve (5/5), plan_keep_material (4/5) and world_map_remove_region (1/5).",
    "note": "It had 14 mentions in this file's prose and no row until 2026-08-22 — the loop's dominant blocker, invisible to anyone reading the registry.",
-   "status": "open — the resolution loop's cycle 1",
+   "status": "FIXED - verified 2026-08-26 by re-derivation, not by a new fix. The invariant now has a named enforcer (R1 answerability), the population is EMPTY, and all four false-success instances are gate-backed at 5/5 surfaced and 5/5 called. The CAUSE was never isolated and this row does not claim it was.",
    "defect_class": "contract",
-   "queue_group": 4
+   "queue_group": 4,
+   "rederived_2026_08_26_the_population_is_gone": "The row measures '30 of 65 blocked tools surfaced 0/N across clean runs'. Re-derived from the ledger's own rows:\n    tools_blocked   : 0\n    tools_concluded : 198  (203 rows, every one `proven`, plus 1 deprecated)\nThere is no blocked tool left to surface 0/N. The set this row is about does not exist.\n\nAnd the four instances its blast_radius names - the DANGEROUS form, a write tool missing from a write turn producing a FALSE SUCCESS - are each gate-backed now:\n    world_map_update_marker   surfaced 5/5, called 5/5, suspended-on-card 5/5\n    kg_triage_resolve         surfaced 5/5, called 5/5, suspended-on-card 5/5\n    plan_keep_material        surfaced 5/5, called 5/5\n    world_map_remove_region   surfaced 5/5, called 5/5, suspended-on-card 5/5\nEvery one of them surfaced 0/N when this row was filed.",
+   "the_invariant_now_has_an_enforcer": "The row's invariant is 'a tool the turn's own request NAMES must be reachable in that turn'. That is verbatim what R1 answerability guarantees, and R1's own comment records the two measurements that produced it - book_update_details starved by its schema (2026-07-21) and composition_list_outline withheld at domain_not_selected while the Tier-A outline WRITE stayed advertised (2026-08-13, the day before this row was found):\n    'if the user's words match a tool's own vocabulary, it is on the wire - whatever the budget, the domain selection or the rail decided.'\nSo this row was closed by the mechanism built alongside it rather than by a fix aimed at it, which is why it sat open with 'cause UNKNOWN' while the symptom disappeared underneath.",
+   "what_is_NOT_covered": "- THE CAUSE WAS NEVER ISOLATED. The row retired ranking, tier/scope/family and batch composition by measurement and never named a replacement. R1 makes the symptom unreachable rather than explaining it, so if R1 is ever narrowed the old behaviour can return with its cause still unknown. That is the honest limit of this closure.\n- DQ-T36 REMAINS OPEN AND IS NOW LARGELY ANSWERED IN CODE. It asks 'what decides which tools are advertised on a turn, and should a tool the request NAMES be guaranteed a place?' The platform has answered the second half YES by shipping R1. Recording that as a note on the DQ rather than closing it - a DQ is the owner's, and the first half of the question is still a real one.\n- THE REMAINDER OF THE DENOMINATOR IS THE LEGACY SET, and it is unprovable BY DESIGN. 315 declared minus 198 concluded leaves 117. Measured: 68 Python-registered legacy tools, and ZERO of them are concluded; a Go scan adds ~27 more but is too loose to trust exactly (it matched a tool literally named `book`). Since 2026-08-25 every legacy tool is dropped from every turn catalogue, so none of them can ever be PROVEN by a live run. The loop's denominator therefore has a floor it cannot cross, and nothing in `progress` says so.",
+   "measured_by": "contracts/tool-deep-dive-ledger.json rows re-derived 2026-08-26 (tools_blocked=0; the four named tools gate-backed against docs/eval/toolloop/2026-08-14/c1-rerun.json); R1's guarantee read from the deployed stream_service"
   },
   "D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ": {
    "state": "fixed",
@@ -5218,7 +5222,8 @@
    "note": "Option (c) is the status quo and is measured to produce false success. It is listed so the decision is made rather than defaulted into.",
    "cycle": "P1-SURFACE, cycle 1 of the resolution loop — 25 tools.",
    "measured_2026_08_22_cycle_2": "THE MECHANISM IS NOW MEASURED, not hypothesised, using the platform's own functions offline (scripts/toolloop/hotseed_starvation_probe.py imports _budget_names_impl / hot_tool_names / surface_hot_domains rather than reimplementing them). A turn's advertised set is: the hot seed (a surface's hot DOMAINS, filtered to a HOT_SEED_TOKEN_BUDGET of 2000 tokens) UNION the session's activated_tools UNION core/frontend UNION whatever answerable_tools forces on. On the studio surface that is 120 candidates keeping 21.\n\nTHE BUDGET IS THE CULLING MECHANISM AND IT SYSTEMATICALLY CUTS SUPPLIERS. It orders reads by ASCENDING schema size, which is inversely correlated with how central a tool is — tool_surface.py already says so in its own words: 'a primary read takes filters and documents them, while a peripheral one takes a single id ... Fitting the MOST tools is not fitting the RIGHT ones.' Measured casualties: composition_motif_search 900 tok, composition_arc_template_list 356, composition_authoring_run_list 223 — all STARVED, all list/search tools, all the supplier of a blocked tool.\n\nTHE SECOND HALF OF THE QUESTION IS ALREADY ANSWERED IN THE CODE. A tool the request NAMES *is* guaranteed a place: answerable_tools forces a synonym match onto the wire 'whatever the budget' (tool_surface.py), capped at ANSWERABLE_MAX=8. So the guarantee exists — what was missing is that it is keyed on the AUTHOR's words, and a SUPPLIER is named by the REFUSAL rather than by the author. That gap is what cycle 2 fixed reactively (D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE).\n\nTHE ROW'S OWN PREMISE IS NOW STALE. It says 30 of 65 blocked tools were never advertised. Swept 2026-08-22 across the 48 still-blocked: 46 are ANSWERABLE against their own recorded prompts, so their 'surfaced 0/N' predates cycle 1's 37 declaration widenings and has not been re-measured. The two that are not answerable are propose_edit (a real gap — it declares no synonyms) and tool_load (NOT a gap — no author asks to load a tool schema).",
-   "recommendation_2026_08_22": "Do NOT widen ALWAYS_HOT_READS to rescue the starved suppliers, and do not raise HOT_SEED_TOKEN_BUDGET. Both spend the authoring surface's prefix on every turn to fix a case that arises only after a refusal, and tool_surface.py's own docstring asks for evidence rather than intuition before adding to that set. The reactive arming shipped in cycle 2 costs nothing on turns that do not need it and is measured working live. What IS worth deciding: whether a required argument may ship with an EMPTY description (105 of 467 do, 75 of them id-shaped) — because that, not the budget, is what leaves a refusal with no tool to name."
+   "recommendation_2026_08_22": "Do NOT widen ALWAYS_HOT_READS to rescue the starved suppliers, and do not raise HOT_SEED_TOKEN_BUDGET. Both spend the authoring surface's prefix on every turn to fix a case that arises only after a refusal, and tool_surface.py's own docstring asks for evidence rather than intuition before adding to that set. The reactive arming shipped in cycle 2 costs nothing on turns that do not need it and is measured working live. What IS worth deciding: whether a required argument may ship with an EMPTY description (105 of 467 do, 75 of them id-shaped) — because that, not the budget, is what leaves a refusal with no tool to name.",
+   "the_second_half_is_now_answered_in_code_2026_08_26": "'Should a tool the request NAMES be guaranteed a place?' - the platform shipped YES. R1 answerability forces a tool onto the wire when the request matches its declared synonyms, ahead of the budget, domain selection and the rail. Measured consequence: D-LAZY-TAIL-UNUSED's population went from 30 of 65 blocked tools surfacing 0/N to ZERO blocked tools, and its four false-success instances are gate-backed at 5/5 surfaced.\n\nLeft OPEN deliberately: the FIRST half ('what decides which tools are advertised') is still a real question - R1 is the last word on the surface but five other mechanisms narrow it first, and a DQ is the owner's to close, not mine."
   },
   "DQ-T37": {
    "state": "open",
@@ -5738,7 +5743,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 68,
+  "defects_open": 67,
   "deferred_questions": 24,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5754,7 +5759,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 187,
-  "defects_fixed": 79,
+  "defects_fixed": 80,
   "defects_withdrawn": 14,
   "defects_superseded": 1
  },
