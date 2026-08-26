@@ -701,6 +701,52 @@ def dq_state_drift(ledger: dict) -> dict:
     return out
 
 
+#: The word a `status` line opens with, mapped to the states it CONTRADICTS. A status is prose
+#: and may say anything after its first word; what it may not do is open by asserting a
+#: disposition the row does not have.
+_STATUS_LEAD_CONTRADICTS = {
+    "OPEN": {"fixed", "proven", "withdrawn", "superseded"},
+    "BLOCKED": {"fixed", "proven"},
+    "FIXED": {"open"},
+    "PROVEN": {"open"},
+    "CLOSED": {"open"},
+    "DONE": {"open"},
+    "WITHDRAWN": {"open", "fixed", "proven"},
+}
+
+
+def status_state_drift(ledger: dict) -> dict:
+    """{defect: what_is_wrong} for every row whose `status` prose contradicts its `state`.
+
+    🔴 FOUND 2026-08-27 BY A READER GETTING IT WRONG, which is the only way this kind of drift
+    ever surfaces. A stop hook read the ledger and reported three CONTRACT defects as open and
+    actionable — `D-A-REQUIRED-ARGUMENT-ONLY-THE-AUTHOR-CAN-SUPPLY-HAS-NO-ASK-PATH`,
+    `D-A-REQUIRED-ID-NO-TOOL-CAN-SUPPLY`, `D-KG-BUILD-TAKES-A-PROJECT-ID-…`. All three carry
+    `state: fixed`. All three OPEN THEIR `status` WITH THE WORD "OPEN", because that line was
+    written when the row was filed and never rewritten when it was closed; the real disposition
+    went into `state_reason` instead.
+
+    Seven rows were in that condition. `state` is the machine-readable field and every derived
+    count already reads it, so no number was wrong — what was wrong is that the FIRST LINE A
+    HUMAN READS said the opposite of the row, and a reader who trusts prose over a field is not
+    being careless, they are reading the part written for them.
+
+    The status is NOT rewritten by this check. A row edited by a tool is a row nobody re-read,
+    which is the rule `dq_alias_drift` states one block up."""
+    out = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        state = str(row.get("state") or "").strip().lower()
+        text = str(row.get("status") or "").lstrip()
+        if not state or not text:
+            continue
+        lead = text.split()[0].strip("—-:,.–").upper()
+        if state in _STATUS_LEAD_CONTRADICTS.get(lead, set()):
+            out[name] = f"state={state!r} but `status` opens with {lead!r}"
+    return out
+
+
 def dangling_dq_links(ledger: dict) -> dict:
     """{defect: dq} for every row blocked by a question that is not registered.
 
@@ -784,7 +830,9 @@ def cmd_audit(a) -> int:
     aliases = dq_alias_drift(ledger)
     dq_states = dq_state_drift(ledger)
     dangling = dangling_dq_links(ledger)
-    if not orphans and not drift and not aliases and not dq_states and not dangling:
+    status_drift = status_state_drift(ledger)
+    if (not orphans and not drift and not aliases and not dq_states and not dangling
+            and not status_drift):
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
@@ -826,6 +874,17 @@ def cmd_audit(a) -> int:
               f"{DQ_STATES}; put prose in `state_note`:")
         for name, why in sorted(dq_states.items()):
             print(f"  {name:12} {why}")
+    if status_drift:
+        print(f"REFUSED — {len(status_drift)} defect row(s) open their `status` prose with a "
+              "disposition the row does not have. Every derived count reads `state`, so no "
+              "number is wrong — what is wrong is that the FIRST LINE A HUMAN READS says the "
+              "opposite of the row, and a reader who trusts it is reading the part written for "
+              "them:")
+        for name, why in sorted(status_drift.items()):
+            print(f"  {name:58} {why}")
+        print("  -> rewrite the LEAD of `status` to match `state`, keeping the original sentence "
+              "as the record of what it said when filed. NOT auto-migrated: a row rewritten by a "
+              "tool is a row nobody re-read.")
     return 1
 
 
