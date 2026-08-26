@@ -1076,14 +1076,24 @@ async def _execute_authoring_run_gate(
     try:
         run_id = UUID(str(payload["run_id"]))
     except (KeyError, ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+        # D-CONFIRM-REFUSAL-IS-AN-OPAQUE-ACTION-ERROR. This is the caller's OWN token payload —
+        # it minted the token and supplied the field — so naming what is malformed discloses
+        # nothing it did not already have. Contrast the LookupError below, which stays uniform.
+        raise HTTPException(
+            status_code=400, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
     try:
         chapters = await book.list_chapters(book_id, bearer)
     except BookClientError as exc:
-        raise HTTPException(status_code=502, detail={"code": "action_error"}) from exc
+        # An UPSTREAM failure, not a fact about the caller's data: "could not read the book's
+        # chapters" is the difference between a caller that retries and one that cannot tell a
+        # 502 from a rejected request.
+        raise HTTPException(
+            status_code=502, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     chapter_ids = {str(c["chapter_id"]) for c in chapters if c.get("chapter_id")}
     try:
         run = await svc.gate(run_id, book_chapter_ids=chapter_ids)
