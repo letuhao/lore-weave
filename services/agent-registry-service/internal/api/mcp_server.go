@@ -63,6 +63,21 @@ func (s *Server) mcpHandler() http.Handler {
 	// (never a direct write), same HITL spine as skills.
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_list_workflows",
+		// 🔴 D-REGISTRY-LIST-WORKFLOWS-UNDER-DECLARES-ITS-PAYLOAD-TOO — THE SENTENCE BELOW IS
+		// INACCURATE ON PURPOSE, AND CORRECTING IT WAS MEASURED WORSE.
+		//
+		// It claims "slug + title + description"; workflowMeta returns five fields (tier and
+		// status too). Naming all five made the model answer a SURFACE question with the wrong
+		// tool, isolated by a control that changed nothing else:
+		//     c-regwf7  five fields named : 3/5 registry_list_workflows, 2/5 workflow_list —
+		//                                   and those two listed ALL TWELVE workflows
+		//     c-regwf8  this wording      : 5/5 registry_list_workflows, 0 wrong
+		//     c-regwf6  this wording, K=20: 20/20 registry_list_workflows, 0 wrong
+		//
+		// Mentioning `tier` and `status` on a tool being asked about SURFACES apparently makes it
+		// read as less apt for the ask. The mechanism is not established; the effect is, twice.
+		// Do not "fix" this without re-running that batch — the twin tool punished the same
+		// instinct (its self-filter wording was reverted for the same reason).
 		Description: "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"workflows", "list workflows", "my workflows", "what workflows", "recipes"}),
 		InputSchema: closedSetSchemaFor[listWorkflowsIn](map[string][]any{
