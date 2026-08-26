@@ -39,8 +39,56 @@ import sys
 #: Tables whose "delete" is a SOFT archive, so a row COUNT cannot tell replacement from duplication.
 #: Derived from the stores this loop has measured; add a table here the moment a probe reports a
 #: bare DUPLICATED for a tool whose description says it archives.
-_SOFT_ARCHIVING_TABLES = ("outline_node", "structure_node", "arc_template", "motif",
-                          "composition_work", "glossary_entities")
+#: table -> (database, the predicate for a row that is still LIVE).
+#:
+#: 🔴 `status` MEANS FOUR DIFFERENT THINGS ACROSS THESE SIX TABLES, and the obvious predicate
+#: would have been wrong on the one that surfaced this defect. Read from the store, 2026-08-26:
+#:
+#:     arc_template / composition_work / motif   status = active | archived      <- lifecycle
+#:     outline_node                              status = done|drafting|empty|outline
+#:     structure_node                            status = drafting|outline
+#:     glossary_entities                         status = active|draft|inactive|rejected
+#:
+#: So `status <> 'archived'` is a lifecycle test for three of them and a WORKFLOW state for the
+#: rest — and outline_node is exactly the table the measured case grew (3->5). Its archive flag
+#: is `is_archived` (65 of 640 rows true), and glossary_entities' is `deleted_at` (34 set).
+#: One column name, four meanings: the predicate has to be per-table and read from the data.
+_ACTIVE_PREDICATE = {
+    "outline_node":      ("loreweave_composition", "is_archived = false"),
+    "structure_node":    ("loreweave_composition", "is_archived = false"),
+    "arc_template":      ("loreweave_composition", "status <> 'archived'"),
+    "motif":             ("loreweave_composition", "status <> 'archived'"),
+    "composition_work":  ("loreweave_composition", "status <> 'archived'"),
+    "glossary_entities": ("loreweave_glossary",    "deleted_at IS NULL"),
+}
+
+_SOFT_ARCHIVING_TABLES = tuple(_ACTIVE_PREDICATE)
+
+
+def _active_counts(tables: list[str], book_id: str) -> dict:
+    """LIVE row counts for the run's book, per soft-archiving table.
+
+    The count the verdict actually needs. A correct archive-and-replace leaves the same number
+    of ACTIVE rows and more archived ones; a real duplicate grows the active set too.
+    """
+    # 🔴 THE FIRST DRAFT SWALLOWED A NameError AND RETURNED {} FOREVER. `oracle` is imported
+    # inside functions in this file, not at module scope, so this one raised NameError on
+    # every table and a bare `except Exception: continue` turned that into "no counts" —
+    # which the verdict reads as INCONCLUSIVE. The fix would have shipped dead and looked
+    # like the defect it replaced. Import it here, and let a programming error RAISE.
+    from scripts.eval.tool_liveness import oracle  # noqa: PLC0415 — file-local convention
+
+    out: dict[str, int] = {}
+    for t in tables:
+        db, pred = _ACTIVE_PREDICATE[t]
+        try:
+            rows = oracle.db_query(
+                db, f"SELECT count(*) FROM {t} WHERE book_id = '{book_id}' AND {pred};")
+        except RuntimeError:  # the query itself failed (missing column, db down) — that is
+            continue         # a readable-count problem and INCONCLUSIVE is the right answer
+        if rows and rows[0] and rows[0][0].isdigit():
+            out[t] = int(rows[0][0])
+    return out
 
 import httpx  # noqa: E402 — used by _redeem_if_gated
 
@@ -234,6 +282,10 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
             out["first"] = ["refused", str(e)[:200]]
         mid = snapshot(fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id)
 
+        # The ACTIVE counts the verdict compares, taken on the same boundary as `mid` so
+        # they describe the state the SECOND call acts on. Cheap: six counts, and only
+        # read at all when a soft-archiving table grows.
+        out["active_before"] = _active_counts(list(_SOFT_ARCHIVING_TABLES), fx.book_id)
         try:
             _r2 = fx.mcp.call(tool, args)
             out["second"] = ["ok", _r2]
@@ -277,11 +329,32 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
         dup = _rows_changed(out["diff_second"])
         soft = [d for d in dup if any(t in d for t in _SOFT_ARCHIVING_TABLES)]
         if dup and soft and len(soft) == len(dup):
-            out["verdict"] = (
-                f"⚠ INCONCLUSIVE — the second call GREW {', '.join(dup)}, and every one of those "
-                "tables SOFT-ARCHIVES. Growth is what an archive-and-replace looks like from a row "
-                "count. Settle it by counting ACTIVE rows only (the lifecycle column), not total: "
-                "a correct tool leaves the same number of ACTIVE rows and more archived ones.")
+            # The check the previous version only NAMED is now run. A correct
+            # archive-and-replace leaves the same number of ACTIVE rows and more archived ones;
+            # a real duplicate grows the active set too, and the two are indistinguishable from
+            # a total count — which is why this used to report a bare DUPLICATED for a tool
+            # doing exactly what its description promises.
+            grown = [t for t in _SOFT_ARCHIVING_TABLES if any(t in d for d in dup)]
+            act_b = out.get("active_before") or {}
+            act_a = _active_counts(grown, fx.book_id)
+            out["active_after"] = act_a
+            moved = [f"{t} {act_b.get(t)}->{act_a.get(t)}"
+                     for t in grown if act_b.get(t) != act_a.get(t)]
+            if act_b and act_a and not moved:
+                out["verdict"] = (
+                    f"IDEMPOTENT IN EFFECT — the second call GREW {', '.join(dup)}, and the "
+                    f"ACTIVE count is unchanged ({', '.join(f'{t}={act_a[t]}' for t in act_a)}). "
+                    "That is archive-and-replace, not duplication: the extra rows are archived.")
+            elif moved:
+                out["verdict"] = (
+                    f"🔴 NOT IDEMPOTENT — the second call DUPLICATED: {', '.join(dup)}, and the "
+                    f"ACTIVE count moved too ({', '.join(moved)}), so the growth is live rows "
+                    "rather than an archive.")
+            else:
+                out["verdict"] = (
+                    f"⚠ INCONCLUSIVE — the second call GREW {', '.join(dup)}, every one of those "
+                    "tables SOFT-ARCHIVES, and the ACTIVE count could not be read either side. "
+                    "Growth alone cannot tell archive-and-replace from duplication.")
         elif dup:
             out["verdict"] = f"🔴 NOT IDEMPOTENT — the second call DUPLICATED: {', '.join(dup)}"
         elif out["diff_second"]:

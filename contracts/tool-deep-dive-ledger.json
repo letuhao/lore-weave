@@ -3724,11 +3724,17 @@
    "state": "withdrawn"
   },
   "D-IDEMPOTENCY-PROBE-COUNTS-ROWS-NOT-LIFECYCLE": {
-   "status": "OPEN — instrument limit, measured 2026-08-23",
+   "status": "FIXED 2026-08-27 — the probe now reads the lifecycle column and settles what it previously could only flag as INCONCLUSIVE.",
    "what": "idempotency_probe decides by comparing ROW COUNTS before and after the second call. A tool that SOFT-archives the prior rows and writes replacements grows the table and is reported 'NOT IDEMPOTENT — the second call DUPLICATED', which is false: the old rows are archived, not live. composition_motif_bind_edit is the measured case.",
    "fix_direction": "Where the table carries a lifecycle column, compare ACTIVE rows — the probe already knows the table names, and store_snapshot already reads these stores. Until then, read a growth verdict on a soft-archiving tool as a QUESTION rather than an answer.",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_fix": "A growth on a soft-archiving table used to be reported '🔴 NOT IDEMPOTENT — the second call DUPLICATED: outline_node 3->5' (false: the old rows were archived), and a later pass softened it to '⚠ INCONCLUSIVE' while NAMING the check that would settle it. That check now runs: ACTIVE counts are taken at the mid boundary — the state the SECOND call acts on — and compared after it.\n    unchanged active + grown total -> IDEMPOTENT IN EFFECT, archive-and-replace\n    active moved too               -> NOT IDEMPOTENT, the growth is live rows\n    counts unreadable              -> INCONCLUSIVE, which is the honest third answer",
+   "status_means_four_things_and_the_obvious_predicate_was_wrong": "🔴 THE NAIVE FIX WOULD HAVE FAILED ON THE TABLE THE DEFECT WAS MEASURED ON. Read from the store rather than assumed:\n    arc_template / composition_work / motif   active | archived            <- lifecycle\n    outline_node                              done | drafting | empty | outline\n    structure_node                            drafting | outline\n    glossary_entities                         active | draft | inactive | rejected\nSo `status <> 'archived'` is a lifecycle test for three tables and a WORKFLOW state for the other three — and outline_node is exactly the table the measured case grew. Its archive flag is `is_archived` (65 of 640 rows true); glossary_entities' is `deleted_at` (34 set). One column name, four meanings, so the predicate is per-table.\n\nPinned by a guard: injecting the naive `status <> 'archived'` on outline_node reds two cases, including the one asserting the active count still differs from the total — with the naive predicate it would not, and the new count would carry no information at all.",
+   "it_almost_shipped_DEAD": "🔴 THE FIRST DRAFT RETURNED {} FOREVER AND LOOKED FINE. `oracle` is imported inside functions in idempotency_probe.py, not at module scope, so the new counter raised NameError on every table — and my own `except Exception: continue` turned that into 'no counts', which the verdict reads as INCONCLUSIVE. The fix would have shipped, changed nothing, and produced exactly the output the defect already produced.\n\nCaught by exercising it against the real store rather than trusting the unit path. The catch is now narrowed to the query failing, so a programming error RAISES; a guard asserts every table produces a count.",
+   "what_is_NOT_covered": "- NO LIVE PROBE RUN. The counter and the verdict branches are exercised against the real store, but composition_motif_bind_edit was not re-probed end to end — that needs a fixture whose second call actually archives, and the measured instance is from 2026-08-23.\n- SIX TABLES, HAND-LISTED. A soft-archiving table outside `_ACTIVE_PREDICATE` still gets a row-count verdict; a guard asserts the two sets match, but nothing discovers a NEW soft-archiving table.\n- book_id IS ASSUMED. Every predicate is scoped `WHERE book_id = ...`, so an account-scoped soft-archiving row (arc_template with a NULL book_id) counts zero here — the same blind spot D-DATA-BAR-BLIND-TO-ACCOUNT-SCOPED-ARC-TEMPLATE fixed for the DATA bar, still present in THIS reader.\n- THE THIRD VERDICT IS STILL REACHABLE and should be: if a count cannot be read, INCONCLUSIVE is the honest answer rather than a guess in either direction.",
+   "red_able": "scripts/test_the_idempotency_verdict_reads_lifecycle_not_rowcount.py, 6 guards. Inverse edit — the naive status predicate on the measured table — reds two, including the discrimination check. Source restored byte-identical. Whole scripts suite: 535 passed.",
+   "measured_by": "status/is_archived/deleted_at vocabularies read from loreweave_composition and loreweave_glossary, 2026-08-27; _active_counts exercised against a real book"
   },
   "D-IDEMPOTENCY-PROBE-CANNOT-MEASURE-A-CONFIRM-GATED-TOOL": {
    "status": "OPEN — instrument gap, measured 2026-08-23",
@@ -5844,7 +5850,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 61,
+  "defects_open": 60,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5860,7 +5866,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 189,
-  "defects_fixed": 87,
+  "defects_fixed": 88,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },
