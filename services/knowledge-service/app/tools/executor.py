@@ -585,6 +585,64 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                     "score": round(h.raw_score, 4),
                 })
 
+    # ── FACT leg: the project's stored facts, lexically matched.
+    # 🔴 D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT. Until this leg existed
+    # `memory_remember` wrote a `:Fact` and NOTHING here read one — the manuscript leg reads
+    # chapters, the passage leg reads `:Passage`, and a Fact is neither. So a fact the platform had
+    # accepted and confirmed with a fact_id was unreachable by the only tool a later turn has,
+    # because that id is gone by the next turn.
+    #
+    # THE `degraded: {"semantic": "not_indexed"}` MARKER IS NOT THE CAUSE and reading it as one
+    # cost a cycle. Controlled on ONE project so the index state was identical: a nonce in a
+    # CHAPTER was found (count 1), a nonce in a FACT was missed (count 0), same marker on both.
+    #
+    # LEXICAL, like the manuscript leg above and for the same reason — it must work on a project
+    # with no embedding model at all, which is the state every new project starts in and the state
+    # both probes above were in. See `rank_facts_by_overlap` for the five matchers measured and why
+    # the floor is RELATIVE.
+    if args.source_type in (None, "fact"):
+        from app.db.neo4j_repos.facts import search_facts_by_text
+
+        try:
+            async with neo4j_session() as session:
+                fact_hits = await search_facts_by_text(
+                    session, user_id=str(ctx.user_id), project_id=str(ctx.project_id),
+                    query=args.query,
+                    # The floor is TOOL_FACT_CONFIDENCE, not the 0.8 the L2 loader uses: a
+                    # memory_remember fact is written at 0.7, so an 0.8 floor would exclude
+                    # exactly what this leg exists to find and fail as an empty result — the
+                    # defect's own symptom, reproduced by the fix for it.
+                    min_confidence=TOOL_FACT_CONFIDENCE, limit=args.limit,
+                )
+        except Exception:  # noqa: BLE001 — a third leg must never take the other two down
+            logger.warning("memory_search: fact leg failed", exc_info=True)
+            fact_hits = []
+        fact_items: list[dict] = []
+        for score, fact in fact_hits:
+            key = _one_line(fact.content)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            fact_items.append({
+                "snippet": key,
+                "text": _truncate(fact.content or ""),
+                "source_type": "fact",
+                "score": round(float(score), 4),
+            })
+        # 🔴 RESERVED SLOTS, BECAUSE APPENDING WOULD HAVE MADE THIS A HALF-FIX. The manuscript leg
+        # runs first and can fill `limit` on its own, and the truncation below is positional — so a
+        # fact would be found, appended, and silently cut on exactly the projects with the most
+        # chapter text. "The fact is now reachable, unless the book is big" is not the invariant.
+        #
+        # A GLOBAL SORT BY `score` WOULD BE WRONG and was rejected: the manuscript leg's score comes
+        # from a hybrid retriever with an optional reranker and the fact leg's is a token-overlap
+        # fraction. They share a field name and no scale, so ordering across them would be
+        # comparing two different numbers because they are spelled alike.
+        if fact_items:
+            reserved = max(1, args.limit // 5)
+            keep_other = max(0, args.limit - min(len(fact_items), reserved))
+            items = items[:keep_other] + fact_items
+
     items = items[: args.limit]
     projected, meta = apply_response_contract(
         items, ref_fields=MEMORY_SEARCH_REF_FIELDS, detail=args.detail,

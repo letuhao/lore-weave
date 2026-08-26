@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from datetime import date as date_cls
 from datetime import datetime
 from typing import Any, Literal, get_args
@@ -747,6 +748,157 @@ async def list_facts_for_entity(
         limit=limit,
     )
     return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── search_facts_by_text (D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT) ──
+#
+# 🔴 THE ONLY FACT READER THAT TAKES A QUERY. `list_facts_by_type` filters by type/source and
+# `recall_facts` by date/subject; neither matches TEXT. So `memory_search` — the tool whose declared
+# job is "search the project's stored knowledge for what is already known" — had no way to reach a
+# fact at all, and a fact the platform had accepted was unfindable by the tool built to find it.
+#
+# NOT AN INDEX PROBLEM, and the read's own marker made that easy to get wrong. It returns
+# `degraded: {"semantic": "not_indexed"}`, which is TRUE and IRRELEVANT: memory_search's two legs
+# read chapters and `:Passage` nodes, and a `:Fact` is never a Passage. Controlled on ONE project so
+# the index state was identical for both probes — a nonce in a CHAPTER was FOUND (count 1), a nonce
+# in a FACT was MISSED (count 0), same `not_indexed` marker on both. No amount of indexing helps a
+# store nothing queries.
+#
+# TOKEN-ANY IN CYPHER, RANKED AND FLOORED IN PYTHON, and the split is deliberate: the relative floor
+# needs the best score across the whole result set, which a per-row predicate cannot know.
+_SEARCH_FACTS_BY_TEXT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
+  AND ($source_type IS NULL OR $source_type IN f.source_types)
+  AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
+  AND f.confidence >= $min_confidence
+  AND f.valid_until IS NULL
+  AND f.archived_at IS NULL
+  AND f.content IS NOT NULL
+  AND ANY(t IN $tokens WHERE toLower(f.content) CONTAINS t)
+RETURN f
+ORDER BY f.confidence DESC, f.created_at DESC
+LIMIT $scan_limit
+"""
+
+#: Dropped from a query before matching. Deliberately SMALL and function-word-only: every entry is
+#: a word that carries no subject, so removing it cannot change which fact is the right answer.
+#: A larger list would start deciding relevance, which is the ranking's job and not this list's.
+_QUERY_STOPWORDS = frozenset({
+    "a", "about", "an", "and", "any", "anything", "are", "as", "at", "be", "been", "but", "by",
+    "can", "did", "do", "does", "for", "from", "has", "have", "in", "is", "it", "its", "know",
+    "me", "my", "of", "on", "or", "our", "said", "say", "tell", "that", "the", "their", "there",
+    "they", "this", "to", "us", "was", "we", "were", "what", "when", "where", "which", "who",
+    "why", "with", "you", "your",
+})
+
+#: CJK is included in the token class WITHOUT a stopword pass — the same reason `passage_text_cjk_ft`
+#: exists as its own index. A CONTAINS over CJK needs no tokenizer, so substring matching is if
+#: anything stronger there than the Latin path.
+_QUERY_TOKEN_RE = re.compile(r"[0-9a-z぀-ヿ㐀-䶿一-鿿가-힯]+")
+
+
+def query_tokens(query: str) -> list[str]:
+    """The content words of a query, lowercased — what a fact must contain to be a candidate.
+
+    Public because the leg's guard asserts on it: a change that empties this for an ordinary
+    question would silently turn the whole fact leg off, and that failure looks exactly like the
+    defect it was built to fix.
+    """
+    return [t for t in _QUERY_TOKEN_RE.findall((query or "").lower())
+            if t not in _QUERY_STOPWORDS]
+
+
+def rank_facts_by_overlap(
+    facts: "list[Fact]", tokens: list[str], *, limit: int,
+) -> list[tuple[float, "Fact"]]:
+    """Score = fraction of the query's content tokens the fact contains; keep only what scores
+    ABOVE HALF the best score for this query, best first.
+
+    🔴 THE FLOOR IS RELATIVE, AND FIVE CANDIDATES WERE MEASURED BEFORE PICKING IT. Against a corpus
+    of the real fact shapes plus hand-built NEAR-MISSES (facts sharing one content word with the
+    query — "Solene Harbour" against a query for "Mira Solene"):
+
+        whole-query substring        precision 1.00   recall 0.50   (misses every question form)
+        ALL tokens present           precision 1.00   recall 0.80   (one absent word kills it)
+        ANY token present            precision 0.71   recall 1.00   (the near-miss collisions)
+        absolute floor >= 0.5        precision 0.77   recall 1.00   (cannot separate them: BOTH
+                                                                     "Mira Solene" and "Solene
+                                                                     Harbour" score exactly 0.5)
+        RELATIVE floor > best/2      precision 1.00   recall 1.00
+
+    An absolute floor cannot work here by construction, which is what the fourth row shows. The
+    relative one can, because the question is not "is this fact a good match in the abstract" but
+    "is it a good match COMPARED TO the best thing this project has".
+
+    ⚠️ WHAT THAT MEASUREMENT IS NOT: a production precision claim. The corpus is ten facts, and the
+    live one (395 active facts / 58 projects, 79 of them from memory_remember) is contaminated by
+    this harness's own eval traffic — the same sentence repeated. It SELECTS between candidates on
+    a property they differ on; it does not size the error rate on a real author's memory.
+
+    Distractor queries matched NOTHING in every candidate, which is the property that matters most
+    for a memory read: it may rank weakly, it must never invent knowledge that is not there.
+    """
+    if not tokens:
+        return []
+    scored: list[tuple[float, Fact]] = []
+    for f in facts:
+        body = (f.content or "").lower()
+        hit = sum(1 for t in tokens if t in body)
+        if hit:
+            scored.append((hit / len(tokens), f))
+    if not scored:
+        return []
+    best = max(s for s, _ in scored)
+    kept = [(s, f) for s, f in scored if s > best / 2]
+    kept.sort(key=lambda sf: -sf[0])
+    return kept[:limit]
+
+
+async def search_facts_by_text(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    query: str,
+    source_type: str | None = None,
+    min_confidence: float = 0.7,
+    exclude_pending: bool = True,
+    limit: int = 10,
+    scan_limit: int = 500,
+) -> list[tuple[float, Fact]]:
+    """Active facts matching `query`'s content words, ranked, best first.
+
+    🔴 `min_confidence` DEFAULTS TO 0.7, NOT THE 0.8 EVERY OTHER READER HERE USES, and getting this
+    wrong would have shipped a leg that is present and dead. `memory_remember` writes at
+    TOOL_FACT_CONFIDENCE = 0.7 — verified against a live write, which returns
+    `{"remembered": true, "confidence": 0.7}` — so an 0.8 floor excludes precisely the facts this
+    exists to find, and the symptom would be identical to the defect: an empty result.
+
+    `scan_limit` bounds the rows scored in Python, and 500 is not arbitrary: measured on this
+    instance the busiest project holds 209 active facts (mean 6.8, p90 9), so the cap is well above
+    the whole population of any project today and the ORDER BY never truncates before matching.
+    """
+    if not project_id:
+        # Same posture as recall_facts (D16): a memory read never spans a user's projects.
+        return []
+    tokens = query_tokens(query)
+    if not tokens:
+        return []
+    result = await run_read(
+        session,
+        _SEARCH_FACTS_BY_TEXT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        min_confidence=min_confidence,
+        exclude_pending=exclude_pending,
+        tokens=tokens,
+        scan_limit=scan_limit,
+    )
+    facts = [_node_to_fact(record["f"]) async for record in result]
+    return rank_facts_by_overlap(facts, tokens, limit=limit)
 
 
 # ── invalidate_fact ───────────────────────────────────────────────────

@@ -451,9 +451,9 @@ async def story_search(
         "Search the project's stored knowledge for what is already known about a "
         "topic, character, place, or event before answering — the book's chapter "
         "text (lexical + semantic, so it finds an exact phrase even with nothing "
-        "indexed yet), past chat turns, and glossary entries. Returns the most "
-        "relevant snippets. (For locating/reading manuscript prose specifically, "
-        "`story_search` is the primary find tool.)"
+        "indexed yet), past chat turns, glossary entries, and the facts saved with "
+        "memory_remember. Returns the most relevant snippets. (For locating/reading "
+        "manuscript prose specifically, `story_search` is the primary find tool.)"
     ),
     meta=require_meta(
         "R", "project",
@@ -487,9 +487,9 @@ async def memory_search(
         f"max {SEARCH_LIMIT_MAX}).",
     ] = SEARCH_LIMIT_DEFAULT,
     source_type: Annotated[
-        Literal["chapter", "chat", "glossary"] | None,
-        "Optional — restrict to one source: 'chapter', 'chat', or "
-        "'glossary'. Omit to search all.",
+        Literal["chapter", "chat", "glossary", "fact"] | None,
+        "Optional — restrict to one source: 'chapter', 'chat', 'glossary', or "
+        "'fact' (what memory_remember saved). Omit to search all.",
     ] = None,
     detail: _DETAIL_ARG = "summary",  # K37 drain: OUT-2 small-shape default
     project_id: _PROJECT_ID_ARG = None,

@@ -101,7 +101,10 @@ class MemorySearchArgs(ProjectScopedArgs):
     limit: int = Field(
         default=SEARCH_LIMIT_DEFAULT, ge=1, le=SEARCH_LIMIT_MAX
     )
-    source_type: Literal["chapter", "chat", "glossary"] | None = None
+    # "fact" (2026-08-26) — memory_remember writes a :Fact, and until the fact leg existed
+    # NOTHING in this tool read one. Admitting it here lets a caller ask for stored facts
+    # alone; omitting source_type still searches all four.
+    source_type: Literal["chapter", "chat", "glossary", "fact"] | None = None
     # L1/L2 reference-first contract (§6b) — default "summary" (K38; full is opt-in).
     detail: Literal["summary", "full"] = "summary"
 

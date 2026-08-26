@@ -4043,16 +4043,26 @@
    "defect_class": "instrument"
   },
   "D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT": {
-   "status": "OPEN - reproduced 2026-08-23 by direct probe on a throwaway project. It is P7-FALSE-ABSENCE's memory instance, confirmed current.",
+   "status": "FIXED - proven live 2026-08-26, batch c-factsearch1, K=5, zero errored runs, and the original direct-probe reproduction now passes on the same build.",
    "what": "memory_remember stores a fact and confirms it with a fact_id. memory_search for the EXACT nonce in that fact returns hits: [], count: 0, total: 0 - immediately and again three seconds later - with degraded: {'semantic': 'not_indexed'}. memory_forget handed the id directly invalidates it fine, so the store is sound and the retrieval path is not.\n\nThe consequence is not the empty list itself; it is that memory_remember's fact_id is gone by the next turn, so SEARCH is the only route a later turn has to a stored fact. A fact the platform accepted cannot be reached again by the tool built to reach it.",
    "the_honest_part": "The read does NOT lie. It returns a degraded marker and a note saying the semantic index is not built, so a caller reading the envelope can distinguish 'nothing matched' from 'I cannot answer'. That is strictly better than the catalogue instance of the same shape (44 public books, items: [], total: 0, no marker - DQ-T38) and it suggests the fix here may be in how an ANSWER is composed from a degraded read, rather than in the store.",
    "cross_refs": [
     "P7-FALSE-ABSENCE",
     "DQ-T38"
    ],
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 2
+   "queue_group": 2,
+   "rescoped_2026_08_26": "🔴 THE CAUSE IS NOT THE INDEX, AND THIS ROW SAID IT WAS. The read returns degraded: {'semantic': 'not_indexed'}, and I took that marker as the diagnosis. It is true and it is IRRELEVANT.\n\n`_handle_memory_search` has exactly TWO legs:\n  MANUSCRIPT leg - lexical-inclusive hybrid over the book's CHAPTERS. Needs no embeddings.\n  PASSAGE leg    - semantic vector search over `:Passage` nodes (chat / glossary).\n`memory_remember` writes a `:Fact` node via merge_fact. A Fact is never a Passage, so NO LEG READS IT. A perfectly built semantic index would change nothing.\n\nTHE CONTROL, on ONE throwaway project so the index state is identical for both probes:\n    a nonce in a CHAPTER -> FOUND, count 1, degraded {'semantic': 'not_indexed'}\n    a nonce in a FACT    -> MISSED, count 0, degraded {'semantic': 'not_indexed'}\nSame project, same marker, opposite outcomes. That refutes the index explanation outright: the legs work, and Facts are simply not among them.\n\nThis is a re-scope onto a DIFFERENT cause, not a narrowing: 'the retrieval path is degraded' and 'there is no retrieval path over Facts' call for different fixes in different files.",
+   "the_mechanism_exists_and_is_merely_UNUSED": "app/db/neo4j_repos/facts.py has Fact readers already: list_facts_by_type (by type + source_type) and recall_facts (by date + subject name). The platform ALSO already surfaces memory_remember's facts - context/selectors/facts.py `_select_tool_facts` pulls source_type='llm_tool_call' facts into the per-turn L2 context block, capped at 20.\n\nSo the facts are reachable through CONTEXT ASSEMBLY and not through the SEARCH TOOL. What does NOT exist is a text-matching reader: neither existing reader takes a free-text query, so a third leg needs a content predicate rather than a call to what is there.\n\nNOT YET MEASURED, and it decides the shape: whether a Cypher CONTAINS predicate (or a full-text index) is needed, or whether filtering list_facts_by_type in Python is enough. The second is cheaper but truncates before matching, so its RECALL on a project with many facts is the open question - and measuring recall before recommending is the standing rule here.",
+   "reproduced_2026_08_26": "memory_remember -> {'remembered': true, fact_id}; memory_search for the exact nonce -> hits: [], count: 0, immediately and after 3s; memory_forget by that id -> {'invalidated': true}. The store is sound; the search cannot reach it. Unchanged from the 2026-08-23 measurement, so this is current and not a stale row.",
+   "the_fix": "A THIRD LEG. `_handle_memory_search` had two - a manuscript leg over the book's CHAPTERS and a passage leg over `:Passage` nodes - and `memory_remember` writes a `:Fact`. Nothing read one. The leg is lexical, like the manuscript leg and for the same reason: it must work on a project with no embedding model, which is the state every new project starts in.\n\n  * facts.py `search_facts_by_text` - the ONLY Fact reader that takes a query. Its siblings filter by type/source (list_facts_by_type) or date/subject (recall_facts); neither matches TEXT, which is why nothing could be reused.\n  * `rank_facts_by_overlap` - score = fraction of the query's content words the fact contains, keep what scores ABOVE HALF the best score for that query, best first.\n  * `source_type: \"fact\"` added to the args model and the tool schema, and the tool's DESCRIPTION now says it searches what memory_remember saved. It listed three stores and searched three - accurate, and a fact was in neither the list nor the tool.",
+   "the_matcher_was_measured_not_chosen": "Five candidates, against the real fact SHAPES plus hand-built NEAR-MISSES - facts sharing one content word with the query, e.g. 'Solene Harbour was renamed after the flood' against a query for 'Mira Solene':\n\n    whole-query substring     precision 1.00  recall 0.50   misses every question form\n    ALL tokens present        precision 1.00  recall 0.80   one absent word kills it\n    ANY token present         precision 0.71  recall 1.00   the near-miss collisions\n    absolute floor >= 0.5     precision 0.77  recall 1.00   CANNOT separate them - both\n                                                            score exactly 0.5\n    RELATIVE floor > best/2   precision 1.00  recall 1.00   shipped\n\n🔴 WITHOUT THE NEAR-MISSES EVERY CANDIDATE SCORED 1.00 PRECISION. The first study did exactly that and would have shipped ANY-token on a meaningless number. An absolute floor cannot work here by construction; a relative one can, because the question is not 'is this a good match' but 'is it good compared to the best thing this project has'.\n\nREJECTED, and why: a Neo4j full-text index on Fact.content is the right answer at scale and the precedent exists (passage_text_cjk_ft on Passage.text). Measured on this instance the busiest project holds 209 active facts (395 total / 58 projects, mean 6.8, p90 9), so it is an index and a migration to maintain for a scan that is trivial. Named as the direction if the population grows; not built.",
+   "proof": "DIRECT PROBE (the original reproduction, unchanged): memory_remember -> fact_id; memory_search for the exact nonce -> hits: [{source_type: 'fact', score: 1.0}], count 1, immediately and after 3s. The project still reports degraded {'semantic': 'not_indexed'} - which is the point, the leg is lexical.\n\nLIVE, K=5, throwaway project, the fact SEEDED so the turn arrives holding no fact_id (the defect's actual shape - the id is gone by the next turn, so search is the only route):\n    'What do we know about Quillamber Vesk?'\n    -> memory_search 5/5, ONE call, returns the fact with source_type 'fact', score 1.0\n    -> the reply names 'harbourmaster' 5/5 - a word in the STORE and not in the prompt\n    -> neo4j.Fact.project unchanged: a read turn wrote no fact\nAll four falsifier clauses pass.",
+   "what_is_NOT_covered": "- THE PARAPHRASE CASE. The leg is lexical: a query sharing no content word with the fact ('who runs the harbour?') will not match it. That is the same trade the manuscript leg makes and the tool's description already states ('lexical + semantic'), but it is a real limit and the semantic half only arrives when a project has an embedding model.\n- PRECISION ON A REAL CORPUS. The matcher study ran on ten facts with hand-built near-misses, and the live corpus is contaminated by this harness's own eval traffic (the same sentence repeated). It SELECTS between candidates; it does not size the error rate on a real author's memory.\n- THE RESERVED SLOTS ARE UNIT-GUARDED, NOT LIVE-EXERCISED. The manuscript leg runs first and can fill `limit`, so fact hits get reserved slots rather than being appended. This run's project had one chapter and the query matched no chapter text, so the contention case never arose live.\n- `source_type='fact'` AS A FILTER was not exercised live; the run omitted source_type.",
+   "red_able": "services/knowledge-service/tests/unit/test_a_stored_fact_is_findable_by_memory_search.py, 15 guards. Three inverse edits, each restoring an ORIGINAL behaviour and each restored by inverse edit (never a checkout):\n    remove the fact leg          -> test_the_leg_is_wired_into_the_search_handler\n    raise the floor to 0.8       -> test_the_confidence_floor_matches_what_memory_remember_WRITES\n    absolute floor for relative  -> test_a_partial_name_collision_is_DROPPED (+ the floor test)\nEach reds the named guard and nothing else.",
+   "suite": "knowledge-service, run SERIALLY: 4244 passed, 563 skipped, 3 FAILED. All three fail at HEAD WITHOUT this change - proven by stashing only the app/ edits and re-running - so they are pre-existing and are left RED rather than tidied away to make this cycle look clean: test_graph_schema_tools::test_kg_triage_list_default_is_bounded_and_summary, test_public_graph_views::test_build_timeline_orders_and_maps, test_response_shape_snapshot::test_response_shapes_match_committed_snapshot. Filed as D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD.",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-factsearch1.json"
   },
   "D-R1-STOPPED-AT-DEPTH-1": {
    "status": "FIXED 2026-08-23 (services/chat-service/app/services/stream_service.py, the R1 block of _advertise_discovery_tools). Test services/chat-service/tests/test_r1_carries_the_supplier_of_a_required_id.py, proven RED against the original by stashing only that file. Suite 3362 passed, 3 skipped. Measured live at K=5.",
@@ -4781,6 +4791,26 @@
    "defect_class": "contract",
    "queue_group": 3,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-existingrun2.json and c-existingrun-control.json, 10 of 10 runs"
+  },
+  "D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD": {
+   "status": "OPEN - found 2026-08-26 while running the knowledge-service suite serially for another cycle. NOT caused by that cycle: proven by stashing its app/ edits and re-running, which reproduces all three.",
+   "what": "Three guards fail on the committed tree:\n  test_response_shape_snapshot::test_response_shapes_match_committed_snapshot - the MCP response-shape snapshot has drifted from contracts/mcp-response-shapes/knowledge.json. This is the guard that exists to catch a re-bloated summary payload, so while it is red it is protecting nothing.\n  test_graph_schema_tools::test_kg_triage_list_default_is_bounded_and_summary\n  test_public_graph_views::test_build_timeline_orders_and_maps",
+   "why_it_matters_beyond_three_reds": "A permanently red suite is a suite nobody can use to detect a regression, and the snapshot guard in particular is a DRIFT detector - the longer it stays red the more drift it is silently accumulating. It also means every cycle touching this service has to re-prove which failures are its own, which is the cost that surfaced it here.",
+   "not_investigated": "I have not looked at the CAUSE of any of the three, only established that they predate the change that found them. Whether the snapshot needs regenerating (an intentional shape change never committed) or a payload genuinely re-bloated is the first question, and the two answers point opposite ways.",
+   "state": "open",
+   "defect_class": "instrument",
+   "queue_group": 4,
+   "measured_by": "git stash of services/knowledge-service/app + pytest, 2026-08-26"
+  },
+  "D-SEED-ASSERT-CANNOT-ADDRESS-THE-GRAPH": {
+   "status": "OPEN - hit 2026-08-26 while writing scenarios-c-factsearch.json.",
+   "what": "A scenario's `seed_assert` runs `psql` against a named Postgres database. Facts, entities and events live in NEO4J, so an assertion over them cannot be written: the harness refused the batch with 'db_query failed (neo4j): psql: error: ... database \"neo4j\" does not exist'.\n\nTHE REFUSAL IS CORRECT AND IS NOT THE DEFECT - a scenario whose assertion cannot execute measures nothing, and declining to start is the right call. The defect is that a whole class of seeded state cannot be preflighted at all, so a graph-seeded scenario runs with no guard that its seed landed.",
+   "the_workaround_used": "store_snapshot._neo4j already emits `neo4j.Fact.project` {rows, latest}, so the before/after Fact count IS in every run's store_diff and the falsifier can read it. That covers the count; it does not cover a seed_assert's real job, which is to refuse to START when the fixture is wrong.",
+   "candidate_direction_NOT_MEASURED": "seed_assert already dispatches on a `db` field; a 'neo4j' value could route to cypher-shell the way store_snapshot._neo4j already does, reusing that helper rather than adding a second way to reach the graph. Not built and not measured - the expect-value comparison for a Cypher scalar is the open question.",
+   "state": "open",
+   "defect_class": "instrument",
+   "queue_group": 4,
+   "measured_by": "scripts/toolloop/scenarios-c-factsearch.json, batch refusal 2026-08-26"
   }
  },
  "deferred_questions": {
@@ -5373,7 +5403,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 74,
+  "defects_open": 75,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5388,8 +5418,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 173,
-  "defects_fixed": 61,
+  "defects_total": 175,
+  "defects_fixed": 62,
   "defects_withdrawn": 12,
   "defects_superseded": 1
  },
