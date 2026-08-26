@@ -4642,12 +4642,17 @@
    "state_reason": "a wording correction that was applied to the affected ship_audit rows"
   },
   "D-THE-GATE-CANNOT-SEE-A-FALSIFIER-I-MEASURED-AS-VIOLATED": {
-   "status": "THEORY recorded 2026-08-24 BEFORE the change, per METHOD step 2.",
+   "status": "FIXED 2026-08-27. The theory was ALREADY SHIPPED and this row was never updated; what was missing is the guard that keeps it red-able. Both of the row's own REFUTED-IF conditions were run and neither fired.",
    "what": "The DATA-falsifier bar is `self._check(bool(t.get('falsifier')), ...)` — it asserts a falsifier EXISTS. It has no way to know the run REFUTED it. So a batch whose stored tool calls contradict its own prediction still passes that bar, and the only thing standing between it and a `proven` conclusion is a human reading the prose.\n\nTWICE NOW THAT HUMAN WAS ME, AND ONCE I NEARLY MISSED IT:\n  * b18-gen-control (cycle 12) passed 8 of 9 bars while every composition_generate call in it carried model_ref='default' and came back ok=false — the exact invention its falsifier names. I annotated it `falsifier_violated_2026_08_24` and moved on.\n  * c-regwf (cycle 18) passes the bar today while 4 of 5 runs reported NINE workflows as studio-available when the studio has six — a refutation clause I had added to that falsifier myself before the run.\n\nA gate that says 'the batch may NOT be concluded' for a missing ship_audit case, but says nothing when the prediction was measured false, is protecting the cheaper thing.",
    "theory": "Make the refutation MACHINE-VISIBLE and fail the bar on it. A tool entry that records a violation — the key I already used by hand, `falsifier_violated*` — must fail DATA falsifier, so `conclude --state proven` refuses it and the only way past is to fix the cause and re-run.\n\nREFUTED IF: the new bar does not fire on b18-gen-control, the ORIGINAL instance, which is annotated and on disk; or if it fires on any batch already concluded proven, which would mean it is catching something other than a recorded refutation.",
    "not_in_scope": "This does NOT recompute falsifiers. The gate still cannot read 'the model invented an id' out of a batch and judge it — that needs the claim expressed as data, per falsifier, which is a much larger design. This only stops the gate from silently accepting a refutation SOMEONE HAS ALREADY WRITTEN DOWN. It is the cheap half, and it closes the specific hole that let an 8-of-9 sit one probe away from `proven`.",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_mechanism_already_existed": "scripts/toolloop/gate.py already carried the bar the theory called for — `violated = sorted(k for k in t if str(k).startswith('falsifier_violated'))` and a companion `falsifier_amended_after_run` check — and `cmd_conclude` already refuses on any FAIL scoped to the tool. Checking that FIRST is METHOD step 2 and it saved building a second copy of a working mechanism.\n\nWHAT WAS ACTUALLY MISSING: nothing kept either bar red-able. No test in the repository mentioned `falsifier_violated`, so both could have been deleted in a refactor and every suite would have stayed green — the same shape as a counter nothing calls, one level up.",
+   "the_rows_own_REFUTED_IF_was_run": "(a) IT MUST FIRE ON b18-gen-control, THE ORIGINAL INSTANCE:\n        FAIL [composition_generate] DATA falsifier not violated — 8 passed, 2 failed.\n    Before the bar existed that batch passed 8 of 9 and sat one probe away from `proven`.\n\n(b) IT MUST NOT FIRE ON A BATCH ALREADY CONCLUDED PROVEN:\n        c-gen3.json    10 passed, 0 failed\n        c-regwf5.json  19 passed, 0 failed\n    Those are the batches composition_generate and registry_list_workflows are actually proven against — read from their ledger notes, not assumed, and guarded so the pair cannot silently stop pointing there.\n\nThe four files on disk that record a refutation — b18-gen-control, c-regwf, c-regwf2, c-regwf3 — are none of them the batch a conclusion rests on. The bar catches exactly what it was written to catch.",
+   "also_verified_on_evidence_that_did_not_exist_when_the_bar_was_written": "Three batches produced live in this session — c-trunc1, c-nowrite1, c-sweep1 — each pass `DATA falsifier not violated` and `not back-dated` (9 passed, 1 failed on an unrelated bar). A true negative on data the bar has never seen is the closest thing a gate has to a live run.",
+   "red_able": "scripts/test_the_gate_refuses_a_recorded_refutation.py, 10 guards, four falsifiers proven RED and restored: remove the violated bar, match an EXACT key instead of the prefix, excuse the falsifier bars on the `blocked` path, and remove the back-dating bar.\n\nThe prefix one matters: the four recorded violations use THREE different suffixes (`_2026_08_24`, `_second_batch`, `_third_batch`), so an exact-key bar would have missed two of the three. The `conclude` guards redirect LEDGER to a tmp file — if the refusal ever breaks, the test must not be the thing that writes a false `proven` into the real ledger.",
+   "what_is_NOT_covered": "- THE GATE STILL CANNOT RECOMPUTE A FALSIFIER, exactly as the row's `not_in_scope` said. It cannot read 'the model invented an id' out of a batch and judge it; that needs the claim expressed as data per falsifier. This only stops the gate from accepting a refutation SOMEONE HAS ALREADY WRITTEN DOWN.\n- SO THE HUMAN IS STILL THE DETECTOR. If a run refutes its prediction and nobody annotates it, the bar sees nothing — which is how b18-gen-control passed 8 of 9 in the first place.\n- `blocked` IS REFUSED OVER A VIOLATION TOO, which is a judgement, not a measurement: a batch whose prediction was measured false is not evidence for any conclusion. If an owner wants `blocked` excused, that is a decision, not a bug.\n- THE FOUR VIOLATED BATCHES ARE LEFT AS THEY ARE. registry_list_workflows is `proven` on c-regwf5 while three sibling batches record a refutation of an earlier prediction — that is worth a look and belongs to that tool's row and to DQ-T49, not here."
   },
   "D-NO-CANCEL-TOOL-CAN-OBTAIN-A-JOB-ID-SO-THE-USER-IS-TOLD-IT-CANNOT-BE-DONE": {
    "status": "THEORY recorded 2026-08-24 BEFORE the change, per METHOD step 2.",
@@ -5938,7 +5943,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 53,
+  "defects_open": 52,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5954,7 +5959,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 191,
-  "defects_fixed": 97,
+  "defects_fixed": 98,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },
