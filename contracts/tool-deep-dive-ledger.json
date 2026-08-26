@@ -4093,11 +4093,18 @@
    "state_reason": "Fixed 2026-08-25 as a CLASS, at the chokepoint the platform already had: the invariant is 'a required, non-ambient, non-context opaque id must declare its emitter', enforced by scripts/test_a_required_id_declares_its_emitter_gate.py over a frozen shrink-only baseline, with both failure directions proven RED before the fix landed. 42 verified declarations added; proven live at K=5 on world_map_add_marker with zero refusals. 89 ids across 85 tools REMAIN undeclared and are frozen in the baseline - see what_it_does_not_cover_2026_08_25."
   },
   "D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD": {
-   "status": "OPEN — measurement finding, 2026-08-23. It affects how six BLOCKED verdicts should be read.",
+   "status": "FIXED 2026-08-27. The report now names whose card stopped the turn, so `called 0/N` can no longer be read as a fact about a tool that never got its turn.",
    "what": "A scenario with approve=None ends at the FIRST Tier-A card, whatever raised it. When that card belongs to some other tool, the tool under test never gets its turn — and the batch records 'called 0/5' as though the model declined it.\n\nSix tools are blocked with exactly 'surfaced 5/5, called 0/5, suspended-on-card 5/5'. Read off their own raw evidence, the pending card is NEVER the tool under test:\n    composition_entity_override_edit  <- kg_project_create (2), glossary_entity_set_attributes (3)\n    tool_load                         <- kg_project_create, 5 of 5\n    composition_generate              <- composition_arc_edit, book_chapter_save_draft,\n                                         glossary_deep_research\n(The other three sit in the multi-scenario `rebaseline` batch, where per-tool attribution of a pending card is not sound from the batch file alone — NOT counted as evidence here.)\n\nThis is the same shape that hid glossary_create_evidence's real cause earlier today: it was 'suspended 5/5' on a glossary_propose_entities card, and only once the harness was allowed to click did the tool get called 4/5 and fail on its actual defect — a required id with no supplier.\n\nSo 'called 0/5' under approve=None is not 'the model would not use this tool'. It is 'the model did not use this tool before something else asked permission', and those are different sentences.",
    "what_it_does_not_mean": "It does not make approve=None wrong. A never-approve arm is the only way to see the Tier-A gate work, and it is one of the two user states this loop must run in. The error is reading a 'called 0/5' from that arm as a fact about the tool. The pair is the measurement: never-approve says whether the gate holds, approve says whether the tool is reachable.\n\nIt also does not license approving on a READ-intent scenario. tool_load keeps approve=None here, and that its read-only question raises a kg_project_create card on 5 of 5 runs is a finding about the product rather than an obstacle to clear.",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_invariant": "'CALLED 0/N' IS A FACT ABOUT THE TOOL ONLY IF THE TURN REACHED IT. When the tool under test was never called and EVERY run ended on a card belonging to a different tool, the report says which tools raised those cards and how often.",
+   "measured": "Over every raw record on disk: 24 scenario-batches recorded `called 0/N` where every run ended on a card belonging to a different tool. The blockers are a short list — glossary_propose_entities 21, kg_add_nodes 20, book_chapter_save_draft 20, kg_project_create 18, glossary_adopt_standards 16, glossary_entity_set_attributes 10.\n\nTHE RECORD ALREADY NAMED THE OWNER: `pending_approval.tool`, present on all 482 suspended runs on disk. Nothing read it — the same shape as the sibling fixes this week, where the mechanism existed and was merely unread.",
+   "proven_live": "TWO BATCHES, and the pair is the measurement.\n\nc-blocked2 (scenarios-batch5.json::kg-propose-edge, K=5, zero errored) REPRODUCES IT:\n    kg-propose-edge   5   0/5   5/5   0   WROTE 5/5: entity_access_log\n        ^ NOT REACHED, NOT DECLINED: kg_propose_edge was never called, and all 5 run(s) stopped at a card belonging to another tool — kg_add_nodes (5). `called 0/5` here says the turn ended before kg_propose_edge's turn came, not that the model rejected it.\n\nc-blocked1 (scenarios-c-r1-recheck.json::tool-load, K=5, zero errored) is the NEGATIVE CONTROL, and it did not reproduce: tool_load was called 4 of 5, so the annotation correctly stayed silent. Recorded rather than discarded — a fix that fires on everything is not a discrimination, and the run that fails to reproduce is what shows it.",
+   "a_lead_the_negative_control_turned_up": "🔴 NOT A CLAIM. tool_load was called 4 of 5 in c-blocked1 on the SAME scenario that recorded 0 of 5 in c-r1-recheck. If that holds it bears directly on D-TOOL-LOAD-IS-ON-EVERY-WIRE-AND-THE-MODEL-DOES-NOT-USE-IT, which is a different open row. One batch is not a re-measurement and it is not treated as one here.",
+   "red_able": "scripts/test_called_zero_says_which_card_stopped_it.py, 10 guards, five falsifiers proven RED and restored: remove the annotation, count the tool's OWN card as a blocker, fire when only SOME runs ended on a card, name only the commonest blocker, and drop the never-called condition.\n\n🔴 ONE OF THEM WAS GREEN AT FIRST. Dropping the `!= want` clause — so a card raised by the tool ITSELF counts as another tool blocking it — left all nine guards passing, because the case that looked like it covered that used `called=(tool,)` and was already excluded by `called 0`. The real shape is a call DEFERRED at the gate: it is recorded as an approval envelope, and `called_names` reads TOOL_CALL_START, so a tool can sit pending on its own card with no call recorded. A guard for exactly that reds the injection.",
+   "what_is_NOT_covered": "- IT DOES NOT MAKE approve=None WRONG, and nothing here approves anything. A never-approve arm is the only way to see the Tier-A gate work and is one of the two user states this loop must run in. The pair is the measurement: never-approve says whether the gate holds, approve says whether the tool is reachable.\n- IT DOES NOT LICENSE APPROVING ON A READ-INTENT SCENARIO. tool_load keeps approve=None; that its read-only question raises a kg_project_create card is a finding about the product, not an obstacle to clear.\n- IT IS AN ANNOTATION, NOT A RE-MEASUREMENT. The 24 recorded batches are not re-run and their `called 0/N` numbers stand as they are; what changes is that a reader is told the number is about reach, not about choice.\n- MIXED RUNS ARE SILENT. If even one run ended without a card, `called 0/N` is partly informative and the annotation deliberately stays quiet — so a batch that is 4 blocked and 1 clean still reads as a weak fact about the tool.",
+   "evidence": "docs/eval/toolloop/2026-08-14/c-blocked2{,-raw}.json (reproduces); c-blocked1{,-raw}.json (negative control)"
   },
   "D-SURFACING-IS-NECESSARY-BUT-NOT-SUFFICIENT-THE-MODEL-PICKS-THE-SIBLING": {
    "status": "OPEN — measured 2026-08-23, batch c-r1-recheck, 30 runs, ZERO errored. It is the reason six tools are blocked, and no surfacing change can fix it.",
@@ -5233,7 +5240,8 @@
    "state": "open",
    "defect_class": "model",
    "queue_group": 4,
-   "measured_by": "c10-run (tool_load surfaced 5/5, called 0/5); ALWAYS_ON_CORE_NAMES in services/chat-service/app/services/tool_discovery.py"
+   "measured_by": "c10-run (tool_load surfaced 5/5, called 0/5); ALWAYS_ON_CORE_NAMES in services/chat-service/app/services/tool_discovery.py",
+   "a_single_batch_that_disagrees_2026_08_27": "🔴 A LEAD, NOT A RE-MEASUREMENT. Batch c-blocked1 ran scenarios-c-r1-recheck.json::tool-load verbatim, K=5, zero errored, and tool_load was CALLED on 4 of 5 runs — where c-r1-recheck recorded 0 of 5 and every run was stopped by a kg_project_create card instead. The batch was run as the NEGATIVE CONTROL for a different row (D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD) and is recorded here rather than discarded. One batch is not a re-measurement; if this holds, this row's premise has moved."
   },
   "D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE": {
    "status": "FIXED - deployed and verified by content 2026-08-26. The scenario that lost 60% of its runs is clean 5/5, and 6 aborted turns since deploy produced ZERO duplicate-key 500s.",
@@ -5947,7 +5955,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 51,
+  "defects_open": 50,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5963,7 +5971,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 191,
-  "defects_fixed": 98,
+  "defects_fixed": 99,
   "defects_withdrawn": 16,
   "defects_superseded": 1
  },

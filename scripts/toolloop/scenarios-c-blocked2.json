@@ -1,0 +1,66 @@
+{
+ "_note": "D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD, second live attempt. Copied VERBATIM from scenarios-batch5.json. Its recorded runs show kg_propose_edge never called while a kg_add_nodes card stopped all 5 — the shape under test. approve stays as declared; the report, not the scenario, is what is being measured.",
+ "scenarios": [
+  {
+   "id": "kg-propose-edge",
+   "tool_under_test": "kg_propose_edge",
+   "expect_tool": "kg_propose_edge",
+   "intent": "write",
+   "tier": "A",
+   "scope": "project",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+   "prompt_source": "_meta.synonyms['record that they know each other'] + ['link two characters'], grounded on the two seeded entities so the model has real names to resolve.",
+   "needs_target": false,
+   "approve": null,
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       },
+       {
+        "kind": "character",
+        "name": "Mira Solene"
+       }
+      ]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "2",
+     "why": "TWO named entities, because the hard step is resolving NAMES to entity ids. With one entity the model cannot get the pair wrong and the scenario proves nothing about resolution."
+    }
+   ],
+   "falsifier": "REFUTED IF: the edge is written to the graph rather than parked in the triage inbox (the tool's own contract says it is NEVER written directly), OR the model invents entity ids instead of resolving the seeded names, OR source and target are the same id. NOTE: kg entities live in NEO4J, so there is no SQL seed_assert for the graph side — the glossary assert above pins the NAMES the model must resolve, and the store snapshot covers the Neo4j side.",
+   "ship_audit": {
+    "gate": "OWED — Tier A: the proposal must mint a review item, never a direct write.",
+    "absent_case": "OWED — an entity name that does not exist must be refused, not silently resolved to the nearest match.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": []
+  }
+ ]
+}

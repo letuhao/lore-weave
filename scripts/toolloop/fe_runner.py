@@ -990,6 +990,35 @@ def report(results, scenarios, repeats):
                   f"called it ended on an approval card and none of their stores moved, so no "
                   f"write was ever permitted. Whatever the column says, it is not about "
                   f"{want}.")
+        # 🔴 "CALLED 0/N" UNDER approve=None IS NOT "THE MODEL DECLINED THIS TOOL".
+        # D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD: a run ends at the FIRST
+        # Tier-A card, whatever raised it. When that card belongs to some OTHER tool, the tool
+        # under test never gets its turn — and the batch records `called 0/5` as though the model
+        # had considered and rejected it. Those are different sentences.
+        #
+        # The proof that they are: glossary_create_evidence read "suspended 5/5, called 0/5" and
+        # looked like a model that would not use it. Once the harness was allowed to click, the
+        # tool was called 4/5 and failed on its ACTUAL defect — a required id with no supplier.
+        #
+        # Measured over every raw record on disk 2026-08-27: 24 scenario-batches recorded
+        # `called 0/N` where EVERY run ended on a card belonging to a different tool. The cards
+        # doing the blocking are a short list — glossary_propose_entities 21, kg_add_nodes 20,
+        # book_chapter_save_draft 20, kg_project_create 18, glossary_adopt_standards 16.
+        #
+        # The record already named the owner: `pending_approval.tool`, present on all 482
+        # suspended runs on disk. Nothing read it.
+        if want and not called and rs:
+            blockers = Counter(
+                (r.get("pending_approval") or {}).get("tool")
+                for r in rs
+                if isinstance(r.get("pending_approval"), dict)
+                and (r["pending_approval"].get("tool") or "") != want)
+            if sum(blockers.values()) == len(rs):
+                who = ", ".join(f"{t} ({n})" for t, n in blockers.most_common())
+                print(f"    ^ NOT REACHED, NOT DECLINED: {want} was never called, and all "
+                      f"{len(rs)} run(s) stopped at a card belonging to another tool — {who}. "
+                      f"`called 0/{len(rs)}` here says the turn ended before {want}'s turn came, "
+                      "not that the model rejected it.")
         # THE DENOMINATOR THE LOOP SHOULD HAVE BEEN QUOTING. `surface has tool` counts RUNS whose
         # measured turn advertised it; "advertised in N of M" was then written as though M were
         # passes. Passes come from the store, cover every turn, and are what the wire log prints.
