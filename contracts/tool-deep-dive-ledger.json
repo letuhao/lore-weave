@@ -5200,15 +5200,20 @@
    "the_confirming_batch_REFUTED_half_of_what_i_inferred": "🔴 c-motiflink16 (K=5, concurrency 3) LANDED AFTER I WROTE THIS ROW AND SHOWED 2 OF 5 ReadTimeout. I had recorded, in this row's own what_is_NOT_covered, that the two presentations sharing a fate was an INFERENCE from 'them sharing a scenario and vanishing together'. They did not vanish together.\n\nSo this row's claim is narrowed to what is measured: the DUPLICATE-KEY 500 is fixed — 6 'interrupt-persist detached' events since deploy with zero unique-constraint violations, and c-motiflink15 clean 5/5. The ReadTimeout failures are a DIFFERENT cause and are back on their own row, which was wrongly superseded into this one."
   },
   "D-A-FIFTH-OF-SCENARIOS-DO-NOT-ASK-FOR-THEIR-OWN-TOOL": {
-   "status": "OPEN - censused 2026-08-27 while closing D-THE-SCENARIO-ASKS-A-DIFFERENT-QUESTION-THAN-THE-TOOL-ANSWERS.",
+   "status": "FIXED 2026-08-27 — the 109 are SPLIT, and the unambiguous half is gated with a shrink-only baseline. The other half is a synonym gap and is deliberately not gated.",
    "what": "That row fixed seven scenarios and asked for a gate so the class could not recur. Before building one, the population: `answerable_tools()` over the live catalogue against every scenario's own prompt.\n\n    495 scenarios name a federated tool_under_test\n    109 (22%) have a prompt whose own tool is NOT answerable from it\n      7 name a tool that declares NO synonyms, so it cannot match by construction",
    "why_a_blanket_gate_would_be_WRONG": "🔴 THE 109 ARE TWO DIFFERENT DEFECTS AND A GATE CANNOT TELL THEM APART. Sampled three:\n\n  world_get                   <- 'List my worlds.'                    SCENARIO defect: the prompt asks for a LIST and the tool gets ONE world.\n  registry_set_skill_enabled  <- 'What skills do I have available?'   SCENARIO defect: a read question for a tool that ENABLES.\n  composition_motif_bind_edit <- 'Attach the pattern called Emberfall Binding to this book's opening arc.'   NOT a scenario defect at all — that asks for exactly what the tool does. The MATCHER misses it, which is a missing synonym.\n\nSo a gate failing on 'prompt does not match its tool' would demand a prompt rewrite for cases that need a SYNONYM, and the loop has already measured twice today that rewriting a prompt which was fine makes things worse (composition_reference_update, and the registry_list_workflows description). Precision has to come first.",
    "the_shape_a_gate_would_take": "The repo already has the pattern for a large seeded population: a shrink-only baseline, like contracts/undeclared-emitter-baseline.json, or the OUT-2 lint's ALLOW list which seeded its 14 offenders as tracked debt. That is the right container — but only once the 109 are SPLIT, because a baseline mixing two defects cannot be worked down by either fix.",
    "the_next_measurement": "Classify the 109 by whether the prompt asks for the tool's ACTION. A cheap approximation: does the prompt's verb match the tool's tier — a read verb ('what', 'show', 'list') on a Tier A/W tool is the scenario defect; an action verb that still misses is a synonym gap. Neither half is expensive to fix once separated; the expense is doing it blind.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "instrument",
    "queue_group": 4,
-   "measured_by": "answerable_tools() over the live 316-tool catalogue against all 495 scenarios in scripts/toolloop/, 2026-08-27"
+   "measured_by": "tier scan over the MCP registrations (194 tools, 194/194 agreeing with the deployed catalogue) x 495 scenarios, 2026-08-27",
+   "the_split_the_row_asked_for": "Classified by (a READ-verb prompt) x (a Tier A/W tool), which is the test the row proposed:\n    84  SCENARIO defect — a read question for a tool that WRITES\n    25  SYNONYM gap     — the prompt asks for the action and the matcher still misses it\n     7  UNMATCHABLE     — the tool declares no synonyms at all\n\nThe 84 concentrate in six families — world_map_* (5 tools), settings_model_* (4), translation_* (4), registry_* (3), kg_triage_* (3), jobs_* (2) — which is what a shared bad prompt shape looks like. Sampled four for precision, all genuine:\n    world_map_update_marker        <- 'List my worlds.'\n    settings_model_set_favorite    <- 'List my registered AI models.'\n    translation_set_active_version <- 'List the Vietnamese translation versions ...'\n    registry_update_workflow       <- 'What workflows are available to me?'",
+   "the_gate_needs_no_running_stack": "It does NOT use answerable_tools — that was the whole reason a blanket gate would have been wrong, since a matcher miss is a synonym gap rather than a bad prompt. It tests the unambiguous half from source alone: tiers read from the MCP REGISTRATIONS in both languages, validated 194/194 against the deployed catalogue on the day it was written. So it runs in CI, which is the only place a gate stops the 61st offender being committed.",
+   "the_60_are_seeded_as_debt_not_fixed": "contracts/read-prompt-on-write-tool-baseline.json, shrink-only — the container undeclared-emitter-baseline.json uses and the choice the OUT-2 lint made with its 14 offenders. Two guards keep it honest: nothing may be ADDED, and a fixed entry must be REMOVED (a baseline that keeps stale entries is never worked down).\n\nThey are not rewritten because they are HISTORICAL batches — rebaseline, batch2, b20, b36 — and every tool involved is already `proven` through the corrected scenarios-c-ask.json prompts. Rewriting an archived measurement changes nothing that will ever be re-run. The gate's value is the 61st, not the 60.",
+   "what_is_NOT_covered": "- THE 25 SYNONYM GAPS ARE UNTOUCHED and ungated. They need a declaration on the TOOL, not a prompt rewrite, and which of the 25 deserve one is unmeasured — composition_motif_bind_edit ('Attach the pattern called ...') plainly does; a Tier-R read like registry_get_skill may not matter.\n- THE READ-VERB LIST IS A HEURISTIC. Eight openers ('what', 'show', 'list', 'which', 'who', 'how many', 'do i have', 'tell me about'). A read question phrased another way passes the gate, so this is a floor rather than a proof.\n- 194 OF 316 TOOLS ARE TIERED by the source scan; a scenario naming an untiered tool is skipped rather than flagged. The scan agrees with the live catalogue wherever both know a tool, but it does not know them all.\n- IT JUDGES THE PROMPT, NOT THE SCENARIO'S INTENT. A scenario that DELIBERATELY asks a read question of a write tool — to prove the model refuses — would be flagged, and would have to be added to the baseline with a reason. None exists today.",
+   "red_able": "scripts/test_a_scenario_asks_for_its_own_tool.py, 4 guards. Both directions falsified: a NEW read-question scenario on settings_model_set_favorite reds the gate by name, and a stale baseline entry reds the shrink check. Files restored; whole scripts suite 545 passed."
   }
  },
  "deferred_questions": {
@@ -5870,7 +5875,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 59,
+  "defects_open": 58,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5886,7 +5891,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 190,
-  "defects_fixed": 90,
+  "defects_fixed": 91,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },
