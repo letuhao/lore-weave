@@ -141,6 +141,17 @@ class Gate:
             _why = (f"{len(errs)} run(s) errored and {len(_prov)} of them is a PROVISION failure — "
                     f"the SEED could not build the fixture, so this is not the platform: "
                     f"{str(_prov[0].get('error'))[:150]}")
+        # D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE, the diagnosis half. A run whose STORE
+        # SNAPSHOT could not be taken is unusable for the same reason and points somewhere
+        # ELSE: not the provider, not the fixture, but Postgres refusing the probe (measured
+        # 2026-08-22 at 96 of 100 connections). Same verdict, third diagnosis.
+        _snap = [r for r in errs
+                 if str(r.get("error") or "").lstrip().upper().startswith("SNAPSHOT")]
+        if _snap:
+            _why = (f"{len(errs)} run(s) errored and {len(_snap)} of them is a SNAPSHOT failure "
+                    f"— the store could not be READ, so this run measures nothing about the "
+                    f"tool and nothing about the fixture either: "
+                    f"{str(_snap[0].get('error'))[:150]}")
         self._check(not errs, f"[{t['tool']}] LIVE clean", _why)
         # 🔴 THE GATE COULD NOT TELL "THE TOOL RAN" FROM "THE TURN RAN".
         #

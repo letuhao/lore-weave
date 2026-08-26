@@ -3440,7 +3440,7 @@
    "what_the_dq_asks": "DQ-T32 asks whether to relax the matcher, and how."
   },
   "D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-22, while asking whether the Postgres exhaustion could have damaged evidence already on disk",
    "service": "scripts/toolloop/store_snapshot.py (the harness, not the platform)",
    "invariant": "A snapshot that FAILED is not a snapshot. A probe that could not run must make the RUN unusable — never appear as a value the diff can compare.",
@@ -3450,8 +3450,13 @@
    "blast_radius": "🔴 SWEPT, not sampled: 1,581 runs across every evidence file on disk. EXACTLY ONE carries the sentinel — batch19-v4, composition_motif_link_edit, run 1 — and ZERO have an empty store.before. That tool's ledger row cites batch19-v5, a later arm, so the damaged run drove no conclusion. The evidence base is intact and this is a latent defect rather than a correction.",
    "cause_of_the_trigger": "The stack idles at 96 of 100 Postgres connections (default max_connections, never overridden), leaving four for tooling. Raised to 300 the same day — see the infra commit. That removes the trigger; it does not remove the defect, because any failed probe takes the same path.",
    "fix": "PENDING — raise from _psql instead of returning a sentinel, so a failed probe surfaces as a run error and the gate's existing 'LIVE clean' bar refuses the batch. Held back deliberately while a 125-run live batch was using the module.",
-   "status": "open — found 2026-08-22, blast radius SWEPT and bounded, chokepoint fix pending",
-   "defect_class": "instrument"
+   "status": "FIXED — the chokepoint fix was ALREADY SHIPPED and this row still said PENDING. Verified end to end 2026-08-26, and the one thing genuinely left (the diagnosis) is done.",
+   "defect_class": "instrument",
+   "the_row_was_STALE_the_fix_was_in": "The row reads `fix: PENDING ... Held back deliberately while a 125-run live batch was using the module`. Re-derived: `_psql` RAISES `SnapshotUnavailable`, its docstring records the whole defect in the past tense, `_scoped_tables` says 'No sentinel filter any more', and scripts/test_a_failed_snapshot_is_not_a_snapshot_gate.py already guards it (4 tests, green). No code path emits the sentinel — the only two occurrences of that string are inside the docstring explaining what it used to do.\n\nSo the work was done and the row was never updated. Checking the code before working from the row is what turned this from a cycle of implementation into a cycle of verification.",
+   "verified_end_to_end": "The invariant is 'a probe that could not run must make the RUN unusable'. Traced through the caller: both the BEFORE and AFTER snapshot calls sit inside fe_runner's per-repeat try, so a raise returns a run carrying an `error`, and the gate's existing LIVE-clean bar refuses the batch. Exercised directly: `_psql('no_such_database_at_all', ...)` raises SnapshotUnavailable rather than returning anything the diff could compare.",
+   "what_was_actually_left_the_DIAGNOSIS": "A failed snapshot was labelled `PROVISION`, so the gate reported 'the SEED could not build the fixture, so this is not the platform'. That is false for a snapshot failure and sends the reader at the fixture instead of at Postgres — the SAME mistake the gate's own comment records making once already ('A PROVISION FAILURE IS NOT A TRANSPORT FAILURE, and calling it one sends the reader at the platform').\n\nA snapshot failure now carries its own label and its own sentence. Three causes, three diagnoses, one verdict:\n    SNAPSHOT  -> 'the store could not be READ, so this run measures nothing about the tool and nothing about the fixture either'\n    PROVISION -> 'the SEED could not build the fixture, so this is not the platform'\n    other     -> 'a transport failure is not a model result'",
+   "what_is_NOT_covered": "- NO NEW GUARD FOR THE DIAGNOSIS. The three branches were exercised directly and print the right sentence, but nothing fails the build if a fourth error class is added and reuses the wrong one. The existing 4-test gate covers the RAISE, which is the invariant.\n- THE TRIGGER IS GONE BUT UNVERIFIED HERE. The row records max_connections raised 100 -> 300 the same day; I did not re-check the live setting, because the fix is deliberately independent of the trigger — any failed probe takes the same path.\n- THE ONE DAMAGED RUN ON DISK IS UNTOUCHED. batch19-v4 / composition_motif_link_edit run 1 still carries the sentinel in its stored diff. The row's own sweep showed it drove no conclusion (the ledger cites batch19-v5), so it is left as the historical record it is.",
+   "measured_by": "store_snapshot._psql exercised against a bad database, 2026-08-26; caller traced through fe_runner; the three gate diagnoses exercised directly"
   },
   "D-DATA-BAR-BLIND-TO-A-NON-BOOK-SCOPED-STORE": {
    "state": "fixed",
@@ -5807,7 +5812,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 63,
+  "defects_open": 62,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5823,7 +5828,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 188,
-  "defects_fixed": 84,
+  "defects_fixed": 85,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },

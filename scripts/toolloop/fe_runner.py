@@ -47,7 +47,7 @@ from collections import Counter
 import httpx
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from store_snapshot import diff as store_diff, snapshot  # noqa: E402
+from store_snapshot import diff as store_diff, snapshot, SnapshotUnavailable  # noqa: E402
 from provision import Throwaway  # noqa: E402
 from approvals import ApprovalState  # noqa: E402
 
@@ -614,6 +614,18 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
                 r["store"] = {"before": before, "after": after}
                 r["store_diff"] = store_diff(before, after)
                 return r
+            except SnapshotUnavailable as e:
+                # D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE, the diagnosis half. The raise
+                # already makes the run unusable, which is the invariant — but labelling it
+                # PROVISION made the gate report "the SEED could not build the fixture", and a
+                # failed AFTER snapshot has nothing to do with the seed. That is the same error
+                # the gate's own comment records making once already ("A PROVISION FAILURE IS NOT
+                # A TRANSPORT FAILURE, and calling it one sends the reader at the platform").
+                # The verdict is identical — this is not evidence about the tool — and the
+                # DIAGNOSIS is a different place to go looking.
+                return {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
+                        "surface": None, "surfaces": [], "store_diff": {},
+                        "error": f"SNAPSHOT {type(e).__name__}: {e}"}
             except Exception as e:  # noqa: BLE001 — a provisioning failure is REPORTED, never
                 # silently skipped: a scenario that vanishes from the report reads as passing.
                 return {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
