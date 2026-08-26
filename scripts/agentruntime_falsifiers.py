@@ -1617,9 +1617,16 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     # so the refusal can quote what the tool DECLARES instead of claiming nothing is
     # declared. Anchored on the ARGUMENT line (single-line, unique) rather than the wrapped
     # call head — a multi-line anchor is a newline-escape trap in this file.
+    # The anchor moved 2026-08-26 TWICE. First when the call gained the conversation, so the owed
+    # arm could see an id handed over in a PRIOR turn
+    # (D-THE-OWED-REFUSAL-DENIES-AN-ID-THE-MODEL-WAS-JUST-HANDED); then again when a live K=10 run
+    # showed that half fires ZERO times, because a prior turn's tool RESULT is not in the
+    # conversation at all — it lives on the assistant row's tool_calls column. The call now also
+    # threads the server's own record. The injected drift is unchanged: neutralise the helper and
+    # let the call site speak for itself.
     "test_the_CALL_SITE_uses_the_helper_not_its_own_sentence": [
         (f"{CS}/app/services/stream_service.py",
-         '                            c["name"], _missing_args, _c_block, _ma_props)',
+         '                            history=working, also_returned=_ma_prior)',
          '                            "These carry the actual CONTENT (not ids)")'),
     ],
     "test_A_MODEL_SUPPLIED_ARGUMENT_KEEPS_THE_ORIGINAL_MESSAGE": [

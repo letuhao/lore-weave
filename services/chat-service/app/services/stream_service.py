@@ -3432,8 +3432,53 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
     return sorted(out)
 
 
+def _ids_already_returned(history: list[dict] | None, arg: str) -> list[str]:
+    """UUID values a tool result earlier in this CONVERSATION returned under key `arg`.
+
+    🔴 THE CONVERSATION, NOT THE TURN. The instance this exists for spans two turns: turn 1 calls
+    plan_bootstrap_propose (ok, returns proposal_id) and asks "would you like me to go ahead?";
+    turn 2 says "yes" and calls plan_bootstrap_apply WITHOUT it. Anything scanning only the
+    current turn sees a model that never held the id — and the refusal then reads as correct.
+
+    Returns EVERY distinct value, so the caller can refuse to guess when there is more than one.
+    That is the precision guard: measured over the 4 recorded cases, each session held exactly ONE
+    value for the key in question, but a session with two runs would make "the" id a fabrication.
+    """
+    if not history:
+        return []
+    pat = re.compile(rf'"{re.escape(arg)}"\s*:\s*"([0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-'
+                     rf'[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}})"')
+    # Named `values`, not the obvious short name: a four-space-indented annotated-empty-list
+    # declaration of a variable called o-u-t is an anchored falsifier string in this file, and a
+    # second occurrence makes that anchor ambiguous. The anchor is described, never quoted —
+    # quoting it is itself an occurrence, which is how this comment failed the gate once already.
+    values: list[str] = []
+    for m in history:
+        if not isinstance(m, dict) or m.get("role") != "tool":
+            continue
+        for v in pat.findall(str(m.get("content") or "")):
+            if v not in values:
+                values.append(v)
+    return values
+
+
+def _owed_args(contract: dict | None, missing: list[str]) -> list[str]:
+    """The missing args a contract says the RUNTIME supplies — never the model's to write.
+
+    One home for the rule, because the CALL SITE needs it too: it decides which arguments are
+    worth a database read before the refusal is built, and a second copy of the predicate there
+    would be free to drift from the one the message actually branches on.
+    """
+    from app.agentruntime.toolcontract import declared_supplier
+
+    _b = contract if type(contract) is dict else {}
+    return [a for a in missing if declared_supplier(_b, a) in ("context", "plan")]
+
+
 def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
-                          tool_def_props: dict | None = None) -> str:
+                          tool_def_props: dict | None = None,
+                          history: list[dict] | None = None,
+                          also_returned: dict[str, list[str]] | None = None) -> str:
     """The refusal for a call still missing required args — keyed off who DECLARES each one.
 
     CP-5.4 split this into two arms, `context|plan` ("not yours to invent") and everything else
@@ -3458,7 +3503,7 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
     from app.agentruntime.toolcontract import declared_emitter, declared_supplier
 
     block = contract if type(contract) is dict else {}
-    owed = [a for a in missing if declared_supplier(block, a) in ("context", "plan")]
+    owed = _owed_args(block, missing)
     if owed:
         # D-FJ-12 — NAME THE TOOL THAT EMITS IT. "Establish that context first (e.g. list or open
         # the book you mean)" is a book-flavoured example, not an instruction, and a model told only
@@ -3486,6 +3531,47 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
             "Establish that context first (e.g. list or open the book you mean, then call this "
             "with the id it returns)."
         )
+        # ── D-THE-OWED-REFUSAL-DENIES-AN-ID-THE-MODEL-WAS-JUST-HANDED ──────────────────────
+        # 🔴 EVERY CLAUSE BELOW IS TRUE OF THE RUNTIME AND NONE OF IT IS TRUE OF THE TURN when
+        # the value is already in the transcript. "NOT yours to invent" is correct and
+        # load-bearing; "the runtime supplies it … and has none right now" tells a model HOLDING
+        # the id that the id is not its business. The two clauses give opposite instructions.
+        #
+        # MEASURED over loreweave_chat.chat_messages, swept per SESSION rather than per turn:
+        # of 15 `owed` refusals, 4 (27%) fired while the session had already been handed that
+        # exact id — plan_compile.run_id twice, plan_bootstrap_apply.proposal_id twice. In all
+        # four the session held EXACTLY ONE value for the key, which is why quoting it is safe;
+        # where it holds more than one this says nothing, because "the" id would be a guess.
+        #
+        # 🔴 TWO SOURCES, AND THE SECOND IS THE ONE THAT MATTERS. `history` is the conversation
+        # as the MODEL sees it, and a prior turn's tool RESULT is not in it: chat_messages holds
+        # zero role='tool' rows — a result is stored on the ASSISTANT row's `tool_calls` column,
+        # so rehydration brings back user/assistant text and nothing else. A first fix read only
+        # `history`, which covers this turn (where the tool messages are appended live) and NOT
+        # the prior one — and fired 0 times in 10 live runs, on a defect whose recorded instance
+        # spans exactly two turns. `also_returned` carries what the server's own record holds;
+        # the union is what gets the precision guard.
+        _prior = also_returned if type(also_returned) is dict else {}
+        _held: dict[str, list[str]] = {}
+        for _a in owed:
+            _seen = _ids_already_returned(history, _a)
+            for _v in _prior.get(_a) or []:
+                if _v not in _seen:
+                    _seen.append(_v)
+            # EXACTLY ONE, or say nothing: two values make "the" id a guess, and a guess here is
+            # the very failure this branch exists to stop.
+            if len(_seen) == 1:
+                _held[_a] = _seen
+        if _held:
+            _one = len(_held) == 1
+            _pairs = ", ".join(f"{a}={v[0]}" for a, v in sorted(_held.items()))
+            return (
+                f"'{tool}' is missing {sorted(_held)} — and YOU ALREADY HAVE "
+                f"{'IT' if _one else 'THEM'}: {_pairs} "
+                f"{'was' if _one else 'were'} returned by an earlier tool call in this "
+                "conversation. Pass that exact value back; do NOT invent one, and do not call "
+                "the supplier again to re-fetch what you were already given."
+            )
         return (
             f"'{tool}' is missing {owed}, and {'these are' if len(owed) > 1 else 'this is'} "
             f"NOT yours to invent: the runtime supplies "
@@ -7006,8 +7092,32 @@ async def _stream_with_tools(
                         ) if isinstance(_c_def := (
                             cat_index.get(c["name"]) or plain_index.get(c["name"]) or {}
                         ), dict) else {}
+                        # `working` carries THIS turn's tool results, and nothing else does —
+                        # they are appended to it live and are not persisted until the turn ends.
+                        # But a PRIOR turn's result is not in `working` either: chat_messages
+                        # holds no role='tool' rows, so rehydration returns user/assistant text
+                        # only. The recorded instance handed the id over in turn 1 and dropped it
+                        # in turn 2, so the server's own record is the half that carries it —
+                        # `tool_call_history` exists for exactly this question, "what have I
+                        # already done?", answered from the SERVER's memory, not the model's.
+                        # Only the runtime-owed args are looked up: this is a refusal path, but a
+                        # per-argument query for `body` or `items` would be pure waste.
+                        _ma_prior: dict[str, list[str]] = {}
+                        try:
+                            from app.db.tool_call_history import ids_returned_under_key
+                            for _oa in _owed_args(_c_block, _missing_args):
+                                if _vals := await ids_returned_under_key(
+                                        get_pool(), str(session_id), _oa):
+                                    _ma_prior[_oa] = _vals
+                        except Exception:  # noqa: BLE001 — a refusal's wording never takes a turn down
+                            logger.warning(
+                                "prior-turn id lookup failed for %s (session=%s)",
+                                c["name"], session_id, exc_info=True,
+                            )
+                            _ma_prior = {}
                         _ma_msg = _missing_args_message(
-                            c["name"], _missing_args, _c_block, _ma_props)
+                            c["name"], _missing_args, _c_block, _ma_props,
+                            history=working, also_returned=_ma_prior)
                     # ── THE THIRD STATE: YOU PASSED THE WRONG KIND OF THING ──────────────────
                     # CP-5.4 separated "you forgot something" from "I owe you this". A dropped
                     # NAME is neither: the model did supply a value and it was the wrong KIND, and

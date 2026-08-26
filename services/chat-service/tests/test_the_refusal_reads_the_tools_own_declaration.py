@@ -107,4 +107,9 @@ class TestTheCallSitePassesTheProperties:
         assert "cat_index.get(" in binding, "the properties no longer come from the catalog"
         assert '"properties"' in binding
         call = src[j:j + 200]
-        assert "_ma_props)" in call, "the resolved properties are not passed to the helper"
+        # Either terminator: `_ma_props` stopped being the LAST argument on 2026-08-26, when the
+        # call gained `also_returned` so the owed arm could see an id a PRIOR turn returned. The
+        # closing paren was never the bar — being passed at all is — and pinning it would have
+        # made a guard that reds on argument ORDER while staying green on the argument going away.
+        assert ("_ma_props," in call or "_ma_props)" in call), (
+            "the resolved properties are not passed to the helper")
