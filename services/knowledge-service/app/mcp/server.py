@@ -1383,8 +1383,25 @@ async def kg_add_nodes(
     ctx: MCPContext,
     mode: Annotated[
         Literal["manual", "from_glossary"],
-        "manual = create one node (name+kind); from_glossary = project the book's glossary "
-        "entities into the graph.",
+        # D-A-TWO-ENDPOINT-EDGE-NEEDS-N-SEQUENTIAL-CONFIRM-CARDS — the old wording was
+        # "manual = create one node (name+kind); from_glossary = project the book's glossary
+        # entities into the graph." It states neither CARDINALITY nor COST, so a model asked to
+        # record a relationship between two characters matched "create one node" to its task and
+        # repeated it: measured 5/5 manual and 0/5 from_glossary, with 4/5 turns ending suspended
+        # holding a single node id before kg_propose_edge was ever reached. On two of those runs
+        # it called tool_load to RE-READ this description first and still chose manual — it read
+        # the words and the words did not carry the fact.
+        #
+        # Both modes are Tier A, so each CALL costs one confirm card. That is the whole
+        # asymmetry: manual is one node per card, from_glossary is many per card. State the two
+        # facts and nothing else — this loop has measured twice that telling the model HOW to
+        # choose makes it choose worse (see D-WORKFLOW-LIST-DESCRIBES-A-PAYLOAD, where the
+        # self-filter invitation was reverted).
+        "manual = create ONE node from a name+kind — one confirm card per node, so N nodes "
+        "cost N calls and N approvals. from_glossary = create nodes for MANY glossary entities "
+        "the book already has, in a SINGLE call behind ONE confirm card (optionally narrowed by "
+        "entity_ids). If you need several nodes and they are already glossary entities, "
+        "from_glossary reaches them all in one call.",
     ],
     name: Annotated[str | None, "mode=manual: the entity's name."] = None,
     kind: Annotated[
