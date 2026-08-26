@@ -4606,11 +4606,18 @@ async def composition_motif_archive(
             # about a row it just listed, with no path back to the working call. Name the remedy
             # for that one recoverable case; every other miss keeps the uniform refusal.
             if await owns_motif(get_pool(), tc.user_id, mid):
+                # 🔴 THIS REMEDY NAMED A DEAD TOOL — mine, from earlier the same day.
+                # composition_motif_archive is `visibility: legacy` (superseded_by
+                # composition_motif_edit), and since 2026-08-25 drop_superseded_tools removes
+                # EVERY legacy tool from the turn catalogue unconditionally. So "call
+                # composition_motif_archive again" named something the chat turn cannot see —
+                # and naming a tool is what ARMS it, so the instruction spent the one mechanism
+                # that could have carried it. Name the live tool and its op.
                 raise ValueError(
                     "that motif is YOURS and is not shared into this book, so the book-scoped "
-                    "archive cannot reach it. Call composition_motif_archive again "
-                    "WITHOUT book_id to archive your own motif. Pass book_id only for a motif "
-                    "already SHARED into that book's graph."
+                    "archive cannot reach it. Call composition_motif_edit with op='archive' "
+                    "again WITHOUT book_id to archive your own motif. Pass book_id only for a "
+                    "motif already SHARED into that book's graph."
                 )
             raise uniform_not_accessible()
         await repo.archive_shared(tc.user_id, mid, bid)
@@ -4666,11 +4673,13 @@ async def composition_motif_restore(
         # remedy as archive: only when the caller OWNS the row, so the uniform refusal still
         # covers every miss that could be an existence oracle.
         if book_id is not None and await owns_motif(get_pool(), tc.user_id, mid):
+            # Same dead-tool correction as the archive half above: composition_motif_restore is
+            # visibility=legacy and is dropped from every turn catalogue.
             raise ValueError(
                 "that motif is YOURS and is not shared into this book, so the book-scoped restore "
-                "cannot reach it. Call composition_motif_restore again WITHOUT book_id to restore "
-                "your own motif. Pass book_id only for a motif already SHARED into that book's "
-                "graph."
+                "cannot reach it. Call composition_motif_edit with op='restore' again "
+                "WITHOUT book_id to restore your own motif. Pass book_id only for a motif "
+                "already SHARED into that book's graph."
             )
         raise uniform_not_accessible()
     out = motif.model_dump(mode="json")

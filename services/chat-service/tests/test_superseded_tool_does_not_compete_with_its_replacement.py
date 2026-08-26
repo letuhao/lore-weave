@@ -170,7 +170,14 @@ class TestTheWithholdingIsRecorded:
         td = (pathlib.Path(__file__).resolve().parents[1]
               / "app" / "services" / "tool_discovery.py").read_text(encoding="utf-8")
         i = td.index("def drop_superseded_tools(")
-        body = td[i:i + 4500]
+        # 🔴 THIS WAS td[i:i+4500] — A FIXED BYTE WINDOW, and adding five lines of docstring
+        # on 2026-08-26 pushed `record_surface_withheld(` past the cut while the call sat
+        # exactly where it always had. A window that size measures how much PROSE precedes the
+        # code, which is not a property worth pinning. Bound the slice by the function's own
+        # END (the next top-level def) so it grows with the body.
+        _rest = td[i + 1:]
+        _end = _rest.find("\ndef ")
+        body = td[i:] if _end < 0 else td[i: i + 1 + _end]
         assert "record_surface_withheld(" in body, (
             "a narrowed surface that is not registered reads as 'this tool does not exist'")
         assert 'stage="superseded"' in body

@@ -9595,11 +9595,11 @@ async def stream_response(
                 # specific name for the exact ask — so three unified tools scored 0/5 while
                 # nothing was actually wrong with them.
                 #
-                # The rule is narrower than "drop every legacy tool": only when the named
-                # replacement is present in this same catalog, which makes the swap
-                # capability-preserving by construction. 31 of the 117 legacy tools name no
-                # replacement (book_create, book_chapter_publish, book_chapter_delete …) and are
-                # deliberately left alone.
+                # CORRECTED 2026-08-25/26: this used to read "The rule is narrower than
+                # 'drop every legacy tool': only when the named replacement is present".
+                # The rule was WIDENED on 2026-08-25 — every legacy tool is dropped, with
+                # or without a replacement. The old text is preserved in
+                # drop_superseded_tools' docstring, labelled as history.
                 from app.services.tool_discovery import drop_superseded_tools
                 discovery_catalog, _superseded = drop_superseded_tools(
                     discovery_catalog, set(session_row.get("pinned_legacy_tools") or ())

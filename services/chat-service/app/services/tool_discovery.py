@@ -477,7 +477,13 @@ def drop_superseded_tools(
     more specific name for the exact ask — the model called the legacy tool on 3 of 5
     scenarios, so the unified tool under test scored 0/5 while nothing was actually wrong.
 
-    🔴 THE RULE IS DELIBERATELY NARROWER THAN "DROP EVERY LEGACY TOOL". Of the 117 legacy
+    🔴 SUPERSEDED 2026-08-25 — THE PARAGRAPH BELOW DESCRIBES THE OLD RULE. It is kept
+    because the reasoning still explains what the narrow rule was FOR, but it is no longer
+    what this function does: the loop below drops EVERY legacy tool, replacement or not.
+    A docstring that states the opposite of the code beneath it is worse than none — this
+    one was read, believed, and quoted into a defect report before the code was checked.
+
+    THE RULE WAS DELIBERATELY NARROWER THAN "DROP EVERY LEGACY TOOL". Of the 117 legacy
     tools, 31 name NO ``superseded_by`` — including ``book_create``, ``book_chapter_publish``
     and ``book_chapter_delete``. Dropping those would delete reach the platform still needs
     with nothing to redirect to. So a tool is dropped ONLY when its named replacement is

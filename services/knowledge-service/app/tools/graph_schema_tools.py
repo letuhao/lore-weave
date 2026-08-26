@@ -2366,9 +2366,15 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
             # all — so two of the three callers were told to pass an argument that does
             # not exist. Name the TOOLS instead of "this tool": a shared message must be
             # true from every caller, and only one of the three was ever tested.
+            #
+            # 2026-08-26: kg_adopt_template is visibility=legacy, and since 2026-08-25
+            # every legacy tool is dropped from the turn catalogue unconditionally — so
+            # the FIRST tool this refusal named could never be called. kg_ontology_propose
+            # is the live one and was already here as the parenthetical alternative; it is
+            # now the instruction.
             "this project has no adopted ontology to edit — call kg_list_templates to "
-            "pick one, then kg_adopt_template (or kg_ontology_propose with "
-            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "pick one, then kg_ontology_propose with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the "
             "System template is read-only and admin-managed, so it cannot be edited in "
             "place)"
         )
@@ -2600,9 +2606,15 @@ async def _handle_kg_triage_schema_write(
             # all — so two of the three callers were told to pass an argument that does
             # not exist. Name the TOOLS instead of "this tool": a shared message must be
             # true from every caller, and only one of the three was ever tested.
+            #
+            # 2026-08-26: kg_adopt_template is visibility=legacy, and since 2026-08-25
+            # every legacy tool is dropped from the turn catalogue unconditionally — so
+            # the FIRST tool this refusal named could never be called. kg_ontology_propose
+            # is the live one and was already here as the parenthetical alternative; it is
+            # now the instruction.
             "this project has no adopted ontology to edit — call kg_list_templates to "
-            "pick one, then kg_adopt_template (or kg_ontology_propose with "
-            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "pick one, then kg_ontology_propose with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the "
             "System template is read-only and admin-managed, so it cannot be edited in "
             "place)"
         )
