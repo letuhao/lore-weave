@@ -1436,8 +1436,13 @@ async def kg_add_nodes(
     ] = None,
     entity_ids: Annotated[
         list[str] | None,
-        "mode=from_glossary: optional specific glossary entity ids; omit for the whole "
-        "active glossary.",
+        # It said "optional specific glossary entity ids" and never that they are UUIDs, nor
+        # where one comes from — so a NAME is the obvious thing to pass, and the model passed
+        # two (measured, batch c-kgedge3). Omitting is the easier and usually correct route,
+        # so say that first.
+        "mode=from_glossary: OMIT this to project the book's whole active glossary — that is "
+        "the usual call. Supply it only to narrow to specific entities, as glossary entity "
+        "UUIDs from glossary_search (not names).",
     ] = None,
     project_id: _PROJECT_ID_ARG = None,
 ) -> dict:

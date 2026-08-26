@@ -5044,15 +5044,20 @@
    "measured_by": "deployed ai-gateway catalogue vs workflowMeta in services/agent-registry-service/internal/api/workflows.go, 2026-08-26"
   },
   "D-FROM-GLOSSARY-REPORTS-SUCCESS-HAVING-CREATED-NOTHING": {
-   "status": "OPEN - measured 2026-08-26, batch c-kgedge3, on the one run that used the mode.",
+   "status": "FIXED - proven on the deployed build in BOTH directions: the measured call is refused with an actionable message, and the path that works is untouched.",
    "what": "kg_add_nodes mode=from_glossary was called with entity_ids=['Mira Solene', 'Aldric Vane'] - NAMES, where the argument takes glossary entity UUIDs. The tool returned:\n    ok: true, nodes: [], entities_seen: 0, nodes_created: 0, nodes_existing: 0\nand the activity strip recorded 'Did kg_add_nodes'. A call that matched nothing, created nothing and touched nothing is reported to the model, and to the human's activity feed, as a completed write.",
    "why_it_matters": "The model has no way to tell this apart from a real projection. Its next move assumes two nodes exist. `entities_seen: 0` is the tool's own evidence that the argument matched nothing - it is IN the payload and nothing acts on it. This is the same shape as an unconditional success that discards its own signal.",
    "the_two_halves": "(1) A zero-match from_glossary should say so - 'none of the 2 entity_ids matched a glossary entity in this book' - rather than ok:true with empty counts. (2) The arg description reads 'mode=from_glossary: optional specific glossary entity ids; omit for the whole active glossary' and never says they are UUIDs, nor where to get them (glossary_search / glossary_propose_entities return them). A name is the obvious thing to pass.",
    "not_investigated": "Whether the omit-entirely path (no entity_ids, 'the whole active glossary') works - it was never exercised, and it is the path that would have projected both characters in one call.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
    "queue_group": 3,
-   "measured_by": "chat_messages.tool_calls, session f954e3, batch c-kgedge3"
+   "measured_by": "direct MCPDirect probe of both directions against the deployed build, 2026-08-26; the original observation in docs/eval/toolloop/2026-08-14/c-kgedge3.json",
+   "the_fix_is_narrow_and_the_narrowness_is_the_point": "The predicate is 'the caller NAMED entity_ids AND none of them matched', not 'nothing was projected'. Omitting entity_ids means 'the whole active glossary', and a book whose glossary is genuinely empty is a legitimate no-op - that is ALSO the route measured working end to end in c-kgedge4 (entities_seen 2, both nodes created, edge parked, 5/5). Refusing on a bare zero would have closed this row by breaking the only path that succeeds, which is the kind of fix this loop exists to catch.\n\nThe PARTIAL match gets a note rather than a refusal: naming five ids and matching three is the same defect in miniature - a cheerful success that never mentions the two which do not exist - but three real nodes WERE created and refusing would throw them away.",
+   "also_fixed_the_argument_that_invited_the_mistake": "The description read 'mode=from_glossary: optional specific glossary entity ids; omit for the whole active glossary'. It never said they are UUIDs, and never said where one comes from - so a NAME is the obvious thing to pass, and the model passed two. It now leads with the easier and usually-correct route (omit it) and says the ids are glossary entity UUIDs from glossary_search, not names.",
+   "proof": "Deployed build, file sha256-verified equal in the container, gateway re-federated:\n\n  A) THE MEASURED DEFECT - entity_ids=['Mira Solene','Aldric Vane']:\n     REFUSED: 'none of the 2 entity_ids matched a glossary entity in this book, so nothing was projected and the graph is unchanged. `entity_ids` takes glossary entity UUIDs, not names - get them from glossary_search, or omit the argument entirely to project the book's whole active glossary.'\n     Before: ok:true, nodes:[], entities_seen:0, nodes_created:0, and 'Did kg_add_nodes' in the activity strip.\n\n  B) THE RECALL CONTROL - entity_ids omitted, on a project whose glossary is empty:\n     OK, entities_seen=0, nodes_created=0 - NOT refused, because no ids were named. This is the case that would have caught a too-wide predicate, and it is the reason it was run.",
+   "what_is_NOT_covered": "- NO CHAT BATCH. The refusal fires only when the model passes ids that match nothing, and after the argument description changed it has no reason to - the batch that produced this defect (c-kgedge3) is exactly the run whose behaviour the sibling fix moved. Engineering a prompt to force bad ids would be building a scenario to hit my own fix; the live proof is the direct probe of both directions.\n- THE ACTIVITY STRIP IS UNTOUCHED. 'Did kg_add_nodes' was the human-facing half of the same falsehood, and a refused call no longer reaches it - but a call that projects ZERO nodes legitimately (empty glossary, path B) still records 'Did kg_add_nodes' to a human. Not fixed, not measured, and arguably correct.\n- OTHER ZERO-EFFECT SUCCESSES IN THIS FAMILY ARE UNAUDITED. The same shape - a filter argument that matches nothing and returns ok:true with empty counts - is available to any tool taking an id list. Only this one was measured and only this one is fixed.",
+   "red_able": "services/knowledge-service/tests/unit/test_a_projection_that_matched_nothing_is_not_a_success.py, 10 guards including a four-case truth table that drives the REAL handler. Inverse edit - the guard disabled with `if False and ...` - reds the measured case; source restored byte-identical.\n\n🔴 AND THE INJECTION EXPOSED A WEAKNESS IN MY OWN GUARDS. The SOURCE-TEXT assertions stayed GREEN through it, because `if False and entity_ids and res.seen == 0` still contains the string they look for. Only the behavioural case caught it. A grep-style guard cannot see a predicate that has been switched off in front of it, which is exactly why the truth table was rewritten to call the handler instead of re-implementing it - an earlier draft asserted the predicate against itself and would have been green throughout.\nWhole knowledge suite: 4308 passed, 3 pre-existing failures unchanged."
   },
   "D-ENTITY-ID-MEANS-TWO-DIFFERENT-IDS-IN-ADJACENT-TOOLS": {
    "status": "FIXED - proven live 2026-08-26, batch c-kgedge4, K=5: the turn completes end to end on 5 of 5 runs (0 of 5 the batch before). Two id families, a description that named neither, and a recovery path that named a DEAD tool.",
@@ -5728,7 +5733,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 70,
+  "defects_open": 69,
   "deferred_questions": 24,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5744,7 +5749,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 187,
-  "defects_fixed": 78,
+  "defects_fixed": 79,
   "defects_withdrawn": 13,
   "defects_superseded": 1
  },

@@ -2194,6 +2194,25 @@ async def _handle_kg_project_entities_to_nodes(
                 ctx.project_id,
                 exc_info=True,
             )
+    # 🔴 A CALL THAT MATCHED NOTHING REPORTED SUCCESS. Measured 2026-08-26, batch c-kgedge3:
+    # the model called this with entity_ids=["Mira Solene", "Aldric Vane"] — NAMES, where the
+    # argument takes glossary entity UUIDs — and got back
+    #     ok: true, nodes: [], entities_seen: 0, nodes_created: 0
+    # with the activity strip recording "Did kg_add_nodes". Its next move assumed two nodes
+    # existed. `entities_seen: 0` is the tool's own evidence that the argument matched nothing,
+    # sitting in the payload with nothing acting on it.
+    #
+    # NARROW ON PURPOSE — only when the caller NAMED ids. Omitting entity_ids means "the whole
+    # active glossary", and a book whose glossary is genuinely empty is a legitimate no-op, not
+    # an error; that is also the path measured WORKING in c-kgedge4 (entities_seen 2, both nodes
+    # created, 5/5), so refusing on a bare zero would have broken the one route that succeeds.
+    if entity_ids and res.seen == 0:
+        raise ToolExecutionError(
+            f"none of the {len(entity_ids)} entity_ids matched a glossary entity in this "
+            "book, so nothing was projected and the graph is unchanged. `entity_ids` takes "
+            "glossary entity UUIDs, not names — get them from glossary_search, or omit the "
+            "argument entirely to project the book's whole active glossary."
+        )
     out: dict = {
         "nodes_created": res.created,
         "nodes_existing": res.existing,
@@ -2210,6 +2229,15 @@ async def _handle_kg_project_entities_to_nodes(
         out["nodes_truncated"] = True
     # Never report a PARTIAL projection as a complete one.
     notes: list[str] = []
+    # The zero-match case refuses above; the PARTIAL match is the same defect in miniature —
+    # naming five ids and matching three returns a cheerful success that never mentions the two
+    # that do not exist, and the caller's next step assumes all five are nodes.
+    if entity_ids and 0 < res.seen < len(entity_ids):
+        notes.append(
+            f"only {res.seen} of the {len(entity_ids)} entity_ids matched a glossary entity in "
+            "this book — the rest were not projected and are NOT nodes. `nodes` lists exactly "
+            "what exists now"
+        )
     if res.nodes_truncated:
         notes.append(
             f"more than {len(out['nodes'])} nodes were projected; `nodes` lists the first of "
