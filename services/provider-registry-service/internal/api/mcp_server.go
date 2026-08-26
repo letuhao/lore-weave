@@ -73,8 +73,14 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_list_models",
-		Description: "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
+		Description: "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags — the fields you choose a model BY. Pass detail=full for pricing, notes, timestamps and the provider credential id. Returns a small page by default; `page.has_more` and `page.total` say what was withheld, and `limit` raises it. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"models", "my models", "list models", "registered models", "llm"}),
+		// IN-3 — `detail` is a closed set, so it carries an enum the validator can see, not
+		// a set written only in prose. provider-registry infers every other schema from the
+		// struct; this is the one arg that needs more than inference.
+		InputSchema: lwmcp.ClosedSetSchema[listModelsIn](map[string][]any{
+			"detail": {"summary", "full"},
+		}),
 	}, s.toolListModels)
 
 	registerTool(srv, &mcp.Tool{
@@ -287,9 +293,14 @@ type listModelsIn struct {
 	OnlyFavorites bool   `json:"only_favorites,omitempty" jsonschema:"return only favorited models"`
 	ActiveOnly    bool   `json:"active_only,omitempty" jsonschema:"return only active models (default false — inactive models are included)"`
 	ProviderKind  string `json:"provider_kind,omitempty" jsonschema:"filter by provider kind (e.g. openai, anthropic)"`
+	Detail        string `json:"detail,omitempty" jsonschema:"how much of each model to return: summary (default — the fields you choose a model BY) or full (adds pricing, notes, timestamps, sort order and the provider credential id)"`
+	Limit         int    `json:"limit,omitempty" jsonschema:"maximum models to return (default 10, max 100). The reply says how many were withheld."`
 }
 type listModelsOut struct {
 	Models []map[string]any `json:"models"`
+	// OUT-5 — never silently truncate. `returned`/`total`/`has_more` are always present so
+	// a capped list cannot read to the agent as "this is every model you have".
+	Page listModelsPage `json:"page"`
 	// 🔴 THE CORRECTION HAS TO ARRIVE WITH THE RESULT, NOT ONLY IN THE SCHEMA. Measured twice:
 	// telling settings_provider_inventory what it is (0/5 -> 1/5 called) and then telling THIS tool
 	// what it is NOT (1/5 -> 0/5, and 5 of 5 replies still said "what your configured providers
@@ -302,6 +313,95 @@ type listModelsOut struct {
 //: What every settings_list_models result carries. Registry and live inventory are different sets —
 //: a model retired upstream still sits here — so an answer built from this list must not be
 //: presented as what a provider currently offers. D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY.
+type listModelsPage struct {
+	Returned int  `json:"returned"`
+	Total    int  `json:"total"`
+	HasMore  bool `json:"has_more"`
+}
+
+// OUT-2 (Context Budget Law §6b) — at detail=summary a model row collapses to the fields an
+// agent chooses a model BY. Measured on the real account before this landed: the no-arg reply
+// was 10,382 bytes / ~2,595 tokens for 18 models × 15 fields, over the kit's 8 KB warn budget,
+// on the DEFAULT call — and the tool had no `detail` and no `limit` at all, so there was no way
+// to ask for less. Per-field cost of that reply:
+//
+//	pricing 14.2% · provider_credential_id 11.1% · created_at 7.4% · updated_at 7.3%
+//	sort_order 2.7% · notes 1.9%              = 45% of the payload
+//
+// none of which an agent picking a model can act on. `tags` is KEPT despite being droppable:
+// it is 1.7% and it is user-authored, so "use my fast model" can match on it. Everything
+// dropped here is still one `detail=full` away — the jobs_list (K24) migration shape.
+var listModelsSummaryFields = []string{
+	"user_model_id", "alias", "provider_kind", "provider_model_name",
+	"context_length", "capability_flags", "is_active", "is_favorite", "tags",
+}
+
+// MCP_LIST_DEFAULT_LIMIT's Go twin. Deliberately small: the LLM caller is the party the
+// Context Budget Law exists to protect, and it can raise `limit` or filter.
+const listModelsDefaultLimit = 20
+const listModelsMaxLimit = 100
+
+func projectModelSummary(m map[string]any) map[string]any {
+	out := make(map[string]any, len(listModelsSummaryFields))
+	for _, f := range listModelsSummaryFields {
+		if v, ok := m[f]; ok {
+			out[f] = v
+		}
+	}
+	return out
+}
+
+// clampListModelsLimit and shapeListModels hold the OUT-2 decisions. They are SEPARATE from
+// the handler (which needs a live pool) so the budget test can drive the REAL code rather
+// than a copy of it — a test that re-implements the shaping stays green through a revert,
+// which is the failure this whole guard exists to catch.
+func clampListModelsLimit(requested int) int {
+	if requested <= 0 {
+		return listModelsDefaultLimit
+	}
+	if requested > listModelsMaxLimit {
+		return listModelsMaxLimit
+	}
+	return requested
+}
+
+func shapeListModels(rows []map[string]any, detail string, total int) listModelsOut {
+	out := listModelsOut{Models: []map[string]any{}, Note: listModelsNote}
+	full := strings.EqualFold(detail, "full")
+	for _, m := range rows {
+		if !full {
+			m = projectModelSummary(m)
+		}
+		out.Models = append(out.Models, m)
+	}
+	out.Page = listModelsPage{
+		Returned: len(out.Models),
+		Total:    total,
+		HasMore:  total > len(out.Models),
+	}
+	// 🔴 A STRUCTURED has_more IS NOT ENOUGH — MEASURED. With a page of 10, batch
+	// c-listmodels1 asked "which of my models can do tool calling?" and the model answered
+	// with TWO on 5/5 runs. There were FIVE; the other three sat at positions 15-17, behind
+	// `has_more: true`, which the model never mentioned and never paged past. The page was
+	// honest and the ANSWER was still wrong.
+	//
+	// So the warning rides the payload the model is about to summarise — the same lesson
+	// this tool's `note` was already built on ("the correction has to arrive with the
+	// RESULT, not only in the schema", measured twice for the registry-vs-inventory
+	// confusion). The default page also went 10 -> 20, which covers a hand-curated model
+	// list outright; 21 is the most that still fits the 8 KB budget on fat rows, so this is
+	// the largest honest page, not a number chosen to make one account pass.
+	if out.Page.HasMore {
+		out.Note = fmt.Sprintf(
+			"⚠ INCOMPLETE LIST — showing %d of %d registered models. Do NOT answer a question "+
+				"about ALL the user's models from this page; call again with a higher `limit` "+
+				"(max %d) first. %s",
+			out.Page.Returned, out.Page.Total, listModelsMaxLimit, out.Note,
+		)
+	}
+	return out
+}
+
 const listModelsNote = "These are the models REGISTERED in this account, not what a provider " +
 	"currently offers. A model retired upstream still appears here, and one the provider newly " +
 	"offers is absent until registered. If the user asked what their provider actually offers, or " +
@@ -350,7 +450,14 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 		ids = append(ids, id)
 	}
 	rows.Close()
-	out := listModelsOut{Models: []map[string]any{}, Note: listModelsNote}
+	// OUT-2 — bound the page BEFORE the per-row reads (each is its own query), so a small
+	// default is cheaper as well as smaller. `total` is the full matching count, so the
+	// withheld remainder is reportable rather than silent.
+	total := len(ids)
+	if limit := clampListModelsLimit(in.Limit); len(ids) > limit {
+		ids = ids[:limit]
+	}
+	models := []map[string]any{}
 	// readUserModel SELECTs an explicit column list; a credential SECRET is never
 	// in it — and user_models never holds a secret anyway (secrets live only in
 	// provider_credentials). So this read is secret-free by construction. (It DOES
@@ -361,10 +468,10 @@ func (s *Server) toolListModels(ctx context.Context, _ *mcp.CallToolRequest, in 
 			return nil, listModelsOut{}, errors.New("failed to read model")
 		}
 		if m != nil {
-			out.Models = append(out.Models, m)
+			models = append(models, m)
 		}
 	}
-	return nil, out, nil
+	return nil, shapeListModels(models, in.Detail, total), nil
 }
 
 // ── Tier R: defaults ───────────────────────────────────────────────────────────
