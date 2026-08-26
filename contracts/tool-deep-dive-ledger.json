@@ -3804,15 +3804,21 @@
    "defect_class": "instrument"
   },
   "D-SCHEMA-WRITE-APPLIES-ON-A-SIGNATURE-THAT-DOES-NOT-EXIST": {
-   "status": "OPEN — PROVEN end to end, 2026-08-23",
+   "status": "FIXED - proven 2026-08-26 on the deployed build in BOTH directions: an invented signature is refused, a real one still mints. Read what_is_NOT_covered: no chat batch was run, and the reason is structural.",
    "what": "kg_triage_schema_write accepts a `signature` that does not exist, mints a confirm token for it, and the redemption APPLIES the schema change:\n    signature = 'no-such-signature-000', action = add_to_schema, code = 'probe_edge_absent'\n    -> {\"applied\": true, \"schema_version\": 2, \"stamped\": 0, \"resolved\": 0}\nThe edge type is added to the project's ontology. `resolved: 0` is the tell — the tool knows it resolved no triage group, and applies the mutation anyway.",
    "why_it_matters": "The tool's whole contract is 'Resolve a schema-mutating triage signature group'. The signature is the AUTHORITY for the change: it says a real proposal needed this edge type. Without validating it, any caller that invents a signature can mutate a project's ontology, and the response says applied:true — so nothing downstream can tell the difference.",
    "it_reached_the_boundary_only_after_a_precondition_was_met": "The first probe refused with 'this project has no adopted ontology to edit', which is a refusal arriving BEFORE the boundary — the same trap recorded for kg_propose_edge and glossary_create_chapter_link today. An ontology was adopted into the probe project first, and only then could the signature check be tested. A boundary probe that stops at the first refusal reports a guard that was never exercised.",
    "cleanup_note": "The probe added edge type 'probe_edge_absent' to the ZZ Throwaway kg_project_create probe project — my own throwaway, created for probes. Left in place rather than reverted: a schema_version bump is not obviously reversible and inventing a rollback here risks more than the debris does.",
-   "measured_by": "direct MCPDirect probe + confirm redemption, 2026-08-23",
-   "state": "open",
+   "measured_by": "direct MCPDirect probe of the deployed build before and after, both directions, 2026-08-26; container/host sha256 verified equal",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 3
+   "queue_group": 3,
+   "rederived_2026_08_26_still_broken": "Re-probed the deployed build before touching anything, because a three-day-old ledger claim is a lead:\n    signature='no-such-signature-000' -> MINTED, summary 'add_to_schema ... (schema v2 -> v3 on confirm)'\n    signature=''                      -> refused, but only by a min_length validator on the argument\nSo the ONLY signature the tool ever rejected was the empty string, and that is a string check, not an authority check.",
+   "the_check_already_existed_one_function_away": "🔴 THE TOOL THAT CLOSES TRIAGE ITEMS VALIDATED ITS SIGNATURE; THE TOOL THAT REWRITES THE ONTOLOGY DID NOT. `_handle_kg_triage_resolve` has carried this since it was written, with the comment 'Confirm the signature group exists':\n    pending = await ctx.triage_repo.list_pending_for_signature(...)\n    if not pending: raise ToolExecutionError('no pending triage items for this signature')\nkg_triage_schema_write - Manage-gated, schema-version-bumping, the strictly more dangerous of the two - went straight from the grant check to minting the token. No new predicate was needed: same repo call, same (user_id, project_id) scoping, same wording. This is the fourth time this loop has found the mechanism already present and simply not reached from one caller.",
+   "why_the_mint_and_NOT_the_shared_apply_effect": "The obvious place looks like `apply_triage_schema_write`, where the mutation actually happens, and refusing there on `resolved == 0` would have been WRONG. Two callers reach that effect in different states: the REST resolve route marks the batch resolved in the same request and arrives with nothing left pending, so a zero count is legitimate for it (`resolve_signature` only touches PENDING). Refusing on it would have broken the REST path while fixing the MCP one.\n\nThe MCP path is the one that mints a token and never touches the items, so PENDING is exactly the right predicate AT THIS MINT and nowhere else. The guard is therefore at the single MCP chokepoint, and the effect is untouched - pinned by a test that fails if someone later adds a zero-resolve refusal to it.",
+   "proof": "DEPLOYED build (file sha256 verified equal inside the container and on the host: eac495ec9b7a...), throwaway project, both directions in one run:\n    BOGUS 'no-such-signature-000' -> REFUSED: \"no pending triage items for signature 'no-such-signature-000' - nothing to resolve, so the ontology is unchanged. Call kg_triage_list to see the signatures that are actually open for this project.\"\n    REAL  (one pending item seeded in the throwaway) -> MINTED, confirm_token returned, 'schema v2 -> v3 on confirm'\nThe RECALL half is the one that mattered: a guard that refused everything would have passed the bogus probe just as well. The seeded row was SELECTed, then deleted (DELETE 1). The real token was NOT redeemed - the defect was that a bogus one could reach apply, and it can no longer be minted.",
+   "what_is_NOT_covered": "- NO K>=5 CHAT BATCH, and not for convenience. The tool needs a project with an ADOPTED ontology AND an open triage signature; the toolloop harness has no support for either (zero mentions of triage/ontology/adopt_template in provision.py), so its throwaway project can never present this tool a usable signature. Building that fixture is real work and is a different task. Engineering a prompt that makes the model send a BAD signature would be building a scenario to hit my own fix, which this loop has already refused once.\n- THE REST RESOLVE ROUTE IS UNTOUCHED. It reaches the same effect with its own validation; whether IT can be driven with a signature that does not exist was not probed.\n- TOCTOU IS NOT CLOSED. The signature is verified at MINT; a token could in principle be redeemed after the group was dismissed. The token is short-lived and human-redeemed, and closing it properly means the effect learning to tell its two callers apart - which is the change I deliberately did not make above.\n- THE OTHER THREE ACTIONS were exercised only through add_to_schema live. add_to_vocab, widen_target_kinds and set_multi_active share the one guard (it is above the action branch) and are covered by unit guards, but were not probed on the deployed build.",
+   "red_able": "services/knowledge-service/tests/unit/test_a_schema_write_verifies_its_signature.py, 7 guards. Inverse edit - the guard block removed, restored byte-identical (sha256 equal):\n    5 red, including the original defect (an invented signature mints no token), the\n    supplier-naming refusal, the scope check, the fail-closed case, and the class guard\n    that the verification precedes mint_action_token in the source.\n    2 stayed GREEN and correctly so: the RECALL guard (a real signature still mints) and\n    the guard pinning that the shared apply effect was left alone - neither is affected\n    by the direction of the change.\nThe fail-closed case is deliberate: ctx.triage_repo is Optional, and a guard that skips when its dependency is missing is not a guard."
   },
   "D-FE-RUNNER-MEASURES-THE-LAST-TURN-SO-A-PROMPT-EDIT-CAN-MISS": {
    "status": "OPEN — measured 2026-08-23",
@@ -4960,6 +4966,26 @@
    "defect_class": "model",
    "queue_group": 4,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-jobid1.json, rep 3"
+  },
+  "D-THE-KNOWLEDGE-SUITE-HAS-BEEN-RED-FOR-TWO-WEEKS": {
+   "status": "OPEN - found 2026-08-26 while running the owning suite for the schema-write fix.",
+   "what": "`pytest tests/` in knowledge-service is 4290 passed / 3 FAILED, and all three have been red since 2026-08-12 - proven pre-existing by stashing the working tree and re-running them on a clean checkout:\n    test_response_shape_snapshot::test_response_shapes_match_committed_snapshot\n    test_graph_schema_tools::test_kg_triage_list_default_is_bounded_and_summary\n    test_public_graph_views::test_build_timeline_orders_and_maps\nThe snapshot one is a one-line drift: TRIAGE_GROUP_REF_FIELDS gained `sample_triage_id` in 68464ea9b ('the triage listing told the agent to place an edge and gave it no id') and contracts/mcp-response-shapes/knowledge.json was never regenerated. The other two are from the same CP-5.11 day (3dca8c87a).",
+   "why_it_matters": "A DRIFT GUARD THAT IS ALREADY RED PROTECTS NOTHING. The snapshot test exists precisely to catch a response payload re-bloating; while it is failing for an unrelated stale field, the next real bloat lands on an already-red test and nobody can tell the difference. The same goes for the suite as a whole: a standing 3-failure baseline trains every later reader to skim past failures, which is exactly how I shipped a regression earlier in this run.",
+   "not_investigated": "Whether the CODE or the TEST is right in the two non-snapshot cases. The snapshot is clearly stale (the field was added deliberately, to fix a real defect), but regenerating a drift snapshot to make a suite green is precisely how a guard gets quietly weakened, so it is filed rather than fixed in a cycle that was about something else.",
+   "state": "open",
+   "defect_class": "instrument",
+   "queue_group": 3,
+   "measured_by": "clean-tree baseline via git stash, knowledge-service suite, 2026-08-26"
+  },
+  "D-THE-RESUME-POINTER-AIMS-AT-A-BLOCKED-ROW": {
+   "status": "OPEN - found 2026-08-26 when the generator handed me a row I could not act on.",
+   "what": "`goal_prompt_defects.py` prints NEXT (and the visible QUEUE) without excluding rows that already carry a `dq`. Today it pointed at D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE, blocked on DQ-T44, and all three QUEUE entries it showed were blocked (DQ-T44, DQ-T45, DQ-T31) - while 17 actionable contract defects existed and had to be derived by hand.",
+   "why_it_matters": "The resume pointer is the one thing a fresh session follows. Aiming it at a row whose next step is an OWNER DECISION means a new session either stalls on a question it must not answer itself, or re-litigates a DQ that is already recorded - the exact stale-pointer failure the goal-prompt design was written to prevent. `--check` is right (it returns 0 while actionable rows remain); it is the human-facing half that misleads.",
+   "the_fix_is_small": "Filter `dq`-carrying rows out of the QUEUE/NEXT selection, or list them under a BLOCKED heading so they are visibly not the next action.",
+   "state": "open",
+   "defect_class": "instrument",
+   "queue_group": 3,
+   "measured_by": "goal_prompt_defects.py output vs a hand-derived actionable set, 2026-08-26"
   }
  },
  "deferred_questions": {
@@ -5590,7 +5616,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 71,
+  "defects_open": 72,
   "deferred_questions": 23,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5605,8 +5631,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 180,
-  "defects_fixed": 70,
+  "defects_total": 182,
+  "defects_fixed": 71,
   "defects_withdrawn": 13,
   "defects_superseded": 1
  },

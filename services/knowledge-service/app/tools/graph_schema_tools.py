@@ -2571,7 +2571,7 @@ async def _handle_kg_triage_schema_write(
     schema_id + schema_version so confirm rejects on drift (optimistic concurrency)."""
     from app.tools.executor import ToolExecutionError
 
-    await _resolve_project_owner(ctx, GrantLevel.MANAGE)
+    owner = await _resolve_project_owner(ctx, GrantLevel.MANAGE)
     project_str = str(ctx.project_id)
 
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
@@ -2593,6 +2593,41 @@ async def _handle_kg_triage_schema_write(
             "op='adopt_template') with its source_schema_id, then retry this edit (the "
             "System template is read-only and admin-managed, so it cannot be edited in "
             "place)"
+        )
+
+    # The SIGNATURE is the authority for this mutation: it is the claim that a real
+    # proposal needed this ontology change. Nothing validated it, so an invented
+    # signature minted a token and the confirm APPLIED the schema change - measured
+    # 2026-08-23 and again 2026-08-26 on the deployed build:
+    #     signature='no-such-signature-000', action=add_to_schema
+    #       -> {"applied": true, "schema_version": 2, "stamped": 0, "resolved": 0}
+    # `resolved: 0` was the tell - the effect knew it had closed no triage group and
+    # mutated the ontology anyway. Only an EMPTY signature was ever refused, and that
+    # is a min_length validator, not a check that the group exists.
+    #
+    # The check itself already existed one function away: _handle_kg_triage_resolve
+    # confirms the group before resolving it. The tool that merely closes triage items
+    # validated its signature; the tool that rewrites the project ontology did not.
+    # Same repo call, same scoping, same wording - deliberately not a new predicate.
+    #
+    # PENDING is the right status HERE (and only here): this path mints a token and
+    # never touches the items, so they are still pending at confirm. The REST resolve
+    # route reaches the shared effect with its rows ALREADY resolved, which is why the
+    # guard belongs at this mint and NOT in apply_triage_schema_write - a `resolved`
+    # count of 0 is legitimate there and refusing on it would break that caller.
+    if ctx.triage_repo is None:
+        raise ToolExecutionError(
+            "cannot verify the triage signature right now - not applying an ontology "
+            "change on an unverified one; retry shortly"
+        )
+    pending = await ctx.triage_repo.list_pending_for_signature(
+        user_id=owner, project_id=project_str, signature=args.signature
+    )
+    if not pending:
+        raise ToolExecutionError(
+            f"no pending triage items for signature '{args.signature}' - nothing to "
+            "resolve, so the ontology is unchanged. Call kg_triage_list to see the "
+            "signatures that are actually open for this project."
         )
 
     token = mint_action_token(
