@@ -188,8 +188,29 @@ async def _drain(client, auth, method, url, body, out, timeout):
                 # was granted, and the harness recorded "called + approved, no error" — because it
                 # was only reading START/ARGS/END. The tool's own answer is the only thing that
                 # separates "it refused" from "it wrote nothing and said ok".
+                # 🔴 THE CAP WAS 4000 AND SAID NOTHING, AND IT BIT THREE TIMES IN ONE SESSION.
+                # 676 of the 4,690 tool results on disk (14.4%) sit exactly at 4000 and end
+                # mid-token; ALL 676 fail json.loads. Every sweep that parses a result was
+                # therefore under-counting, and always in the direction that looks like a
+                # finding: an empty parse reads as "the tool returned nothing", not as "the
+                # recording is clipped". It cost a false provenance defect twice
+                # (kg_build 0/10, composition_arc_apply 0/5) — both refuted by hand.
+                #
+                # Measured against the live tools whose results clip most: kg_project_list
+                # 4,040 chars, world_list 4,273, settings_list_models 5,606,
+                # glossary_list_system_standards 5,859, composition_arc_template_list 23,390.
+                # The cap is set an order of magnitude above the largest of those, so today's
+                # whole population is recorded COMPLETE.
+                #
+                # And the length is recorded whether or not it clipped, so a clipped read can
+                # never again be mistaken for a short result. THAT is the durable half: a cap
+                # can always be exceeded, and a truncation that does not announce itself is
+                # indistinguishable from data.
+                _content = str(ev.get("content"))
                 out["results"].append({"id": ev.get("toolCallId"),
-                                       "content": str(ev.get("content"))[:4000]})
+                                       "content": _content[:RESULT_CAP],
+                                       "content_length": len(_content),
+                                       "truncated": len(_content) > RESULT_CAP})
                 out["tool_calls"].append(ev)
             elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
                 out["tool_calls"].append(ev)
@@ -812,6 +833,43 @@ def wire_surfaced_names(r) -> set:
 
     This — not `surfaces` — is what an "advertised in N of M" figure must be read from."""
     return {n for p in (r.get("wire_passes") or []) for n in p.get("names") or []}
+
+
+#: How much of a tool result is kept in the recorded run. See the comment at the recording
+#: site: an order of magnitude above the largest result this loop's tools actually return.
+RESULT_CAP = 250_000
+
+
+class TruncatedResult(ValueError):
+    """A recorded tool result was clipped, so parsing it would answer the wrong question."""
+
+
+def parsed_result(res: dict):
+    """`json.loads` a recorded tool result, REFUSING a clipped one.
+
+    D-RECORDED-TOOL-RESULTS-ARE-TRUNCATED-AT-4000-CHARS. A bare `json.loads` on a clipped
+    result raises, an analysis catches it, and the tool reads as having returned nothing —
+    which is how this loop twice reported a provenance defect that did not exist. Refusing
+    LOUDLY is the difference between "no evidence" and "evidence I cannot read".
+
+    Handles the 676 records already on disk, which predate `truncated`: a pre-2026-08-27 run
+    has no length field at all, and a content of EXACTLY the old 4000-char cap is the
+    signature of a clip. A result that genuinely ends at 4000 would be refused too — a false
+    refusal, and the safe direction, since the caller is told to re-run rather than told a
+    number."""
+    if res.get("truncated"):
+        raise TruncatedResult(
+            f"clipped at {RESULT_CAP} of {res.get('content_length')} chars")
+    content = res.get("content") or ""
+    if "content_length" not in res and len(content) == _LEGACY_CAP:
+        raise TruncatedResult(
+            f"this record predates the length field and is exactly {_LEGACY_CAP} chars — the "
+            "signature of the old cap. Re-run the batch rather than parsing it.")
+    return json.loads(content)
+
+
+#: The cap every record written before 2026-08-27 was clipped at.
+_LEGACY_CAP = 4000
 
 
 def measured_turn(sc: dict) -> str:

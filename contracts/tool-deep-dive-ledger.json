@@ -4914,15 +4914,23 @@
    "measured_by": "docs/eval/toolloop/2026-08-14/c-askpath1-raw.json (3/5: budget_usd 50, 50, 5) and c-askpath2-raw.json (2/5), recorded _args per run. Two independent K=5 batches, so it is not a one-batch artefact."
   },
   "D-RECORDED-TOOL-RESULTS-ARE-TRUNCATED-AT-4000-CHARS": {
-   "status": "OPEN - found 2026-08-25 while verifying kg_build's provenance.",
+   "status": "FIXED 2026-08-27. The cap is raised past every result these tools return, and — the durable half — a clipped record now SAYS SO and is refused rather than parsed.",
    "what": "Tool-result content stored in docs/eval/toolloop/*-raw.json is cut at EXACTLY 4000 characters, mid-token. Distinct recorded content lengths in c-gbuild9 top out at 4000, and 17 kg_project_list results raise 'Unterminated string starting at ... column 3970' on json.loads.\n\nSo any analysis that PARSES a recorded result silently fails on every large one, and fails in the direction that looks like a finding: an empty parse reads as 'the tool returned nothing', not as 'the recording is clipped'.",
    "how_it_bit": "My kg_build provenance check reported the project_id came from kg_project_list on 0 of 10 runs. That is the shape of a real and serious finding - it would mean the runtime's context-fill supplied the id and the declaration did nothing. Reading one run by hand refuted it; a substring check gave 10/10.",
    "why_it_matters": "This loop's conclusions are largely derived by sweeping these files. Every such sweep that json.loads a result is under-counting by an unknown amount, and none of them says so.",
    "not_yet_known": "WHETHER THE MODEL SAW THE TRUNCATED TEXT TOO, or only the recording is clipped. Those are very different defects - the first is a live capability bug, the second is an instrument bug - and this row does not claim either. The cap is a suspiciously round 4000, which points at a deliberate recording limit rather than a transport failure, but that is a lead, not a finding.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "instrument",
    "measured_by": "docs/eval/toolloop/2026-08-14/c-gbuild9-raw.json",
-   "third_instance_2026_08_26": "THIRD TIME IN ONE SESSION. Checking whether composition_arc_apply's arc_template_id came from composition_arc_template_list, the substring test said NO on 5 of 5 - which reads as 'the model got the id from somewhere unaccounted for', a serious finding. The list result's recorded content is exactly 4000 chars and ends mid-token ('...\"o'), so the id was simply past the cut. Settled instead from the run's own `seed_ids` map: 4 of 5 used THIS RUN'S SEEDED template.\n\nEvery instance so far has pointed the same way - the clipped read looks like a defect, not like a clipped read."
+   "third_instance_2026_08_26": "THIRD TIME IN ONE SESSION. Checking whether composition_arc_apply's arc_template_id came from composition_arc_template_list, the substring test said NO on 5 of 5 - which reads as 'the model got the id from somewhere unaccounted for', a serious finding. The list result's recorded content is exactly 4000 chars and ends mid-token ('...\"o'), so the id was simply past the cut. Settled instead from the run's own `seed_ids` map: 4 of 5 used THIS RUN'S SEEDED template.\n\nEvery instance so far has pointed the same way - the clipped read looks like a defect, not like a clipped read.",
+   "the_invariant": "A RECORDED VALUE THAT WAS TRUNCATED MUST SAY SO, AND BY HOW MUCH. A truncation that does not announce itself is indistinguishable from data.",
+   "the_open_question_is_settled_and_it_is_the_INSTRUMENT": "The row asked whether the MODEL saw the truncated text too — 'very different defects'. It did not. `stream_events.tool_call_result` builds its content with a plain `json.dumps({\"ok\": True, \"result\": ...})` and no cap, and chat-service has no 4000 anywhere near a tool result. The suspiciously round 4000 was fe_runner's own literal. Pinned by a guard, because a cap appearing on the wire later would make this row's conclusion wrong.",
+   "measured": "Over every raw record on disk:\n\n    4,690  tool results recorded\n      676  sit at exactly 4000 characters and end mid-token        (14.4%)\n      676  of those fail json.loads                                (100% of them)\n\nConcentrated in the list tools: kg_project_list 190, world_list 97, settings_list_models 97, glossary_list_system_standards 83, composition_motif_search 64, composition_arc_template_list 39.\n\nREAL SIZES, called live 2026-08-27 (only tools the corpus already exercises, so no new exposure): kg_project_list 4,040 · world_list 4,273 · settings_list_models 5,606 · glossary_list_system_standards 5,859 · composition_arc_template_list 23,390. The cap is 250,000 — an order of magnitude above the largest — so today's whole population records complete.",
+   "the_fix": "1. `RESULT_CAP = 250_000` replaces the inline 4000 at the recording site.\n2. `content_length` is recorded WHETHER OR NOT it clipped, with a `truncated` flag. This is the half that survives the next big result: a cap can always be exceeded, and raising one alone moves the cliff rather than removing it.\n3. `parsed_result()` REFUSES a clipped record with `TruncatedResult`, naming the cap and the true size. A bare json.loads raises JSONDecodeError, an analysis catches it, and the tool reads as having returned nothing — which is exactly how this loop twice reported a provenance defect that did not exist.\n4. THE 676 RECORDS ALREADY ON DISK ARE HANDLED. They predate the length field, so a content of exactly 4000 with no `content_length` is treated as the signature of a clip and refused. A result that genuinely ends at 4000 would be refused too — a false refusal, and the safe direction: the caller is told to re-run, not told a number.",
+   "proven_live": "A/B on the SAME scenario (scenarios-c-arcapply.json, K=5, zero errored runs, throwaway fixture per run):\n\n    BEFORE  c-sweep1  14 results   8 clipped   8 UNREADABLE (57%)\n    AFTER   c-trunc1  13 results   0 clipped   13 of 13 parse\n\nand the largest result recorded complete is composition_arc_template_list at 24,381 characters — the one the old recorder cut to 4,000. Every record carries content_length.",
+   "what_is_NOT_covered": "- THE 676 RECORDS STAY UNREADABLE. Nothing recovers text that was never written down; the fix is that they are now REFUSED instead of parsed into a wrong answer. Any conclusion this loop drew by parsing a result before 2026-08-27 is suspect and must be re-derived from a fresh batch.\n- ONLY `results` IS FIXED. The same file still clips `error` at 300, `prior_turns.text` at 800 and the batch `answer` at 2000, and none of those records its true length. They were left alone because no analysis parses them as structured data — which is an argument about today's usage, not a property of the record.\n- `parsed_result` IS OPT-IN. An analysis that calls json.loads directly still gets a JSONDecodeError it can swallow. Nothing forces the reader; what the record now guarantees is that the information to tell clipped from empty is THERE.\n- THE LEGACY RULE IS A HEURISTIC on the exact old cap. A pre-2026-08-27 result of exactly 4000 real characters is refused as if clipped.",
+   "red_able": "scripts/test_a_recorded_result_says_when_it_was_clipped.py, 8 guards, four falsifiers proven RED and restored: drop content_length, stop refusing a clipped record, drop the legacy rule (the 676 landmines parse silently again), and put the 4000 literal back at the call site. One guard reads the real corpus and asserts the reader refuses 25 of the landmines by hand.",
+   "evidence": "docs/eval/toolloop/2026-08-14/c-trunc1{,-raw}.json (after); c-sweep1-raw.json (before, same scenario)"
   },
   "D-A-STOP-REQUEST-PROPOSES-A-COST-BEARING-START": {
    "status": "OPEN - measured 2026-08-26, batch c-cancel1, K=5, 5/5.",
@@ -5922,7 +5930,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 55,
+  "defects_open": 54,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5938,7 +5946,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 191,
-  "defects_fixed": 95,
+  "defects_fixed": 96,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },
