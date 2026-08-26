@@ -342,9 +342,49 @@ def _motif_link_counts(book_id: str) -> dict:
     return {"loreweave_composition.motif_link": {"rows": n, "latest": "-"}} if n else {}
 
 
+#: Account-scoped tables a run can only be attributed to by its own NONCE.
+#:
+#: (database, table, column) — the column must carry the run's `run_id` because the scenario's
+#: seed put it there. arc_template is the measured instance: it has a NULLABLE book_id and the
+#: sweep goes BY book_id, so 25 of 57 rows are invisible to it. Demonstrated live — the
+#: idempotency probe archived a real template (active -> archived, verified by direct SQL) and
+#: store_diff was {} on BOTH calls, so the probe reported "STRICTLY IDEMPOTENT" and then flagged
+#: its own verdict as vacuous.
+#:
+#: SCOPED THROUGH THE RUN, NOT THE OWNER, for the reason _world_counts and _motif_link_counts
+#: both record: an owner-wide sweep folds in the account's 57 unrelated rows and destroys the
+#: attribution per-scenario fixtures exist to provide.
+RUN_SCOPED_TABLES = (
+    ("loreweave_composition", "arc_template", "code"),
+)
+
+
+def _run_scoped_counts(run_id: str) -> dict:
+    """Counts for tables that carry NO book_id and can only be tied to a run by its nonce.
+
+    The eighth instance of the non-book-scoped blind spot (see _world_counts, which found the
+    world/map family, and _motif_link_counts). The pattern is always the same: a tool writes to
+    a table the sweep's key does not reach, so "store unchanged" was never a statement about
+    that tool at all.
+    """
+    q = run_id.replace("'", "''")
+    snap: dict = {}
+    for db, table, col in RUN_SCOPED_TABLES:
+        rows = _psql(db, (
+            f"SELECT count(*), COALESCE(max(updated_at)::text, '-') "
+            f"FROM {table} WHERE {col} LIKE '%{q}%';"
+        ))
+        if not rows:
+            continue
+        n, latest = (rows[0].split("|") + ["-"])[:2]
+        if int(n or 0):
+            snap[f"{db}.{table}.run"] = {"rows": int(n), "latest": latest}
+    return snap
+
+
 def snapshot(book_id: str, project_id: str | None = None,
              world_id: str | None = None, chapter_id: str | None = None,
-             user_model_id: str | None = None) -> dict:
+             user_model_id: str | None = None, run_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
     itself the signal that something was created.
@@ -397,6 +437,8 @@ def snapshot(book_id: str, project_id: str | None = None,
         snap.update(_world_counts(world_id))
     if user_model_id:
         snap.update(_model_counts(user_model_id))
+    if run_id:
+        snap.update(_run_scoped_counts(run_id))
     try:
         snap.update(_neo4j(project_id))
     except Exception as e:  # noqa: BLE001 — a graph that is down must not silently read as "clean"
