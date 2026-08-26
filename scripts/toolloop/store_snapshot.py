@@ -382,9 +382,50 @@ def _run_scoped_counts(run_id: str) -> dict:
     return snap
 
 
+def _job_counts(owner_user_id: str) -> dict:
+    """The NINTH store the DATA bar could not see, and the only one with NO per-run key at all.
+
+    `loreweave_jobs.job_projection` carries no book_id and no chapter_id — verified against
+    information_schema, which is how the retracted claim about authoring_runs and plan_run was
+    settled the other way (both DO carry book_id). The sweep discovers its tables by scanning
+    for a book_id column, so the projection could never be included and no jobs_* tool's effect
+    on it was visible.
+
+    Measured: `jobs_pause` returned {'success': true, 'status': 'paused'} with an EMPTY diff, so
+    the idempotency probe reported "the first call changed nothing either" — while the second
+    call refused with "action 'pause' not valid for status 'paused'", naming the new status. The
+    proof was in the refusal and not in the store.
+
+    🔴 SCOPED BY OWNER, WHICH THIS FILE ARGUES AGAINST EVERYWHERE ELSE — and the reason is that
+    there is no alternative, not that the objection stopped applying. Checked before settling
+    for it: the table's columns are (service, job_id, owner_user_id, kind, status, parent_job_id,
+    detail_status, progress, title, error, job_created_at, job_updated_at, projected_at, model,
+    cost_usd, tokens_in, tokens_out, params) and `params` carries no book_id or project_id in
+    any of its 1,518 rows. There is nothing to scope through.
+
+    WHAT THAT COSTS, stated rather than discovered later: under CONCURRENCY another repeat's job
+    moves this count too, so a diff here is evidence that A job appeared during the window and
+    not proof it was THIS turn's. That is still strictly better than silence — the bar's question
+    is "did anything happen", and it was answering "no" to a paused job.
+    """
+    q = owner_user_id.replace("'", "''")
+    rows = _psql("loreweave_jobs", (
+        f"select 'job_projection', count(*)::text, "
+        f"coalesce(max(job_updated_at)::text,'-') "
+        f"from job_projection where owner_user_id='{q}';"
+    ))
+    snap: dict = {}
+    for row in rows:
+        parts = row.split("|")
+        if len(parts) >= 3 and int(parts[1] or 0):
+            snap[f"loreweave_jobs.{parts[0]}.owner"] = {"rows": int(parts[1]), "latest": parts[2]}
+    return snap
+
+
 def snapshot(book_id: str, project_id: str | None = None,
              world_id: str | None = None, chapter_id: str | None = None,
-             user_model_id: str | None = None, run_id: str | None = None) -> dict:
+             user_model_id: str | None = None, run_id: str | None = None,
+             owner_user_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
     itself the signal that something was created.
@@ -439,6 +480,8 @@ def snapshot(book_id: str, project_id: str | None = None,
         snap.update(_model_counts(user_model_id))
     if run_id:
         snap.update(_run_scoped_counts(run_id))
+    if owner_user_id:
+        snap.update(_job_counts(owner_user_id))
     try:
         snap.update(_neo4j(project_id))
     except Exception as e:  # noqa: BLE001 — a graph that is down must not silently read as "clean"

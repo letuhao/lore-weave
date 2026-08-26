@@ -3824,13 +3824,19 @@
    "red_able": "services/jobs-service/tests/test_a_malformed_job_id_names_the_argument.py, 10 guards including an AST check that NO tool taking a job_id reaches the store unvalidated. Three inverse edits, each restored byte-identical:\n    cancel/pause forward a raw id again  -> 3 guards (the original defect)\n    jobs_get forwards a raw id           -> the class guard (the instance the row missed)\n    the message stops naming/echoing     -> 6 guards\nWhole jobs-service suite green: 117 passed, 13 skipped."
   },
   "D-STORE-SNAPSHOT-CANNOT-SEE-THE-JOB-PROJECTION": {
-   "status": "OPEN — VERIFIED by column list, 2026-08-23",
+   "status": "FIXED 2026-08-27 — the DATA bar now reads job_projection, and a jobs_pause-shaped change (status moves, row count holds) is visible through `latest`.",
    "what": "loreweave_jobs.job_projection carries NO book_id and NO chapter_id (checked against information_schema: 0 of either). store_snapshot discovers its tables by scanning for a book_id column, so the projection can never be included and no jobs_* tool's effect on it is visible to the DATA bar.",
    "measured_consequence": "jobs_pause's first call returned {'success': true, 'status': 'paused'} and its store diff was EMPTY, so idempotency_probe's guard reported 'the first call changed nothing either'. The state DID change — the second call refuses with \"action 'pause' not valid for status 'paused'\", naming the new status. The proof is in the refusal, not the diff.",
    "distinguish_from_my_retracted_claim": "Earlier today I claimed the same blindness for authoring_runs and plan_run and RETRACTED it: both DO carry book_id and the snapshot covers them. The difference is not opinion — it is one query against information_schema, which is what settles this one too. A blind spot is provable; do not assert one from a grep.",
    "fix_direction": "The sweep already has a second axis for exactly this — chapter-scoped tables with no book_id are handled separately. An owner-scoped axis (owner_user_id) would reach the projection, and every jobs_* row in the denominator depends on it.",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_scoping_key_does_not_exist_and_that_was_checked": "The row's fix_direction named an owner-scoped axis, which is the axis this harness argues AGAINST everywhere else — _world_counts, _model_counts and the arc_template fix earlier today all scope through the run because 'an owner-wide sweep folds in the account's unrelated rows and destroys the attribution per-scenario fixtures exist to provide'.\n\nSo the alternative was checked before settling: job_projection's columns are (service, job_id, owner_user_id, kind, status, parent_job_id, detail_status, progress, title, error, job_created_at, job_updated_at, projected_at, model, cost_usd, tokens_in, tokens_out, params), and `params` carries NO book_id and NO project_id in any of its 1,518 rows. There is nothing to scope through. That is a different situation from arc_template, where a per-run nonce existed and was used — and the difference is measured, not asserted.",
+   "what_the_owner_scope_costs": "Under CONCURRENCY another repeat's job moves this count too, so a diff here says A job changed during the window rather than THIS turn changed it. Recorded on the row and in the code rather than discovered later by someone reading a false attribution.\n\nIt is still strictly better than silence: the bar's question is 'did anything happen', and it was answering NO for a job that had just been paused.",
+   "the_measured_case_needed_latest_not_rows": "jobs_pause moves STATUS and leaves the row count alone, so a count-only reader would still have seen nothing. The counter carries max(job_updated_at) as `latest`, and the diff compares it — verified in both directions: a status-only change is DETECTED, a new job is DETECTED, and an unchanged store stays silent.",
+   "red_able": "scripts/test_the_data_bar_can_see_a_job.py, 6 guards including an anti-vacuity check that the table genuinely has no book scope — the same information_schema query that once RETRACTED this claim for authoring_runs and plan_run, which do carry book_id. Inverse edit — the counter unwired from snapshot() — reds the front-door case; source restored byte-identical. Whole scripts suite: 541 passed.\n\nThe front-door case was written FIRST this time, because the previous two cycles both shipped guards that called the helper directly and stayed green when the wiring was cut.",
+   "what_is_NOT_covered": "- ATTRIBUTION UNDER CONCURRENCY, above. A serialised run attributes correctly; --concurrency 2+ does not.\n- ONE TABLE IN loreweave_jobs. job_projection is the one the defect measured; whether that database holds other tables a jobs_* tool writes was not censused.\n- NO LIVE PROBE OF jobs_pause. The mechanism is proven against the real store and the diff is proven in both directions, but the original measured case was not re-run — that needs a real pausable job, which costs a real LLM run to create.\n- THE COUNT IS THE OWNER'S WHOLE HISTORY (1,414 rows today), so the diff is sensitive to a single row moving among thousands. That works because `latest` moves with it, but a reader should not read `rows: 1414` as anything about the turn.",
+   "measured_by": "information_schema + a params scan over all 1,518 job_projection rows, 2026-08-27; _job_counts and snapshot() exercised against the live store"
   },
   "D-SCHEMA-WRITE-APPLIES-ON-A-SIGNATURE-THAT-DOES-NOT-EXIST": {
    "status": "FIXED - proven 2026-08-26 on the deployed build in BOTH directions: an invented signature is refused, a real one still mints. Read what_is_NOT_covered: no chat batch was run, and the reason is structural.",
@@ -5850,7 +5856,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 60,
+  "defects_open": 59,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5866,7 +5872,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 189,
-  "defects_fixed": 88,
+  "defects_fixed": 89,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },

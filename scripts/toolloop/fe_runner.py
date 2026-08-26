@@ -605,14 +605,14 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
                 # claimed, and the third inverted the reading of three experiments.
                 await asyncio.to_thread(fx.assert_seeded, sc.get("seed_assert"))
                 before = await asyncio.to_thread(snapshot, fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id,
-                    fx.run_id)
+                    fx.run_id, auth.user_id)
                 try:
                     r = await run_scenario(client, auth, sc, i, fx)
                 except Exception as e:  # noqa: BLE001 — one bad repeat must not kill the run
                     r = {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
                          "surface": None, "surfaces": [], "error": f"{type(e).__name__}: {e}"}
                 after = await asyncio.to_thread(snapshot, fx.book_id, fx.project_id, fx.world_id, fx.chapter_id, fx.user_model_id,
-                    fx.run_id)
+                    fx.run_id, auth.user_id)
                 r["store"] = {"before": before, "after": after}
                 r["store_diff"] = store_diff(before, after)
                 return r
