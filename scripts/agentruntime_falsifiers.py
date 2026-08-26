@@ -1598,6 +1598,15 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          "    if any(declared_supplier(block, a) is None for a in missing):",
          "    if False and any(declared_supplier(block, a) is None for a in missing):"),
     ],
+    # D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW — the emitter map was readable
+    # only from the `owed` branch, which needs one of 14 contract rows, so 90 of 93 declared
+    # (tool, arg) emitter pairs could never be named. Emptying the map restores exactly that:
+    # the refusal falls back to the generic "LISTS or SEARCHES" move it used to give.
+    "test_an_id_WITH_a_declared_emitter_gets_the_named_move_instead": [
+        (f"{CS}/app/services/stream_service.py",
+         "            _e = declared_emitter(_reg_all, tool, _a)",
+         "            _e = None  # falsifier: emitter unreachable, the pre-fix state"),
+    ],
     "test_a_DECLARED_context_argument_still_says_not_yours_to_invent": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],

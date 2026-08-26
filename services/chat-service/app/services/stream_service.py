@@ -3593,6 +3593,50 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
             f"{'them' if len(owed) > 1 else 'it'} from the current context or an "
             f"active plan, and has none right now. {_how} Do NOT guess a value."
         )
+    # ── D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW ────────────────────────────
+    # 🔴 THE SAME FALSEHOOD AS THE COMMENT BELOW, ONE SOURCE LATER. That comment fixed "does
+    # not declare" for the tool's own PROPERTY DESCRIPTION and left `argument_emitters` — the
+    # one source that answers WHERE to get the value — readable only from the `owed` branch
+    # above, which needs a `contracts` row. Measured 2026-08-26 against the registry and the
+    # live 316-tool catalogue:
+    #
+    #     93 declared (tool, arg) emitter pairs · 90 unreachable from a refusal (97%)
+    #       53  the emitter names a supplier the description does NOT mention  -> real gain
+    #       24  the description already names it                               -> redundant
+    #       13  the arg has NO description at all -> today's message says the tool
+    #           "does not declare which side supplies them" WHILE AN EMITTER IS DECLARED
+    #
+    # This is not wording. A tool named in a refusal is ARMED onto the turn by the caller
+    # (`_tools_named_in_refusal` -> `_arm_tools`), and this file's own measurement is 35/35
+    # agreement: the supplier was called on every run it was advertised and on none where it
+    # was not. So an unnameable emitter is an unreachable supplier.
+    #
+    # A declaration is a fact about the CATALOGUE, not about who owes the value, so it is read
+    # for every missing arg — but only ADDED where the description does not already say it,
+    # because repeating a supplier the sentence just quoted buys nothing and costs context.
+    _emit_map: dict[str, str] = {}
+    try:
+        _reg_all = _tool_contract_registry()
+        for _a in missing:
+            _e = declared_emitter(_reg_all, tool, _a)
+            if _e:
+                _emit_map[_a] = _e
+    except Exception:  # noqa: BLE001 — a registry lookup must never take the turn down
+        _emit_map = {}
+
+    def _emitter_sentence(said: str) -> str:
+        """Name the declared emitters that `said` has not already named."""
+        _new = sorted({e for a, e in _emit_map.items() if e not in said})
+        if not _new:
+            return ""
+        return (
+            f" {' and '.join(_new)} "
+            f"{'emit' if len(_new) > 1 else 'emits'} "
+            f"{'these' if len(_emit_map) > 1 else 'this'} — call "
+            f"{'them' if len(_new) > 1 else 'it'} first and pass back the id "
+            f"{'they return' if len(_new) > 1 else 'it returns'}."
+        )
+
     if any(declared_supplier(block, a) is None for a in missing):
         # 🔴 "DOES NOT DECLARE" WAS CHECKING THE WRONG SOURCE, and it went from merely unhelpful to
         # FALSE the moment a declaration existed. Only 12 of the 315 federated tools carry a
@@ -3621,8 +3665,17 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None,
             return (
                 f"'{tool}' is missing required argument(s): {missing}. The tool DOES declare what "
                 f"{'these are' if len(_declared) > 1 else 'this is'} — {_lines} — so use that to "
-                "obtain the real value and call again. Do NOT guess a value and do NOT substitute "
-                "a placeholder like 'default'."
+                "obtain the real value and call again."
+                + _emitter_sentence(_lines)
+                + " Do NOT guess a value and do NOT substitute a placeholder like 'default'."
+            )
+        if _emit_map:
+            # No description, but a DECLARED emitter — the 13 pairs above. Saying "does not
+            # declare" here would be the exact falsehood the arm below was written to stop.
+            return (
+                f"'{tool}' is missing required argument(s): {missing}, and the value is an id "
+                f"from another tool — do NOT guess one."
+                + _emitter_sentence("")
             )
         # Genuinely undeclared: say so, and give the id move FIRST — that is the class this arm
         # was measured failing on. Never guess a value on the model's behalf.

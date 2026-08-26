@@ -184,11 +184,30 @@ class TestAnUndeclaredArgumentIsNotCalledContent:
         assert "world_id" in msg
 
     def test_an_UNDECLARED_id_is_given_the_move_that_obtains_it(self):
-        """C-12: the rejection names what WOULD be legal. For an id that is 'go list them'."""
+        """C-12: the rejection names what WOULD be legal. For an id that is 'go list them'.
+
+        The example moved from `world_map_create` to `glossary_entity_get`
+        (D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW, 2026-08-26). The BAR below
+        is unchanged; the FIXTURE was stale. `world_map_create.world_id` declares an emitter
+        (`world_list`) in argument_emitters, so once a refusal could read that map it stopped
+        being an instance of "undeclared" and started getting the strictly better named move —
+        `world_list emits this — call it first`. Asserting the generic sentence on a tool that
+        now has a specific one would have pinned the weaker message in place. glossary_entity_get
+        carries no emitter, so it still exercises the generic arm this test is about.
+        """
         from app.services.stream_service import _missing_args_message
-        msg = _missing_args_message("world_map_create", ["world_id"], {})
+        msg = _missing_args_message("glossary_entity_get", ["entity_id"], {})
         assert "LISTS or SEARCHES" in msg
         assert "do NOT guess" in msg or "Do NOT guess" in msg
+
+    def test_an_id_WITH_a_declared_emitter_gets_the_named_move_instead(self):
+        """The other side of the split above — the generic arm must not swallow a tool whose
+        supplier IS declared. world_map_create was measured getting the generic sentence while
+        argument_emitters named world_list all along."""
+        from app.services.stream_service import _missing_args_message
+        msg = _missing_args_message("world_map_create", ["world_id"], {})
+        assert "world_list" in msg, msg
+        assert "LISTS or SEARCHES" not in msg
 
     def test_a_DECLARED_context_argument_still_says_not_yours_to_invent(self):
         """The CP-5.4 arm must be untouched by the new one."""

@@ -63,23 +63,42 @@ class TestTheWireChecksTheGuarantee:
         assert "advertised = _agentruntime_wire_surface(pass_number=iteration + 1)" in head, (
             "the check does not sit after the last producer of `advertised`")
 
+    # 🔴 THESE SLICED A FIXED BYTE WINDOW AND A COMMENT BROKE THEM. Each took SRC[i:i+900]
+    # (or +1800) from the anchor. On 2026-08-26 a kept-case INFO log — six lines of comment
+    # and a logger.info — was added between the anchor and the code under test, and two of
+    # these went red while the property they assert was completely untouched. A byte window
+    # measures how much PROSE sits in the block, which is not a property worth pinning.
+    #
+    # The block is now bounded by its own END (the next banner), so it grows with the code.
+    @staticmethod
+    def _block() -> str:
+        i = SRC.index("_r1_promised = _R1_FORCED.get()")
+        j = SRC.index("CP-0.1 / CP-0.2", i)
+        return SRC[i:j]
+
     def test_a_lost_tool_is_RECORDED_not_just_logged(self):
         """A log line is not a column. record_surface_withheld is the one sink every narrowing in
         this file registers through, so a drop here shows up beside every other narrowing."""
-        i = SRC.index("_r1_promised = _R1_FORCED.get()")
-        seg = SRC[i:i + 1800]
+        seg = self._block()
         assert 'stage="r1_forced_then_dropped"' in seg
         assert "record_surface_withheld(" in seg
         assert "logger.warning(" in seg, "a broken guarantee should be louder than INFO"
 
     def test_the_names_come_from_the_WIRE_list(self):
-        i = SRC.index("_r1_promised = _R1_FORCED.get()")
-        seg = SRC[i:i + 900]
-        assert "for td in advertised" in seg, (
+        # 🔴 THIS USED TO ACCEPT THE LOG LINE. It asserted only that "for td in advertised"
+        # appeared SOMEWHERE in the block — and the kept-case logger.info iterates `advertised`
+        # too, so it passed with the ENFORCEMENT set built from anything at all. Proven
+        # 2026-08-26 by repointing `_wire_names` at another list: still green. Pin the set the
+        # drop-detection actually subtracts, not any mention of the name.
+        lines = self._block().splitlines()
+        at = next(n for n, line in enumerate(lines) if "_wire_names = {" in line)
+        assign = " ".join(lines[at:at + 5])
+        assert "for td in advertised" in assign, (
             "the check compares against something other than what is sent")
+        assert "_r1_promised - _wire_names" in self._block(), (
+            "the drop set is not promised-minus-wire")
 
     def test_the_var_is_CLEARED_so_a_later_pass_cannot_inherit_it(self):
         """Passes share a context. A stale promise would report a tool as dropped on a pass that
         never forced it."""
-        i = SRC.index("_r1_promised = _R1_FORCED.get()")
-        assert "_R1_FORCED.set(frozenset())" in SRC[i:i + 1900]
+        assert "_R1_FORCED.set(frozenset())" in self._block()
