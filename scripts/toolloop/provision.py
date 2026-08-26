@@ -53,6 +53,11 @@ from scripts.eval.tool_liveness import oracle  # noqa: E402
 #: one that matches a real book.
 TITLE_PREFIX = "LOOP-THROWAWAY-"
 
+#: Where a running fixture writes down what it created, so a LATER process can remove it by id.
+#: Git-ignored: it is live state about this machine's runs, not a fact about the repo. A file
+#: here means a fixture that was built and never torn down.
+MANIFEST_DIR = pathlib.Path(__file__).resolve().parent / ".fixtures"
+
 #: The account the loop runs as. Read from the same place the runner reads it so the two cannot
 #: drift into provisioning as one user and driving turns as another — which would present as
 #: "the tool returned nothing" for every single scenario.
@@ -131,6 +136,59 @@ class Throwaway:
         #: The registered model this fixture created, if any — exposed for the SNAPSHOT.
         self.user_model_id: str | None = None
         self.seeded: list[dict] = []
+
+    # ── provenance manifest ──────────────────────────────────────────────────────────────
+    def _manifest_path(self) -> pathlib.Path:
+        return MANIFEST_DIR / f"{self.run_id}.json"
+
+    def _record(self, entry: dict) -> None:
+        """Append a seed result AND flush the run's manifest.
+
+        🔴 THE PER-RUN TEARDOWN KNOWS ITS PROVENANCE; `--sweep` DOES NOT.
+        D-HARNESS-sweep-DOES-NOT-COVER-ACCOUNT-SCOPED-FIXTURES: `teardown()` removes worlds,
+        models, arc templates and motifs by the ids THIS object saw come back, and it works —
+        seven runs of scenarios-c-arcapply left zero rows. But `--sweep` is a fresh process with
+        no `self.seeded`, so it can only reach what a NAME PREFIX finds, and it reported "swept 1
+        throwaway book(s) / 1 throwaway world(s)" with the seeded arc_template still sitting
+        there. The gap is exactly the --keep-fixtures path: the one taken when something has
+        already gone wrong and nobody is watching the store.
+
+        A PREFIX WOULD NOT DO, and this loop has already paid for learning that twice —
+        `_purge_worlds` matched nothing for 35 worlds, and the seeds name themselves
+        `emberfall-vein-b27-`, `throwaway-loop-alpha-b19-`, `loop-arc-` and six other shapes with
+        no common stem. Of the 57 arc templates on this account, 51 are account-scoped and only
+        ONE carries a code any prefix list would match; the other 50 belong to earlier suites and
+        must never be touched.
+
+        So the provenance is WRITTEN DOWN instead of guessed. Flushed after every step rather
+        than at the end of build(), because a crash mid-build is precisely when the sweep is
+        needed. `teardown()` removes the file, so a manifest on disk means a fixture that was
+        never torn down."""
+        self.seeded.append(entry)
+        try:
+            MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
+            self._manifest_path().write_text(json.dumps({
+                "run_id": self.run_id, "label": self.label, "title": self.title,
+                "book_id": self.book_id, "seeded": self.seeded,
+            }, ensure_ascii=False, default=str), encoding="utf-8")
+        except OSError:
+            # A manifest is a CONVENIENCE for a later sweep. Failing the run because the disk
+            # would not take it would trade a cleanup aid for the measurement itself.
+            pass
+
+    @classmethod
+    def from_manifest(cls, data: dict) -> "Throwaway":
+        """Rebuild just enough of a fixture to run its OWN purges — no provisioning.
+
+        The purge methods are reused rather than re-implemented: four families of DELETE, each
+        with a hard-won guard in its docstring, and a second copy in the sweep would be a second
+        chance to get one wrong."""
+        fx = cls(str(data.get("label") or "sweep"))
+        fx.run_id = str(data.get("run_id") or fx.run_id)
+        fx.title = str(data.get("title") or fx.title)
+        fx.book_id = data.get("book_id")
+        fx.seeded = list(data.get("seeded") or [])
+        return fx
 
     # ── build ────────────────────────────────────────────────────────────────────────────
     def build(self, seed: list[dict] | None = None, *, chapter: bool = True) -> "Throwaway":
@@ -262,7 +320,7 @@ class Throwaway:
                 rows = oracle.db_query(spec["db"], spec["query"])
                 last = str(rows[0][0]).strip() if rows and rows[0] else ""
                 if last == want:
-                    self.seeded.append({"wait": spec["query"][:80], "settled": last})
+                    self._record({"wait": spec["query"][:80], "settled": last})
                     return
                 time.sleep(float(spec.get("poll", 2)))
             raise ProvisionError(
@@ -278,7 +336,7 @@ class Throwaway:
             # the thing under test is still the model's turn, never this.
             spec = self._substitute(step["sql"])
             oracle.db_query(spec["db"], spec["statement"])
-            self.seeded.append({"sql": spec["db"], "ok": True})
+            self._record({"sql": spec["db"], "ok": True})
             return
         if "rest" in step:
             spec = self._substitute(step["rest"])
@@ -324,12 +382,12 @@ class Throwaway:
                     _body = r.json()
             except Exception:  # noqa: BLE001 — a body that will not parse is not a seed failure
                 _body = None
-            self.seeded.append({"rest": spec, "status": r.status_code, "result": _body})
+            self._record({"rest": spec, "status": r.status_code, "result": _body})
             return
         tool = step["tool"]
         args = self._substitute(step.get("args") or {})
         r = self.mcp.call(tool, args)
-        self.seeded.append({"tool": tool, "args": args, "result": r})
+        self._record({"tool": tool, "args": args, "result": r})
         # Remember the world this run created — the DATA bar cannot find it any other way, because
         # nothing in the world/map store carries a book_id.
         if tool == "world_create" and isinstance(r, dict):
@@ -468,12 +526,22 @@ class Throwaway:
         try:
             out["arc_templates"] = self._purge_arc_templates()
             out["motifs"] = self._purge_motifs()
+            out["memories"] = self._purge_memories()
         except Exception as e:  # noqa: BLE001 — same rule: never mask the book teardown
             out["arc_templates_error"] = f"{type(e).__name__}: {e}"
-        if not self.book_id:
+        if self.book_id:
+            out.update(purge_book(self.book_id))
+        else:
             out.update({"deleted": 0, "reason": "no book was created"})
-            return out
-        out.update(purge_book(self.book_id))
+        # 🔴 LAST, AND ON EVERY PATH. A manifest on disk means "this fixture was never torn
+        # down", so removing it before the purges would erase the only record of what still
+        # needs removing — but an EARLY RETURN for the no-book case skipped it entirely, and a
+        # manifest that is never removed is replayed by every later sweep forever. Caught by the
+        # guard, not by reading: the bookless branch is the one a seed-only fixture takes.
+        try:
+            self._manifest_path().unlink(missing_ok=True)
+        except OSError:
+            pass
         return out
 
     def _purge_models(self) -> list[str]:
@@ -600,6 +668,40 @@ class Throwaway:
                         f"DELETE FROM motif_link WHERE from_motif_id IN ({quoted}) "
                         f"OR to_motif_id IN ({quoted})")
         oracle.db_query("loreweave_composition", f"DELETE FROM motif WHERE id IN ({quoted})")
+        return ids
+
+    def _purge_memories(self) -> list[str]:
+        """Remove the memory FACTS this fixture's seed created. THE FIFTH ACCOUNT-SCOPED LEAK,
+        and the first one that is not in Postgres at all.
+
+        🔴 FOUND 2026-08-27 BY LEAKING TWO. Running the idempotency probe against
+        `memory_forget` left two Fact nodes behind, and only a Cypher read found them: they are
+        stored with `project_id` NULL — the account-scoped case `store_snapshot._neo4j`'s own
+        docstring already flagged — so the throwaway book's teardown could never see them. They
+        were deleted by hand after a SELECT, which is the third time this loop has done that.
+
+        Cypher, because the catalogue's only removal for a fact is `memory_forget`, and forget
+        INVALIDATES rather than deletes: the node would stay, carrying the run's content into
+        every later memory_search. PROVENANCE, not a content match — the ids come from THIS
+        fixture's own `memory_remember` results."""
+        ids = [str(r["result"].get("fact_id"))
+               for r in self.seeded
+               if r.get("tool") == "memory_remember"
+               and isinstance(r.get("result"), dict) and r["result"].get("fact_id")]
+        if not ids:
+            return []
+        # 🔴 REFUSED, NOT ESCAPED. The first draft wrote `i.replace("'", "\'")`, which in Python
+        # is `"'"` — a no-op that LOOKS like escaping and would have sat here forever, because a
+        # fact id is hex and the branch never fires. A DETACH DELETE is not the place for a
+        # quoting scheme: an id that is not the shape the tool returns is a bug upstream, and
+        # deleting nothing while saying so is the safe answer.
+        bad = [i for i in ids if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", i)]
+        if bad:
+            raise ProvisionError(
+                f"memory_remember returned {len(bad)} fact id(s) that are not id-shaped "
+                f"({bad[:2]}); refusing to build a DETACH DELETE around them.")
+        quoted = ", ".join(f"'{i}'" for i in ids)
+        oracle.cypher_query(f"MATCH (f:Fact) WHERE f.id IN [{quoted}] DETACH DELETE f;")
         return ids
 
     def _purge_worlds(self) -> list[str]:
@@ -794,6 +896,38 @@ def sweep_orphan_worlds(older_than_minutes: int = 0) -> list[str]:
     return out
 
 
+def sweep_manifests() -> dict:
+    """Run the per-run purges for every fixture that was built and never torn down.
+
+    D-HARNESS-sweep-DOES-NOT-COVER-ACCOUNT-SCOPED-FIXTURES. The other sweeps in this file are
+    scoped by NAME — book titles, world names — which is why none of them could reach an arc
+    template or a motif: those seeds name themselves nine different ways and 50 of the 51
+    account-scoped templates on this account belong to other suites. This one is scoped by
+    PROVENANCE: it replays the ids the fixture itself recorded, through the fixture's own purge
+    methods, so it can only ever remove a row this harness made.
+
+    A failure on one manifest must not abandon the rest — the point of a sweep is that it runs
+    when something has already gone wrong."""
+    out: dict = {"manifests": 0, "purged": [], "errors": []}
+    if not MANIFEST_DIR.is_dir():
+        return out
+    for f in sorted(MANIFEST_DIR.glob("*.json")):
+        out["manifests"] += 1
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            out["errors"].append(f"{f.name}: unreadable ({type(e).__name__})")
+            continue
+        try:
+            fx = Throwaway.from_manifest(data)
+            res = fx.teardown()
+            out["purged"].append({"run_id": data.get("run_id"), **{
+                k: v for k, v in res.items() if v}})
+        except Exception as e:  # noqa: BLE001 — one bad manifest must not end the sweep
+            out["errors"].append(f"{f.name}: {type(e).__name__}: {e}"[:200])
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", default="manual")
@@ -801,6 +935,14 @@ def main() -> int:
     ap.add_argument("--sweep", action="store_true", help="delete every leftover throwaway book")
     a = ap.parse_args()
     if a.sweep:
+        # PROVENANCE FIRST, prefixes as the backstop. A manifest knows the fixture's book AND its
+        # account-scoped rows, so replaying it removes both in the right order; running the
+        # book sweep first would delete the book out from under a purge that still needed it.
+        m = sweep_manifests()
+        print(f"replayed {m['manifests']} un-torn-down fixture manifest(s): "
+              f"{len(m['purged'])} purged, {len(m['errors'])} error(s)")
+        for e in m["errors"]:
+            print("  !", e)
         gone = sweep_orphans()
         print(f"swept {len(gone)} throwaway book(s)")
         # Worlds are NOT book-scoped, so they need their own pass — see sweep_orphan_worlds.
