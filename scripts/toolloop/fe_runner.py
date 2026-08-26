@@ -967,6 +967,29 @@ def report(results, scenarios, repeats):
         store = (f"WROTE {len(wrote)}/{len(rs)}: " + ", ".join(tables)) if wrote else "unchanged"
         print(f"{sid:<28} {len(rs):<5} {f'{called}/{len(rs)}':<12} "
               f"{f'{surfaced}/{len(rs)}':<17} {errs:<7} {store}")
+        # 🔴 "unchanged" IS A STATEMENT ABOUT THE TOOL ONLY IF A WRITE WAS EVER PERMITTED.
+        # D-A-TIER-A-SCENARIO-THAT-NEVER-APPROVES-CANNOT-MOVE-ITS-STORE: composition_motif_link_
+        # edit is Tier A, its scenario sets `approve: null`, the batch ran with approvals `none`,
+        # and every correct call was recorded {tier: A, pending: true, call_outcome: deferred}.
+        # `wrote 0/5` said nothing about the tool, and the ledger's blocked reason then blamed
+        # the model for a supplier call it had in fact made on 3 of 3 runs.
+        #
+        # 🔴 SCOPED TO THE TOOL UNDER TEST, AND A LIVE CONTROL IS WHY. The first version asked
+        # whether the BATCH wrote anything, and batch c-nowrite1 refuted it on the spot: 2 runs
+        # called jobs_cancel and stopped on its card, while the other 3 never called it at all
+        # and wandered into translation_start_job, which wrote. "WROTE 3/5" was true and had
+        # nothing to do with the tool. Re-derived over the corpus, the two triggers are not the
+        # same question — 37 batches for the batch-wide rule, 34 for this one, 27 shared.
+        #
+        # The COLUMN keeps its meaning (another tool's write is a real write). The annotation is
+        # about the tool the bars are read for, which is the thing that was misread.
+        called_rs = [r for r in rs if want and want in called_names(r)]
+        if (called_rs and all(r.get("pending_approval") for r in called_rs)
+                and not any(r.get("store_diff") for r in called_rs)):
+            print(f"    ^ THE STORE BAR CANNOT SEE {want}: all {len(called_rs)} run(s) that "
+                  f"called it ended on an approval card and none of their stores moved, so no "
+                  f"write was ever permitted. Whatever the column says, it is not about "
+                  f"{want}.")
         # THE DENOMINATOR THE LOOP SHOULD HAVE BEEN QUOTING. `surface has tool` counts RUNS whose
         # measured turn advertised it; "advertised in N of M" was then written as though M were
         # passes. Passes come from the store, cover every turn, and are what the wire log prints.
