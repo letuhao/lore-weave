@@ -222,12 +222,39 @@ def _neo4j(project_id: str | None) -> dict:
         rows = oracle.cypher_query(cypher)
         return rows[0][0] if rows and rows[0] else "0"
 
-    snap = {"neo4j.Fact.total": {"rows": int(q("MATCH (f:Fact) RETURN count(f);") or 0),
-                                 "latest": "-"}}
+    # 🔴 A COUNT-ONLY AXIS CANNOT SEE AN IN-PLACE EDIT, and this one was count-only.
+    # D-IDEMPOTENCY-PROBE-IS-BLIND-TO-NEO4J-OWNED-TOOLS: `memory_forget` re-stamps `valid_until`
+    # on an EXISTING fact, so the node count holds and the probe printed "STRICTLY IDEMPOTENT —
+    # the second call touched nothing at all". The opposite of the truth, and only a direct
+    # Cypher read found it.
+    #
+    # The signal was already in the graph. Read 2026-08-27: every one of the 455 Fact nodes
+    # carries `updated_at`, and 25 carry `valid_until` — which is precisely the property forget
+    # stamps. So this is the same shape as the Postgres sweep folding in every timestamptz
+    # column: use what the store already records rather than adding anything.
+    #
+    # `valid_until` is counted SEPARATELY as well as folded into the timestamp, because an
+    # invalidation that lands in the same second as another write would be invisible to a max()
+    # alone, and "how many facts are retired" is the question forget actually answers.
+    latest = q("MATCH (f:Fact) WHERE f.updated_at IS NOT NULL "
+               "RETURN max(f.updated_at);") or "-"
+    snap = {
+        "neo4j.Fact.total": {"rows": int(q("MATCH (f:Fact) RETURN count(f);") or 0),
+                             "latest": str(latest)},
+        "neo4j.Fact.invalidated": {
+            "rows": int(q("MATCH (f:Fact) WHERE f.valid_until IS NOT NULL "
+                          "RETURN count(f);") or 0), "latest": "-"},
+    }
     if project_id:
         snap["neo4j.Fact.project"] = {
             "rows": int(q(f"MATCH (f:Fact) WHERE f.project_id = '{project_id}' "
-                          "RETURN count(f);") or 0), "latest": "-"}
+                          "RETURN count(f);") or 0),
+            "latest": str(q(f"MATCH (f:Fact) WHERE f.project_id = '{project_id}' "
+                            "AND f.updated_at IS NOT NULL RETURN max(f.updated_at);") or "-")}
+        snap["neo4j.Fact.project.invalidated"] = {
+            "rows": int(q(f"MATCH (f:Fact) WHERE f.project_id = '{project_id}' "
+                          "AND f.valid_until IS NOT NULL RETURN count(f);") or 0),
+            "latest": "-"}
     return snap
 
 

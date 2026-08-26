@@ -105,6 +105,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 
 from provision import Throwaway  # noqa: E402
 from store_snapshot import diff as store_diff, snapshot  # noqa: E402
+from blind_axes import blind_in_scope  # noqa: E402
 from scripts.eval.tool_liveness.mcp_direct import MCPToolError  # noqa: E402
 
 
@@ -368,6 +369,29 @@ def run_one(scenarios: dict, tool: str, args_tpl: dict, pre: list | None = None)
         if not out["first_had_effect"]:
             out["verdict"] += ("  ⚠ BUT THE FIRST CALL CHANGED NOTHING EITHER, so this probe "
                                "measured two no-ops and proves nothing about idempotency.")
+
+        # 🔴 AN AXIS THIS PROBE CANNOT SEE A MUTATION ON MUST NOT BE REPORTED AS QUIET.
+        # D-SNAPSHOT-IS-BLIND-TO-AN-IN-PLACE-EDIT-WITH-NO-UPDATED-AT and
+        # D-IDEMPOTENCY-BLIND-TO-NEO4J are one cause: `divergence_spec` has created_at and no
+        # updated_at, so an UPDATE moves neither the count nor the only timestamp, and this
+        # verdict printed "STRICTLY IDEMPOTENT" for a call that changed `taxonomy` from `au` to
+        # `character_transform`. Not unproven — the OPPOSITE of the truth.
+        #
+        # The refusal comes LAST and is additive, so a verdict that IS supported keeps its
+        # wording: a blind axis in scope does not make a measured duplication less real. What it
+        # rules out is reading SILENCE as evidence, which is only the two empty-diff verdicts.
+        # Scoped on `mid`, not `before`: `mid` is the state the SECOND call acts on, and
+        # `snapshot()` omits a table with zero rows — a blind table the first call POPULATED is
+        # only in scope from `mid` onward, and that is exactly when its edits go dark.
+        blind = blind_in_scope(mid)
+        out["blind_axes_in_scope"] = blind
+        if blind and not out["diff_second"]:
+            out["verdict"] = (
+                "⚠ CANNOT SEE IT — the DATA bar is BLIND on "
+                f"{', '.join(blind)} (creation timestamp only, and these tables ARE updated in "
+                "place), so an empty diff here is the instrument, not the tool. "
+                + out["verdict"].replace("STRICTLY IDEMPOTENT", "would have read STRICTLY "
+                                         "IDEMPOTENT"))
     finally:
         try:
             out["teardown"] = fx.teardown()
