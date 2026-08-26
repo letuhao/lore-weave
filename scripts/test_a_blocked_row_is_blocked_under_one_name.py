@@ -117,7 +117,7 @@ def test_the_generator_points_NEXT_at_something_actionable():
         # not a broken pointer. The BAR is "never aim at a blocked row", which this satisfies
         # by aiming at no row at all. Asserting a row is always named would have made the
         # finished state look like a failure.
-        assert "BLOCKED ON A DQ" in line or "no unblocked contract work" in line, (
+        assert "blocked on a dq" in line.lower() or "no unblocked contract work" in line.lower(), (
             f"NEXT names no known defect row and is not the terminal message: {line!r}"
         )
         return

@@ -123,13 +123,29 @@ def build() -> tuple[str, list[tuple[str, str]], dict]:
             + (f" · {counts['unclassified']} UNCLASSIFIED (classify before queueing)"
                if counts.get("unclassified") else "")
             + ". Contract first; the full list is `defect_class == contract` in the ledger.")
-    named = "\n".join(
-        f"  [g{g}] {k}{' — BLOCKED ' + dq if dq else ''}\n    {inv}"
-        for g, _b, _a, k, inv, dq in contract[:NAMED])
     free = [r for r in contract if not r[1]]
-    nxt = (f"NEXT. {free[0][3]}  (group {free[0][0]})" if free else
-           "NEXT. Every open contract defect is BLOCKED ON A DQ — take the owner's decisions "
-           "first; there is no unblocked contract work left.")
+    if free:
+        named = "\n".join(
+            f"  [g{g}] {k}{' — BLOCKED ' + dq if dq else ''}\n    {inv}"
+            for g, _b, _a, k, inv, dq in contract[:NAMED])
+        nxt = f"NEXT. {free[0][3]}  (group {free[0][0]})"
+    else:
+        # TERMINAL STATE — every contract row is blocked, so naming three of them with their
+        # invariants spends the budget on work nobody can start. Overflowed at 4025/4000 chars
+        # the first time this state was reached, and the skill's own warning is that the
+        # natural repair (cutting upward from the bottom) silently drops open items.
+        #
+        # The OPEN ITEMS here are the DECISIONS. List them instead: one line each, every
+        # blocking question and how many rows wait on it — which is both shorter and the only
+        # thing a resuming session can act on.
+        waiting: dict[str, int] = {}
+        for _g, _b, _a, _k, _inv, dq in contract:
+            if dq:
+                waiting[dq] = waiting.get(dq, 0) + 1
+        named = "  " + " · ".join(
+            f"{dq}({n})" for dq, n in sorted(waiting.items(), key=lambda x: (-x[1], x[0])))
+        nxt = ("NEXT. No unblocked contract work. Every open contract row waits on a decision "
+               "above; take those first.")
     return f"/goal {DURABLE}\n\n{head}\n{named}\n\n{nxt}\n", contract, counts
 
 
