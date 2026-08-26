@@ -12,6 +12,7 @@
     "name"
   ],
   "MEMORY_SEARCH_REF_FIELDS": [
+    "fact_id",
     "score",
     "snippet",
     "source_type"

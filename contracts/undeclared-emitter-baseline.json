@@ -1,9 +1,9 @@
 {
  "_note": "FROZEN BASELINE 2026-08-25. Every REQUIRED, non-ambient opaque id (*_id / *_ref) whose emitting TOOL is not declared in argument_emitters. The refusal cannot name where to get the value and R1 cannot put the supplier on the wire, so a model that picks the tool cannot finish. This list may only SHRINK: scripts/test_a_required_id_declares_its_emitter_gate.py fails on a NEW entry AND on a stale one, so it can neither grow nor rot upward.",
  "_why_this_big": "WHY IT IS THIS BIG: the mechanism was built and wired into R1 on 2026-08-23 and then left with eleven entries. The 274 gaps carry only 41 DISTINCT argument names - book_id on 84 tools, project_id on 36, chapter_id on 23, run_id on 23 - so one VERIFIED decision retires a whole family. The registry's own bar for an entry is 'verified by calling the supplier', never inferred from a name, because a wrong emitter puts a tool that cannot supply on the wire and actively misleads the model.",
- "_refreeze": "RE-FREEZE: python -c \"import json,pathlib,sys; sys.path.insert(0,'scripts'); import test_a_required_id_declares_its_emitter_gate as g; p=pathlib.Path('contracts/undeclared-emitter-baseline.json'); d=json.loads(p.read_text(encoding='utf-8')); t=g._live_gaps(); d['tools']=t; d['count_tools']=len(t); d['count_args']=sum(len(v) for v in t.values()); p.write_text(json.dumps(d,indent=1,ensure_ascii=False)+chr(10),encoding='utf-8')\"\n\n2026-08-26 — 84/88 -> 61/64. The run_id family declared: 24 entries removed, and every one of them because a SUPPLIER WAS VERIFIED BY CALLING IT, never because a name looked right. plan_run_pass stays in the list on `pass_id` alone — a different argument with no measurement behind it yet.",
- "count_tools": 61,
- "count_args": 64,
+ "_refreeze": "RE-FREEZE: python -c \"import json,pathlib,sys; sys.path.insert(0,'scripts'); import test_a_required_id_declares_its_emitter_gate as g; p=pathlib.Path('contracts/undeclared-emitter-baseline.json'); d=json.loads(p.read_text(encoding='utf-8')); t=g._live_gaps(); d['tools']=t; d['count_tools']=len(t); d['count_args']=sum(len(v) for v in t.values()); p.write_text(json.dumps(d,indent=1,ensure_ascii=False)+chr(10),encoding='utf-8')\"\n\n2026-08-26 — 84/88 -> 61/64. The run_id family declared: 24 entries removed, and every one of them because a SUPPLIER WAS VERIFIED BY CALLING IT, never because a name looked right. plan_run_pass stays in the list on `pass_id` alone — a different argument with no measurement behind it yet.\n\n2026-08-26 (second) — 61/64 -> 60/63. memory_forget.fact_id declared, and it is the rare entry whose SUPPLIER had to be built before the declaration could be true: memory_search could not reach a :Fact at all, and then returned one without its id.",
+ "count_tools": 60,
+ "count_args": 63,
  "tools": {
   "book_chapter_restore_revision": [
    "revision_id"
@@ -157,9 +157,6 @@
   ],
   "lore_entity": [
    "entity_id"
-  ],
-  "memory_forget": [
-   "fact_id"
   ],
   "plan_compile": [
    "arc_id"

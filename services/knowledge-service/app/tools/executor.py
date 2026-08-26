@@ -125,7 +125,18 @@ STORY_SEARCH_REF_FIELDS = (
 # memory_search: keep the 1-line `snippet` preview + source_type + score; DROP the
 # full (≤500-char) `text` body. The preview is added additively in the handler so
 # detail="full" still carries the full `text` (no behavior change).
-MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score")
+#
+# 🔴 `fact_id` IS HERE BECAUSE A FIND THE CALLER CANNOT ACT ON IS HALF A FIX. The fact leg made a
+# stored fact findable again; `memory_forget` REQUIRES a fact_id and its own description says
+# "only use a fact_id you have seen in an earlier tool result". Measured after that leg shipped:
+# the hit carried {score, snippet, source_type, text} at BOTH detail levels and no id, so a later
+# turn could find a fact and still not forget it — memory_remember's id being gone by the next
+# turn is the whole reason search is the only route. Same lesson as composition_reference_list:
+# a reader must project the id its CONSUMER spells, or the chain ends one call short.
+#
+# Only fact hits carry it. `apply_response_contract` keeps a ref field only `if k in it`, so
+# chapter/chat/glossary hits are untouched — no empty key, no shape change for them.
+MEMORY_SEARCH_REF_FIELDS = ("snippet", "source_type", "score", "fact_id")
 # memory_timeline: keep the event's title/date/participants; DROP the (≤500-char)
 # `summary` body at summary detail.
 MEMORY_TIMELINE_REF_FIELDS = ("title", "event_date", "participants")
@@ -628,6 +639,8 @@ async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dic
                 "text": _truncate(fact.content or ""),
                 "source_type": "fact",
                 "score": round(float(score), 4),
+                "fact_id": fact.id,
+                # The id memory_forget needs, spelled the way memory_forget spells it.
             })
         # 🔴 RESERVED SLOTS, BECAUSE APPENDING WOULD HAVE MADE THIS A HALF-FIX. The manuscript leg
         # runs first and can fill `limit` on its own, and the truncation below is positional — so a

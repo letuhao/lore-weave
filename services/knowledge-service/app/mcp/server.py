@@ -661,7 +661,8 @@ async def memory_remember(
     description=(
         "Invalidate a previously stored fact by its id so it no longer "
         "appears in memory. Only use a fact_id you have seen in an earlier "
-        "tool result."
+        "tool result — memory_search returns one on every fact hit, which is "
+        "where to get it when the fact was stored in an earlier turn."
     ),
     meta=require_meta(
         "A", "project",

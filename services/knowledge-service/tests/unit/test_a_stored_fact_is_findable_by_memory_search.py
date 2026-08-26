@@ -164,6 +164,70 @@ class TestTheDECLAREDSurfaceMatchesWhatItNowDoes:
             "memory_search's description does not say it searches saved facts")
 
 
+class TestAFindTheCallerCanACTOnFINDIsNotEnough:
+    """🔴 THE FIRST HALF OF THIS FIX SHIPPED WITHOUT THIS AND WAS HALF A FIX.
+
+    The fact leg made a stored fact findable. `memory_forget` REQUIRES a fact_id and its own
+    description says "only use a fact_id you have seen in an earlier tool result" — and measured
+    right after that leg shipped, a hit carried {score, snippet, source_type, text} at BOTH detail
+    levels and no id. So a later turn could FIND a fact it still could not forget, which is the
+    whole chain: memory_remember's id is gone by the next turn, so search is the only route.
+
+    Same lesson as composition_reference_list, which projects the row's `id` AS `reference_id`
+    because its consumer spells it that way: a reader must hand over the id its CONSUMER needs, or
+    the chain ends one call short and every part of it looks like it worked.
+    """
+
+    def test_the_fact_hit_carries_the_id_memory_forget_requires(self):
+        src = inspect.getsource(_handler_source())
+        assert '"fact_id": fact.id' in src, "a fact hit does not carry its id"
+
+    def test_the_id_SURVIVES_the_summary_projection(self):
+        """`detail="summary"` keeps only MEMORY_SEARCH_REF_FIELDS, and summary is the DEFAULT. An
+        id emitted by the handler and dropped by the contract is an id no caller ever sees."""
+        from app.tools.executor import MEMORY_SEARCH_REF_FIELDS
+
+        assert "fact_id" in MEMORY_SEARCH_REF_FIELDS
+
+    def test_the_other_hit_types_are_UNTOUCHED(self):
+        """Only fact hits carry the key. The contract keeps a ref field `if k in it`, so a
+        chapter/chat/glossary hit gains no empty column and no shape change."""
+        from loreweave_mcp import apply_response_contract
+        from app.tools.executor import MEMORY_SEARCH_REF_FIELDS
+
+        chapter = {"snippet": "s", "text": "t", "source_type": "chapter", "score": 0.5}
+        got, _ = apply_response_contract([chapter], ref_fields=MEMORY_SEARCH_REF_FIELDS,
+                                         detail="summary")
+        assert "fact_id" not in got[0]
+        assert sorted(got[0]) == ["score", "snippet", "source_type"]
+
+    def test_the_emitter_is_DECLARED_so_the_refusal_can_name_it(self):
+        """The map is what the runtime reads: `_missing_args_message` names an emitter from it and
+        R1 answerability is transitive over it. Until memory_search could both reach a fact AND
+        return its id, this entry would have been a claim about a tool that could not supply."""
+        import json
+
+        reg = json.loads((_repo_root() / "contracts" / "agent-runtime-tool-contracts.json")
+                         .read_text(encoding="utf-8"))
+        assert reg["argument_emitters"]["memory_forget"]["fact_id"] == "memory_search"
+
+    def test_memory_forget_DESCRIBES_where_the_id_comes_from(self):
+        srv = pathlib.Path(
+            inspect.getfile(__import__("app.mcp.server", fromlist=["x"]))).read_text(
+            encoding="utf-8")
+        i = srv.index('name="memory_forget"')
+        assert "memory_search" in srv[i:i + 900], (
+            "memory_forget still says 'an earlier tool result' without naming which tool")
+
+
+def _repo_root():
+    here = pathlib.Path(__file__).resolve()
+    for p in here.parents:
+        if (p / "contracts").is_dir():
+            return p
+    raise RuntimeError("repo root not found")
+
+
 def _handler_source():
     from app.tools.executor import _handle_memory_search
 

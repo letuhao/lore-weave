@@ -3350,14 +3350,22 @@
    "queue_group": 2
   },
   "D-STORED-BUT-UNFINDABLE-UNTIL-INDEXED": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-21 (batch 34)",
    "registered": "2026-08-22",
    "service": "knowledge-service / memory",
    "invariant": "Same as D-EDGELESS-NODE-INVISIBLE-TO-THE-GRAPH-READ.",
    "measured": "memory_remember stores a fact and the store confirms it. memory_search cannot find it until the project is indexed, reporting 'degraded': {'semantic': 'not_indexed'} — so memory_forget is told the fact does not exist and correctly declines. The model was RIGHT and the store proves both halves.",
    "defect_class": "contract",
-   "queue_group": 2
+   "queue_group": 2,
+   "status": "FIXED - proven live 2026-08-26, batch c-forgetchain2, K=5, against c-forgetchain1 as an accidental but genuine control.",
+   "rescoped_2026_08_26": "🔴 THE ROW'S CAUSE IS WRONG TWICE OVER, and the second half is a gap in the fix that closed the first.\n\nIt says memory_search 'cannot find it until the project is indexed'. Refuted the same way its sibling row was: on ONE project a CHAPTER nonce was found (count 1) and a FACT nonce was missed (count 0) with the identical degraded {'semantic': 'not_indexed'} marker. The real cause was that memory_search had no leg over :Fact at all, fixed by D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT.\n\nTHAT LEFT THIS ROW'S OWN CHAIN STILL BROKEN, and it is a DIFFERENT cause again. This row is about FORGET: 'memory_forget is told the fact does not exist and correctly declines'. memory_forget REQUIRES a fact_id and its own description says 'only use a fact_id you have seen in an earlier tool result'. Measured immediately after the fact leg shipped, a search hit carried {score, snippet, source_type, text} at BOTH detail levels and NO id. So a later turn could now FIND a fact it still could not forget — one call short, with every part of it looking like it worked.",
+   "the_fix": "Two halves, and both were needed:\n  1. memory_search's fact hits project `fact_id`, spelled the way memory_forget spells it, and `fact_id` was added to MEMORY_SEARCH_REF_FIELDS so it SURVIVES the summary projection — summary is the default, and an id the handler emits and the contract drops is an id no caller ever sees. Other hit types are untouched: the contract keeps a ref field only `if k in it`.\n  2. `memory_forget.fact_id <- memory_search` declared in argument_emitters, and memory_forget's description now names memory_search instead of saying 'an earlier tool result'. This is the rare entry whose SUPPLIER had to be built before the declaration could be true.\nEmitter baseline 61/64 -> 60/63, shrink-only.",
+   "proof": "🔴 THE CONTROL WAS AN ACCIDENT AND IS NONE THE WORSE FOR IT. I declared the emitter and did not rebuild chat-service, which BAKES the registry into its image — the same deploy-order trap this ledger already records once. The run measured a stale registry, and rather than quietly retrying it is kept as the control, because it isolates exactly one variable: same scenario, same fixture, same K, the SAME knowledge-service build (the fact_id projection was already deployed and probed), only the registry differing.\n\n    c-forgetchain1  registry STALE   memory_search advertised 0/5, called 0/5, chain 0/5\n    c-forgetchain2  registry DEPLOYED memory_search advertised 5/5, called 5/5, chain 5/5\n\nOn the stale build the model called memory_forget with {} , was refused, and worked around it by memory_remember-ing a NEGATION of the fact it had been asked to delete — leaving both the wrong fact and a contradiction in the store.\n\nOn the fixed build, every run: memory_search{'query': 'Obsidian Trench'} -> one hit carrying fact_id -> memory_forget with THAT id. Every falsifier clause passes:\n  * it targeted the Trench fact the author called wrong, never the brass-compass decoy, 5/5\n  * it reused an id search returned, never invented one, 5/5\n  * memory_forget SUSPENDED on its Tier-A card (no body) and the store is unchanged, 5/5 — no fact invalidated without a click",
+   "what_is_NOT_covered": "- THE REFUSAL STILL DOES NOT NAME THE SUPPLIER. The chain closed because R1 answerability is transitive over argument_emitters and put memory_search on the wire — NOT because the refusal said where to go. Its text is still 'The tool DOES declare what this is - fact_id: The id of the fact to invalidate. - so use that to obtain the real value', which states WHAT the argument is and not WHERE to get it. Filed as D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW.\n- THE CARD WAS RAISED, NOT CLICKED. The invalidation itself never executed, so this proves the chain up to the confirm gate and no further. That is the scenario's own bar (a fact invalidated with no card would REFUTE it), not a shortcut.\n- The other hit types keeping their shape is unit-guarded, not live-exercised: this run returned only fact hits.",
+   "red_able": "The two halves, by inverse edit and restored by inverse edit:\n    drop `\"fact_id\": fact.id` from the hit        -> test_the_fact_hit_carries_the_id_memory_forget_requires\n    drop fact_id from MEMORY_SEARCH_REF_FIELDS    -> test_the_id_SURVIVES_the_summary_projection\nEach reds the named guard and nothing else. 20 guards in the file.",
+   "suite": "knowledge-service, serially: 4249 passed, 563 skipped, 3 FAILED — the same three that fail at HEAD (D-THREE-KNOWLEDGE-SERVICE-GUARDS-ARE-RED-AT-HEAD), left RED. The response-shape snapshot was edited for the MEMORY_SEARCH key ONLY; regenerating the whole file would have silently absorbed the pre-existing TRIAGE_GROUP_REF_FIELDS drift and turned someone else's red guard green as a side effect.",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-forgetchain2.json (fixed), c-forgetchain1.json (stale-registry control)"
   },
   "D-EMPTY-TRANSLATION-SAVED-AS-A-VERSION": {
    "state": "fixed",
@@ -4811,6 +4819,16 @@
    "defect_class": "instrument",
    "queue_group": 4,
    "measured_by": "scripts/toolloop/scenarios-c-factsearch.json, batch refusal 2026-08-26"
+  },
+  "D-THE-EMITTER-ARM-IS-UNREACHABLE-WITHOUT-A-CONTRACT-ROW": {
+   "status": "OPEN - measured 2026-08-26 on memory_forget, batch c-forgetchain2, and it generalises by construction rather than by sampling.",
+   "what": "`argument_emitters` is read in TWO places and only ONE of them is reachable for most tools.\n\n  R1 answerability transitivity - reads the map directly. Works for any tool.\n  _missing_args_message's emitter sentence - lives inside the `owed` branch, which is entered only when declared_supplier(contract, arg) is 'context' or 'plan'. That reads a tool's `argument_supplier` member, and only 14 of the 316 federated tools carry a contract row at all.\n\nSo for ~300 tools a DECLARED emitter can never be named in a refusal. memory_forget is a measured instance: the emitter is declared and verified, and the refusal still reads 'The tool DOES declare what this is - fact_id: The id of the fact to invalidate. - so use that to obtain the real value and call again', which states WHAT the argument is and not WHERE to get it.",
+   "why_it_is_not_cosmetic": "The two readers fail in different situations. R1 transitivity only expands from tools the request already made ANSWERABLE, so a tool reached by any other route - a rail, the hot seed, an explicit tool_load - gets no supplier forced onto the wire and a refusal that names none either. On c-forgetchain2 the chain closed via transitivity; the refusal contributed nothing.",
+   "candidate_direction_NOT_MEASURED": "Name a declared emitter regardless of the `owed` branch - the map is the same structured source either way, and a declaration is a fact about the catalogue, not about who owes the value. NOT measured: whether that would change the model's behaviour where transitivity already surfaces the supplier is exactly the question a stripped-declaration control answered NO to once already this run, so the recall must be measured before it is recommended.",
+   "state": "open",
+   "defect_class": "contract",
+   "queue_group": 3,
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-forgetchain2.json, refusal text on rep 0 of c-forgetchain1.json"
   }
  },
  "deferred_questions": {
@@ -5418,8 +5436,8 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 175,
-  "defects_fixed": 62,
+  "defects_total": 176,
+  "defects_fixed": 63,
   "defects_withdrawn": 12,
   "defects_superseded": 1
  },
