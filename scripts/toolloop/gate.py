@@ -655,6 +655,58 @@ def dq_alias_drift(ledger: dict) -> dict:
     return out
 
 
+#: A deferred question is in exactly one of these. Prose belongs in `state_note`.
+DQ_STATES = ("open", "answered", "withdrawn")
+
+
+def dq_state_drift(ledger: dict) -> dict:
+    """{dq: what_is_wrong} for every deferred question whose state is not a readable token.
+
+    🔴 THE SAME DISEASE AS dq_alias_drift, ONE BLOCK OVER — and that row said this block was
+    NOT checked. Censused 2026-08-26: of 25 questions, 18 carried `state`, 3 carried `status`,
+    5 carried NEITHER, and `state` was not a token at all — one held an entire paragraph,
+    another the phrase 'recommend withdrawn — pending owner'.
+
+    It matters because `blocked_by_dq` is only half a link. A defect row points at a question,
+    and whether that row is ACTIONABLE depends on whether the question is still open. Seven
+    questions had no machine-readable state, so anything reading one saw nothing.
+
+    🔴 AND TRANSCRIBING THEM ALMOST WENT WRONG IN THE OBVIOUS WAY. A first pass tested
+    `"ANSWERED" in status.upper()` before the open branch, and DQ-T31's status reads
+    "OPEN — product decision, recorded per the RUNBOOK rather than answered" — so an OPEN
+    product decision was marked ANSWERED. That question BLOCKS THREE contract defects; the
+    wrong token would have presented all three as ready to work on a decision the owner never
+    made. A substring is not a state, which is exactly why the state has to be a token.
+    """
+    out = {}
+    for name, dq in (ledger.get("deferred_questions") or {}).items():
+        if not isinstance(dq, dict):
+            continue
+        st = dq.get("state")
+        if st is None:
+            out[name] = "no `state` at all — unreadable to anything deciding if it is settled"
+        elif st not in DQ_STATES:
+            out[name] = f"state is prose, not one of {DQ_STATES}: {str(st)[:60]!r}"
+    return out
+
+
+def dangling_dq_links(ledger: dict) -> dict:
+    """{defect: dq} for every row blocked by a question that is not registered.
+
+    A row blocked on a question nobody wrote down can never be unblocked, and the owner has
+    nothing to decide. It also silently shrinks the actionable queue.
+    """
+    dqs = ledger.get("deferred_questions") or {}
+    out = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        ref = row.get(DQ_FIELD)
+        if ref and ref not in dqs:
+            out[name] = ref
+    return out
+
+
 def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
     """🔴 THE GATE USED TO SAY "may be recorded" AND WRITE NOTHING.
 
@@ -719,7 +771,9 @@ def cmd_audit(a) -> int:
     # thing that STEERS the run. See dq_alias_drift — one row blocked under the wrong field
     # name is a row the queue offers as actionable and the stop condition cannot count.
     aliases = dq_alias_drift(ledger)
-    if not orphans and not drift and not aliases:
+    dq_states = dq_state_drift(ledger)
+    dangling = dangling_dq_links(ledger)
+    if not orphans and not drift and not aliases and not dq_states and not dangling:
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
@@ -748,6 +802,19 @@ def cmd_audit(a) -> int:
             print(f"  {name:58} {found}")
         print(f"  -> rename the field to `{DQ_FIELD}` on each row. NOT auto-migrated on purpose: "
               "a row rewritten by a tool is a row nobody re-read.")
+    if dangling:
+        print(f"REFUSED — {len(dangling)} defect(s) are blocked by a deferred question that is "
+              "NOT REGISTERED. Such a row can never be unblocked and the owner has nothing "
+              "to decide:")
+        for name, ref in sorted(dangling.items()):
+            print(f"  {name:58} -> {ref}")
+    if dq_states:
+        print(f"REFUSED — {len(dq_states)} deferred question(s) have no readable state. "
+              f"`blocked_by_dq` is only half a link: whether a blocked defect is ACTIONABLE "
+              f"depends on whether its question is still open. State must be one of "
+              f"{DQ_STATES}; put prose in `state_note`:")
+        for name, why in sorted(dq_states.items()):
+            print(f"  {name:12} {why}")
     return 1
 
 

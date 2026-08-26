@@ -111,9 +111,77 @@ def test_the_generator_points_NEXT_at_something_actionable():
     line = next((ln for ln in out.splitlines() if ln.startswith("NEXT.")), "")
     assert line, f"the generator emitted no NEXT pointer:\n{out[-400:]}"
     pointed = next((n for n in LEDGER["defects"] if n in line), None)
-    assert pointed, f"NEXT names no known defect row: {line!r}"
+    if pointed is None:
+        # THE TERMINAL STATE IS A VALID POINTER. When every open contract defect is DQ-blocked
+        # the generator says so instead of naming a row, and that is the run's stop condition —
+        # not a broken pointer. The BAR is "never aim at a blocked row", which this satisfies
+        # by aiming at no row at all. Asserting a row is always named would have made the
+        # finished state look like a failure.
+        assert "BLOCKED ON A DQ" in line or "no unblocked contract work" in line, (
+            f"NEXT names no known defect row and is not the terminal message: {line!r}"
+        )
+        return
     assert not LEDGER["defects"][pointed].get(gate.DQ_FIELD), (
         f"NEXT points at {pointed}, which is blocked on "
         f"{LEDGER['defects'][pointed][gate.DQ_FIELD]} — the resume pointer is aimed at a "
         f"decision the owner has to make, not at work"
     )
+
+
+# ── The DQ block, added 2026-08-26 ────────────────────────────────────────────────────────
+# The alias gate above deliberately covered only the DEFECTS block, and its row said so. That
+# gap was real: censused, of 25 deferred questions 18 carried `state`, 3 carried `status`, 5
+# carried NEITHER, and `state` was not a token at all — one held a whole paragraph.
+#
+# It matters because `blocked_by_dq` is only HALF a link. A defect points at a question, and
+# whether that defect is ACTIONABLE depends on whether the question is still open.
+
+
+def test_every_deferred_question_has_a_readable_state():
+    assert gate.dq_state_drift(LEDGER) == {}
+
+
+def test_no_defect_is_blocked_by_an_unregistered_question():
+    """A row blocked on a question nobody wrote down can never be unblocked, and the owner has
+    nothing to decide — it just silently shrinks the actionable queue."""
+    assert gate.dangling_dq_links(LEDGER) == {}
+
+
+def test_the_dq_state_check_catches_both_ways_of_being_unreadable():
+    missing = {"deferred_questions": {"DQ-X": {"question": "?"}}}
+    assert "DQ-X" in gate.dq_state_drift(missing)
+    prose = {"deferred_questions": {"DQ-Y": {"state": "recommend withdrawn — pending owner"}}}
+    assert "DQ-Y" in gate.dq_state_drift(prose)
+    for good in gate.DQ_STATES:
+        assert gate.dq_state_drift({"deferred_questions": {"DQ-Z": {"state": good}}}) == {}
+
+
+def test_a_substring_is_not_a_state():
+    """🔴 THE NEAR-MISS THIS WHOLE CHECK EXISTS FOR. Transcribing the state-less rows, a first
+    pass tested `"ANSWERED" in status.upper()` before the open branch — and DQ-T31's status
+    reads "OPEN — product decision, recorded per the RUNBOOK rather than answered". An OPEN
+    product decision was marked ANSWERED. That question BLOCKS THREE contract defects, so the
+    wrong token would have presented all three as ready to work on a decision the owner never
+    made."""
+    dq = LEDGER["deferred_questions"]["DQ-T31"]
+    assert dq["state"] == "open", "DQ-T31 is an open product decision"
+    assert "rather than answered" in dq["status"], (
+        "the phrase that caused the mis-transcription is gone — if the status was rewritten, "
+        "re-check that the state still matches what it says"
+    )
+
+
+def test_the_blocking_questions_are_all_genuinely_open():
+    """The run's STOP CONDITION rests on this: 'every open contract defect is DQ-blocked' only
+    means the work is finished if those questions are actually unanswered. A defect blocked by
+    an ANSWERED question is work, not a block."""
+    dqs = LEDGER["deferred_questions"]
+    stale = {
+        name: row[gate.DQ_FIELD]
+        for name, row in LEDGER["defects"].items()
+        if row.get("state") == "open"
+        and row.get("defect_class") == "contract"
+        and row.get(gate.DQ_FIELD)
+        and dqs.get(row[gate.DQ_FIELD], {}).get("state") != "open"
+    }
+    assert not stale, f"blocked on a question that is no longer open: {stale}"
