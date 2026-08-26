@@ -3783,14 +3783,18 @@
    "defect_class": "instrument"
   },
   "D-FORGET-RESTAMPS-VALID-UNTIL-AND-REWRITES-HISTORY": {
-   "status": "OPEN — PROVEN against the owning store, 2026-08-23",
+   "status": "FIXED - the repair landed in 8fa3c4687 and this row was never updated. Re-measured against the OWNING store 2026-08-26 and the guard proven red-able the same day.",
    "what": "memory_forget re-stamps a Fact's `valid_until` on EVERY call and reports {'invalidated': true} each time. Measured in Neo4j directly:\n    before a repeat call : valid_until = 2026-08-23T07:52:12.211Z\n    after                : valid_until = 2026-08-23T07:54:29.154Z\nThe fact was already invalidated. The second call moved WHEN it stopped being true.",
    "why_it_matters": "valid_until is the temporal record — the moment the fact ceased to hold. Re-stamping it means a fact invalidated at 07:52 now claims it was valid until 07:54, so any as-of query in that window returns a fact the author had already retracted. This is the exact case the idempotency bar names: a second call 'must not corrupt what the first call wrote'.",
    "the_response_cannot_reveal_it": "Both calls answer {'invalidated': true}, identical. A caller cannot tell a real invalidation from a re-stamp, and the tool DOES have a false form — an absent fact_id correctly answers {'invalidated': false, 'reason': 'no matching fact found'} — so the honest answer exists and is not used here.",
-   "measured_by": "direct Neo4j read before/after a repeat memory_forget, 2026-08-23",
-   "state": "open",
+   "measured_by": "direct Neo4j read before/after a repeat memory_forget through the MCP surface, 2026-08-26; guard run with TEST_NEO4J_URI against infra-neo4j-1",
+   "state": "fixed",
    "defect_class": "contract",
-   "queue_group": 2
+   "queue_group": 2,
+   "closed_2026_08_26": "🔴 I DID NOT FIX THIS; I MEASURED IT. The repair shipped in commit 8fa3c4687 ('a repeat invalidate rewrote WHEN a fact stopped being true - both fact and relation') and the row stayed open, so what was owed here was the MEASUREMENT, not code.\n\nRE-DERIVED AGAINST NEO4J, not read off the Cypher - a code comment claiming a repair is a lead exactly like a ledger claim is:\n    before any forget   valid_until = NULL\n    after forget #1     valid_until = 2026-08-26T03:48:00.737Z\n    after forget #2     valid_until = 2026-08-26T03:48:00.737Z   <- UNMOVED\nThe first stamp sticks. `_INVALIDATE_FACT_CYPHER` now reads `coalesce($valid_until, f.valid_until, datetime())`, so the existing value wins over a fresh `datetime()` and an EXPLICIT caller-supplied time still beats both.",
+   "the_guard_and_its_falsifier": "The repair is guarded, and the guard is red-able on the ORIGINAL defect. tests/integration/db/test_facts_repo.py:\n  test_a_repeat_invalidate_does_not_move_when_the_fact_stopped_being_true\n  test_an_explicit_valid_until_still_wins  (the control for the coalesce ORDER - preserving the first stamp must not silently swallow a caller correcting the time)\nBoth SKIP without TEST_NEO4J_URI; run against the live instance they pass, and restoring the original `coalesce($valid_until, datetime())` reds the first and leaves the control green. Restored by inverse edit and verified byte-identical to HEAD by sha.",
+   "the_siblings_were_checked_and_are_NOT_vulnerable": "Two other invalidators carry the UN-repaired `coalesce($valid_until, datetime())`, and the falsifier surfaced them by refusing to restore a unique anchor - three occurrences, not one. That is the pair-fixed-at-one-end shape, so it was chased rather than assumed:\n\n    invalidate_facts_for_day\n    invalidate_all_facts_for_project\n\nBOTH ARE SAFE, and for a different reason than invalidate_fact. Their WHERE carries `AND f.valid_until IS NULL`, so a repeat matches NOTHING and there is nothing to re-stamp - the guard is in the match, not the SET. `invalidate_fact` matches by id alone (`MATCH (f:Fact {id: $id})`), which is exactly why it needed the coalesce and they do not. Two mechanisms, both correct; recorded because the near-miss would have been a filed defect that does not exist.",
+   "the_response_half_is_not_a_defect_now": "The row's second observation stands as fact and no longer as harm: both calls still answer {'invalidated': true}, identically. It was offered as evidence that a caller could not DETECT the corruption - 'a caller cannot tell a real invalidation from a re-stamp'. With the corruption gone there is nothing to detect: the second call is a genuine no-op and reporting success over a no-op is what idempotent means. The tool's false form ({'invalidated': false, 'reason': 'no matching fact found'}) still fires for an absent id, which is the case where the distinction carries information. Not claimed as fixed and not left open - stated, because the row's own why_it_matters is entirely about valid_until."
   },
   "D-IDEMPOTENCY-PROBE-IS-BLIND-TO-NEO4J-OWNED-TOOLS": {
    "status": "OPEN — instrument limit, measured 2026-08-23",
@@ -5421,7 +5425,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 75,
+  "defects_open": 74,
   "deferred_questions": 19,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5437,7 +5441,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 176,
-  "defects_fixed": 63,
+  "defects_fixed": 64,
   "defects_withdrawn": 12,
   "defects_superseded": 1
  },
