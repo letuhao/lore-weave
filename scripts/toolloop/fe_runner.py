@@ -552,6 +552,12 @@ async def _drive_turns(client, auth, sc, idx, fx, sid, turns, prior):
     # beside the SSE snapshots rather than instead of them: the snapshots are what the INSPECTOR
     # showed a user, which is a different question and its own defect surface.
     res["wire_passes"] = wire_passes(sid)
+    # THE STORE'S COUNT AGAINST THE WIRE'S, taken while both still exist. A gap here is
+    # D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN measuring itself
+    # instead of waiting to be hunted; None on either side means ABSENCE, never zero.
+    _logn = wire_log_pass_count(sid)
+    res["pass_ledger"] = {"store": len(res["wire_passes"]), "wire_log": _logn,
+                          "gap": (None if _logn is None else _logn - len(res["wire_passes"]))}
     # The measured prompt is the one the bars are read against.
     res["prompt"] = turns[-1]
     res["session_id"] = sid
@@ -920,6 +926,32 @@ def wire_passes(session_id: str) -> list[dict]:
                 out.append({"turn": int(row[0]), "pass": e.get("pass"),
                             "names": sorted(str(x) for x in e["names"])})
     return out
+
+
+def wire_log_pass_count(session_id: str, since: str = "30m") -> int | None:
+    """How many passes chat-service's own INFO log printed for this session.
+
+    D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN. `advertised_tools` is
+    documented as ONE ENTRY PER MODEL PASS, and on 1 of 10 live sessions it held one fewer than
+    the log. Finding that took reading a container log that had already rotated on the first
+    attempt — so the comparison is taken HERE, while both numbers still exist, and recorded on
+    the run.
+
+    Returns None when the log cannot be read or the window has rolled past the session, which is
+    ABSENCE. A zero would claim the service printed nothing, and this loop has already once
+    compared against a silently-empty log capture and drawn a conclusion from it.
+    """
+    try:
+        import subprocess  # noqa: PLC0415
+        p = subprocess.run(["docker", "logs", "--since", since, "infra-chat-service-1"],
+                           capture_output=True, text=True, errors="replace", timeout=120)
+        # STDERR too: python logging goes there, and reading stdout alone finds only the
+        # access log — which is how a comparison silently found zero matches once already.
+        n = sum(1 for ln in (p.stdout + p.stderr).splitlines()
+                if "agent-surface advertised" in ln and session_id in ln)
+    except Exception:  # noqa: BLE001 — an instrument must not fail the run it measures
+        return None
+    return n or None
 
 
 def wire_surfaced_names(r) -> set:
