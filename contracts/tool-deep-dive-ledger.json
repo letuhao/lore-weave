@@ -3568,12 +3568,17 @@
    "state_reason": "Fixed 2026-08-25 by the class fix, not by a repair of its own: the two-link chain is now declared end to end in argument_emitters and R1 forces both links onto the wire. Proven live at K=5 with zero refusals."
   },
   "D-ANSWER-GATE-CALIBRATED-ON-THE-BROKEN-POPULATION": {
-   "status": "OPEN — one instance repaired, class not swept",
+   "status": "FIXED 2026-08-27 — the class IS swept, and the sweep came back clean. What ships is narrow on purpose: the rule's judgement half is not mechanisable and this row now says so with the evidence.",
    "what": "A phrase-level answer_expect calibrated on the broken population can go RED on the FIXED one. none_of:['currently offer'] discriminated 9/10 before the fix and failed 4 of 5 correct replies after it, because the corrected answer must NAME the thing it is not in order to disclaim it.",
    "rule": "Assert the PROPOSITION, not a symptom of its absence, and measure the phrase over both the broken and the fixed population before adopting it. A gate that has only ever seen the broken population is untested in the only direction that matters.",
    "found_by": "settings_provider_inventory, c3-note vs c3-close/c3-run, 2026-08-23",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_sweep_the_row_asked_for": "🔴 IT CAME BACK CLEAN, which is worth more than a finding, because it is the direction that could have refuted the whole approach.\n\n    51  negative phrase gates across the corpus\n    30  recorded answers from the batch that PROVED its tool (the FIXED population)\n     0  confirmed mis-calibrations\n\nThe single apparent hit is kg-entity-edge-timeline's `\"couldn't find\"` firing on \"i couldn't find any information about Aldric Vane…\". Its `why` records that the node EXISTS and turn 1's graph read shows it — so that answer is the failure the gate was written to catch, and the gate is working. Read without the `why` it would look like a false positive. The `why` is what settles it, which is the entire argument for requiring one.",
+   "a_gate_i_almost_shipped_and_the_control_that_refuted_it": "🔴 REFUTED BY READING ITS OWN OUTPUT, before it shipped. The first proposal was to require each `why` to record a MEASUREMENT over both populations — the row's own wording. It scores 13 of 51 compliant, which looked like a big finding.\n\nReading the other 38 shows the TEST was wrong, not the scenarios. They justify from the FIXTURE: 'Both maps exist', 'Ironhold is a seeded marker', 'The book has two chapters', 'zero translations', 'Exactly one entry is awaiting review'. That is GROUND TRUTH and strictly stronger than a population measurement. Shipping it would have flagged 38 correct justifications and been switched off within a day.\n\nA guard pins the count that makes that true, so the rejected design cannot quietly return.",
+   "what_shipped": "A negative phrase gate must carry a `why` AT ALL — 47 of 51 already do, and the 4 that do not are seeded shrink-only in contracts/negative-gate-without-a-reason-baseline.json. Their reasons are deliberately NOT written by me: a justification written by someone who did not choose the phrase is not a justification, and all four sit in older duplicate scenario files.\n\nWhitespace does not count as a reason — proven RED.",
+   "what_is_NOT_covered": "- THE JUDGEMENT HALF IS NOT MECHANISED, and this row no longer implies it could be. Whether a `why` argues the PROPOSITION or merely a symptom is exactly the distinction that broke `currently offer`, and no substring test can make it. What a gate can do is refuse a bar with no stated reason at all.\n- 30 ANSWERS IS A THIN FIXED POPULATION. Most proven batches' scenarios carry no `answer_expect`, so the overlap is small — the clean result is real but it is not a strong clearance, and a phrase adopted tomorrow is as untested as `currently offer` was.\n- 'PROVEN BATCH' IS A PROXY for the fixed population, read from each tool's ledger note. A tool proven on one batch may still answer differently on another.\n- THE 4 BASELINED SCENARIOS STILL HAVE UNJUSTIFIED PHRASE GATES. Nothing here re-measures them; the gate only stops a fifth appearing.",
+   "red_able": "scripts/test_a_negative_phrase_gate_states_its_reason.py, 5 guards, three falsifiers proven RED and restored: a NEW negative gate with no why (named by id), a stale baseline entry, and a `why` that is only whitespace."
   },
   "D-EXCLUSIVITY-PROBE-BLIND-TO-THE-PLATFORM": {
    "status": "FIXED 2026-08-23",
@@ -5994,7 +5999,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 49,
+  "defects_open": 48,
   "deferred_questions": 26,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6010,7 +6015,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 192,
-  "defects_fixed": 101,
+  "defects_fixed": 102,
   "defects_withdrawn": 16,
   "defects_superseded": 1
  },
