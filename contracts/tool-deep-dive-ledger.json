@@ -3859,11 +3859,18 @@
    "red_able": "services/knowledge-service/tests/unit/test_a_schema_write_verifies_its_signature.py, 7 guards. Inverse edit - the guard block removed, restored byte-identical (sha256 equal):\n    5 red, including the original defect (an invented signature mints no token), the\n    supplier-naming refusal, the scope check, the fail-closed case, and the class guard\n    that the verification precedes mint_action_token in the source.\n    2 stayed GREEN and correctly so: the RECALL guard (a real signature still mints) and\n    the guard pinning that the shared apply effect was left alone - neither is affected\n    by the direction of the change.\nThe fail-closed case is deliberate: ctx.triage_repo is Optional, and a guard that skips when its dependency is missing is not a guard."
   },
   "D-FE-RUNNER-MEASURES-THE-LAST-TURN-SO-A-PROMPT-EDIT-CAN-MISS": {
-   "status": "OPEN — measured 2026-08-23",
+   "status": "FIXED 2026-08-27. The runner now says which turn it measured, and a gate stops a scenario being authored whose justification points at a turn no bar reads.",
    "what": "fe_runner measures the LAST turn (`turns = [prompt, *follow_ups]`), so editing `prompt` on a scenario that declares follow_ups changes a turn nobody reads. Measured today: I rewrote catalog_get_book's and translation_job_control's prompts to ask for the tool's real action, and the MEASURED turns were still their follow-ups — 'Open the first one and show me its detail.' and 'Cancel that job.' The edit was inert and the run looked like a refutation of it.",
    "how_to_see_it": "The recorded run's own `prompt` field is the MEASURED turn, and it did not match what I wrote. Compare it against the scenario's `prompt` before reading any result: they differ exactly when follow_ups exist. jobs_cancel/jobs_pause have none, which is why the same edit worked there — 0/5 -> 5/5.",
-   "state": "open",
-   "defect_class": "instrument"
+   "state": "fixed",
+   "defect_class": "instrument",
+   "the_invariant": "THE TURN A SCENARIO JUSTIFIES MUST BE THE TURN ITS BARS READ. Two things made the violation silent, and both are closed:\n\n1. NOTHING PRINTED THE SENTENCE THAT WAS ACTUALLY ASKED. The report showed a scenario id and two fractions, so an edit to a turn nobody reads looked exactly like an edit that landed. It now prints, for every scenario with follow_ups:\n\n       ^ MEASURED TURN is turn 2 of 2: 'Cancel that job.'\n         `prompt` is SETUP and no bar above reads it: 'What is the status of the translation job for this book?'\n\n2. THE JUSTIFICATION COULD DESCRIBE A TURN NOBODY MEASURES. `prompt_source` exists to say why the sentence is the right sentence, and it is checkable.",
+   "measured": "Of 124 scenarios that declare follow_ups, 119 ALREADY name the measured turn — 'Turn 1 is jobs_list's own purpose; the MEASURED turn is jobs_cancel's synonyms [stop job], verbatim'. Six sampled at random, 6 of 6 genuine. The five that do not all justify turn 1 while measuring a bare affirmative:\n\n    p4-confirm-batch::composition-arc-apply       'Yes, go ahead and do it.'\n    p4-confirm-batch::composition-derivative-edit 'Yes, go ahead and do it.'\n    p4-confirm-batch::composition-motif-adopt     'Yes, go ahead and do it.'\n    c-planapply2::plan-bootstrap-apply-compiled-answered  'Yes, please create them.'\n    c-planapply4::plan-bootstrap-apply-answerable-confirmation\n\nSeeded shrink-only in contracts/justifies-the-unmeasured-turn-baseline.json. The rule was read from what the compliant 119 write, not invented for the five.",
+   "one_home": "`measured_turn()` now lives in fe_runner, which owns the semantics, and the turn loop asserts `turns[-1] == fx.substitute_text(measured_turn(sc))` so the two cannot drift. It had already been re-derived elsewhere and gotten WRONG in the other direction the same day: the sibling gate judged `prompt`, which flagged 60 setup reads as defects (see D-A-FIFTH-OF-SCENARIOS-DO-NOT-ASK-FOR-THEIR-OWN-TOOL, reopened). Two files deriving one rule produced two different wrong answers before either was noticed.",
+   "red_able": "scripts/test_a_scenario_justifies_the_turn_it_measures.py, 7 guards, four falsifiers proven RED on the shipped code and restored byte-identical: a NEW scenario justifying turn 1 (the gate names it), removing the report line, printing it unconditionally, and letting the turn loop drift from measured_turn.",
+   "proven_live": "batch c-measturn1, scenarios-c-surfrec2.json, K=5, zero errored runs, throwaway fixture per run. The report printed 'MEASURED TURN is turn 2 of 2: Cancel that job.' beside the bars, which is exactly the line whose absence caused the 2026-08-23 misreading, and the turn loop's drift assertion ran on every turn of every run without firing.",
+   "what_is_NOT_covered": "- THE MEASURED TURN IS STILL THE LAST TURN. That is the harness's design and it is not changed here: an author who edits `prompt` still edits a turn no bar reads. What changes is that the batch now SAYS SO, and a new scenario cannot be authored with its justification aimed elsewhere.\n- THE FIVE BASELINED SCENARIOS ARE NOT REWRITTEN. Whether measuring a bare affirmative is the right test is a different question with its own row (D-AFFIRMATIVE-FOLLOW-UP-LOSES-THE-PRIOR-INTENT); rewriting them here would decide it by the back door.\n- THE JUSTIFICATION CHECK IS A KEYWORD TEST over prose ('measured', 'follow', 'turn 2', 're-ask', or a quote of the sentence). It cannot tell a justification that names the right turn and says something false about it. It is a floor, and the 119/124 it agrees with are what calibrate it.\n- THE GATE IS STATIC, so the live run proves the printed line and the drift assertion, not the gate. A CI gate has no live form; its four falsifiers are the evidence.",
+   "evidence": "docs/eval/toolloop/2026-08-14/c-measturn1{,-raw}.json; contracts/justifies-the-unmeasured-turn-baseline.json"
   },
   "D-FORGET-RESTAMPS-VALID-UNTIL-AND-REWRITES-HISTORY": {
    "status": "FIXED - the repair landed in 8fa3c4687 and this row was never updated. Re-measured against the OWNING store 2026-08-26 and the guard proven red-able the same day.",
@@ -5895,7 +5902,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 59,
+  "defects_open": 58,
   "deferred_questions": 25,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -5911,7 +5918,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 191,
-  "defects_fixed": 91,
+  "defects_fixed": 92,
   "defects_withdrawn": 15,
   "defects_superseded": 1
  },

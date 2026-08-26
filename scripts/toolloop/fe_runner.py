@@ -403,6 +403,9 @@ async def run_scenario(client, auth, sc, idx, fx):
     # does not is a scenario that cannot be written correctly, so it is fixed here rather
     # than worked around per scenario.
     turns = [fx.substitute_text(t) for t in (sc["prompt"], *(sc.get("follow_ups") or []))]
+    assert turns[-1] == fx.substitute_text(measured_turn(sc)), (
+        "measured_turn() and the turn loop disagree about which turn is measured — they are "
+        "the same rule and must not drift")
     prior = []
     for _ti, _prompt in enumerate(turns):
         res = await send_turn(client, auth, sid, _prompt,
@@ -811,6 +814,23 @@ def wire_surfaced_names(r) -> set:
     return {n for p in (r.get("wire_passes") or []) for n in p.get("names") or []}
 
 
+def measured_turn(sc: dict) -> str:
+    """The turn a scenario's bars are read against — `follow_ups[-1]` if any, else `prompt`.
+
+    ONE HOME for a rule two other files were re-deriving. D-FE-RUNNER-MEASURES-THE-LAST-TURN-
+    SO-A-PROMPT-EDIT-CAN-MISS: editing `prompt` on a scenario that declares follow_ups changes
+    a turn nobody reads, and it fails SILENTLY — two prompts were rewritten on 2026-08-23 to
+    ask for the tool's real action and the runs still measured 'Open the first one and show me
+    its detail.' and 'Cancel that job.'. The edit was inert and the batch read as a refutation
+    of it. Its sibling gate re-derived the same rule and got it WRONG in the other direction,
+    judging `prompt`, which flagged 60 setup reads as defects.
+
+    Returns the raw scenario text — substitution happens in the runner, so this is what the
+    AUTHOR wrote, which is what an author needs to see."""
+    fu = sc.get("follow_ups") or []
+    return (fu[-1] if fu else sc.get("prompt")) or ""
+
+
 def prior_turn_record(prompt: str, res: dict) -> dict:
     """What survives of a turn that is NOT the measured one.
 
@@ -900,6 +920,12 @@ def report(results, scenarios, repeats):
             print(f"    ^ ON THE WIRE (store, every turn): {hit_r}/{len(wire_rs)} runs, "
                   f"{hit_p}/{len(wp)} passes — the figure to quote. The column above counts "
                   f"SNAPSHOTS of the measured turn, which is neither.")
+        # THE SENTENCE THAT WAS ACTUALLY ASKED. Nothing printed it, so an edit to a turn the
+        # bars do not read looked exactly like an edit that landed — see measured_turn().
+        if sc.get("follow_ups"):
+            print(f"    ^ MEASURED TURN is turn {len(sc['follow_ups']) + 1} of "
+                  f"{len(sc['follow_ups']) + 1}: {measured_turn(sc)!r}")
+            print(f"      `prompt` is SETUP and no bar above reads it: {sc.get('prompt')!r}")
         if earlier_only:
             print(f"    ^ on the wire in an EARLIER turn only, in {earlier_only}/{len(rs)} runs "
                   f"— the `surface has tool` column reads the MEASURED turn, and the session's "

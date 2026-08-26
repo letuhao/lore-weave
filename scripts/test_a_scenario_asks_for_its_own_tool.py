@@ -36,15 +36,18 @@ unrelated defect, which is the one way a wrong bar announces itself.
 
 The remaining offenders are seeded as a SHRINK-ONLY baseline, the same container
 contracts/undeclared-emitter-baseline.json uses and the same choice the OUT-2 lint made with
-its 14. They are historical batches whose tools are all `proven` via the corrected `-asked`
-scenarios; rewriting archived measurements buys nothing. What the baseline buys is that the
-61st cannot appear.
+its 14. After the turn correction there is exactly ONE, and it is genuine. What the baseline
+buys is that the second cannot appear.
 """
 from __future__ import annotations
 
 import json
 import pathlib
 import re
+import sys
+
+ROOT_ = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT_ / "scripts" / "toolloop"))
 
 BASELINE = pathlib.Path(__file__).resolve().parents[1] / "contracts" / "read-prompt-on-write-tool-baseline.json"
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -86,30 +89,11 @@ def tiers_from_registrations() -> dict[str, str]:
     return out
 
 
-def measured_turn(sc: dict) -> str:
-    """The turn the bars are read against — `follow_ups[-1]` if there are any, else `prompt`.
-
-    🔴 THE FIRST VERSION OF THIS GATE JUDGED `prompt`, AND THAT IS THE WRONG TURN.
-    fe_runner sets `res["prompt"] = turns[-1]` and says so in a comment: "THE LAST TURN IS THE
-    MEASURED ONE". For a scenario with follow_ups the first turn is SETUP — very often a read
-    that supplies the id the write needs — and no bar ever reads it. Judging it flagged the
-    setup and called it the defect.
-
-    Re-derived 2026-08-27 over 78 Tier-A/W scenarios that declare follow_ups:
-
-        judging the FIRST turn (what shipped)   61 offenders
-        judging the MEASURED turn (correct)      1 offender
-
-    59 of the 60 seeded as debt were never offenders — their measured turn asks for the tool's
-    action, exactly as the tool wants. The one that survives is single-turn and genuine:
-    composition-error-block-edit asks "What passages have I flagged as problems in this book?"
-    of a Tier-A EDIT tool.
-
-    That is a bar that was WRONG, not a bar that was inconvenient, and the difference is that
-    this reading can be checked against fe_runner's own line rather than against what would be
-    easier to pass."""
-    fu = sc.get("follow_ups") or []
-    return (fu[-1] if fu else sc.get("prompt")) or ""
+# ONE HOME: `measured_turn` now lives in fe_runner, which OWNS the rule (its turn loop asserts
+# against it). This file re-derived it and got it wrong in the other direction once already;
+# importing it means the gate and the runner cannot drift apart again. The reasoning that used
+# to sit here is on the function.
+from fe_runner import measured_turn  # noqa: E402
 
 
 def offenders() -> set[str]:
