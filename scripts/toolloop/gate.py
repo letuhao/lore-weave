@@ -196,7 +196,26 @@ class Gate:
             f"[{t['tool']}] DATA snapshots",
             f"{len(with_both)} of {len(pairs)} run(s) carry the owning store BEFORE and AFTER; "
             "the tool's own response is not evidence of what it wrote")
-        self._check(bool(t.get("falsifier")), f"[{t['tool']}] DATA falsifier",
+        # 🔴 "A FALSIFIER EXISTS" AND "THE FALSIFIER HELD" ARE DIFFERENT SENTENCES, and the bar
+        # printed the same `ok` for both. D-THE-GBUILD-SCENARIO-CANNOT-TEST-ITS-OWN-FALSIFIER:
+        # composition-glossary-build-with-an-ontology predicts POST-CALL behaviour — entities
+        # created with no confirm card, op not `start`, an invented run_id — and every one of
+        # those needs the tool to have RUN. Across 39 live runs it was never called once, so the
+        # prediction has never been evaluated, and the line above still read `ok`.
+        #
+        # Measured over every batch file on disk 2026-08-27: 241 of 671 tool entries (36%) carry
+        # a falsifier on a batch where `called_count` is 0.
+        #
+        # IT STILL PASSES, deliberately. The bar asks whether a prediction was WRITTEN, and it
+        # was; `LIVE called` already fails these batches, and making this one fail too would red
+        # every `blocked` conclusion that legitimately rests on a tool that could not be
+        # exercised — re-freezing a baseline larger to look stricter. What changes is that the
+        # label no longer lets an UNEVALUATED prediction read as a satisfied one.
+        _called = int(t.get("called_count") or 0)
+        _fals_label = (f"[{t['tool']}] DATA falsifier"
+                       + (" (UNEVALUATED — the tool was never called, so nothing could have "
+                          "refuted it)" if _called == 0 else ""))
+        self._check(bool(t.get("falsifier")), _fals_label,
                     "state explicitly what result would REFUTE this conclusion")
         # 🔴 THE BAR ABOVE ONLY ASKS THAT A FALSIFIER EXISTS. It cannot tell that the run
         # REFUTED it, so a batch whose own stored calls contradict its prediction still passed —

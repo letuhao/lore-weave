@@ -4806,13 +4806,15 @@
    "state_reason": "VERIFIED 2026-08-25: scripts/lint_duplicate_synonyms.py reports 0 still-live ties. The phrase was de-duplicated in 4976cc055; the row still read NAMED."
   },
   "D-THE-GBUILD-SCENARIO-CANNOT-TEST-ITS-OWN-FALSIFIER": {
-   "status": "NAMED 2026-08-25. The scenario is not well-formed; NOT changed, because changing a bar to fit is the one thing the loop forbids.",
+   "status": "OPEN and now BLOCKED on DQ-T50. It always needed an owner decision — the row says so in its own words — but it carried no `blocked_by_dq`, so the generator offered it as actionable work. That link is the thing that was missing.",
    "what": "The scenario composition-glossary-build-with-an-ontology carries a falsifier about POST-CALL behaviour: refuted if entities are created with no confirm card, if the op is not start on a first request, or if the model invents a run_id. Every one of those needs the tool to have RUN. The gate blocks earlier, on LIVE called >= 1, so across 39 live runs the falsifier has never been evaluated once.\n\nThe scenario therefore measures SELECTION while its falsifier describes SAFETY, and it reports the tool blocked on the first without ever reaching the second.",
    "proven_by_the_owners_control": "The owner asked the question the loop never asked: name the tool and see. Two control arms, K=5 each. Naming it outright: 5/5 called, 5/5 surfaced, and the store proves execution - glossary_build_runs went from empty to 2 rows every run. Describing its unique capability without naming it: 0/5. So the tool works, and the falsifier becomes evaluable the moment selection is taken out of the question.",
    "recommendation": "Split the scenario in two, which is what it is already trying to be: one arm that NAMES the tool and tests the falsifier it actually wrote (confirm card, op=start, no invented run_id), and a separate arm that tests SELECTION against kg_build - which is DQ-T41 and should be reported as a precedence measurement, not as this tool being broken.\n\nNOT DONE HERE. Rewriting a scenario so a blocked tool passes is exactly the move the loop forbids, and it stays forbidden when the scenario really is wrong. The owner decides.",
    "state": "open",
    "state_reason": "NAMED and deliberately NOT changed - changing a bar to fit is forbidden",
-   "defect_class": "instrument"
+   "defect_class": "instrument",
+   "blocked_by_dq": "DQ-T50",
+   "the_mechanical_half_is_done": "Splitting the scenario is the owner's call, but the gate saying `ok` for a falsifier that was never evaluated is not. `[tool] DATA falsifier` now reads `(UNEVALUATED — the tool was never called, so nothing could have refuted it)` when `called_count` is 0.\n\nMEASURED over every batch file on disk: 241 of 671 tool entries (36%) carry a falsifier on a batch where the tool was never called. Every one of them printed a bare `ok` before.\n\nIT STILL PASSES, deliberately. The bar asks whether a prediction was WRITTEN, and it was. `LIVE called` already fails those batches, and making this one fail too would red every `blocked` conclusion that legitimately rests on a tool which could not be exercised — which is re-freezing a baseline larger in order to look stricter."
   },
   "D-THE-DEFECT-COUNTER-PARSED-ENGLISH-AND-A-REMAINDER-HID-THE-MISS": {
    "state": "fixed",
@@ -5580,6 +5582,15 @@
    "the_options": "(a) KEEP IT INACCURATE, as it is now, with the measurement recorded above the string and an instruction to re-run c-regwf before touching it. Free, honest with the NEXT ENGINEER, dishonest with the model - and it leaves a tool description that a future accuracy sweep will 'fix' again.\n(b) CORRECT IT AND ACCEPT THE COST. Principled, and measured at roughly two runs in five answering a surface question from the wrong tool. Nobody should pay that without deciding to.\n(c) FUND THE MECHANISM. Neither the twin's regression nor this one is explained - only attributed. Isolating WHY naming irrelevant fields moves tool choice would likely pay for itself across every description on the platform, and it is a real piece of work rather than a wording change.\n(d) MOVE THE FIELD LIST OFF THE DESCRIPTION - document the payload in the tool's SCHEMA or a response-shape contract instead, so the sentence the model ranks on stays short while the payload is still declared somewhere machine-readable. Untested.",
    "my_recommendation": "(a) NOW and (c) SOON, with (d) as the thing (c) should evaluate first. Keeping it is the only option whose cost is measured to be zero, and the comment above the string plus this DQ are what stop it being quietly re-broken. I am NOT recommending (b): shipping a change I measured as harmful because it is tidier is exactly the instinct this loop keeps having to catch.",
    "what_I_did_NOT_measure": "THE BENEFIT. All 12 workflows in this environment are tier=system, so a tier question is answerable by guessing and the harm this row states - a caller concluding `tier` is unavailable - was never reproduced. Only the COST of fixing it is measured. If the benefit is genuinely zero, (a) is not a compromise, it is just correct, and this DQ should close as such."
+  },
+  "DQ-T50": {
+   "question": "May a scenario whose FALSIFIER cannot be reached by its own PROMPT be split into two arms — one that NAMES the tool and tests the safety prediction it actually wrote, and one that tests SELECTION — or must such a scenario stay as it is and keep reporting its tool blocked?",
+   "why_it_is_the_owners": "Because the two readings are indistinguishable from inside the loop. Splitting it is either (a) repairing a scenario that was never well-formed, or (b) rewriting a bar so a blocked tool passes — and (b) is the one move this run forbids outright. The difference is intent, and intent is the owner's to state.",
+   "the_instance": "composition-glossary-build-with-an-ontology carries a falsifier about POST-CALL behaviour: refuted if entities are created with no confirm card, if the op is not `start` on a first request, or if the model invents a run_id. Every one needs the tool to have RUN. Across 39 live runs it was never called once, so the prediction has never been evaluated. The scenario measures SELECTION while its falsifier describes SAFETY.",
+   "what_is_already_known": "The owner's own control answered the tool question: naming the tool outright gives 5/5 called, 5/5 surfaced, and `glossary_build_runs` goes from empty to 2 rows on every run — the tool WORKS. Describing its unique capability without naming it gives 0/5. So the falsifier becomes evaluable the moment selection is taken out of the question, and the selection half is DQ-T41's precedence question, not this tool being broken.",
+   "my_recommendation": "SPLIT IT, and report the two halves as different measurements. The justification is a property of the scenario and not of its result: a falsifier that its own prompt cannot reach is unevaluable by construction, and would have been unevaluable had the tool passed selection every time. That is what makes this (a) rather than (b) — but I am not the one who gets to decide that, because I am also the one who benefits from the count.",
+   "what_shipped_regardless_of_the_answer": "The MECHANICAL half needs no decision and is done: `gate.py` now labels the DATA falsifier bar UNEVALUATED when `called_count` is 0, so an unevaluated prediction can no longer read as a satisfied one. 241 of 671 tool entries on disk are in that condition. The bar still PASSES — `LIVE called` already fails those batches, and failing this one too would red every legitimate `blocked` conclusion.",
+   "state": "open"
   }
  },
  "carried_observations": [
@@ -5984,7 +5995,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 49,
-  "deferred_questions": 25,
+  "deferred_questions": 26,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
