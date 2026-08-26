@@ -900,7 +900,9 @@ async def composition_get_prose(
     name="composition_list_canon_rules",
     description=(
         "List the author-declared canon rules (invariants the critic enforces) for a "
-        "Work — e.g. 'magic always costs HP'. Owner/grant-filtered (VIEW)."
+        "Work — e.g. 'magic always costs HP'. Pass include_archived=true to also see "
+        "ARCHIVED rules, which is where the id for composition_canon_rule_restore comes "
+        "from. Owner/grant-filtered (VIEW)."
     ),
     meta=require_meta(
         "R", "book",
@@ -913,6 +915,12 @@ async def composition_list_canon_rules(
     project_id: Annotated[str | None, "The Work's project_id. Optional — pass book_id instead if you only have the book."] = None,
     book_id: Annotated[str | None, "The book to list canon rules for. Resolves the book's composition project for you — pass this when you have the book id (e.g. from the chat context) and not a project id."] = None,
     active_only: Annotated[bool, "Only enforceable (active, non-archived) rules."] = False,
+    include_archived: Annotated[
+        bool,
+        "Also list ARCHIVED (soft-deleted) rules. This is where a rule_id for "
+        "composition_canon_rule_restore comes from — without it an archived rule is "
+        "invisible and the restore is unreachable. Ignored when active_only is true.",
+    ] = False,
 ) -> dict:
     # D-S09-CANON-PROJECT-RESOLUTION — the canon-check rail is book-scoped but this tool only took a
     # project_id the agent doesn't have (the chat context supplies a book_id). Passing book_id used
@@ -935,8 +943,18 @@ async def composition_list_canon_rules(
     else:
         return {"success": False, "error": "pass either project_id or book_id"}
     canon = CanonRulesRepo(get_pool())
+    # 🔴 D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE. `list_all` has taken
+    # `include_archived` all along — its docstring says it exists "so the management UI
+    # can list them under a section and offer Restore (BE-11b)" — and this call site
+    # never passed it. So the FE could find an archived rule to restore and the agent
+    # could not: composition_canon_rule_restore takes a rule_id that nothing on the tool
+    # surface could produce, and the only way to hold one was to have written it down
+    # BEFORE archiving. An undo you cannot reach is not an undo.
+    #
+    # Implemented capability, unexposed — the same shape as composition_reference_list,
+    # and NOT a catalogue addition: one optional argument on a tool that already ships.
     rules = await (canon.list_active(pid) if active_only
-                   else canon.list_all(pid))
+                   else canon.list_all(pid, include_archived=include_archived))
     return {"rules": [r.model_dump(mode="json") for r in rules]}
 
 

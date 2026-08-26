@@ -5411,7 +5411,7 @@
                 }
               ],
               "default": null,
-              "description": "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the book ALREADY has a plan, read its id from composition_package_tree's `runs.recent` — do NOT propose a new plan just to obtain one. Only when the book has no plan at all is the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's own id, which is `run_id`, and never a chapter id.",
+              "description": "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the book ALREADY has a plan, read its id from composition_package_tree's `runs.recent[].run_id` — do NOT propose a new plan just to obtain one. Only when the book has no plan at all is the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's own id, which is `run_id`, and never a chapter id.",
               "title": "Plan Run Id"
             },
             "run_id": {
@@ -5568,7 +5568,7 @@
             }
           ],
           "default": null,
-          "description": "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the book ALREADY has a plan, read its id from composition_package_tree's `runs.recent` — do NOT propose a new plan just to obtain one. Only when the book has no plan at all is the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's own id, which is `run_id`, and never a chapter id.",
+          "description": "op=create REQUIRES this. The PLAN run this authoring run drafts from (a UUID). If the book ALREADY has a plan, read its id from composition_package_tree's `runs.recent[].run_id` — do NOT propose a new plan just to obtain one. Only when the book has no plan at all is the id the `run_id` returned by plan_propose_spec (the same id plan_compile takes). Not the authoring run's own id, which is `run_id`, and never a chapter id.",
           "title": "Plan Run Id"
         },
         "run_id": {
@@ -9160,7 +9160,7 @@
     }
   },
   "composition_list_canon_rules": {
-    "description": "List the author-declared canon rules (invariants the critic enforces) for a Work — e.g. 'magic always costs HP'. Owner/grant-filtered (VIEW).",
+    "description": "List the author-declared canon rules (invariants the critic enforces) for a Work — e.g. 'magic always costs HP'. Pass include_archived=true to also see ARCHIVED rules, which is where the id for composition_canon_rule_restore comes from. Owner/grant-filtered (VIEW).",
     "inputSchema": {
       "properties": {
         "active_only": {
@@ -9181,6 +9181,12 @@
           "default": null,
           "description": "The book to list canon rules for. Resolves the book's composition project for you — pass this when you have the book id (e.g. from the chat context) and not a project id.",
           "title": "Book Id"
+        },
+        "include_archived": {
+          "default": false,
+          "description": "Also list ARCHIVED (soft-deleted) rules. This is where a rule_id for composition_canon_rule_restore comes from — without it an archived rule is invisible and the restore is unreachable. Ignored when active_only is true.",
+          "title": "Include Archived",
+          "type": "boolean"
         },
         "project_id": {
           "anyOf": [
@@ -21390,7 +21396,7 @@
     }
   },
   "memory_forget": {
-    "description": "Invalidate a previously stored fact by its id so it no longer appears in memory. Only use a fact_id you have seen in an earlier tool result.",
+    "description": "Invalidate a previously stored fact by its id so it no longer appears in memory. Only use a fact_id you have seen in an earlier tool result — memory_search returns one on every fact hit, which is where to get it when the fact was stored in an earlier turn.",
     "inputSchema": {
       "properties": {
         "fact_id": {
@@ -21518,7 +21524,7 @@
     }
   },
   "memory_search": {
-    "description": "Search the project's stored knowledge for what is already known about a topic, character, place, or event before answering — the book's chapter text (lexical + semantic, so it finds an exact phrase even with nothing indexed yet), past chat turns, and glossary entries. Returns the most relevant snippets. (For locating/reading manuscript prose specifically, `story_search` is the primary find tool.)",
+    "description": "Search the project's stored knowledge for what is already known about a topic, character, place, or event before answering — the book's chapter text (lexical + semantic, so it finds an exact phrase even with nothing indexed yet), past chat turns, glossary entries, and the facts saved with memory_remember. Returns the most relevant snippets. (For locating/reading manuscript prose specifically, `story_search` is the primary find tool.)",
     "inputSchema": {
       "properties": {
         "detail": {
@@ -21563,7 +21569,8 @@
               "enum": [
                 "chapter",
                 "chat",
-                "glossary"
+                "glossary",
+                "fact"
               ],
               "type": "string"
             },
@@ -21572,7 +21579,7 @@
             }
           ],
           "default": null,
-          "description": "Optional — restrict to one source: 'chapter', 'chat', or 'glossary'. Omit to search all.",
+          "description": "Optional — restrict to one source: 'chapter', 'chat', 'glossary', or 'fact' (what memory_remember saved). Omit to search all.",
           "title": "Source Type"
         }
       },

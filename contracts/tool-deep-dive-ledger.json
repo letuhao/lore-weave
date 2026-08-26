@@ -3323,7 +3323,13 @@
    "the_control_that_narrowed_it": "My first count said no restore tool had a lister, from a grep for include_archived-style FLAGS. That was too crude: motifs and arc templates are discoverable through a `status` enum instead, which the flag search missed. Re-measured across both mechanisms, the gap is 6 of 10 rather than 10 of 10.",
    "not_fixed_and_why": "The remedy is a listing surface per family — a filter on an existing list tool, or a recycle-bin read — and which of those is right is an owner call per domain, not a loop call. Recorded with the measurement.",
    "defect_class": "contract",
-   "queue_group": 2
+   "queue_group": 2,
+   "status": "OPEN - 6 of 10 blocked is now 5 of 10. The canon-rule family is FIXED and proven live (c-canonrestore1, K=5); the other five need a listing surface that does not exist, recorded as DQ-T44 and left with the owner.",
+   "rederived_2026_08_26": "The 6-of-10 count HOLDS against the live 316-tool catalogue - ten *_restore tools, four with a discovery path (arc_list include_archived, arc_template_list status, motif_search status, list_outline include_archived).\n\n🔴 BUT THE ROW'S REMEDY CONFLATED TWO DIFFERENT DECISIONS. It says 'a filter on an existing list tool, or a recycle-bin read - which of those is right is an owner call per domain'. Those are not the same call. Adding a TOOL is a catalogue decision the owner makes; adding one optional ARGUMENT to a tool that already ships decides nothing and costs no hot-set slot. Checked per family against the repositories:\n\n    canon rules            CanonRulesRepo.list_all ALREADY takes include_archived\n    entity overrides       no repo support, no lister\n    scene links            no repo support, no lister\n    structure templates    no repo support, no lister\n    glossary entities      no deleted-row path in entity_search.go\n    glossary user kinds    no lister\n\nExactly ONE of the six had an implemented answer, so exactly one could be fixed here.",
+   "fixed_here_the_canon_rule_family": "composition_list_canon_rules now exposes `include_archived`, and its description says that is where a rule_id for composition_canon_rule_restore comes from.\n\nTHE CAPABILITY WAS ALWAYS THERE AND THE CALL SITE DROPPED IT. `CanonRulesRepo.list_all` takes `include_archived` and its docstring says why: 'so the management UI can list them under a section and offer Restore (BE-11b)'. The MCP tool called `list_all(pid)`. So the FE could find an archived rule to restore and the AGENT could not - the same implemented-but-unexposed shape as composition_reference_list, and not a catalogue addition.\n\nDIRECT PROOF, throwaway book, torn down:\n    create -> rule_id · delete -> archived\n    list include_archived=false -> 0 rules   (the default is unchanged)\n    list include_archived=true  -> 1 rule, WITH its id\n    restore with that id -> ok · default list afterwards -> 1 rule\n\nLIVE, K=5, the rule created AND archived in the seed so the turn holds no id:\n    'Undo delete rule - I archived a canon rule by mistake, please restore it.'\n    -> composition_list_canon_rules called with include_archived=true, 5/5\n    -> the listing returned the archived rule, 5/5\n    -> the reply NAMED it ('I've found the rule you archived: \"Magic always costs HP.\"'), 5/5\n    -> asked the AUTHOR for an id: 0/5 - the recorded failure shape for this family, gone\nAll four falsifier clauses pass, and the store is unchanged on every run.",
+   "what_is_NOT_covered": "- THE RESTORE ITSELF WAS NOT CALLED ON ANY RUN, and I am not claiming it. The model found and named the archived rule and then ASKED - 'Would you like me to restore it?' - instead of calling composition_canon_rule_restore, whose confirm card exists precisely so it does not have to ask. The scenario's expect_tool is the restore, so the harness reports 0/5; the FALSIFIER is written around discovery and passes. Both numbers are stated rather than the convenient one, and expect_tool was NOT relaxed to make the batch read green.\n  WHY the restore was not called is NOT established. The surface snapshot shows activated_count 0 and no canon tools, yet the model successfully called the lister - so the snapshot predates the turn's arming and cannot settle it. Filed as D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS.\n- FIVE FAMILIES REMAIN BLOCKED: entity overrides, scene links, structure templates, glossary entities, glossary user kinds. Each needs capability that does not exist, which is DQ-T44.\n- The canon restore's absent-id and idempotency cases are untested here; the scenario's ship_audit records both as owed.",
+   "dq": "DQ-T44",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-canonrestore1.json"
   },
   "D-LAZY-TAIL-UNUSED": {
    "state": "open",
@@ -4855,6 +4861,15 @@
    "defect_class": "contract",
    "queue_group": 3,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-forgetchain2.json, refusal text on rep 0 of c-forgetchain1.json"
+  },
+  "D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS": {
+   "status": "OPEN - measured 2026-08-26, batch c-canonrestore1, K=5, 5 of 5 runs.",
+   "what": "Asked to restore an archived canon rule, the model FOUND it (calling composition_list_canon_rules with include_archived=true on 5 of 5 runs) and then asked the author 'Would you like me to restore it to your active consistency rules?' instead of calling composition_canon_rule_restore. It never called the restore on any run, and then wandered into book_list / book_read.\n\nTHE CONFIRM CARD EXISTS SO IT DOES NOT HAVE TO ASK. composition_canon_rule_restore is Tier A: calling it mints a card the human clicks. A model that asks in PROSE instead converts a one-click confirmation into a conversation turn, and on this run it converted a completed repair into a question.",
+   "not_investigated": "WHY the tool was not called is NOT established. The turn's surface snapshot reports activated_count 0 with no canon tools on it, yet the model successfully called composition_list_canon_rules in the same turn - so the snapshot is taken before the turn's arming and cannot answer whether the restore was ever on the wire. Settling that needs the arming log, not this batch.",
+   "state": "open",
+   "defect_class": "model",
+   "queue_group": 4,
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-canonrestore1.json, all 5 runs"
   }
  },
  "deferred_questions": {
@@ -5044,6 +5059,15 @@
    "question": "Should the runner's 'READ-INTENT TURN WROTE TO THE STORE' flag fire on the platform's own per-turn lifecycle event?",
    "measured": "c-regwf5 flagged 'READ-INTENT TURN WROTE in 3/5 runs — loreweave_knowledge.extraction_pending'. All 5 runs called registry_list_workflows and nothing else, so no tool in the turn wrote anything. The parked row is event_type 'chat.turn_completed', parked because knowledge extraction is DISABLED for the fixture project — that table is defined as where events land while extraction is off. services/chat-service/app/routers/internal.py records that the event 'carries only ids + content lengths (not content)' and it is emitted whenever the assistant message persists, so no property of the reply TEXT can gate it. That rules out the cycle's own change (a text scrubber) as the cause.\n\n🔴 WHAT I DID NOT EXPLAIN: 3/5 here against 0/20 across the four earlier c-regwf batches. The likeliest candidate is a race between the async outbox relay and the harness's per-run store snapshot. I did not prove it, and I am not asserting it.",
    "recommendation": "Either exclude platform lifecycle events from the write flag, or have the flag name the event type so a reader can tell a tool's write from the turn's own bookkeeping. As it stands the flag says 'a defect whatever it said' about something the tool did not do."
+  },
+  "DQ-T44": {
+   "state": "open",
+   "raised": "2026-08-26",
+   "blocked_by": "a product decision about the agent catalogue, which the standing rule keeps with the owner: a DQ is never decided to unblock a tool.",
+   "question": "Five *_restore tools have NO way to discover what they can restore, and unlike the canon-rule family none of them has an implemented listing to expose: composition_entity_override_restore, composition_scene_link_restore, composition_structure_template_restore, glossary_entity_restore, glossary_user_restore. Each takes an id, and the only way to hold that id is to have written it down BEFORE deleting. Should each family get a listing surface, and as WHAT - a flag on a tool that does not yet exist, or a per-domain recycle-bin read?",
+   "my_recommendation": "Do NOT add five tools. The measured shape says the cheap half is already done: where a repository supports listing archived rows, exposing it costs one optional argument and no catalogue slot - that is what was done for canon rules today. For these five the repositories have no such support, so any fix is new capability in the service FIRST and a surface decision second. My recommendation is to treat them by BLAST RADIUS rather than uniformly: glossary_entity_restore has a MEASURED live failure (batch 25, 5 of 5 runs, the model correctly answered 'I can't see her in the trash without an ID'), so it is the one with evidence behind it. The other four have none yet.",
+   "the_cost_stated_plainly": "Five tools against a 316-tool catalogue, at a measured median schema size of ~300 tokens, is roughly 1,500 tokens of surface for undo paths an author uses rarely. A per-domain flag on an existing lister would cost a tenth of that - but four of these five families have no lister to put it on, which is the whole reason this is a decision and not a wiring fix.",
+   "what_I_am_NOT_recommending": "I have not measured how often an author actually needs any of these five undos, and without that the ranking above is a judgement about evidence, not about value. Deciding it here would be deciding a DQ to unblock tools, which the standing rule forbids."
   }
  },
  "carried_observations": [
@@ -5447,8 +5471,8 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 72,
-  "deferred_questions": 19,
+  "defects_open": 73,
+  "deferred_questions": 20,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
@@ -5462,7 +5486,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 176,
+  "defects_total": 177,
   "defects_fixed": 66,
   "defects_withdrawn": 12,
   "defects_superseded": 1
