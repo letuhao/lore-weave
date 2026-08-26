@@ -561,10 +561,24 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     # and on the next run the model found one through `book_list` and proposed writes into it. A
     # leaked fixture is not litter — it is an extra, plausible, wrongly-scoped write target
     # sitting on the account, and it makes the NEXT batch's evidence unattributable.
-    from provision import sweep_orphans
+    from provision import sweep_orphan_translation_jobs, sweep_orphans
     swept = await asyncio.to_thread(sweep_orphans)
     if swept:
         print(f"swept {len(swept)} leaked fixture(s) from a previous run before starting")
+    # 🔴 AND THE JOBS THOSE FIXTURES LEFT BEHIND. sweep_orphan_translation_jobs existed and
+    # NOTHING CALLED IT — it was run once by hand on 2026-08-24 (310 rows -> 6) and the debris
+    # came straight back: measured 2026-08-26, 14 controllable translation jobs referencing 14
+    # books, ZERO of which still existed. Every translation scenario seeds a job on its throwaway
+    # book, teardown removes the book, and the job survives in another database with no FK to it.
+    #
+    # A one-time cleanup for a per-run leak is not a fix, and the symptom is not litter: jobs_list
+    # advertises control_caps ["cancel"] for every orphan and each cancel refuses, so the next
+    # batch measures the harness's own debris (D-JOBS-LIST-ADVERTISES-CANCEL-ON-JOBS-THAT-CANNOT-
+    # BE-CANCELLED). Book-scoped and conservative: a job goes only when its book_id is absent
+    # from loreweave_book.books.
+    swept_jobs = await asyncio.to_thread(sweep_orphan_translation_jobs)
+    if swept_jobs:
+        print(f"swept {swept_jobs} orphaned translation job(s) whose book no longer exists")
 
     async with httpx.AsyncClient(timeout=TURN_TIMEOUT) as client:
         await auth.login(client)
