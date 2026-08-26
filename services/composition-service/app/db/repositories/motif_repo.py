@@ -198,6 +198,23 @@ async def _query_vector(q: str) -> list[float] | None:
         return None
 
 
+async def owns_motif(pool, caller_id, motif_id) -> bool:
+    """Does `caller_id` own this motif? Used ONLY to turn an opaque refusal into an actionable
+    one, never to decide access.
+
+    🔴 WHY THIS DOES NOT WEAKEN H13, which is the same argument
+    `EndpointsOwnedNotShared` already makes for create_link: the uniform refusal exists so a
+    message is not an existence oracle for objects the caller does not own. This is consulted only
+    AFTER a book-scoped lookup has failed, and it can only ever say "yes" about a row the caller
+    OWNS and whose id it already holds. A "no" changes nothing — the uniform refusal still stands.
+    """
+    async with pool.acquire() as c:
+        row = await c.fetchrow(
+            "SELECT 1 FROM motif WHERE id = $1 AND owner_user_id = $2", motif_id, caller_id,
+        )
+    return row is not None
+
+
 class EndpointsOwnedNotShared(LookupError):
     """`create_link` was called WITH `book_id` over two motifs the caller owns.
 

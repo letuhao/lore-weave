@@ -102,7 +102,7 @@ from app.db.repositories.structure_templates import (
     StructureTemplateVersionConflict,
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
-from app.db.repositories.motif_repo import EndpointsOwnedNotShared, MotifRepo
+from app.db.repositories.motif_repo import EndpointsOwnedNotShared, MotifRepo, owns_motif
 from app.engine.exit_state import merge_authored_exit_state
 from app.engine.library_translate import (
     LANGUAGE_NAMES, MAX_ITEMS_PER_JOB, TRANSLATABLE_KINDS,
@@ -4599,6 +4599,19 @@ async def composition_motif_archive(
         await _gate(tc, bid, GrantLevel.EDIT)
         target = await repo.get_in_book(tc.user_id, mid, bid)
         if target is None or not target.book_shared or target.book_id != bid:
+            # D-AN-OPTIONAL-ARG-SWITCHES-THE-MODE-AND-THE-REFUSAL-HIDES-IT — the SAME shape
+            # create_link was fixed for, and it was never carried across: `book_id` silently
+            # selects between "your own motif" and "a motif SHARED into that book", and a caller
+            # who passed the ambient book over a motif IT OWNS gets "not found or not accessible"
+            # about a row it just listed, with no path back to the working call. Name the remedy
+            # for that one recoverable case; every other miss keeps the uniform refusal.
+            if await owns_motif(get_pool(), tc.user_id, mid):
+                raise ValueError(
+                    "that motif is YOURS and is not shared into this book, so the book-scoped "
+                    "archive cannot reach it. Call composition_motif_archive again "
+                    "WITHOUT book_id to archive your own motif. Pass book_id only for a motif "
+                    "already SHARED into that book's graph."
+                )
             raise uniform_not_accessible()
         await repo.archive_shared(tc.user_id, mid, bid)
         return {"motif_id": motif_id, "archived": True,
@@ -4649,6 +4662,16 @@ async def composition_motif_restore(
         # USER scope: only YOUR OWN archived motif (restore()'s predicate is owner + status='archived').
         motif = await repo.restore(tc.user_id, mid)
     if motif is None:
+        # D-AN-OPTIONAL-ARG-SWITCHES-THE-MODE-AND-THE-REFUSAL-HIDES-IT, the restore half. Same
+        # remedy as archive: only when the caller OWNS the row, so the uniform refusal still
+        # covers every miss that could be an existence oracle.
+        if book_id is not None and await owns_motif(get_pool(), tc.user_id, mid):
+            raise ValueError(
+                "that motif is YOURS and is not shared into this book, so the book-scoped restore "
+                "cannot reach it. Call composition_motif_restore again WITHOUT book_id to restore "
+                "your own motif. Pass book_id only for a motif already SHARED into that book's "
+                "graph."
+            )
         raise uniform_not_accessible()
     out = motif.model_dump(mode="json")
     undo_args = {"motif_id": motif_id, "book_id": book_id} if book_id is not None else {"motif_id": motif_id}
@@ -5122,7 +5145,12 @@ class _MotifEditArgs(ForbidExtra):
 
     ]
     motif_id: str | None = None          # patch, archive, restore
-    book_id: str | None = None           # all (shared-tier variant)
+    book_id: Annotated[str | None, Field(default=None, description=(
+        "OMIT THIS for one of YOUR OWN motifs — that is the usual case for every op. Supply it "
+        "ONLY when the motif is already SHARED into that book's graph (op=create with "
+        "target='book_shared' REQUIRES it). Passing a book_id you were merely given will refuse "
+        "the call for a motif you own."
+    ))] = None  # all (shared-tier variant)
     expected_version: int | None = None  # patch (required)
     target: Literal["user", "book_shared"] | None = None  # create
     code: str | None = None              # create (required)
