@@ -28,7 +28,13 @@ Sampled 4 of those, all genuine:
 Tiers are read from the REGISTRATIONS, not from a live catalogue, so this runs offline —
 validated 194/194 against the deployed catalogue on the day it was written.
 
-The 60 existing offenders are seeded as a SHRINK-ONLY baseline, the same container
+🔴 AND THE FIRST VERSION OF THIS GATE MEASURED THE WRONG TURN — see `measured_turn()`.
+It judged `prompt`, while fe_runner measures `turns[-1]`, so it flagged 61 scenarios of which
+60 were setup reads that no bar looks at. The baseline was re-derived from the measured turn
+and shrank 60 -> 1. It was caught by the gate firing on a scenario THIS loop added for an
+unrelated defect, which is the one way a wrong bar announces itself.
+
+The remaining offenders are seeded as a SHRINK-ONLY baseline, the same container
 contracts/undeclared-emitter-baseline.json uses and the same choice the OUT-2 lint made with
 its 14. They are historical batches whose tools are all `proven` via the corrected `-asked`
 scenarios; rewriting archived measurements buys nothing. What the baseline buys is that the
@@ -80,6 +86,32 @@ def tiers_from_registrations() -> dict[str, str]:
     return out
 
 
+def measured_turn(sc: dict) -> str:
+    """The turn the bars are read against — `follow_ups[-1]` if there are any, else `prompt`.
+
+    🔴 THE FIRST VERSION OF THIS GATE JUDGED `prompt`, AND THAT IS THE WRONG TURN.
+    fe_runner sets `res["prompt"] = turns[-1]` and says so in a comment: "THE LAST TURN IS THE
+    MEASURED ONE". For a scenario with follow_ups the first turn is SETUP — very often a read
+    that supplies the id the write needs — and no bar ever reads it. Judging it flagged the
+    setup and called it the defect.
+
+    Re-derived 2026-08-27 over 78 Tier-A/W scenarios that declare follow_ups:
+
+        judging the FIRST turn (what shipped)   61 offenders
+        judging the MEASURED turn (correct)      1 offender
+
+    59 of the 60 seeded as debt were never offenders — their measured turn asks for the tool's
+    action, exactly as the tool wants. The one that survives is single-turn and genuine:
+    composition-error-block-edit asks "What passages have I flagged as problems in this book?"
+    of a Tier-A EDIT tool.
+
+    That is a bar that was WRONG, not a bar that was inconvenient, and the difference is that
+    this reading can be checked against fe_runner's own line rather than against what would be
+    easier to pass."""
+    fu = sc.get("follow_ups") or []
+    return (fu[-1] if fu else sc.get("prompt")) or ""
+
+
 def offenders() -> set[str]:
     """{file::id} for every scenario asking a READ question about a Tier A/W tool."""
     tiers = tiers_from_registrations()
@@ -91,7 +123,7 @@ def offenders() -> set[str]:
             continue
         for s in d.get("scenarios", []):
             tool = s.get("tool_under_test")
-            prompt = (s.get("prompt") or "").lower().lstrip()
+            prompt = measured_turn(s).lower().lstrip()
             if not tool or not prompt or tiers.get(tool) not in ("A", "W"):
                 continue
             if any(prompt.startswith(o) for o in READ_OPENERS):
@@ -135,3 +167,39 @@ def test_the_baseline_is_not_empty_and_is_not_growing_silently():
     base = json.loads(BASELINE.read_text(encoding="utf-8"))
     assert base["count"] == len(base["scenarios"]), "the recorded count disagrees with the list"
     assert base["count"] > 0
+
+
+def test_the_gate_judges_the_TURN_THE_BARS_READ():
+    """🔴 THE BAR THIS GATE SHIPPED WITH WAS WRONG, and this is what would have caught it.
+
+    A scenario with follow_ups is measured on its LAST turn — fe_runner sets
+    `res["prompt"] = turns[-1]`. Judging the first turn flags SETUP reads, which is 59 of the
+    60 this gate originally seeded as debt."""
+    setup_read_then_action = {
+        "tool_under_test": "translation_job_control",
+        "prompt": "What is the status of the translation job for this book?",
+        "follow_ups": ["Cancel that job."],
+    }
+    assert measured_turn(setup_read_then_action) == "Cancel that job."
+    single = {"tool_under_test": "x", "prompt": "Cancel that job."}
+    assert measured_turn(single) == "Cancel that job."
+    assert measured_turn({"prompt": "a", "follow_ups": ["b", "c"]}) == "c"
+
+
+def test_the_correction_is_LOAD_BEARING_not_cosmetic():
+    """ANTI-VACUITY on the correction itself. If almost nothing declares follow_ups, reading the
+    last turn changes nothing and the guard above is decoration. Pin the population."""
+    withfu = 0
+    tiers = tiers_from_registrations()
+    for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for s in d.get("scenarios", []):
+            if s.get("follow_ups") and tiers.get(s.get("tool_under_test")) in ("A", "W"):
+                withfu += 1
+    assert withfu >= 50, (
+        f"only {withfu} Tier-A/W scenarios declare follow_ups — re-derive whether reading the "
+        "measured turn still changes the answer"
+    )

@@ -421,10 +421,28 @@ async def run_scenario(client, auth, sc, idx, fx):
                               # scenario measures exactly what it measured before.
                               max_approvals=int(sc.get("max_approvals", 3)))
         if _ti < len(turns) - 1:
-            prior.append({"prompt": _prompt,
-                          "called": sorted(called_names(res)),
-                          "text": (res.get("text") or "")[:800]})
+            # 🔴 THE SURFACES OF EVERY TURN BUT THE LAST WERE THROWN AWAY, and the loop then
+            # read "advertised in N of M snapshots" off what survived as if it covered the
+            # session. It does not: chat-service logs the real per-pass wire set for the whole
+            # session, so on 01a02e76 the log showed composition_arc_apply on 4 of 6 passes while
+            # the record showed it in 0 of 6 snapshots. Both were right about different turns.
+            #
+            # Measured over the corpus 2026-08-27: 412 of 1,420 recorded runs are multi-turn, and
+            # in 32 of those a tool PROVEN CALLED in an earlier turn appears nowhere in the
+            # instrument's surface set (translation_start_job 14, composition_arc_apply 12,
+            # plan_bootstrap_propose 5). That is a floor, not the total — a tool advertised and
+            # not called in an earlier turn left no trace at all to count.
+            #
+            # Kept per PASS, because a union cannot date a choice (the same reason `timeline`
+            # exists). NOT the full snapshot: `servers`, `schema_tokens`, `phase` and the counters
+            # stay with the measured turn only, so an earlier turn answers "was it on the wire",
+            # not "what did the inspector show".
+            prior.append(prior_turn_record(_prompt, res))
     res["prior_turns"] = prior
+    # The AUTHORITY for "was it on the wire", covering every turn — see wire_passes(). Recorded
+    # beside the SSE snapshots rather than instead of them: the snapshots are what the INSPECTOR
+    # showed a user, which is a different question and its own defect surface.
+    res["wire_passes"] = wire_passes(sid)
     # The measured prompt is the one the bars are read against.
     res["prompt"] = turns[-1]
     res["session_id"] = sid
@@ -737,14 +755,111 @@ def call_records(r) -> list:
     return out
 
 
+#: The chat DB. `chat_messages.advertised_tools` is the recorder chat-service itself writes —
+#: **one entry per model pass, appended, never replaced** — from the SAME list the chokepoint
+#: hands the provider. It is the authority the wire log is printed from, it covers EVERY turn of
+#: the session, and it is on disk after the run, so the harness need not scrape a container log.
+CHAT_DB = "loreweave_chat"
+
+
+def wire_passes(session_id: str) -> list[dict]:
+    """The session's per-pass advertised sets, in order, straight from the store.
+
+    D-HARNESS-agentSurface-DISAGREES-WITH-THE-WIRE-LOG. The SSE `agentSurface` event is NOT a
+    pass: it fires on every phase transition and is SUPPRESSED on a pass whose surface did not
+    change (`AgentSurfaceTracker.advertised_pass` returns None unless something moved). So a
+    count of snapshots is not a count of passes in either direction, and every "advertised in N
+    of M snapshots" this loop published was reading one as the other. Verified 2026-08-27 on
+    01a03f32: 4 snapshots in the measured turn, 6 passes in the session, and the store's
+    per-message counts (4 + 2) reproduce the wire log exactly.
+
+    Returns [] rather than raising when the store cannot be read — a batch must not die on its
+    own instrumentation, and an empty list is absence, which `wire_surfaced_names` treats as
+    unknown rather than as none."""
+    # 🔴 IMPORTED HERE ON PURPOSE, AND THE EXCEPT IS NARROW. A sibling counter once imported the
+    # oracle inside its function, raised NameError on every call, and a bare `except Exception:
+    # continue` turned that into "no rows" — a dead reader that looked exactly like an honest
+    # empty. RuntimeError/OSError is a store that would not answer; anything else is a bug and
+    # must reach the runner.
+    from provision import oracle  # noqa: PLC0415 — the oracle lives beside the loop
+    try:
+        rows = oracle.db_query(CHAT_DB,
+                               "SELECT sequence_num, advertised_tools::text FROM chat_messages "
+                               f"WHERE session_id = '{session_id}' AND advertised_tools IS NOT NULL "
+                               "ORDER BY sequence_num")
+    except (RuntimeError, OSError):
+        return []
+    out: list[dict] = []
+    for row in rows:
+        if len(row) < 2:
+            continue
+        try:
+            entries = json.loads(row[1])
+        except (ValueError, TypeError):
+            continue
+        for e in entries or []:
+            if isinstance(e, dict) and isinstance(e.get("names"), list):
+                out.append({"turn": int(row[0]), "pass": e.get("pass"),
+                            "names": sorted(str(x) for x in e["names"])})
+    return out
+
+
+def wire_surfaced_names(r) -> set:
+    """Every tool on the wire in ANY pass of the WHOLE SESSION, per the store.
+
+    This — not `surfaces` — is what an "advertised in N of M" figure must be read from."""
+    return {n for p in (r.get("wire_passes") or []) for n in p.get("names") or []}
+
+
+def prior_turn_record(prompt: str, res: dict) -> dict:
+    """What survives of a turn that is NOT the measured one.
+
+    ONE PLACE, because the loop had inlined it and the thing it dropped was invisible there.
+    `surface_passes` is a list of per-pass NAME SETS — a union cannot date a choice, the same
+    reason `timeline` exists. Deliberately NOT the whole snapshot: `phase`, the counters,
+    `servers` and `schema_tokens` describe the inspector, and only the measured turn's
+    inspector is under test."""
+    return {
+        "prompt": prompt,
+        "called": sorted(called_names(res)),
+        "surface_passes": [
+            sorted({str(x)
+                    for b in ((s or {}).get("advertised") or {}).values()
+                    if isinstance(b, list) for x in b})
+            for s in (res.get("surfaces") or [])],
+        "text": (res.get("text") or "")[:800],
+    }
+
+
 def surfaced_names(r) -> set:
-    """Every tool advertised in ANY pass of the turn — core, frontend and activated alike."""
+    """Every tool advertised in any pass OF THE MEASURED TURN — core, frontend, activated.
+
+    TURN-SCOPED ON PURPOSE, and it must stay that way: the bars ask "could the model see it
+    when it chose", and the choice happens in the measured turn. Unioning earlier turns in
+    here would turn a tool that was displaced BEFORE the measured turn into a surfaced one,
+    which is the opposite error to the one this file just fixed. Ask
+    `earlier_surfaced_names()` for the rest of the session, separately."""
     out = set()
     for s in (r.get("surfaces") or ([r["surface"]] if r.get("surface") else [])):
         adv = (s or {}).get("advertised") or {}
         for bucket in adv.values():
             if isinstance(bucket, list):
                 out.update(str(x) for x in bucket)
+    return out
+
+
+def earlier_surfaced_names(r) -> set:
+    """Every tool advertised in a pass of an EARLIER turn of the same session.
+
+    D-HARNESS-agentSurface-DISAGREES-WITH-THE-WIRE-LOG: chat-service's INFO log covers the
+    session, the record covered one turn, and reading one as the other is what made
+    "advertised 0/40" sit next to a live catalogue that had the tool. Reads
+    `prior_turns[].surface_passes`, so it is empty for records written before 2026-08-27 —
+    absent evidence, never a zero."""
+    out = set()
+    for t in (r.get("prior_turns") or []):
+        for names in (t.get("surface_passes") or []):
+            out.update(str(x) for x in (names or []))
     return out
 
 
@@ -757,6 +872,12 @@ def report(results, scenarios, repeats):
         want = sc.get("expect_tool")
         called = sum(1 for r in rs if want and want in called_names(r))
         surfaced = sum(1 for r in rs if want and want in surfaced_names(r))
+        # ONLY-EARLIER: the tool was on the wire in this session, but not in the turn the bars
+        # read. Counted apart from `surfaced` rather than folded into it — it is the answer to a
+        # different question, and merging them is exactly the conflation this column had.
+        earlier_only = sum(1 for r in rs
+                           if want and want not in surfaced_names(r)
+                           and want in earlier_surfaced_names(r))
         errs = sum(1 for r in rs if r.get("error"))
         susp = sum(1 for r in rs if r.get("pending_approval"))
         # Each repeat has its OWN book, so each diff belongs to exactly one turn. Reporting
@@ -768,6 +889,21 @@ def report(results, scenarios, repeats):
         store = (f"WROTE {len(wrote)}/{len(rs)}: " + ", ".join(tables)) if wrote else "unchanged"
         print(f"{sid:<28} {len(rs):<5} {f'{called}/{len(rs)}':<12} "
               f"{f'{surfaced}/{len(rs)}':<17} {errs:<7} {store}")
+        # THE DENOMINATOR THE LOOP SHOULD HAVE BEEN QUOTING. `surface has tool` counts RUNS whose
+        # measured turn advertised it; "advertised in N of M" was then written as though M were
+        # passes. Passes come from the store, cover every turn, and are what the wire log prints.
+        wire_rs = [r for r in rs if r.get("wire_passes")]
+        if want and wire_rs:
+            wp = [p for r in wire_rs for p in r["wire_passes"]]
+            hit_p = sum(1 for p in wp if want in (p.get("names") or []))
+            hit_r = sum(1 for r in wire_rs if want in wire_surfaced_names(r))
+            print(f"    ^ ON THE WIRE (store, every turn): {hit_r}/{len(wire_rs)} runs, "
+                  f"{hit_p}/{len(wp)} passes — the figure to quote. The column above counts "
+                  f"SNAPSHOTS of the measured turn, which is neither.")
+        if earlier_only:
+            print(f"    ^ on the wire in an EARLIER turn only, in {earlier_only}/{len(rs)} runs "
+                  f"— the `surface has tool` column reads the MEASURED turn, and the session's "
+                  f"own wire log will disagree with it by this much")
         if susp:
             print(f"    ^ left SUSPENDED on a Tier-A approval card in {susp}/{len(rs)} runs "
                   f"— not a refusal by the model, a card waiting for a click")
