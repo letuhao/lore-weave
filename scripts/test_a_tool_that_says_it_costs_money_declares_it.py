@@ -1,11 +1,24 @@
-"""A tool that says it spends money must DECLARE that it spends money.
+"""A tool that talks about money must say what `_meta.paid` means for it.
 
-    THE INVARIANT. `_meta.paid` is what makes a call clear the SPEND gate. A tool whose own
-    description tells the model it costs money, or whose own schema takes a spend ceiling in
-    USD, and which then declares `paid: False`, is asking to be charged for silently.
+    THE INVARIANT, CORRECTED. This gate does NOT detect undeclared spenders — that was my first
+    reading and it was wrong. `tool_paid`'s documented meaning is "True when CALLING this tool
+    spends real money", and the six tools it finds are Tier-W CONFIRM-MINTERS: calling them
+    prices the work and returns a token, and the spend happens on the human's approval. On that
+    reading `paid: False` is correct for them.
 
-🔴 THIS IS NOT AN INFERENCE ABOUT WHAT A TOOL PROBABLY DOES. The evidence is the tool's own
-words, measured over the catalogue on 2026-08-27:
+    What it detects is a MISMATCH WORTH A HUMAN LOOK: a tool whose own description or schema
+    talks about money while the flag says nothing about it. That is worth gating because the
+    platform does not currently have ONE answer for this shape —
+
+        composition_library_translate   Tier W, mints {confirm_token, estimate},  paid=TRUE
+        translation_start_job           Tier W, mints a confirm token,            paid=FALSE
+
+    identical mechanics, opposite declarations, each with a reasoned comment beside it. DQ-T60
+    asks which reading wins. Until it is answered, a SEVENTH such tool should not arrive
+    silently, which is all this gate claims.
+
+🔴 THE EVIDENCE IS THE TOOL'S OWN WORDS — which is why the finder is sound even though my
+first INTERPRETATION of it was not. Measured over the catalogue on 2026-08-27:
 
     say "COSTS money" / "SPEND money" in their own description   5   declaring paid: 1
     take a `budget_usd` spend ceiling in their own schema         2   declaring paid: 0
@@ -14,12 +27,12 @@ Six distinct tools, and the two arms do not overlap. The platform's own recipe s
 for one of them — "composition_authoring_run_manage (op='start') … This SPENDS money" — while
 the machine-readable declaration beside it says False.
 
-WHAT THAT COSTS, concretely. `_required_kinds` only gains "spend" when `tool_paid()` is true
-(stream_service, the approval block), so for these six:
-  * the SPEND gate is never consulted, and a standing mutation allow is enough to run them;
-  * the confirm card is never marked `spend: True`, so the FE cannot render "this costs money"
-    as distinct from "this modifies data" — which is the exact distinction that wire signal
-    exists for.
+WHAT IS AT STAKE. `_required_kinds` only gains "spend" when `tool_paid()` is true, so for
+these six the SPEND gate is never consulted and the confirm card is never marked `spend: True`
+— the FE cannot render "this costs money" as distinct from "this modifies data". Whether that
+is WRONG depends entirely on DQ-T60's answer: if `paid` means "this call spends", the six are
+correct and the card simply is not the place that flag speaks. If it means "approving this
+spends", they are wrong and so is the flag's docstring.
 
 IT IS SHRINK-ONLY, seeded with today's six. Whether those six should be re-declared changes how
 often authors are prompted for money, which is DQ-T60 and not this gate's business. What the
