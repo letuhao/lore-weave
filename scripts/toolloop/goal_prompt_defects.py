@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import re
 import json
 import pathlib
 import sys
@@ -91,8 +92,37 @@ DML. Everything through the provider layer; there is no local model. DQs get a R
 from you and are DECIDED BY THE OWNER — never decide one yourself to unblock a defect."""
 
 
+#: A deferred question NAME, matched whole. `DQ-T4` and `DQ-T45` are different
+#: questions and one is a prefix of the other, so a bare substring test conflates them.
+_DQ_TOKEN = re.compile(r"DQ-T\d+")
+
+
+def _open_dq_names(led: dict) -> set[str]:
+    """The deferred questions that are STILL WAITING on the owner.
+
+    🔴 **`blocked_by_dq` BEING PRESENT WAS TREATED AS THE ROW BEING BLOCKED, AND THAT IS WRONG
+    THE MOMENT A DQ IS ANSWERED.** The field records WHICH question a row waits on; it does not
+    record whether the answer has arrived. Nothing ever cleared it, so an answered decision left
+    its rows sorted to the bottom, excluded from NEXT, and counted as decision-blocked forever —
+    and the terminating check reported *"every open contract defect is DQ-blocked"* while real,
+    unblocked work sat in the queue.
+
+    Measured the day this was found: DQ-T45, DQ-T56 and DQ-T60 had been answered and DQ-T61
+    withdrawn, and every row pointing at them still read as blocked.
+
+    This is the staleness the goal-prompt command exists to prevent, one level up: *an item that
+    gets finished leaves the queue by itself*. A row is blocked only while its question is
+    genuinely open, so answering one releases its rows with no second edit — and therefore no
+    second place to forget.
+    """
+    dqs = led.get("deferred_questions") or {}
+    return {name for name, q in dqs.items()
+            if isinstance(q, dict) and q.get("state") == "open"}
+
+
 def rows() -> tuple[list[tuple[str, str]], dict]:
     led = json.loads(LEDGER.read_text(encoding="utf-8"))
+    still_open = _open_dq_names(led)
     counts: collections.Counter = collections.Counter()
     contract: list[tuple[str, str]] = []
     for k, v in (led.get("defects") or {}).items():
@@ -105,9 +135,25 @@ def rows() -> tuple[list[tuple[str, str]], dict]:
             # through the whole row beats emitting a blank line into a 4000-char budget.
             inv = next((str(v[f]) for f in
                         ("invariant", "what", "measured", "status", "severity") if v.get(f)), "")
-            contract.append((v.get("queue_group") or 4, bool(v.get("blocked_by_dq")),
+            # A row waits on its DQ only while that DQ is still open. `blocked_by_dq` may name
+            # several in prose ("DQ-T56 (and DQ-T53 for the root cause)"), so the names are
+            # TOKENISED and the row is blocked if ANY of them is still open — releasing a row
+            # whose second question is unanswered would send the next session at work it cannot
+            # finish.
+            #
+            # 🔴 TOKENISED, NOT `in`. My first version asked `any(dq in str(named) ...)` and it
+            # was silently inert: `DQ-T4` is an OPEN question and a SUBSTRING of DQ-T40, T41,
+            # T43, T44, T45, T46, T47, T48 and T49 — so every row waiting on a DQ-T4x read as
+            # blocked no matter what its own question's state was, and the repair would have
+            # changed nothing while looking correct. Same for DQ-T5 against T50-T59 and DQ-T6
+            # against T60. Found by asking which open DQ each row actually matched.
+            named = v.get("blocked_by_dq")
+            mentioned = set(_DQ_TOKEN.findall(str(named or "")))
+            blocked = bool(mentioned & still_open)
+            contract.append((v.get("queue_group") or 4, blocked,
                              not v.get("queue_anchor"), k,
-                             " ".join(inv.split())[:EXCERPT], v.get("blocked_by_dq")))
+                             " ".join(inv.split())[:EXCERPT],
+                             named if blocked else None))
     # DQ-blocked LAST and never NEXT: they cannot be closed without an owner decision, and a
     # resume pointer aimed at one sends the next session to wait rather than to work. Within a
     # group the ANCHOR sorts first — otherwise the next session starts on whichever row happens

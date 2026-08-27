@@ -22,6 +22,15 @@
       "mode": "rules",
       "source_markdown": "# Emberfall\n\n## Arc I — The Ember Codex\n### Chapter 1 — The Black Stair\nAldric Vane climbs the black stair and finds the codex still warm.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide, and the tide is turning.\n\n## Arc II — The Turning Tide\n### Chapter 3 — Low Water\nVane crosses the trench and the codex begins to read him back.\n### Chapter 4 — The Ember Answers\nThe city answers in a language Vane wrote as a child.\n"
      }
+    },
+    {
+     "wait": {
+      "db": "loreweave_composition",
+      "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='proposed'",
+      "expect": "1",
+      "timeout": 120,
+      "why": "🔴 THE SEED'S ASYNC HALF, AND ITS ABSENCE COST 5 OF 5 RUNS. plan_propose_spec declares `async_job=True`: the call ENQUEUES and returns, and the plan_run row is written by the worker afterwards. Without this wait the seed assertion below ran against a store that had not caught up and read 0, so all five repeats failed in provisioning and the scenario measured nothing. The harness's own wait step exists for exactly this — the bar is unchanged, what was missing was the patience the tool's own declaration asks for."
+     }
     }
    ],
    "seed_assert": [
