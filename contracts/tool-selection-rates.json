@@ -210,8 +210,8 @@
   },
   "kg_propose_edge": {
    "calls": 28,
-   "runs": 55,
-   "rate": 0.509
+   "runs": 50,
+   "rate": 0.56
   },
   "kg_triage_place_edge": {
    "calls": 10,
@@ -305,8 +305,8 @@
   },
   "tool_load": {
    "calls": 20,
-   "runs": 35,
-   "rate": 0.571
+   "runs": 40,
+   "rate": 0.5
   },
   "translation_job_control": {
    "calls": 1,

@@ -5360,16 +5360,19 @@
    "and_two_comments_that_asserted_the_opposite_of_their_code": "drop_superseded_tools' docstring said 'THE RULE IS DELIBERATELY NARROWER THAN DROP EVERY LEGACY TOOL ... a tool is dropped ONLY when its named replacement is present', and stream_service's call-site comment said the same. The rule was widened on 2026-08-25 and both were left describing the old one, directly above the code that contradicts them.\n\nI READ THAT DOCSTRING, BELIEVED IT, AND QUOTED IT INTO THIS ROW'S FIRST DRAFT - reasoning that legacy tools naming no replacement were safe. The live withheld_tools record refuted it. Both now say what the code does, with the old rule preserved and labelled as history."
   },
   "D-TOOL-LOAD-IS-ON-EVERY-WIRE-AND-THE-MODEL-DOES-NOT-USE-IT": {
-   "status": "OPEN - split out of D-NO-SYNONYMS-MEANS-TWO-OPPOSITE-THINGS 2026-08-26, where it was misfiled as a contract defect.",
+   "status": "WITHDRAWN 2026-08-27 — the premise is refuted by measurement, which is what the row itself said would settle it: 'One batch is not a re-measurement; if this holds, this row's premise has moved.' It held.",
    "what": "tool_load is one of the four ALWAYS_ON_CORE_NAMES, so it is advertised on every turn — c10-run confirms it surfaced 5/5. On those same runs the model called glossary_list_system_standards and kg_project_create instead of loading the schema it needed. Nothing about the SURFACE is wrong: the tool is there, every turn, by construction.",
    "why_it_is_not_a_contract_defect": "A contract defect is something the platform DECLARES wrongly or fails to make reachable. tool_load is reachable on every single turn. The gap is between an advertised tool and the model's choice, which is the definition of the `model` class — and filing it as contract is what kept it next to a tool-surface fix it has nothing in common with.",
    "the_trap_the_parent_row_names": "The two halves shared a symptom (never matched by the answerability sweep) and had opposite causes. Declaring synonyms on tool_load would have looked like progress, changed no behaviour — it is never missing — and buried this finding under a declaration commit. Checking WHETHER THE TOOL WAS ON THE WIRE is the one field that separates them.",
    "not_investigated": "Why the model does not reach for it. Its description, its position in the core block, and whether a turn that NEEDS a schema recognises that it needs one are all untested. No cause is named here on purpose.",
-   "state": "open",
+   "state": "withdrawn",
    "defect_class": "model",
    "queue_group": 4,
-   "measured_by": "c10-run (tool_load surfaced 5/5, called 0/5); ALWAYS_ON_CORE_NAMES in services/chat-service/app/services/tool_discovery.py",
-   "a_single_batch_that_disagrees_2026_08_27": "🔴 A LEAD, NOT A RE-MEASUREMENT. Batch c-blocked1 ran scenarios-c-r1-recheck.json::tool-load verbatim, K=5, zero errored, and tool_load was CALLED on 4 of 5 runs — where c-r1-recheck recorded 0 of 5 and every run was stopped by a kg_project_create card instead. The batch was run as the NEGATIVE CONTROL for a different row (D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD) and is recorded here rather than discarded. One batch is not a re-measurement; if this holds, this row's premise has moved."
+   "measured_by": "c10-run; c-toolload2; c-blocked1; docs/eval/toolloop/2026-08-14/c-blocked2{,-raw}.json (the re-measurement); chat_messages.tool_calls",
+   "a_single_batch_that_disagrees_2026_08_27": "🔴 A LEAD, NOT A RE-MEASUREMENT. Batch c-blocked1 ran scenarios-c-r1-recheck.json::tool-load verbatim, K=5, zero errored, and tool_load was CALLED on 4 of 5 runs — where c-r1-recheck recorded 0 of 5 and every run was stopped by a kg_project_create card instead. The batch was run as the NEGATIVE CONTROL for a different row (D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD) and is recorded here rather than discarded. One batch is not a re-measurement; if this holds, this row's premise has moved.",
+   "the_re_measurement_2026_08_27": "Counted from `chat_messages.tool_calls` — what the model ACTUALLY called, not what the harness inferred — across every batch that ran a tool_load scenario:\n\n    c10-run       (the row's own evidence)   surfaced 5/5, called 0/5\n    c-toolload2   a direct schema question   tool_load called on 4 of 5 sessions\n    c-blocked1    the row's own lead         tool_load called on 4 of 5 sessions\n    c-blocked2    today, same file as above  tool_load called on 0 of 5 sessions\n\n🔴 8 OF 15 SESSIONS CALLED IT. 'The model does not use it' is not what the platform does. It uses it about half the time on these prompts and 4 of 5 when the turn is a direct contract question — which is the shape the tool exists for.",
+   "and_the_two_zero_batches_do_not_measure_CHOICE": "c-blocked2 is my own re-run of c-blocked1's file, unchanged, and it came back 0 of 5 where that batch got 4 of 5 — so the difference is stochastic, not configuration. More importantly the harness refuses to read either zero as a decline, in its own words:\n\n    NOT REACHED, NOT DECLINED: tool_load was never called, and all 5 runs stopped at a card belonging to another tool — kg_project_create (5). `called 0/5` here says the turn ended before tool_load's turn came, not that the model rejected it.\n\nSo the row's founding measurement is the exact shape this loop has spent weeks correcting: a zero produced by an unrelated Tier-A card arriving first. And it cannot be approved away here — the scenario is READ intent, and the standing note on it says so: 'approving a write on a turn that only asked to look would make the harness the thing that wrote.'",
+   "what_survives_and_what_does_not": "DOES NOT SURVIVE: the row's title claim. tool_load is used.\n\nSURVIVES, and is already filed elsewhere: on a turn where the model reaches for a world-setup write, kg_project_create cards and the turn ends before any schema question is answered — 5 of 5 in c-blocked2, 4 of 5 in c-blocked1. That is a finding about kg_project_create's reach on a read-intent turn, which D-A-NEVER-APPROVE-SCENARIO-MEASURES-REACH-BEFORE-ANY-CARD already owns, and this row is NOT re-scoped onto it: re-scoping must name a different cause, and that cause has a home.\n\nWHAT THE WITHDRAWAL COSTS: nothing measured is discarded. The parent split that created this row was still right to separate it from the contract defect — checking whether the tool was ON THE WIRE is what told them apart, and it is what refutes this one too."
   },
   "D-AN-ABORTED-TURNS-DETACHED-WRITE-RACES-THE-RETRYS-SEQUENCE": {
    "status": "FIXED - deployed and verified by content 2026-08-26. The scenario that lost 60% of its runs is clean 5/5, and 6 aborted turns since deploy produced ZERO duplicate-key 500s.",
@@ -6231,7 +6234,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 46,
+  "defects_open": 45,
   "deferred_questions": 35,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6248,7 +6251,7 @@
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 194,
   "defects_fixed": 106,
-  "defects_withdrawn": 16,
+  "defects_withdrawn": 17,
   "defects_superseded": 1
  },
  "observations": [
