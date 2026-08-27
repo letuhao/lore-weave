@@ -3117,6 +3117,68 @@ def _is_nil_uuid(value: str) -> bool:
         return False
 
 
+#: The hex alphabet, in order, for the sequential-run test below.
+_HEX_ORDER = "0123456789abcdef"
+
+#: A run of consecutive nibbles this long never occurs in an id this platform has ever issued.
+#: MEASURED, not chosen: the longest sequential run across 38,314 distinct UUIDs read out of
+#: every uuid column in all eight databases is SIX. Eight leaves a two-nibble margin.
+_DEGENERATE_SEQ_RUN = 8
+
+
+def _is_degenerate_uuid(value: str) -> bool:
+    """A syntactically valid UUID that is RECOGNISABLY a placeholder.
+
+    🔴 THE SAME SHAPE AS `_is_nil_uuid`, ONE STEP WIDER, AND MEASURED BEFORE IT SHIPPED.
+    `_invented_supplier_ids` tests SYNTAX, so a model that invents a well-formed UUID walks
+    straight through it. Measured live twice on different tools and different arguments:
+
+        plan_bootstrap_apply   proposal_id=77777777-7777-7777-7777-777777777777   (2 of 5 runs)
+        plan_bootstrap_apply   proposal_id=78965432-1234-5678-90ab-cdef12345678   (1 of 5)
+        (and 66966666-6666-6666-6666-666666666666 on a different tool entirely)
+
+    Both rows that record this said the same thing: a shape test is plausible here, and its
+    PRECISION against real ids is unknown — "that measurement is the next step, not the fix".
+
+    THE MEASUREMENT, 2026-08-27. Two populations, because the second is the one this function
+    actually sees:
+
+                              38,314 real ids      390 GENUINE ids the model passed
+        all-digits-identical         2 (both               0
+                                     themselves
+                                     placeholders)
+        sequential run >= 8          0                     0
+        --- rejected, and why ---
+        distinct hex <= 2           20                     0
+        UUID version != 7       11,618                     -
+
+    So the two rules below fire on nothing real in either population. `distinct <= 2` is NOT
+    shipped: its 20 are hand-authored sentinels that DO resolve — 00000000-…-00000000000a and
+    the like — and a rule that refuses a value which exists is a false refusal even when the
+    value is ugly. `version != 7` is refuted outright: 11,618 genuine v4 ids are in the stores,
+    exactly as D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID warned.
+
+    RECALL IS PARTIAL AND THAT IS THE PRICE OF THE PRECISION. Of the nine invented UUIDs found
+    in recorded tool arguments these catch seven; `66966666-…-6666` and `76767676-…-7676` have
+    two distinct digits and no long run, and reaching them needs the rule that also refuses a
+    sentinel. A guard that is right about what it flags is worth more here than one that flags
+    more, because a false refusal deletes an argument the model supplied correctly.
+    """
+    try:
+        raw = f"{UUID(value).int:032x}"
+    except (ValueError, AttributeError, TypeError):
+        return False
+    if len(set(raw)) == 1:
+        return True
+    run = 1
+    for i in range(1, len(raw)):
+        a, b = _HEX_ORDER.find(raw[i - 1]), _HEX_ORDER.find(raw[i])
+        run = run + 1 if (a >= 0 and b == a + 1) else 1
+        if run >= _DEGENERATE_SEQ_RUN:
+            return True
+    return False
+
+
 #: The ids the RUNTIME fills from the turn. Excluded from the declared-UUID check below because
 #: `_inject_context_ids` owns them: it supplies a missing one and SUBSTITUTES a malformed one for
 #: the value the server already knows. A non-context id has no such fallback.
@@ -3290,7 +3352,9 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # is wrong for every supplier. Feeding it into the existing drop-then-report-missing path
         # gives the model the honest sentence — this argument is required and you have not
         # supplied it — which is the one that makes it go and look the id up.
-        if isinstance(value, str) and _is_nil_uuid(value):
+        # The nil UUID and its family: syntactically valid, knowably invented. Same drop-then-
+        # report-missing path, which is the sentence that sends the model to look the id up.
+        if isinstance(value, str) and (_is_nil_uuid(value) or _is_degenerate_uuid(value)):
             out.append(name)
             continue
         # 🔴 THE REQUIREMENT IS DECLARED IN PROSE NO VALIDATOR READS. Measured 2026-08-14 across

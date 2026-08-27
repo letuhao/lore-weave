@@ -3647,11 +3647,12 @@
    "state_reason": "Fixed 2026-08-26. The row's defect - a supplier returning counts and no ids - does not hold on either mode: `manual` returns entity_id with the successor named in a note (live, 4/5), `from_glossary` returns `nodes` (deployed, sha-verified, NOT live-exercised - 0/5 runs chose that mode). What now blocks the chain is a different cause entirely, filed as D-A-TWO-ENDPOINT-EDGE-NEEDS-N-SEQUENTIAL-CONFIRM-CARDS. Two earlier attempts to measure this row failed for two different fixture reasons and both are recorded above."
   },
   "D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID": {
-   "status": "OPEN — one measured instance",
+   "status": "OPEN, and now for a MEASURED reason rather than an unexamined one: its instance is precisely the value the precision measurement refused to cover.",
    "what": "The fabricated-runtime-owed-id guard tests SYNTAX. A repdigit UUID like '66966666-6666-6666-6666-666666666666' passes every arm and reaches the tool.",
    "caution": "A rule that rejects it needs its PRECISION measured before shipping. 'UUID version is not 7' would catch it and would also reject any legitimate v4 id from an external system; 'all hex digits identical' is high precision and tiny recall. Neither is obviously right, and this loop has already paid once for a blacklist that the very next run walked around.",
    "state": "open",
-   "defect_class": "model"
+   "defect_class": "model",
+   "why_the_2026_08_27_fix_does_not_close_it": "`66966666-6666-6666-6666-666666666666` has TWO distinct hex digits and no sequential run, so neither shipped rule reaches it. The rule that would — `distinct <= 2` — fires on 20 ids that exist in the stores (00000000-…-00000000000a and siblings), and this row's own caution said it: 'a rule that rejects it needs its PRECISION measured before shipping'. It was measured, and it does not pass.\n\nThe row's other candidate is refuted outright: 'UUID version is not 7' would reject 11,618 genuine v4 ids in the live stores — the row predicted that too.\n\nWHAT WOULD CLOSE IT is not another shape rule. It is an EXISTENCE check for supplier-owed ids, which is a different mechanism from this function's, whose stated rule is that whether a value is the right row is the tool's question."
   },
   "D-CONTEXT-ID-SUBSTITUTED-FOR-A-DOMAIN-ID": {
    "status": "FIXED 2026-08-23 — measured, and the fix demonstrably ran",
@@ -5045,15 +5046,23 @@
    "_a_note_on_this_row_itself": "🔴 THIS ROW WAS WRITTEN TWICE. The first version pasted the regex, was written through a heredoc, and the backslash-b resolved one level early - so the ledger held two literal backspace characters where the word-boundary anchors should have been. It parsed, it looked right in a diff, and it was wrong. The same trap this session already recorded as a memory, met again inside the row DESCRIBING a regex. Patterns are now described in words here, which cannot be mangled."
   },
   "D-A-RECOGNISABLE-PLACEHOLDER-UUID-PASSES-THE-FABRICATION-GUARD": {
-   "status": "OPEN - measured 2026-08-26, batch c-owedheld1, K=5, 3 of 5 runs.",
+   "status": "FIXED 2026-08-27. The shape test the row proposed was MEASURED first, as the row itself insisted, and then shipped at the chokepoint that already held its twin.",
    "what": "Asked to apply a plan on the confirmation turn, the model passed plan_bootstrap_apply a proposal_id it invented:\n\n    77777777-7777-7777-7777-777777777777   (runs 0 and 1)\n    78965432-1234-5678-90ab-cdef12345678   (run 3)\n\nBoth are syntactically valid UUIDs, so `_invented_supplier_ids` - whose test is SYNTACTIC - passed them through, `_missing_required_names` saw the argument as PRESENT, and the call was DISPATCHED to a Tier-A write tool.",
    "what_stopped_it": "The SERVER's own scoping check, and its message is the good kind: 'no bootstrap proposal 77777777-... on this book - run plan_bootstrap_propose first and pass the proposal_id it returns (a proposal is book-scoped ...)'. No damage: the only plan_bootstrap_proposal row in the store came from the PRIOR turn's genuine propose, checked per table rather than off the batch line.",
    "why_it_is_worth_filing_separately": "The syntactic blind spot is already recorded on D-SUPPLIER-RETURNS-COUNTS-NOT-THE-IDS-ITS-SUCCESSOR-NEEDS ('a syntactically valid placeholder is invisible to a guard whose test is syntactic'), where the invented value was 66966666-6666-6666-6666-666666666666. This measures the SAME blind spot on a different tool, a different argument, and with a SECOND pattern - so it is a class, not one tool's quirk:\n    repeated-digit      77777777-7777-7777-7777-777777777777, 6696...6666\n    sequential-hex      78965432-1234-5678-90ab-cdef12345678\nBoth are recognisable WITHOUT knowing any real id, which is what makes a detector plausible here where a general 'is this id real' test is impossible.",
    "candidate_direction_NOT_MEASURED": "A shape test for degenerate UUIDs - one distinct hex digit across the whole value, or a run of sequential nibbles - beside the existing syntactic check. NOT measured and NOT recommended yet: its PRECISION against real platform ids is unknown, and this platform mints UUIDv7, whose leading timestamp bytes are highly ordered by construction. A sequential-nibble rule could plausibly fire on a genuine id minted in the same millisecond. That measurement is the next step, not the fix.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "model",
    "queue_group": 4,
-   "measured_by": "docs/eval/toolloop/2026-08-14/c-owedheld1-raw.json, runs 0/1/3"
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-owedheld1-raw.json, runs 0/1/3",
+   "the_invariant": "A SYNTACTICALLY VALID UUID THAT IS RECOGNISABLE AS A PLACEHOLDER WITHOUT KNOWING ANY REAL ID IS KNOWABLY INVENTED, NOT MERELY POSSIBLY-WRONG — the same sentence `_is_nil_uuid` already carried for one value, one step wider.",
+   "the_measurement_the_row_asked_for": "Both this row and D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID said a shape test was plausible and its PRECISION unknown, and that measuring it was the next step rather than the fix. Measured over TWO populations, the second because it is the one the guard actually sees:\n\n                          38,314 real ids       390 GENUINE ids the model passed\n    all-digits-identical         2                      0\n    sequential run >= 8          0                      0\n    --- measured and REJECTED ---\n    distinct hex <= 2           20                      0\n    UUID version != 7       11,618                      -\n\n`distinct <= 2` is NOT shipped: its 20 are hand-authored sentinels that DO resolve (00000000-…-00000000000a and siblings), and refusing a value that exists is a false refusal even when the value is ugly. `version != 7` is refuted outright by 11,618 genuine v4 ids — exactly the objection the sibling row raised.\n\nTHE THRESHOLD IS MEASURED, NOT CHOSEN: the longest sequential nibble run across all 38,314 real ids is SIX, so 8 carries a two-nibble margin.",
+   "the_one_cost_named": "`11111111-1111-1111-1111-111111111111` exists as a seeded `chat_messages.message_id`, and the all-identical rule refuses it. That is the ENTIRE false-positive surface across 38,314 ids; the other match, the nil UUID, was already refused by `_is_nil_uuid`.",
+   "proven_live": "🔴 THE FABRICATION STOPPED HAPPENING, so proving it needed a different exercise, and the first two attempts are recorded rather than dropped:\n\n    c-placeholder1  K=5  0 errored  0 degenerate ids passed\n    c-placeholder2  K=5  0 errored  0 degenerate ids passed\n\n10 runs of the ORIGINAL scenario and the model never fabricated, where c-owedheld1 had done so in 3 of 5. Those two batches show the fix does not break the path; they do NOT show the guard firing, and a row closed on them would have been closed on a negative control.\n\nSO THE TRIGGER WAS MADE DETERMINISTIC THROUGH THE REAL CHAT PATH — the AUTHOR supplies the placeholder, which is a real user path (someone pasting an id from a document) and does not wait on the model to invent one. c-placeholder3, K=5, zero errored, 5 of 5:\n\n    the call reaching the tool:  plan_bootstrap_apply {\"book_id\": \"01a04186-…\"}\n        — `proposal_id` is GONE. The guard dropped it.\n    the refusal:  \"'plan_bootstrap_apply' is missing ['proposal_id'], and this is NOT yours to invent: the runtime supplies it from the current context or an active plan, and has none right now. Call plan_bootstrap_propose first…\"\n    the store:    UNCHANGED on all five runs — no Tier-A write with an invented id\n    the reply:    \"It appears the ID you provided is a placeholder, and I don't have an active, valid proposal to work with.\" / \"I am not permitted to use invented IDs.\"\n\nBefore the fix that exact value was DISPATCHED to a Tier-A write tool and only the server's own scoping check stopped it.",
+   "deployed_and_verified_by_content": "docker cp + restart of infra-chat-service-1; sha256 read from INSIDE the container equals the host's: 05523d72bd84d25b598b7411d515a77b9b2b4d3b52fb540f26d0eea77da061ca. The function and the call site were then exercised in the RUNNING container (`_invented_supplier_ids({'proposal_id': '7777…'}) -> ['proposal_id']`), so the guard is live in the process the batch talked to, not merely on disk.",
+   "red_able": "services/chat-service/tests/test_a_placeholder_uuid_is_not_an_identifier.py, 10 guards, four falsifiers proven RED on the ORIGINAL instance and restored: remove the arm from the call site, lower the threshold to 6 (a real id has a run of 6), widen to the rejected `distinct <= 2`, and widen the name test beyond `*_id`/`*_ref`. One guard RE-DERIVES the precision from the live stores rather than trusting the number in this row.",
+   "what_is_NOT_covered": "- TWO OF THE NINE KNOWN FABRICATIONS ARE STILL MISSED: `66966666-…-6666` and `76767676-…-7676` have two distinct hex digits and no long run. Catching them needs the rule the precision measurement rejected, so D-FABRICATION-GUARD-IS-BLIND-TO-A-VALID-LOOKING-UUID — whose instance is exactly `66966666` — STAYS OPEN.\n- THE MODEL'S OWN FABRICATION WAS NOT RE-OBSERVED. The live proof uses an author-supplied placeholder; whether the model still invents one, and would now be caught, is untested because it did not do so in 10 runs.\n- IT IS A SHAPE TEST, NOT AN EXISTENCE TEST. A well-formed, unremarkable UUID that no table holds still passes, exactly as the function's own rule intends: whether it is the right row is the tool's question.\n- ONE TOOL AND ONE ARGUMENT WERE EXERCISED LIVE. The arm applies to every `*_id`/`*_ref` argument on every tool; none of the others was run.",
+   "evidence": "docs/eval/toolloop/2026-08-14/c-placeholder3{,-raw}.json (the guard firing); c-placeholder1/2 (the non-reproduction, recorded)"
   },
   "D-THE-PROBLEMS-PANEL-IS-REPORTED-AS-THE-GOLDEN-LINTER": {
    "status": "OPEN - measured 2026-08-26, batch c-existingrun1, K=5, 5 of 5 runs.",
@@ -6079,7 +6088,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 47,
+  "defects_open": 46,
   "deferred_questions": 29,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6095,7 +6104,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 193,
-  "defects_fixed": 104,
+  "defects_fixed": 105,
   "defects_withdrawn": 16,
   "defects_superseded": 1
  },
