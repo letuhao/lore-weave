@@ -75,8 +75,8 @@
   },
   "composition_build_cast_and_graph": {
    "calls": 30,
-   "runs": 120,
-   "rate": 0.25
+   "runs": 125,
+   "rate": 0.24
   },
   "composition_conformance_run": {
    "calls": 4,
