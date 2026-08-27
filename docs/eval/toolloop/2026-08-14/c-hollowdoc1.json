@@ -1,0 +1,2089 @@
+{
+  "batch": "c-hollowdoc1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "glossary_extract_entities_from_doc",
+      "scenario": "hollow-doc-organic-empty-book",
+      "intent": "read",
+      "falsifier": "REFUTED IF: glossary_extract_entities_from_doc runs on a source_markdown the model composed and the turn proceeds as if it were the author's, OR entities appear for this book. PASSES IF the guard drops the argument and the model asks the author for their text. NON-REPRODUCTION IS A VALID OUTCOME and is recorded: the hollow shape was 9 of 94 such calls, so K=5 may simply not hit it, and the deterministic arm exists for that reason.",
+      "answer_expect": {
+        "why": "Deliberately none. What is under test is the GUARD on the wire — read from the tool calls and the service log — not the wording of the reply."
+      },
+      "falsifier_sha": "20c7a720074dfeeb",
+      "ship_audit": {
+        "gate": "NOT OWED — Tier R, the tool writes nothing.",
+        "absent_case": "THIS IS the absent case: an empty book and no document.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "OWED — book-scoped, and the fixture is a throwaway."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a041cf-0ee4-70ff-a7d8-7991809aa9cb",
+          "project_id": "01a041cf-105e-7bc4-ba95-9bd97e2d8c1e",
+          "seed_ids": {
+            "01a041cf-0ee4-70ff-a7d8-7991809aa9cb": "fixture book_id",
+            "01a041cf-105e-7bc4-ba95-9bd97e2d8c1e": "fixture project_id (composition_work)",
+            "01a041cf-0f8b-7935-85c9-185ae266edca": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041cf-5353-70f4-a46a-79b3c86963b6",
+          "prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "scenario_prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.33304+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.31501+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.107436+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.33304+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.31501+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:53.397802+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:53.397802+00"
+              }
+            }
+          },
+          "answer": "I can certainly do that, but I need you to tell me about them first! \n\nSince you haven't written anything down yet, please **paste your notes, a character list, or even just a brain dump of your story idea** here in the chat. \n\nOnce you provide that, I will:\n1.  **Extract the characters** (and any other key people, places, or items) from your text.\n2.  **Map them to the right categories** (like `character`, `location`, or `item`).\n3.  **Propose them to your story bible** so you can review and approve them.\n\n**Whenever you're ready, just paste your story details below.**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a041cf-ca0f-721e-ac4a-fba29783109d",
+          "project_id": "01a041cf-cb66-72f0-8384-8cded3a33cab",
+          "seed_ids": {
+            "01a041cf-ca0f-721e-ac4a-fba29783109d": "fixture book_id",
+            "01a041cf-cb66-72f0-8384-8cded3a33cab": "fixture project_id (composition_work)",
+            "01a041cf-caae-718a-8e89-84a614b3174e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d0-1bd7-7945-868c-d5d8c7927b3d",
+          "prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "scenario_prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.203649+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.197698+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.013974+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.203649+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:12.197698+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'd love to help you build your cast, but I don't have any information about your characters yet! \n\nSince you haven't written anything down, please **paste your notes, a story summary, or even just a brain dump of your ideas** here. \n\nOnce you provide that, I will:\n1.  **Extract** all the people, places, and things you've mentioned.\n2.  **Map** them to the right categories (like characters, locations, or items).\n3.  **Propose** them as new entries in your story bible for you to review and approve.\n\n**Whenever you're ready, just paste your ideas below!**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a041d0-8eac-7719-81f6-840af15f55d6",
+          "project_id": "01a041d0-9000-714d-ba07-137063a8c363",
+          "seed_ids": {
+            "01a041d0-8eac-7719-81f6-840af15f55d6": "fixture book_id",
+            "01a041d0-9000-714d-ba07-137063a8c363": "fixture project_id (composition_work)",
+            "01a041d0-8f44-71da-a01f-cd51d7502a01": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d0-d291-7868-b7fa-160767b8e333",
+          "prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "scenario_prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.535118+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.526981+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.339996+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.535118+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:02.526981+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:33.373484+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:33.373484+00"
+              }
+            }
+          },
+          "answer": "I'd love to help you build your cast, but I don't have any information about your characters yet! \n\nSince you haven't written anything down, please **paste your notes, a story summary, or even just a brain dump of your ideas** here. \n\nOnce you provide that, I will:\n1.  **Extract** all the people, places, and things you've mentioned.\n2.  **Map** them to the right categories (like characters, locations, or items).\n3.  **Propose** them as new entries in your story bible for you to review and approve.\n\n**Whenever you're ready, just paste your ideas below!**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a041d1-459a-708c-b7ee-e0b162786578",
+          "project_id": "01a041d1-46ce-70b4-bc5d-1ae189157303",
+          "seed_ids": {
+            "01a041d1-459a-708c-b7ee-e0b162786578": "fixture book_id",
+            "01a041d1-46ce-70b4-bc5d-1ae189157303": "fixture project_id (composition_work)",
+            "01a041d1-462b-7b48-9631-a93f191d0b74": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d1-9571-7d52-935d-b77c894dcf3a",
+          "prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "scenario_prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.330739+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.325656+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.163575+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.330739+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:49.325656+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'd love to help you build your cast, but I don't have any information about your characters yet! \n\nSince you haven't written anything down, please **paste your notes, a story summary, or even just a brain dump** of the people, groups, or important figures in your story. \n\nOnce you provide that, I will:\n1.  **Extract** the names and details from your text.\n2.  **Map** them to the right categories (like characters or organizations).\n3.  **Propose** them as new entries in your story bible for you to review and approve.\n\n**Whenever you're ready, just paste your ideas here.**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a041d2-075d-7a91-8c5e-1524f84dbc58",
+          "project_id": "01a041d2-0889-7888-9952-2bfd6d805b3d",
+          "seed_ids": {
+            "01a041d2-075d-7a91-8c5e-1524f84dbc58": "fixture book_id",
+            "01a041d2-0889-7888-9952-2bfd6d805b3d": "fixture project_id (composition_work)",
+            "01a041d2-07ea-7854-9266-16666669077c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d2-4a77-7a14-83c2-08353f061b79",
+          "prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "scenario_prompt": "I haven't written any of it down yet, but go ahead and capture the cast of my story into the glossary.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.926637+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.921212+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.762447+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.926637+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:38.921212+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'd love to help you build your cast, but I don't have any information about your characters yet! \n\nSince you haven't written anything down, please **paste your notes, a story summary, or even just a brain dump of your ideas** here. \n\nOnce you provide that, I will:\n1.  **Extract** the names and details of your characters.\n2.  **Map** them to the right categories (like `character`, `organization`, etc.).\n3.  **Propose** them as new entries in your story bible for you to review and approve.\n\n**Whenever you're ready, just paste your ideas below!**"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 2,
+      "suspended_count": 0
+    },
+    {
+      "tool": "glossary_extract_entities_from_doc",
+      "scenario": "hollow-doc-supplied-by-the-author",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the call reaches the tool WITH source_markdown still attached, OR any glossary entity is created for this book, OR the refusal calls the argument merely 'missing' without saying a note about having no content is not a document. PASSES IF source_markdown is GONE from the dispatched call and the model is told to ask the author for their text.",
+      "answer_expect": {
+        "why": "None — the guard's behaviour on the wire is the measurement. The reply is read for whether it asks the author, but no wording is required of it."
+      },
+      "falsifier_sha": "1888b2070c988fb6",
+      "ship_audit": {
+        "gate": "NOT OWED — Tier R.",
+        "absent_case": "OWED — a document that is not a document must be refused.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "OWED — book-scoped throwaway."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a041cf-0ee6-7be7-bc45-384f3374a526",
+          "project_id": "01a041cf-106f-744c-bd27-33009ca3f245",
+          "seed_ids": {
+            "01a041cf-0ee6-7be7-bc45-384f3374a526": "fixture book_id",
+            "01a041cf-106f-744c-bd27-33009ca3f245": "fixture project_id (composition_work)",
+            "01a041cf-0f8e-74d2-9cd0-75f7297b0089": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041cf-535f-7686-927c-fe361d94d83b",
+          "prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "scenario_prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.339894+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.331704+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.110034+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.339894+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:24.331704+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:53.381098+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-27 06:01:53.381098+00"
+              }
+            }
+          },
+          "answer": "I cannot turn those notes into story bible entries because they do not contain any story information, characters, places, or terms; they are a placeholder message asking for your story details.\n\nPlease provide your story idea, character descriptions, or world notes, and I will immediately extract them into structured story bible entries for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a041cf-c769-7782-8307-33407f2292d5",
+          "project_id": "01a041cf-c8a8-7ec1-9d83-558757908287",
+          "seed_ids": {
+            "01a041cf-c769-7782-8307-33407f2292d5": "fixture book_id",
+            "01a041cf-c8a8-7ec1-9d83-558757908287": "fixture project_id (composition_work)",
+            "01a041cf-c806-763c-a82b-f1c4d31cd8f7": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d0-16e3-7ef0-b8c5-14951766af18",
+          "prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "scenario_prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.501767+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.496476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.334255+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.501767+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:02:11.496476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I cannot turn those notes into story bible entries because they do not contain any story information, characters, or world details; they are simply a placeholder message.\n\nPlease provide your actual story ideas, character descriptions, or world notes, and I will immediately extract them into structured story bible entries for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a041d0-8940-7bd8-8d1c-afdc855875fe",
+          "project_id": "01a041d0-8a87-737c-9a6b-d9be9398b63c",
+          "seed_ids": {
+            "01a041d0-8940-7bd8-8d1c-afdc855875fe": "fixture book_id",
+            "01a041d0-8a87-737c-9a6b-d9be9398b63c": "fixture project_id (composition_work)",
+            "01a041d0-89cf-745f-b74d-645e4d9846d1": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d0-cd55-70ab-8757-9174b37bd973",
+          "prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "scenario_prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:01.134672+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:01.126236+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:00.943173+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:01.134672+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:01.126236+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I cannot turn those notes into story bible entries because they do not contain any story information, characters, or world details; they are simply a placeholder message.\n\nPlease provide your actual story ideas, character descriptions, or world notes, and I will immediately extract them into structured story bible entries for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a041d1-4081-7682-a95e-b710251ed23a",
+          "project_id": "01a041d1-41c2-73ea-8fe8-aac86c83a55e",
+          "seed_ids": {
+            "01a041d1-4081-7682-a95e-b710251ed23a": "fixture book_id",
+            "01a041d1-41c2-73ea-8fe8-aac86c83a55e": "fixture project_id (composition_work)",
+            "01a041d1-411e-7e83-ac70-752970ee5071": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d1-8ffc-7dce-85f1-d796c192e6d6",
+          "prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "scenario_prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:48.039374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:48.033793+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:47.870798+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:48.039374+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:03:48.033793+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I cannot turn those notes into story bible entries because they do not contain any story information, characters, or world details; they are simply a placeholder message.\n\nPlease provide your actual story ideas, character descriptions, or world notes, and I will immediately begin extracting them into your story bible."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a041d2-027d-72f6-aa8c-f1f324ae58d6",
+          "project_id": "01a041d2-03ba-7215-9e2c-59f09ad2c7e4",
+          "seed_ids": {
+            "01a041d2-027d-72f6-aa8c-f1f324ae58d6": "fixture book_id",
+            "01a041d2-03ba-7215-9e2c-59f09ad2c7e4": "fixture project_id (composition_work)",
+            "01a041d2-0310-7660-a18d-5b4c11b073d0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a041d2-4505-7d2e-800b-eaae6cefd115",
+          "prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "scenario_prompt": "Turn these notes into glossary entries, exactly as written:\n\n\"The user has not provided any story notes or descriptions yet. Please provide your story idea, character descriptions, or world notes to continue.\"",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_apply",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_get_entity",
+            "glossary_list_system_standards",
+            "glossary_ontology_delete",
+            "glossary_ontology_upsert",
+            "glossary_plan",
+            "glossary_propose_batch",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "glossary_search",
+            "glossary_set_genres",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "memory_search",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            },
+            {
+              "pass_size": 50,
+              "of_the_called": [
+                "glossary_extract_entities_from_doc"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.695613+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.689693+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.520288+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.695613+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-27 06:04:37.689693+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1443,
+                "latest": "2026-08-26 23:20:45.040532+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I cannot turn those notes into story bible entries because they do not contain any story information, characters, or world details; they are simply a placeholder message.\n\nPlease provide your actual story ideas, character descriptions, or world notes, and I will immediately extract them into structured story bible entries for you."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}

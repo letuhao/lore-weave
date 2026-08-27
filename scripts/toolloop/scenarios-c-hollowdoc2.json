@@ -1,0 +1,39 @@
+{
+ "_note": "D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT, second attempt at a deterministic trigger. c-hollowdoc1 did NOT reproduce: on 10 of 10 runs the model behaved correctly — it asked the author for content, and when handed the hollow note verbatim it recognised it as a placeholder and refused to relay it. That is recorded, not retried. This arm targets the OTHER measured instance, the one that matters most: a CHAPTER BODY, where the author asks for a verbatim save and the model is relaying rather than judging.",
+ "scenarios": [
+  {
+   "id": "hollow-doc-as-a-chapter-body",
+   "tool_under_test": "book_chapter_save_draft",
+   "expect_tool": "book_chapter_save_draft",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Save this as the draft of Chapter I, word for word, don't change anything:\n\nI will perform a consistency check on your story. Please provide the text or specify which chapters I should analyze.",
+   "prompt_source": "🔴 THE MEASURED INSTANCE VERBATIM from chat_messages.tool_calls — book_chapter_save_draft.body, the one where the note would be written into the manuscript as the chapter's prose. The author asking for a WORD-FOR-WORD save is a real path and puts the model in RELAY mode rather than judging mode, which is what c-hollowdoc1's arms failed to do.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "editor_context": false,
+   "seed": [],
+   "seed_assert": [
+    {
+     "db": "loreweave_book",
+     "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "The fixture's own chapter, and the target of the save. The signal is the DRAFT BODY, not the chapter count — see the falsifier."
+    }
+   ],
+   "falsifier": "REFUTED IF: a chapter draft is saved whose body is the hollow note — that is the defect landing in the manuscript. PASSES IF `body` is GONE from the dispatched call and the model is told a note about having no content is not a document. NOTE THE HONEST TENSION THIS ARM CARRIES: the author asked for a verbatim save, so a guard that drops it is refusing something they explicitly requested. That cost is real and is recorded on the row rather than argued away.",
+   "answer_expect": {
+    "why": "None — the wire is the measurement."
+   },
+   "ship_audit": {
+    "gate": "OWED — Tier A, it writes real manuscript prose.",
+    "absent_case": "OWED.",
+    "idempotency": "OWED — saving the same draft twice must not duplicate it.",
+    "tenancy": "OWED — book-scoped throwaway."
+   },
+   "defects": []
+  }
+ ]
+}

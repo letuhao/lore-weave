@@ -3287,6 +3287,95 @@ def _name_like_dropped_ids(dropped: dict, *, emitter: str = "",
             "tell the author you need the id, or a way to identify it that this tool accepts.")
 
 
+#: Arguments that carry the AUTHOR'S OWN PROSE into their book — the payload slot, not metadata.
+#: Deliberately EXCLUDES `description`, `summary`, `notes` and `instructions`: they are short
+#: metadata fields, no instance was measured on any of them, and widening a refusal onto fields
+#: with no evidence is how a guard starts deleting values that were fine.
+DOCUMENT_ARGS = frozenset({
+    "content", "body", "text", "markdown", "source_markdown", "draft", "prose",
+    "body_markdown", "chapter_body",
+})
+
+_CONTENT_NOUN = (r"(?:content|text|story|stories|notes?|details?|idea|ideas|description|"
+                 r"descriptions|summary|draft|chapters?|document|manuscript|material)")
+
+#: A document that is a MESSAGE ABOUT NOT HAVING A DOCUMENT. Four arms, each measured:
+#: an assertion that content is absent; an assertion about the user; a request TO the author to
+#: supply content; and the model narrating its own next step.
+_HOLLOW_DOCUMENT = re.compile(
+    r"no\s+(?:story\s+|source\s+|such\s+)?" + _CONTENT_NOUN + r"[^.]{0,40}"
+    r"(?:provided|available|given|yet)"
+    r"|user\s+has\s+(?:not|n't)\s+(?:yet\s+)?provided"
+    r"|please\s+provide[^.]{0,60}?" + _CONTENT_NOUN +
+    r"|i\s+will\s+ask\s+the\s+user"
+    r"|to\s+begin\s+the\s+extraction",
+    re.I,
+)
+
+
+def _is_hollow_document(value) -> bool:
+    """A document argument whose content is a statement that there is no content.
+
+    🔴 MEASURED 2026-08-27 over `chat_messages.tool_calls`: 508 arguments carrying a document,
+    10 of them hollow, across two tools. Eight are `glossary_extract_entities_from_doc`'s
+    `source_markdown` — the tool then EXTRACTS ENTITIES from a sentence about the absence of a
+    story. The tenth is the one that matters most and the one a narrow rule misses:
+
+        book_chapter_save_draft.body = "I will perform a consistency check on your story.
+                                        Please provide the text or specify which chapters
+                                        I should analyze."
+
+    That is a CHAPTER BODY. It would be saved into the manuscript as the chapter's prose.
+
+    THE `please provide` ARM IS THE LOOSE ONE AND IT IS THE ONLY ONE THAT REACHES THAT
+    INSTANCE — the other nine are caught without it. It is therefore kept, but narrowed to a
+    request for CONTENT specifically, so fiction that happens to use the phrase is untouched.
+    Measured against the store and against four fiction probes:
+
+        "Please provide the codex," the Regent said            -> not flagged
+        She would not provide the text of the oath             -> not flagged
+        Please provide the text or specify which chapters      -> FLAGGED
+
+    THE RESIDUAL FALSE-POSITIVE SURFACE, NAMED: a chapter whose dialogue reads "please provide
+    the text". None of the 508 recorded documents is one. Tightening cost nothing — the loose
+    and narrow rules both flag exactly the same 10.
+
+    This is `_is_nil_uuid`'s sentence one value class wider: a value recognisable as a
+    non-value WITHOUT knowing the author's book is knowably not content, and it feeds the same
+    drop-then-report-missing path, so the model is told to go and ask rather than to write.
+    """
+    return isinstance(value, str) and bool(_HOLLOW_DOCUMENT.search(value))
+
+
+def _hollow_document_args(args_obj: dict) -> list[str]:
+    """Document arguments the model filled with a note about having no document."""
+    if not isinstance(args_obj, dict):
+        return []
+    return [name for name, value in args_obj.items()
+            if name in DOCUMENT_ARGS and _is_hollow_document(value)]
+
+
+def _hollow_document_note(dropped: dict) -> str:
+    """The sentence for the third state, for a DOCUMENT rather than an id.
+
+    The missing-argument message has three arms — owed / undeclared / model-supplied — and a
+    document is model-supplied, so without this it reads "you forgot something". That is the
+    one description guaranteed not to help: the model did not forget, it knowingly had nothing
+    and put the saying-so in the payload. The honest sentence names what it did and where the
+    content actually comes from.
+    """
+    named = [nm for nm in sorted(dropped) if isinstance(dropped[nm], str)]
+    if not named:
+        return ""
+    return (
+        "You passed a note about having no content (" + ", ".join(named) + ") where the "
+        "author's own words are required. That is not a document — it is a message to them, "
+        "and writing it would put it in their book. Do NOT compose one yourself: ask the "
+        "author for their text, or read it from the book, and call this again with what they "
+        "actually wrote."
+    )
+
+
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
                            tool_def_props: dict | None = None) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
@@ -7226,9 +7315,30 @@ async def _stream_with_tools(
                             {k: (v if isinstance(v, str) and len(v) <= 80 else str(v)[:80])
                              for k, v in _invented_vals.items()},
                         )
+                # ── THE SAME SENTENCE FOR A DOCUMENT ─────────────────────────────────────
+                # D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT.
+                # An id the model invents and a document the model invents are the same failure
+                # one argument-kind apart, so they take the same path: drop the value, report
+                # the argument missing, and say what was actually wrong. Independent of the
+                # contract lookup above — a hollow document is wrong for every supplier, and
+                # `_tool_def_for_args` being absent must not silence it.
+                _hollow_args = _hollow_document_args(args_obj)
+                _hollow_vals = {n: args_obj.get(n) for n in _hollow_args}
+                if _hollow_args:
+                    for _nm in _hollow_args:
+                        args_obj.pop(_nm, None)
+                    logger.info(
+                        "dropped hollow document value(s) %s from %s (session=%s) — a note "
+                        "about having no content is not content; values=%s",
+                        _hollow_args, c["name"], session_id,
+                        {k: (v if isinstance(v, str) and len(v) <= 120 else str(v)[:120])
+                         for k, v in _hollow_vals.items()},
+                    )
                 _missing_args = _missing_required_names(args_obj, _tool_def_for_args)
                 if _invented_ids:
                     _missing_args = sorted(set(_missing_args) | set(_invented_ids))
+                if _hollow_args:
+                    _missing_args = sorted(set(_missing_args) | set(_hollow_args))
                 if _missing_args:
                     blank_tool_args_streak += 1
                     if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
@@ -7327,6 +7437,12 @@ async def _stream_with_tools(
                         _invented_vals, emitter=_nl_emitter, referent_exists=_nl_referent)
                     if _named:
                         _ma_msg = (_ma_msg or "") + " " + _named
+                    # The document arm's own sentence — see `_hollow_document_note`. Appended
+                    # here for the same reason the name arm is: the generic missing-argument
+                    # text would call it forgotten, and it was not forgotten.
+                    _hollow_note = _hollow_document_note(_hollow_vals)
+                    if _hollow_note:
+                        _ma_msg = (_ma_msg or "") + " " + _hollow_note
                     # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────
                     # This refusal SAYS "call world_map_list first and match it to get the id".
                     # Until now it armed nothing: `_tools_named_in_refusal` runs on the dispatch
