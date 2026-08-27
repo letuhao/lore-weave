@@ -4251,13 +4251,16 @@
    "state": "fixed"
   },
   "D-A-CONTRACT-QUESTION-ANSWERED-FROM-A-NEIGHBOURING-TOOLS-DESCRIPTION": {
-   "status": "OPEN - measured 2026-08-23, batch c-toolload2, K=5, zero errored runs. A FALSE STATEMENT to the author about the platform's own contract.",
+   "status": "OPEN and BLOCKED on DQ-T59 as of 2026-08-27. It STAYS a model defect — the wire check confirms the model had everything it needed — and the mechanism is now named exactly.",
    "what": "Asked 'What arguments does the composition_arc_apply tool require? Read its real schema and list them - don't guess from the name', one run of five answered 'arc_template_id + book_id'.\n\ncomposition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key}. There is NO book_id. The run had called tool_list, which carries NO input_schema at all - 29KB of 53 tool DESCRIPTIONS - so the words it answered with came from a different tool's prose: composition_arc_edit's description reads 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'.\n\nSo one tool's requirements were attributed to another, in a confident list, with no error, no store change and nothing in the reply marking it as inferred. The other four runs called tool_load and answered correctly, which is what makes this checkable rather than ambient.",
    "why_it_matters": "A contract answer is the one thing the author cannot verify without doing the work themselves. The tool exists precisely so the requirements come from the contract, and the failure mode is a read that is broader, cheaper and looks the same.",
    "how_it_was_nearly_missed": "🔴 THE FIRST answer_expect WOULD HAVE CERTIFIED IT. It required only 'arc_template_id', and all five replies contained that string - the wrong one included. The check passed 5/5 while one reply was false. Tightened to require project_id (only the contract supplies it) and forbid book_id (only the neighbouring description suggests it), the gate caught exactly the bad run: [(rep 0, missing ['project_id'], forbidden ['book_id'])].",
    "candidates_for_the_owner": "Either tool_list carries schemas (it currently promises tool NAMES and descriptions, and 29KB of prose is where the confusion came from), or a contract question is refused from a description-only read. NOT MY CALL.",
    "state": "open",
-   "defect_class": "model"
+   "defect_class": "model",
+   "the_wire_confirms_this_is_the_MODEL_2026_08_27": "Checked against `chat_messages.advertised_tools`, the server's own per-pass record, because a defect that says 'the model answered wrongly' is only a model defect if the model had what it needed:\n\n    composition_arc_apply   advertised 5 of 5   <- the tool the QUESTION is about\n    tool_load               advertised 5 of 5   <- the tool that answers it, used on 4/5\n    tool_list               advertised 5 of 5\n    composition_arc_edit    advertised 0 of 5   <- the tool whose PROSE it borrowed\n\nSo nothing was missing. Four of five runs answered correctly from the contract, which is the control that makes the fifth a failure rather than an impossibility.",
+   "and_the_mechanism_is_now_exact": "🔴 THE BORROWED DESCRIPTION CAME FROM A TOOL THAT WAS NOT ON THE WIRE. `composition_arc_edit` was advertised on 0 of 5 turns, so the model could not have read its prose from its own surface — it read it from `tool_list`'s catalogue dump, which the row already measured at 29KB of 53 tool DESCRIPTIONS and no input_schema.\n\nThat is the whole defect in one sentence: a discovery read hands the model the PROSE of tools it is not holding, with no schema beside it, and a requirement from one lands on another. The confusion is not between two tools the model was offered; it is between the tool it was offered and a description of one it was not.",
+   "blocked_by_dq": "DQ-T59"
   },
   "D-A-LOW-RATE-TOOL-CANNOT-BE-PROVEN-WITHOUT-SAMPLING-FOR-A-VERDICT": {
    "status": "OPEN and now BLOCKED on DQ-T51. It said 'Needs an owner ruling, not a fix' in its own words and carried no `blocked_by_dq`, so the generator had been offering it as actionable work.",
@@ -5808,6 +5811,15 @@
    "the_premise_verified_2026_08_27": "c-silentprobe1 (the row's own): the natural phrasing reaches the tool on 0 of 27 passes, the model calls it 0 of 5, and reports the binding done on 5 of 5 with the store unchanged. c-bindwire1, same fixture, wording changed to the tool's declared synonym: on the wire 5 of 5, called 5 of 5, claims the binding done on 0 of 5, and the tool answers `node_id must be a UUID — received 'arc_1'` on 3 of 5. The store is unchanged in BOTH arms.",
    "my_recommendation": "(b), and only because it is honest: an author who asks for something the platform cannot do should be told so by the tool that owns the concept, not left with a confident sentence describing a change that did not happen. It is the cheapest of the three and it converts the worst outcome — a false report — into a plain one. (a) is the right answer if binding a motif across an arc is a capability the product wants, which is not a question this loop can settle.",
    "what_shipped_meanwhile": "Nothing. The row was REATTRIBUTED from model to platform on a live arm it named itself, and the arm is kept as scripts/toolloop/scenarios-c-bindwire1.json."
+  },
+  "DQ-T59": {
+   "state": "open",
+   "raised": "2026-08-27",
+   "question": "`tool_list` returns 29KB of tool DESCRIPTIONS and no input_schema, including for tools the turn is not holding. Should it (a) carry each tool's input_schema so a contract question can be answered from what it returns, (b) keep returning descriptions but have a contract question REFUSED from a description-only read — the model must call tool_load — or (c) stop returning prose for tools that are not on the wire?",
+   "why_it_is_the_owners": "The row raised it and said plainly 'NOT MY CALL', with (a) and (b) as its two candidates; it had no DQ id, so the decision had nowhere to go. Each option trades differently: (a) multiplies the size of a discovery read that already costs 29KB, (b) constrains what the model may answer from, (c) narrows discovery itself, which is the one path onto the wire for a tool the hot set missed.",
+   "the_premise_verified_2026_08_27": "Measured on c-toolload2, K=5, zero errored: the tool under question (composition_arc_apply) was advertised on 5 of 5 turns and tool_load on 5 of 5, so nothing was missing; 4 of 5 runs answered correctly from the contract. The fifth answered 'arc_template_id + book_id' — and `book_id` appears in the description of composition_arc_edit, which was advertised on 0 of 5 turns. The prose reached the model through tool_list, not through its surface.",
+   "my_recommendation": "(c) first, because it is the smallest and it removes the specific confusion measured here: a description the model cannot act on is prose it can only misattribute, and dropping unadvertised tools from the dump shrinks a 29KB read at the same time. It does NOT solve the general case — two tools BOTH on the wire can still have confusable descriptions — and (b) is the answer that does, at the cost of refusing a question the model can sometimes answer correctly, as 4 of 5 runs did.",
+   "what_shipped_meanwhile": "Nothing. The row's attribution was CONFIRMED against the wire rather than assumed, and the mechanism sharpened from 'a neighbouring tool's description' to 'the description of a tool that was not on the wire, read out of tool_list'."
   }
  },
  "carried_observations": [
@@ -6212,7 +6224,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 46,
-  "deferred_questions": 34,
+  "deferred_questions": 35,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
