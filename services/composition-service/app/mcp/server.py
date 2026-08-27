@@ -5604,10 +5604,43 @@ class _LibraryTranslateArgs(ForbidExtra):
                   "localize motif", "localize my library", "motif in Vietnamese",
                   "dịch motif", "dịch thư viện", "翻译motif",
                   "make my motifs readable in another language"],
-        # `paid` is not decoration: the _meta Completeness Law exists because an
-        # undeclared spender runs without the approval card. This one spends the
-        # user's own BYOK budget, per item.
-        async_job=True, paid=True,
+        # ── `paid` REMOVED, 2026-08-27 (DQ-T60). It was here on a reading of the flag
+        # the platform does not use, and it made this tool unusable. ───────────────────
+        #
+        # The old note said "`paid` is not decoration: an undeclared spender runs without
+        # the approval card. This one spends the user's own BYOK budget, per item." The
+        # first sentence is true and the second is about the JOB, not about this call.
+        #
+        # WHAT `paid` MEANS, stated identically in three independent places:
+        #   sdks/go/loreweave_mcp/meta.go   `true ⇒ calling it SPENDS real money`
+        #   chat-service tool_discovery     `True when CALLING this tool spends real money`
+        #   glossary-service's own contract test, applied tool by tool: web_search and the
+        #   doc-extractor "hit a paid provider/LLM SYNCHRONOUSLY on call"; glossary_plan
+        #   "calls the planner LLM at mint time".
+        #
+        # THIS CALL DOES NOT SPEND. `_translate_estimate` counts characters and multiplies
+        # (`chars / _CHARS_PER_TOKEN * 2.5`) — no LLM, no provider. It mints a token. The
+        # money leaves at /actions/confirm, which re-checks the grant and re-prices.
+        #
+        # 🔴 AND THE FLAG WAS NOT PROTECTING ANYTHING — IT WAS THE FAILURE. `_meta.paid`
+        # makes chat-service's spend gate SUSPEND the call before it runs, so the author is
+        # asked to approve a spend BEFORE the estimate that would tell them the amount has
+        # been computed. Measured over every recorded tool call:
+        #
+        #     composition_library_translate   15 calls   12 suspended on a card   0 ok
+        #     translation_start_job           82 calls    0 suspended            80 ok
+        #     translation_retranslate_dirty   74 calls    0 suspended            74 ok
+        #
+        # Identical shape, opposite declaration: the sibling returned its estimate 80
+        # times, and this tool has NEVER once completed. The remaining 3 were missing-arg
+        # refusals. The card the author needs is the one carrying the price, and this
+        # declaration guaranteed they never reached it.
+        #
+        # Tier W is unchanged and is what gates the mutation. It is not a synonym for
+        # "costs money" — 57 of the platform's 60 Tier-W tools declare no `paid` at all
+        # (book_purge, book_chapter_delete: irreversible, free). The two axes are
+        # orthogonal, exactly as the spend gate's own comment says.
+        async_job=True,
         tool_name="composition_library_translate",
     ),
 )
