@@ -1763,15 +1763,27 @@ def main():
                        tools=[s.get("tool_under_test") for s in scenarios
                               if s.get("tool_under_test")]):
         results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency, a.approvals))
+    # 🔴 THE DIRECTORY IS CREATED HERE BECAUSE ITS ABSENCE HAS TWICE DESTROYED A FINISHED BATCH.
+    # Both times the K=5 runs COMPLETED — real provider, real fixtures, ~15 minutes of live
+    # traffic — and then `write_text` raised FileNotFoundError on a dated folder that did not
+    # exist yet, losing every result. The evidence had to be reconstructed from the store, which
+    # only worked because these scenarios happen to write rows.
+    #
+    # It is the cheapest possible failure and the most expensive possible moment to have it: the
+    # runs are already spent. A dated output path is the NORMAL way this harness is invoked
+    # (docs/eval/toolloop/<date>/…), so the first batch of every new day hits it.
+    def _write(path: str, payload: str, label: str) -> None:
+        p = pathlib.Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(payload, encoding="utf-8")
+        print(f"{label} -> {path}")
+
     if a.out:
-        pathlib.Path(a.out).write_text(json.dumps(results, indent=2, ensure_ascii=False),
-                                       encoding="utf-8")
-        print(f"raw results -> {a.out}")
+        _write(a.out, json.dumps(results, indent=2, ensure_ascii=False), "raw results")
     if a.batch_out:
-        pathlib.Path(a.batch_out).write_text(
-            json.dumps(emit_batch(results, scenarios, a.batch_id), indent=2, ensure_ascii=False),
-            encoding="utf-8")
-        print(f"gate evidence -> {a.batch_out}")
+        _write(a.batch_out,
+               json.dumps(emit_batch(results, scenarios, a.batch_id), indent=2, ensure_ascii=False),
+               "gate evidence")
     report(results, scenarios, a.repeats)
 
 
