@@ -396,6 +396,48 @@ def _resume_outcome(kind: str | None, approve: bool) -> str:
     return "applied" if approve else "dismissed"
 
 
+#: The error populations "the transport stall" turns out to be. Keyed by (error kind, did the
+#: turn emit ANY tool call) — the two axes D-THE-TRANSPORT-STALL-IS-THREE-DIFFERENT-FAILURES
+#: split on, because a cause that explains one third looks REFUTED by the other two when they
+#: are counted as one number. Thirteen hypotheses were tested against the mixed population.
+ERROR_POPULATIONS = (
+    "provision",                  # the SEED could not build the fixture — not the platform
+    "no_output_timeout",          # ReadTimeout, ZERO tool calls: nothing was produced at all
+    "timeout_after_call",         # ReadTimeout after the turn had already called something
+    "upstream_silent_no_call",    # provider failed without saying why, before any call
+    "upstream_silent_after_call",  # provider failed without saying why, MID-turn
+    "other",
+)
+
+
+def error_population(err: str | None, tool_call_count: int) -> str | None:
+    """Which of the populations an errored run belongs to, or None when it did not error.
+
+    Derived from what the record already holds, so every batch labels its own errors instead of
+    waiting for someone to split 121 of them by hand. Re-derived 2026-08-27 over the corpus:
+
+        provision                    25      upstream_silent_after_call   45
+        no_output_timeout            30      upstream_silent_no_call      13
+        timeout_after_call            8      other                         0
+
+    The row's table showed 5 zero-call upstream errors; there are 13. Same error string in both
+    cells — "upstream sent 'error' with no error message" — and the tool-call count is the only
+    thing that separates them.
+    """
+    if not err:
+        return None
+    e = str(err)
+    if e.startswith("PROVISION") or "ProvisionError" in e:
+        return "provision"
+    silent = "upstream sent" in e and "no error message" in e
+    timeout = "ReadTimeout" in e
+    if timeout:
+        return "timeout_after_call" if tool_call_count else "no_output_timeout"
+    if silent:
+        return "upstream_silent_after_call" if tool_call_count else "upstream_silent_no_call"
+    return "other"
+
+
 def capture_dead_turn(session_id: str, since: str = "20m") -> dict:
     """Everything a TIMED-OUT turn leaves behind, captured AT THE MOMENT it happens.
 
@@ -547,6 +589,8 @@ async def _drive_turns(client, auth, sc, idx, fx, sid, turns, prior):
             # stay with the measured turn only, so an earlier turn answers "was it on the wire",
             # not "what did the inspector show".
             prior.append(prior_turn_record(_prompt, res))
+    if res.get("error"):
+        res["error_population"] = error_population(res["error"], len(called_names(res)))
     res["prior_turns"] = prior
     # The AUTHORITY for "was it on the wire", covering every turn — see wire_passes(). Recorded
     # beside the SSE snapshots rather than instead of them: the snapshots are what the INSPECTOR
@@ -749,6 +793,8 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
                     # residual: by the time anyone read the batch the service log had rotated,
                     # and two deliberate capture attempts both came back 0/5 because a 10% rate
                     # makes catching one a lottery. The failure now brings its own evidence.
+                    # Every errored run labels its own population — see error_population.
+                    r["error_population"] = error_population(r["error"], 0)
                     dead = getattr(e, "dead_turn", None)
                     if dead:
                         r["dead_turn"] = dead
@@ -1166,6 +1212,17 @@ def report(results, scenarios, repeats):
             print(f"    ^ on the wire in an EARLIER turn only, in {earlier_only}/{len(rs)} runs "
                   f"— the `surface has tool` column reads the MEASURED turn, and the session's "
                   f"own wire log will disagree with it by this much")
+        # 🔴 ONE ERROR NUMBER OVER THREE POPULATIONS CANNOT MOVE.
+        # D-THE-TRANSPORT-STALL-IS-THREE-DIFFERENT-FAILURES: thirteen hypotheses were refuted
+        # for composition_motif_link_edit because each was tested against a MIXED population —
+        # its own runs contain both ReadTimeout-with-no-calls and upstream-error-after-a-search,
+        # counted as one ~49%. A cause that explains one third looks refuted by the other two.
+        _pops = Counter(r.get("error_population") or error_population(
+            r.get("error"), len(called_names(r))) for r in rs if r.get("error"))
+        if _pops:
+            print("    ^ the errors are NOT one population: "
+                  + ", ".join(f"{n}x {p}" for p, n in _pops.most_common())
+                  + " — each needs its own question, and a single rate over them cannot move")
         if susp:
             print(f"    ^ left SUSPENDED on a Tier-A approval card in {susp}/{len(rs)} runs "
                   f"— not a refusal by the model, a card waiting for a click")
