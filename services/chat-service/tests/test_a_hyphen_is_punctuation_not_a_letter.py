@@ -65,6 +65,29 @@ def test_a_synonym_DECLARED_with_a_hyphen_is_reachable_from_the_spaced_form():
         assert "composition_generate" in answerable_tools(phrasing, cat), phrasing
 
 
+def test_an_em_dash_between_two_synonym_words_no_longer_separates_them():
+    """🔴 D-ANSWERABILITY-MISSES-WORD-ORDER'S MEASURED INSTANCE, AND IT WAS NEVER ABOUT WORD
+    ORDER.
+
+    That row records: "jobs_get declares the contiguous phrases 'job detail' and 'job status'.
+    The request said 'the full detail of my most recent job — status, cost' — the same words,
+    separated and REORDERED." It was filed as evidence that the matcher needs to tolerate
+    reordering, and it blocked on DQ-T32 for two weeks.
+
+    The words are not reordered. `job` and `status` are adjacent and in order; an EM DASH sits
+    between them, and the normaliser treated it as a letter:
+
+        before   'give me full detail most recent job — status, cost, …'   'job status' NO
+        after    'give me full detail most recent job status, cost, …'     'job status' YES
+
+    So the instance is closed by punctuation normalisation, and DQ-T32's answer — keep the
+    contiguous match — costs nothing here. A relaxation to in-order subsequences would have been
+    bought for a case that did not need it."""
+    n = _answer_norm("Give me the full detail of my most recent job — status, cost, "
+                     "and whether it finished.")
+    assert "job status" in n, f"the em dash still separates the two words: {n!r}"
+
+
 @pytest.mark.parametrize("raw, expected", [
     ("golden-rules", "golden rules"),
     ("co-write", "co write"),

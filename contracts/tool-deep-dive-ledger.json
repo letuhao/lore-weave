@@ -3458,7 +3458,7 @@
    "the_half_DQ_T56_closes_2026_08_27": "THE TURN NOW ENDS, AND SAYS SO. DQ-T56's whole-turn ceiling is shipped and deployed; this row's own instance — batch c-rail1, the prompt copied verbatim from scenarios-b41-diag.json — was re-run against it.\n\nLIVE, batch c-rail-ceiling, K=5, throwaway fixture per repeat, real provider, LLM_TURN_CEILING_S=120 for the batch (below the shipped 900 so the proof fits inside the harness's 180s turn budget; 120s still sits above this deployment's p99 of 65s).\n\n    BEFORE, as this row recorded it:  10 user rows (TWO per session, the runner's retry)\n                                       0 assistant rows\n                                       outcome 'abandoned_by_user' on every one\n    AFTER:                             5 user rows (ONE each - the turn ends before the retry)\n                                       5 assistant rows, every one saying 'This turn did not\n                                         complete ... ended after 2 minutes'\n                                       outcome 'failed' on all 5, 'abandoned_by_user' on ZERO\n\nThe tool was on the wire 5/5 and still called 0/5, and the store is unchanged - so nothing\nabout WHY the turn produces nothing has changed. What changed is that the author is no longer\nleft with their own message and a column, and the platform no longer records a disconnect it\ncaused as the author's own choice.\n\n🔴 WHAT THIS DOES NOT FIX, AND THE ROW STAYS OPEN FOR IT. The ceiling changes how the turn ENDS, not why it produces nothing. Two rails still claim the same turn, neither advancing past 0/N, and the bounded auto-release still does not fire on this shape — that is DQ-T53's root cause and it is untouched. What is closed is the part this row's invariant actually states: 'A turn must emit an assistant message. A rail that drives itself to exhaustion is still a turn the author is waiting on.' It now emits one, and the outcome stops saying `abandoned_by_user` about an author who abandoned nothing."
   },
   "D-ANSWERABILITY-MISSES-WORD-ORDER": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-14",
    "registered": "2026-08-22",
    "service": "chat-service (answerability pre-filter)",
@@ -3466,8 +3466,13 @@
    "measured": "jobs_get declares the contiguous phrases 'job detail' and 'job status'. The request said 'the full detail of my most recent job — status, cost' — the same words, separated and reordered. answerable_tools matched none and the model reached for tool_list on all three runs, the signature of a missing surface.",
    "defect_class": "contract",
    "queue_group": 4,
-   "blocked_by_dq": "DQ-T32",
-   "what_the_dq_asks": "DQ-T32 asks whether to relax the matcher, and how."
+   "what_the_dq_asks": "DQ-T32 asks whether to relax the matcher, and how.",
+   "status": "FIXED 2026-08-28 — and NOT by what this row asked for. Its measured instance was never a word-order problem, and the matcher was not relaxed.",
+   "THE_ROWS_OWN_DIAGNOSIS_WAS_WRONG": "🔴 THE ROW SAYS 'the same words, separated and REORDERED'. The words are not reordered. In *'the full detail of my most recent job — status, cost'*, `job` and `status` are adjacent and already in order — an EM DASH sits between them, and `_answer_norm` treated it as a letter. Measured against the deployed matcher:\n\n    before the dash fix   'give me full detail most recent job — status, cost, …'\n                          'job status'  ->  NO MATCH\n    after                 'give me full detail most recent job status, cost, …'\n                          'job status'  ->  MATCH\n\nSo it is closed by the punctuation normalisation shipped for D-THE-NORMALISER-DROPS-ARTICLES-BUT-NOT-HYPHENS, hours earlier the same day and for an entirely different tool. Filed as evidence that answerability must tolerate reordering, it was evidence that a dash is not a letter.",
+   "what_that_saved": "This row blocked on DQ-T32, which asks whether to relax the matcher to an in-order subsequence. The owner answered 'keep the contiguous match, fix declarations'. Had the row's own diagnosis been trusted, its instance would have been the argument FOR relaxing — a change measured to buy at most 3 of 194 turns while spending precision across 315 tools and moving CONSENT behaviour, since the consent check now reads answerability. The instance did not need it.",
+   "verified_2026_08_28": "Against the DEPLOYED matcher and the live catalogue, jobs_get is answerable on the row's own prompt and on three sibling phrasings, and is the ONLY answerable tool on each — set size 1, so nothing was spent on precision:\n\n    'Give me the full detail of my most recent job — status, cost, …'   jobs_get YES\n    'What is the status of my most recent job?'                          jobs_get YES\n    'Show me the job detail.'                                            jobs_get YES\n    'How is the job going?'                                              jobs_get YES\n\nPROMISCUITY of all eight declared synonyms, measured over 564 distinct live requests: every one matches ZERO unrelated requests. The declarations were widened at some point before today (`detail of my job`, `my most recent job`, `how is the job going`, `job cost`) and they cost nothing — but they are NOT what closed the instance either, which is why the attribution above matters.\n\nREGRESSION GUARD: the case is asserted in chat-service/tests/test_a_hyphen_is_punctuation_not_a_letter.py, beside the change that actually fixed it, rather than in a file named after a cause it did not have.",
+   "the_falsifier_and_why_it_LOOKED_wrong": "🔴 THE FIRST FALSIFIER FAILED TO GO RED, AND CHASING THAT IS WHAT FOUND THE REAL CAUSE. Reverting jobs_get to the two synonyms the row measured — ['job detail','job status'] — left it STILL answerable on the row's prompt. If the widened declarations were the fix, that revert had to break it, and it did not.\n\nThe falsifier that IS red is the one on the dash: normalising the prompt WITHOUT the dash rule leaves 'job — status', which 'job status' cannot match. That is asserted in the regression test.",
+   "proven_live_2026_08_28": "batch c-wordorder1, K=5, real provider — THE ROW'S OWN PROMPT VERBATIM, em dash and all:\n\n    'Show me the full detail of my most recent job — status, cost, and whether anything failed.'\n\n    jobs_get SURFACED 5/5 and CALLED 5/5, zero errored runs\n    the only store write is loreweave_knowledge.extraction_pending — turn bookkeeping,\n    written for every turn whatever tool ran, and already exempted by the harness\n\nThe dash was NOT reworded to a comma for the run. Rewording it would have proven nothing: the dash is the whole mechanism."
   },
   "D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE": {
    "state": "fixed",
@@ -6409,7 +6414,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 43,
+  "defects_open": 42,
   "deferred_questions": 40,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6425,7 +6430,7 @@
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 196,
-  "defects_fixed": 110,
+  "defects_fixed": 111,
   "defects_withdrawn": 17,
   "defects_superseded": 1
  },
