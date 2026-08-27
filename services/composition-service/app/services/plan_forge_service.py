@@ -935,8 +935,32 @@ class PlanForgeService:
             created_by, run_id, "validation_report", report,
         )
         report["fidelity_report_id"] = str(art.id)
-        if all_pass:
-            await self._runs.update_run(book_id, run_id, status="validated")
+        # ── DQ-T45 · VALIDATE RECORDS. IT DOES NOT AUTHORISE. ─────────────────────────────────
+        # A passing lint used to `update_run(status="validated")` here, and `validated` is a
+        # status the authoring start-gate accepts as APPROVAL:
+        #
+        #     authoring_run_service._APPROVED_PLAN_STATUSES = ("validated", "compiled")
+        #
+        # so a Tier-R read — a linter, declared and documented as one — could put a plan into
+        # the state that authorises a cost-bearing drafting run. Nothing else had to happen.
+        #
+        # 🔴 THE GATE IS NOT THE THING THAT WAS WRONG, AND THAT IS WHY THE FIX IS HERE. It
+        # accepts `validated` because `validated` is ALSO what `review_checkpoint(approved=True)`
+        # stamps — a human looking at the plan and approving it. Its own comment says exactly
+        # that ("`validated` is what review_checkpoint(approved=True) stamps") and does not know
+        # this second writer existed. Narrowing the gate to `compiled` would have de-authorised
+        # every plan a person actually approved, to close a hole one line above.
+        #
+        # Measured before the change, over the live store: of the 37 plan runs sitting at
+        # `validated`, only 3 carry a `validation_report` artifact at all — and this method
+        # saves that artifact BEFORE it ever stamped the status, so a run without one cannot
+        # have been stamped here. 34 of 37 came from the human path and keep their approval
+        # untouched; no existing run is de-authorised by this change.
+        #
+        # The verdict is not lost, only demoted from an authorisation to a record: it is in the
+        # returned `report` and in the persisted `validation_report` artifact above, which is
+        # where a Tier-R read's output belongs. Advancing to `compiled` remains `plan_compile`'s
+        # job, on the path that packages the plan.
         return report
 
     async def refine(

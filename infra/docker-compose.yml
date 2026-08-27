@@ -1022,6 +1022,11 @@ services:
       # fires on a compaction pass. See docs/eval/context-budget/.
       STORY_STATE_BLOCK_ENABLED: "${STORY_STATE_BLOCK_ENABLED:-false}"
       COMPACT_COLLAPSE_DUPLICATES_ENABLED: "${COMPACT_COLLAPSE_DUPLICATES_ENABLED:-false}"
+      # DQ-T56 — the whole-turn ceiling, in seconds. The default matches app/config.py; it is
+      # surfaced here so an operator can widen it (a deployment whose model legitimately thinks
+      # longer than 15 minutes) or disable it with 0, without a rebuild. NOT the idle-read cap:
+      # LLM_STREAM_IDLE_READ_TIMEOUT_S stays 0 deliberately and is a different mechanism.
+      LLM_TURN_CEILING_S: "${LLM_TURN_CEILING_S:-900}"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085

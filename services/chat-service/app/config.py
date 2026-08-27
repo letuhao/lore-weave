@@ -74,6 +74,39 @@ class Settings(BaseSettings):
     # e.g. 300) to cap it. The SDK Client honours <=0 as read=None.
     llm_stream_idle_read_timeout_s: float = 0.0
 
+    # DQ-T56(1) — THE WHOLE-TURN CEILING. The longest a chat turn may run in TOTAL before the
+    # platform ends it and records that it did not complete. Distinct from the idle cap above,
+    # and deliberately so: the idle cap competes with a slow FIRST token and is the thing that
+    # ReadTimeout'd Gemma-4 26B mid-thought, which is why it stays 0. This one cannot, because
+    # it does not care how long a silence is — only how long the whole turn has run.
+    #
+    # 900s is "well above any legitimate think time", and that is a MEASUREMENT, not a feel:
+    # over 8,222 live turns paired to their immediate reply (the pairing matters — joining a
+    # user row to the next assistant row ANYWHERE in the session pairs an orphaned turn with a
+    # LATER turn's reply and invented a 1,874s tail that does not exist),
+    #
+    #     no-tool turns   2,265   p50 6.7s   p95 22.5s   p99 59.1s   p99.9 185.5s   max 234.4s
+    #     tool turns      5,957   p50 4.7s   p95 29.0s   p99 65.2s   p99.9 228.5s   max 364.9s
+    #
+    # so the ceiling sits ~2.5x above the longest turn ever recorded here and ~4x above p99.9.
+    # The tool-turn row is a FLOOR, not an exact figure: those rows are INSERTed at the first
+    # tool boundary and UPSERTed at the finish, so `created_at` marks the first tool call rather
+    # than the end. It is quoted as the weaker bound it is.
+    #
+    # What the ceiling bounds, from provider-registry's own job rows: `chat` completions that
+    # ended `completed` top out at 182.8s, while `failed` ones reach 1,858.9s — a turn hanging
+    # server-side for 31 minutes long after the browser gave up at ~180s. That dangling turn is
+    # the whole point; today nothing ends it.
+    #
+    # 🔴 IT IS NOT FREE, AND SAYING SO HERE IS DELIBERATE. Expiry cancels the tool loop where it
+    # stands, so a tool mid-write can be cut off. That hazard is not NEW — a client disconnect
+    # already cancels the same generator (`except (asyncio.CancelledError, GeneratorExit)` in
+    # `_emit_chat_turn`) and fires at ~180s, five times sooner. This adds a server-side trigger
+    # for a path that already exists, at a threshold no measured healthy turn reaches.
+    #
+    # 0 disables it (env LLM_TURN_CEILING_S), restoring the unbounded behaviour exactly.
+    llm_turn_ceiling_s: float = 900.0
+
     # K5 — knowledge-service integration. Optional/tunable via env so we can
     # raise the timeout if knowledge-service ever becomes a real bottleneck.
     knowledge_service_url: str = "http://knowledge-service:8092"

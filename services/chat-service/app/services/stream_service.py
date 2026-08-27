@@ -10410,6 +10410,107 @@ async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
         )
 
 
+class TurnCeilingExceeded(Exception):
+    """DQ-T56(1) — the turn as a whole outran ``llm_turn_ceiling_s``.
+
+    Deliberately a plain ``Exception`` and NOT a ``CancelledError``: the turn
+    handler's cancel arm means "the client went away", records
+    ``abandoned_by_user`` and re-raises. A ceiling expiry is neither of those —
+    nobody abandoned anything, the platform gave up — so it must land in its own
+    arm and say so.
+    """
+
+    def __init__(self, elapsed_s: float, ceiling_s: float) -> None:
+        self.elapsed_s = elapsed_s
+        self.ceiling_s = ceiling_s
+        # `.1f`, not `.0f`. This string is what lands in `error_detail`, and at any ceiling
+        # under a second the rounded form reads "turn ran 0s, past its 0s ceiling" — measured
+        # in the deployed container the first time this was exercised. Production values are
+        # whole minutes and would never have shown it.
+        super().__init__(
+            f"turn ran {elapsed_s:.1f}s, past its {ceiling_s:.1f}s ceiling"
+        )
+
+
+def _humanize_seconds(seconds: float) -> str:
+    """How long the turn ran, in words an author reads once and believes.
+
+    🔴 **THE FIRST VERSION LIED, AND THE LIVE RUN IS WHAT CAUGHT IT.** It was
+    ``max(1, int(round(elapsed / 60)))`` with the word "minute(s)" after it, so a
+    turn that ran **20 seconds** told the author it had been "ended after 1
+    minute(s)". At the production ceiling of 900s it would have read "15
+    minute(s)" and been right, which is exactly why no unit test and no reading of
+    the code found it — the defect only appears below 90 seconds. Five real turns
+    against a 20s ceiling printed it five times.
+
+    The whole point of half (2) of DQ-T56 is that the row SAYS what happened. A
+    row that says it truthfully at one ceiling and falsely at another is not that.
+    """
+    seconds = max(0.0, float(seconds))
+    if seconds < 90:
+        return f"{int(round(seconds))} seconds"
+    minutes = int(round(seconds / 60.0))
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
+async def _aclose_quietly(iterator) -> None:
+    """Close a half-consumed async iterator without letting cleanup mask the
+    reason we are closing it."""
+    aclose = getattr(iterator, "aclose", None)
+    if aclose is None:
+        return
+    try:
+        await aclose()
+    except Exception:  # noqa: BLE001 — the ceiling is the story; cleanup is not
+        logger.warning("turn-ceiling: closing the stalled stream failed", exc_info=True)
+
+
+async def _bounded_turn_stream(stream, *, started_at: float, ceiling_s: float):
+    """DQ-T56(1) — **THE ONE CHOKEPOINT.** Yield a turn's chunks, and raise
+    `TurnCeilingExceeded` once the turn as a whole has run past `ceiling_s`.
+
+    It belongs here and nowhere else because `_emit_chat_turn` consumes the
+    provider through exactly ONE `async for` — both branches (`_stream_with_tools`
+    and `_stream_via_gateway`) funnel into it, and both the fresh turn and the
+    resume path delegate to `_emit_chat_turn`. So every provider await a turn can
+    make passes through this loop, and bounding it here bounds all of them.
+
+    🔴 **THE BOUND IS ON THE AWAIT, NOT ON THE CHUNK, AND THAT IS THE WHOLE
+    DESIGN.** The failure this closes is a provider that goes SILENT — measured
+    live as one pass advertised, then three minutes of nothing. A deadline checked
+    when a chunk arrives never runs, because no chunk arrives. So `remaining` is
+    computed before each `__anext__` and imposed ON it.
+
+    The clock starts at the turn's `stream_start`, so time the CONSUMER spends
+    between chunks is charged to the turn too — which is correct for a ceiling on
+    the turn *as a whole*, and is the difference between this and an idle cap.
+
+    `ceiling_s <= 0` passes chunks straight through, so disabling it restores the
+    previous behaviour exactly rather than approximately.
+    """
+    if not ceiling_s or ceiling_s <= 0:
+        async for item in stream:
+            yield item
+        return
+
+    iterator = stream.__aiter__()
+    while True:
+        remaining = ceiling_s - (_time.monotonic() - started_at)
+        if remaining <= 0:
+            await _aclose_quietly(iterator)
+            raise TurnCeilingExceeded(_time.monotonic() - started_at, ceiling_s)
+        try:
+            item = await asyncio.wait_for(iterator.__anext__(), remaining)
+        except StopAsyncIteration:
+            return
+        except asyncio.TimeoutError:
+            # `wait_for` has already cancelled the pending `__anext__`, which
+            # unwinds the tool loop and releases the provider connection.
+            await _aclose_quietly(iterator)
+            raise TurnCeilingExceeded(_time.monotonic() - started_at, ceiling_s) from None
+        yield item
+
+
 async def _emit_chat_turn(
     *,
     session_id: str,
@@ -10951,7 +11052,15 @@ async def _emit_chat_turn(
                 gen_params=gen_params,
             )
 
-        async for chunk_data in chunk_stream:
+        # DQ-T56(1) — the whole-turn ceiling wraps the ONE place a turn awaits the
+        # provider. `stream_start` is the turn's own clock, set before the first
+        # emitted line, so the bound covers every pass of the tool loop and not
+        # just the pass that happens to be running.
+        async for chunk_data in _bounded_turn_stream(
+            chunk_stream,
+            started_at=stream_start,
+            ceiling_s=settings.llm_turn_ceiling_s,
+        ):
             # ARCH-1 C6: a suspend chunk — a frontend tool is awaiting client
             # execution. Capture it, stop consuming, and handle below.
             if chunk_data.get("suspend") is not None:
@@ -11749,6 +11858,73 @@ async def _emit_chat_turn(
                     "interrupt-persist failed for session %s", session_id, exc_info=True,
                 )
         raise
+
+    except TurnCeilingExceeded as ceiling_exc:
+        # ── DQ-T56(2) · A VISIBLE END ────────────────────────────────────────────────────────
+        # This arm exists so the ceiling does NOT fall through to the generic error handler
+        # below. That handler persists `content="".join(full_content)` — which on the failure
+        # this closes is the EMPTY STRING, because a turn that hung before its first token
+        # produced nothing. `_persist_terminal_assistant` skips a truly-empty turn and stamps
+        # the outcome onto the USER's row instead, and the author is left with their own
+        # message standing alone and the turn's fate in a column only the database can read.
+        # That is exactly the outcome the owner decided against.
+        #
+        # 🔴 THE OBJECTION THE CODE RECORDED IS HONOURED, NOT OVERRULED. The empty-turn skip
+        # says a blank assistant bubble "would be noise" and that writing one is a product
+        # change that checkpoint had no business making. Both remain true: what goes in is not
+        # a blank bubble, it is a row that SAYS the turn did not complete and why. The change
+        # is made deliberately, by decision, and only on this path.
+        logger.warning(
+            "turn-ceiling: session %s ran %.0fs past a %.0fs ceiling (%d tool calls so far)",
+            session_id, ceiling_exc.elapsed_s, ceiling_exc.ceiling_s, len(tool_calls_history),
+        )
+        _ceiling_note = (
+            f"This turn did not complete. The model stopped responding, so it was ended after "
+            f"{_humanize_seconds(ceiling_exc.elapsed_s)} rather than left running with nothing "
+            "to show. Your message is still here — send it again to retry."
+        )
+        if tool_calls_history:
+            # Never claim nothing happened. By the time the ceiling fires, tools may already
+            # have run and written, and a message implying otherwise would be a lie the author
+            # acts on.
+            _ceiling_note += (
+                " Any tool calls already made in this turn ran, and their effects stand."
+            )
+        _partial = "".join(full_content)
+        _ceiling_content = f"{_partial}\n\n{_ceiling_note}" if _partial else _ceiling_note
+        if not _persisted:
+            await _persist_terminal_assistant(
+                pool,
+                msg_id=msg_id, session_id=session_id, user_id=user_id,
+                parent_message_id=parent_message_id, model_ref=model_ref,
+                content=_ceiling_content,
+                reasoning="".join(full_reasoning),
+                tool_calls_history=tool_calls_history,
+                # `error` + is_error is the shape the FE already badges "incomplete"; inventing
+                # a new finish_reason here would change how every existing reader renders this
+                # row to say something `error_detail` and the content already say.
+                finish_reason="error", is_error=True,
+                error_detail=str(ceiling_exc),
+                # Reusing `failed` rather than minting a 7th outcome: the turn DID fail, and
+                # `failed` is not the kind of fusion `interrupted` was — nothing about a
+                # ceiling expiry is a success or a user choice. A new enum value would mean a
+                # forward-only migration against the column's CHECK constraint plus every
+                # reader of a closed vocabulary, to record what `error_detail` states exactly.
+                outcome=instrument.OUTCOME_FAILED,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
+            )
+        # Close any open assistant/reasoning message, then deliver the note as CONTENT rather
+        # than only as an error frame: an error frame is a banner the FE may render and drop,
+        # while the persisted row above is what a reload shows. Both now say the same thing.
+        for line in emitter.text_delta(
+            _ceiling_note if not _partial else f"\n\n{_ceiling_note}"
+        ):
+            yield line
+        for line in emitter.close_message():
+            yield line
+        for line in emitter.error(str(ceiling_exc)):
+            yield line
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)

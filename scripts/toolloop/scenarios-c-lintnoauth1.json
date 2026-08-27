@@ -1,0 +1,54 @@
+{
+ "_note": "DQ-T45 / D-A-TIER-R-TOOL-WRITES-TO-THE-STORE — the LIVE proof. plan_validate is declared Tier R and used to stamp status='validated', which authoring_run_service accepts as approval for a cost-bearing drafting run. The row itself records that NO plan_validate run exists in the raw corpus — its 10 instances came from a sweep over batch summaries — so this scenario puts the tool on the wire for the first time and reads the plan_run's status afterwards. The seed builds a plan deterministically through mode='rules', so no LLM tokens construct the fixture and the linter has real arcs and events to pass.",
+ "scenarios": [
+  {
+   "id": "a-linter-pass-must-not-approve-the-plan",
+   "tool_under_test": "plan_validate",
+   "expect_tool": "plan_validate",
+   "intent": "read",
+   "tier": "R",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Run the golden-rules validation on my plan for this book and tell me which rules pass.",
+   "prompt_source": "The tool's own declared vocabulary — its description is 'run the S1-S8 golden linter (+ fidelity report)' and its synonyms are ['validate plan', 'check spec', 'golden rules']. The wording asks for the VERDICT, which is what a Tier-R read is for, and says nothing about approving or starting anything: if the plan ends up approved, nothing in the request asked for it.",
+   "needs_target": false,
+   "approve": "as-is",
+   "editor_context": false,
+   "seed": [
+    {
+     "tool": "plan_propose_spec",
+     "args": {
+      "book_id": "{book_id}",
+      "mode": "rules",
+      "source_markdown": "# Emberfall\n\n## Arc I — The Ember Codex\n### Chapter 1 — The Black Stair\nAldric Vane climbs the black stair and finds the codex still warm.\n### Chapter 2 — The Waterline\nThe Obsidian Trench is walkable only at low tide, and the tide is turning.\n\n## Arc II — The Turning Tide\n### Chapter 3 — Low Water\nVane crosses the trench and the codex begins to read him back.\n### Chapter 4 — The Ember Answers\nThe city answers in a language Vane wrote as a child.\n"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='proposed'",
+     "expect": "1",
+     "why": "🔴 THE BAR IS NOT VACUOUS ONLY IF THE RUN STARTS BELOW `validated`. mode='rules' lands a proposed run without spending LLM tokens (verified in batch 22, where a first draft asserting 'compiled' lost 5 of 5 runs). If this were already `validated`, the measured turn could not distinguish a linter that advances the run from one that does not."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM plan_run p WHERE p.book_id='{book_id}' AND EXISTS (SELECT 1 FROM plan_artifact a WHERE a.run_id=p.id AND a.kind='spec')",
+     "expect": "1",
+     "why": "The spec artifact is what `validate()` reads; without it the tool raises 'no spec to validate' and the turn never reaches the branch under test. Two arcs with two events each are seeded deliberately so the HARD rules — spec_has_arc and spec_has_events, the only two that gate — genuinely PASS. The old code stamped `validated` ONLY on a pass, so a plan that fails the linter would make this whole scenario prove nothing."
+    }
+   ],
+   "falsifier": "REFUTED IF the plan_run reaches status='validated' during the turn — that is the defect, unchanged. PASSES IF the run is still 'proposed' afterwards AND the persisted validation_report says passed=true: the verdict was reached and recorded, and it did not authorise anything. 🔴 A RUN WHOSE REPORT SAYS passed=false MUST BE READ AS NEITHER — the old code only ever stamped on a pass, so a failing lint exercises a branch that was never the defect and counting it as a pass would be scoring the wrong thing.",
+   "answer_expect": {
+    "why": "None. The measurement is the plan_run's status and the validation_report artifact in loreweave_composition, read after the turn — not the reply text."
+   },
+   "ship_audit": {
+    "gate": "N/A — Tier R, and the whole point of the fix is that it stays a read.",
+    "absent_case": "OWED — a book with no plan run must be refused, not silently validated.",
+    "idempotency": "OWED — validating twice must not change the run either time.",
+    "tenancy": "Throwaway fixture book per repeat, torn down by the harness."
+   },
+   "defects": ["D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"]
+  }
+ ]
+}
