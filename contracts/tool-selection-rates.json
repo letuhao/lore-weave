@@ -4,7 +4,7 @@
  "min_runs": 5,
  "lottery_below": 0.5,
  "measured": 65,
- "lottery_count": 19,
+ "lottery_count": 20,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
@@ -12,6 +12,7 @@
   "composition_derivative_edit",
   "composition_generate",
   "composition_motif_adopt",
+  "composition_motif_bind_edit",
   "composition_scene_link_edit",
   "glossary_book_sync_apply",
   "glossary_create_chapter_link",
@@ -109,12 +110,12 @@
   },
   "composition_motif_bind_edit": {
    "calls": 10,
-   "runs": 19,
-   "rate": 0.526
+   "runs": 24,
+   "rate": 0.417
   },
   "composition_motif_link_edit": {
-   "calls": 42,
-   "runs": 42,
+   "calls": 47,
+   "runs": 47,
    "rate": 1.0
   },
   "composition_reference_update": {

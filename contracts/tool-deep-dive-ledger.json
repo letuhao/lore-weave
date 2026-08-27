@@ -3250,7 +3250,10 @@
    ],
    "theory_refuted_if": "The retry produces another degenerate pass, or the reasoning-off retry produces prose that is WORSE than the silence (a confabulated answer where the model previously said nothing). The second is the one to watch: this loop's standing rule is that putting words in the assistant's mouth is worse than an honest stop, and the cap's fall-through message exists so the turn ends by saying so.\n\nAlso refuted if the silent turn stops reproducing at all — it is stochastic (~1 run in 5 on settings_provider_inventory), so a green run proves nothing on its own. The claim to make is about the MECHANISM firing, which the deployed diagnostic logs by name, not about a batch going green.",
    "status": "open — MECHANISM ESTABLISHED IN CODE 2026-08-24 and now decidable without a provider; detection shipped and tested, REMEDY NOT SHIPPED (retry unmeasured, DQ-T33 owner's)",
-   "defect_class": "infra"
+   "defect_class": "infra",
+   "the_trigger_was_re_run_2026_08_27": "Batch c-silentprobe1, run against scenarios-batch26.json::composition-motif-bind-edit — the shape this row calls its reliable trigger, historically 0 clean runs in 23 attempts and not exercised since 2026-08-22. K=5, throwaway fixture per run, zero errored.\n\n    P13-shaped silent turns (no text, no card, no error):   0 of 5\n    every run produced prose, 86–143 characters\n\n🔴 AND IT IS WEAKER EVIDENCE THAN IT LOOKS, because the tool was never called: 0 of 5 runs called composition_motif_bind_edit and it was on the wire in 0 of 27 passes. The degenerate pass this defect is about happens while the model is trying to emit a call; a turn that never reaches for the tool has not tested that. So: the first evidence in either direction since 2026-08-22, and it is consistent with the defect being gone AND with the trigger not having fired.",
+   "what_would_actually_test_it": "A run in which the model REACHES for composition_motif_bind_edit. c-silentprobe1 shows the prompt no longer gets it onto the wire at all, which is a different problem and is filed separately (D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE). Until a batch calls the tool, the silent-turn defect has no reproducer, and the recent zeros are the absence of the trigger.",
+   "the_probe_scenario_copy_was_withdrawn": "🔴 THREE GUARDS FIRED ON MY OWN COPY OF THE SCENARIO AND ALL THREE WERE RIGHT, so the copy was deleted rather than baselined around. The batch evidence stands; anyone re-running should point at scenarios-batch26.json itself.\n\n  * the display-name guard — batch26's seed names its motif 'Emberfall Seam {run_id} {run_word}', a hex nonce in a NAME, which is the shape that once had the model pass a bare 8-hex token as an id. batch26 is baselined for it; a NEW file carrying it is not.\n  * the measured-turn reachability gate (added earlier today) — it flagged the copy as unable to reach composition_motif_bind_edit, and the LIVE run then confirmed exactly that: the tool was on the wire in 0 of 27 passes. The gate predicted the outcome of a batch before it ran.\n  * the selection-rate contract went stale, which is the deriver working."
   },
   "D-AUTHOR-SEARCH-READS-ONLY-CANON": {
    "state": "fixed",
@@ -5353,6 +5356,17 @@
    "what_is_NOT_covered": "- NO LIVE PROVIDER RUN APPLIES. This is the ledger's own record; there is no chat path to exercise. The falsifier on a REAL row and `audit` refusing on it are the equivalent, and claiming a live run here would be claiming evidence that does not exist.\n- ONLY THE FIRST WORD IS CHECKED. A status whose lead agrees and whose body then contradicts the row passes, and no check can read prose for meaning.\n- ONLY `defects`. The `tools` block has its own `state` and `note` fields and is not audited for the same drift; whether it has any was not measured.\n- THE LEAD VOCABULARY IS A FIXED TABLE (OPEN, BLOCKED, FIXED, PROVEN, CLOSED, DONE, WITHDRAWN). A new disposition word would pass unnoticed until someone adds it.",
    "state": "fixed",
    "defect_class": "instrument"
+  },
+  "D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE": {
+   "status": "OPEN — found 2026-08-27 while re-running another row's trigger. 5 of 5.",
+   "what": "Asked 'Attach Emberfall Seam to the opening arc as this book's motif.', the model calls composition_motif_search and composition_package_tree — both READS — and then reports the binding as done:\n\n    \"I've attached the **Emberfall Seam** (Selonesu) motif to the opening arc, **Arc I — The Emberfall**.\"\n\non 5 of 5 runs, with 86–143 characters of confident prose and a different phrasing each time. THE STORE IS UNCHANGED on every one.",
+   "why_it_is_certain_and_not_a_fixture_artefact": "The scenario's own seed_assert requires ZERO bindings for this motif before the turn — 'SELECT count(*) FROM motif_application WHERE motif_id=(SELECT id FROM motif WHERE code=…)' expecting 0 — and it passed, so the fixture did not arrive pre-bound. `motif_application` is swept by the DATA bar and DOES appear in a diff when a binding is written (c-sweep1 recorded exactly that). The diff is empty on all five runs, so no row was inserted.\n\ncomposition_motif_bind_edit was called 0 of 5 times and was on the wire in 0 of 27 passes, so the tool that performs the binding was never reached, let alone run.",
+   "why_it_matters": "The author is told their book changed when it did not. This is the same class as D-THE-MODEL-CLAIMED-A-CANCEL-THAT-THE-TOOL-REFUSED and the opposite pole of D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-WRITES-AND-SAYS-NOTHING: there a write happened and nothing was said; here a write was announced and nothing happened. Both leave the author's model of their own book wrong.",
+   "not_yet_diagnosed": "Not attempted here, and no hypothesis is offered to cover that. What is recorded is the measurement and its controls. The obvious question — whether the tool being absent from the wire is what licenses the confabulation, or whether the model would claim it anyway — needs an arm where the tool IS advertised, which is the same arm the silent-turn row now needs.",
+   "measured_by": "docs/eval/toolloop/2026-08-14/c-silentprobe1{,-raw}.json, run against scenarios-batch26.json::composition-motif-bind-edit",
+   "state": "open",
+   "defect_class": "model",
+   "and_the_tool_was_UNREACHABLE_by_declaration": "The measured-turn answerability gate flags this scenario's turn as unable to reach composition_motif_bind_edit from the tool's own declared vocabulary — and the live run agrees: 0 calls, and the tool on the wire in 0 of 27 passes. So the model was never offered the tool it claimed to have used. That does not excuse the claim; it locates it."
   }
  },
  "deferred_questions": {
@@ -6051,7 +6065,7 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 46,
+  "defects_open": 47,
   "deferred_questions": 29,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6066,7 +6080,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 192,
+  "defects_total": 193,
   "defects_fixed": 104,
   "defects_withdrawn": 16,
   "defects_superseded": 1
