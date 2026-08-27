@@ -1,0 +1,83 @@
+{
+ "_note": "D-A-REFUSAL-CAN-ONLY-ARM-WHAT-SURVIVED-DOMAIN-SELECTION — the live proof the row is owed. Adapted from scenarios-c-override.json by REMOVING its two derivative-creation steps: with only the canonical Work present, composition_entity_override_edit must refuse NOT_A_DERIVATIVE, and that refusal names composition_list_derivatives. The row's own K=5 attempt never called the tool at all, so nothing was exercised.",
+ "scenarios": [
+  {
+   "id": "an-override-refusal-must-arm-the-supplier-it-names",
+   "tool_under_test": "composition_entity_override_edit",
+   "expect_tool": "composition_entity_override_edit",
+   "intent": "write",
+   "tier": "A",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Use the composition_entity_override_edit tool to set Aldric Vane's occupation to cartographer for this book's Work.",
+   "prompt_source": "🔴 THE TOOL IS NAMED OUTRIGHT, AND TWO EARLIER WORDINGS ARE WHY.\n\n'Override entity field — in this book Aldric Vane should be a cartographer, not a soldier' routed to a GLOSSARY entity edit on 5 of 5 runs (glossary_entities + entity_revisions written every time) and never touched the tool under test. That is CORRECT behaviour: composition_entity_override_edit is derivative-scoped, and an author saying 'in this book' is asking for a canonical edit. And the derivative-aware wording is no good either — naming the derivative leads the model to find or create one, and then the tool SUCCEEDS.\n\nSo NOT_A_DERIVATIVE only arises when the model MIS-SELECTS this tool for a canonical edit, which is exactly what the 2026-08-24 turns recorded and is not something a prompt can force by describing the task. Naming the tool is the deterministic route: R1 answerability forces an explicitly named tool onto the wire, the model calls it against the book's canonical Work, and the refusal fires. The same route the placeholder and degenerate-UUID arms were proven by.",
+   "needs_target": false,
+   "approve": "approved_once",
+   "seed": [
+    {
+     "rest": {
+      "domain": "glossary",
+      "method": "POST",
+      "path": "/v1/glossary/books/{book_id}/adopt",
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character"
+       ]
+      }
+     }
+    },
+    {
+     "tool": "glossary_propose_entities",
+     "args": {
+      "book_id": "{book_id}",
+      "items": [
+       {
+        "kind": "character",
+        "name": "Aldric Vane"
+       }
+      ]
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_glossary",
+     "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+     "expect": "1",
+     "why": "The entity must exist — the tool takes a target_entity_id and the model has to resolve the NAME to it, which is the step that has failed repeatedly in this loop."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM entity_override WHERE project_id='{project_id}'",
+     "expect": "0",
+     "why": "ZERO overrides before, so any override is attributable to this turn — and, the card never being approved, the count must still be 0 afterwards."
+    },
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM composition_work WHERE book_id='{book_id}' AND source_work_id IS NOT NULL",
+     "expect": "0",
+     "why": "🔴 THE ABSENCE IS THE FIXTURE. composition_entity_override_edit refuses with NOT_A_DERIVATIVE when the project_id it is given is the book's CANONICAL Work, and that refusal is the thing under test — it names composition_list_derivatives, and the question is whether reactive arming then puts that tool on the wire. Seeding a derivative (which scenarios-c-override.json does) makes the tool SUCCEED and tests nothing here.\n\nA DERIVATIVE IS `source_work_id IS NOT NULL`, verified against the schema and the data: composition_work has no `is_canonical` column — my first version asserted one and the harness REFUSED to run rather than spend five runs on SQL that cannot execute. The store holds 1,117 works with source_work_id NULL and 56 with it set, and the repo states the rule in its own words: 'derivatives (source_work_id set)'."
+    }
+   ],
+   "falsifier": "READ THE REFUSAL FIRST. This is only an instance if composition_entity_override_edit was called and came back NOT_A_DERIVATIVE naming composition_list_derivatives. A run where the tool was never called, or refused for another reason, is NEITHER outcome.\n\nOn a genuine instance: REFUTED IF composition_list_derivatives is absent from advertised_tools on every pass after the refusal — the arming did not reach the wire. PASSES IF it is advertised afterwards.\n\n🔴 CALLING it is a SEPARATE and weaker bar. The population says the model walks the chain whenever it can see the supplier — 0 turns ever called it without it being advertised, and 9 of 9 that advertised it called it — so ADVERTISED is what this row is about.",
+   "ship_audit": {
+    "gate": "OWED — Tier A.",
+    "absent_case": "OWED — a target_entity_id or override_id that does not exist must be refused.",
+    "idempotency": "OWED — deleting an already-deleted override must refuse, not report a second success. Checked deliberately: that is the exact shape of the arc_template archive defect found in batch 15.",
+    "tenancy": "OWED — project-scoped."
+   },
+   "defects": [
+    "D-A-REFUSAL-CAN-ONLY-ARM-WHAT-SURVIVED-DOMAIN-SELECTION"
+   ],
+   "_carried_from": "scenarios-rebaseline.json",
+   "_problem": "P4-PRECONDITION",
+   "approve_why": "🔴 MY FIRST VERSION SET THIS TO null AND THE BATCH MEASURED NOTHING. composition_entity_override_edit is TIER A, so it raises a mutation card; with no approval the turn suspends on the card and the tool BODY NEVER RUNS — the harness said so directly ('left SUSPENDED on a Tier-A approval card in 2/5 runs'). NOT_A_DERIVATIVE is raised inside the tool, so an unapproved card makes the refusal unreachable and the whole scenario vacuous.\n\nApproving is SAFE here and does not weaken the bar: the call is expected to REFUSE (NOT_A_DERIVATIVE), so nothing is written, and the fixture is a throwaway book torn down afterwards. The bar is unchanged — what the arming does with the refusal.",
+   "answer_expect": {
+    "why": "None. The measurement is advertised_tools and the recorded refusal, not the reply text."
+   }
+  }
+ ]
+}
