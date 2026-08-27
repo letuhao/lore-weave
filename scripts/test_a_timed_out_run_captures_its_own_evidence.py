@@ -181,3 +181,53 @@ def test_the_turn_timeout_flag_is_not_frozen_at_import():
     )
     body = inspect.getsource(fr.send_turn)
     assert "if timeout is None:" in body and "timeout = TURN_TIMEOUT" in body
+
+
+# ── the gap the first real encounter exposed ─────────────────────────────────────────────
+#
+# 🔴 THE MOST DIAGNOSTIC LINE FOR A DEAD TURN IS NOT KEYED BY SESSION. The rail step-runner
+# logs `rail translation-pass: 0/3 steps done, next=… (book=…)` — the line that shows a rail
+# re-driving without progress — against the BOOK id. Filtering the log by session alone
+# returned 10 useful lines and ZERO rail lines on batch c-rail1, which is the half that
+# explains why the turn never ends. Proven on the same live log: 10 -> 18 lines, 0 -> 4 rail
+# lines once the book is matched too.
+
+def test_the_capture_matches_the_BOOK_as_well_as_the_session():
+    at = SRC.index("def capture_dead_turn(")
+    body = SRC[at:SRC.index("async def run_scenario(", at)]
+    assert "book_id" in SRC[at:at + 200], "the signature does not take a book"
+    assert "_keys = [k for k in (session_id, book_id) if k]" in body, body[-600:]
+    assert "any(k in ln for k in _keys)" in body
+
+
+def test_both_call_sites_pass_the_book():
+    """🔴 THE CALL SITE, AGAIN. A capture that CAN match the book and is never given one is the
+    same gap wearing a parameter."""
+    assert SRC.count("capture_dead_turn(session_id, book_id=book_id)") == 2, (
+        "a send_turn error handler captures without the book"
+    )
+
+
+def test_a_missing_book_still_works():
+    """PRECISION. The backstop in run_scenario has no book in scope on every path, and a capture
+    that required one would fail exactly when a fixture never built."""
+    if not _STACK:
+        pytest.skip("needs the local stack")
+    d = fr.capture_dead_turn("00000000-0000-4000-8000-000000000000", book_id=None)
+    assert d["book_id"] is None
+    assert d["log_line_count"] == 0
+
+
+def test_the_RAIL_batch_shows_the_defect_and_the_capture():
+    """ANTI-VACUITY against c-rail1 — the row's own control prompt, reproduced 5 of 5."""
+    raw = ROOT / "docs" / "eval" / "toolloop" / "2026-08-14" / "c-rail1-raw.json"
+    if not raw.exists():
+        pytest.skip("the rail batch is not on disk")
+    runs = json.loads(raw.read_text(encoding="utf-8"))
+    assert len(runs) == 5
+    assert all(r.get("error") for r in runs), "the rail control no longer fails — re-derive"
+    assert all(r.get("error_population") == "no_output_timeout" for r in runs)
+    for r in runs:
+        dt = r.get("dead_turn") or {}
+        assert dt.get("no_assistant_row") is True, dt.get("rows_by_role")
+        assert dt.get("user_rows") == 2, "the retry signature is gone"

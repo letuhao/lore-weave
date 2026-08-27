@@ -340,7 +340,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
                 # this hooked `run_scenario`, which never sees the exception: BOTH handlers in
                 # this function swallow it into `out["error"]` and return. A forced-timeout run
                 # proved it — 3 of 3 genuine ReadTimeouts and `dead_turn: null` on every one.
-                out["dead_turn"] = capture_dead_turn(session_id)
+                out["dead_turn"] = capture_dead_turn(session_id, book_id=book_id)
                 return out
 
     # Resume loop — one pass per card, capped. The cap is not politeness: a model that
@@ -366,7 +366,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
                 break
         except httpx.HTTPError as e:
             out["error"] = f"resume {type(e).__name__}: {e}"
-            out["dead_turn"] = capture_dead_turn(session_id)
+            out["dead_turn"] = capture_dead_turn(session_id, book_id=book_id)
             break
     out["pending_approval"] = pending_approval(out)
     return out
@@ -438,7 +438,7 @@ def error_population(err: str | None, tool_call_count: int) -> str | None:
     return "other"
 
 
-def capture_dead_turn(session_id: str, since: str = "20m") -> dict:
+def capture_dead_turn(session_id: str, since: str = "20m", book_id: str | None = None) -> dict:
     """Everything a TIMED-OUT turn leaves behind, captured AT THE MOMENT it happens.
 
     🔴 THE EVIDENCE IS GONE BY THE TIME ANYONE LOOKS, and that is the whole reason
@@ -458,7 +458,7 @@ def capture_dead_turn(session_id: str, since: str = "20m") -> dict:
 
     Best-effort by construction: a capture that raises would replace a timeout with a harness
     crash and destroy the very run it exists to explain."""
-    out: dict = {"session_id": session_id}
+    out: dict = {"session_id": session_id, "book_id": book_id}
     try:
         from provision import oracle  # noqa: PLC0415 — the oracle lives beside the loop
         rows = oracle.db_query(
@@ -481,7 +481,15 @@ def capture_dead_turn(session_id: str, since: str = "20m") -> dict:
                            capture_output=True, text=True, errors="replace", timeout=120)
         # Python logging goes to the container's STDERR; reading stdout alone finds nothing,
         # which is a mistake this loop has already made once against this very container.
-        lines = [ln for ln in (p.stdout + p.stderr).splitlines() if session_id in ln]
+        # 🔴 THE MOST DIAGNOSTIC LINE FOR A DEAD TURN IS NOT KEYED BY SESSION. Found the first
+        # time this capture met the defect it was built for: the rail step-runner logs
+        # `rail translation-pass: 0/3 steps done, next=… (book=…)` — the line that shows a rail
+        # re-driving without progress — and it carries the BOOK id, not the session. Filtering
+        # on the session alone returned 10 useful lines and ZERO rail lines, which is the half
+        # that explains why the turn never ends.
+        _keys = [k for k in (session_id, book_id) if k]
+        lines = [ln for ln in (p.stdout + p.stderr).splitlines()
+                 if any(k in ln for k in _keys)]
         out["log_lines"] = lines[-60:]
         out["log_line_count"] = len(lines)
     except Exception as e:  # noqa: BLE001 — never let the capture kill the run
