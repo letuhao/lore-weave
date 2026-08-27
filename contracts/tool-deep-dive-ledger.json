@@ -3293,7 +3293,15 @@
     "batch 26, book_chapter_bulk_create, 5 of 5. Asked to bulk-create three chapters NAMED Ash, Ember and Cinder, the model carded them with the body text '[Content for Ash chapter to be added]' and so on. The tool's own description says it creates plain-text chapters 'or empty', so an EMPTY body was available and correct; a literal placeholder string would be written into the manuscript as prose. Mitigated by the card — the author sees the bodies before approving — which is why it is recorded as an instance rather than its own defect.",
     "batch 26, glossary_ontology_delete, 1 of 5. Asked to DELETE the character kind from the story bible, the model instead called glossary_extract_entities_from_doc with a source_markdown it INVENTED WHOLESALE: 'a young cultivator named Wei Wuxian who lives in the Azure Cloud Sect ... a spirit fox named Xiao Bai'. None of that is in the author's book. Approving it would have populated their glossary with the cast of a story they never wrote. Same shape as the cowrite case in batch 18: asked for one thing, the model fabricates content and proposes writing it."
    ],
-   "defect_class": "model"
+   "defect_class": "model",
+   "status": "BLOCKED on DQ-T55 as of 2026-08-27 — the extract arm is now measured against the live store, TWO instruments of mine were refuted before one held, and the remedy is a contract change on the tool's signature.",
+   "the_invariant": "AN ARGUMENT THAT IS THE AUTHOR'S CONTENT IS NOT THE MODEL'S TO AUTHOR. A tool whose contract is 'extract from the author's document' must be handed the author's document — from the book, or from what the author actually said. Text the model composed is not a source document, and extracting from it populates the author's world with a story they never wrote.",
+   "measured_against_the_live_store_2026_08_27": "The row cited three instances from batch prose. Re-derived from `loreweave_chat.chat_messages.tool_calls` — 5,909 messages carrying tool calls, 686 arguments that carry PROSE into the author's book across 16 tools:\n\n    book_chapter_save_draft.body                     227   avg 665 chars\n    plan_propose_spec.source_markdown                174\n    glossary_extract_entities_from_doc.source_markdown 94\n    kg_project_create.description                     74\n    …12 more tools\n\nThe row's own instances are STILL IN THE STORE and were read there: 'Wei Wuxian … Azure Cloud Sect', 'Elara … the floating city of Aethelgard', 'the Great Library of Aethelgard'. The same invented document was handed to the tool against SEVERAL DIFFERENT BOOKS, which makes it a canned sample the model reaches for, not a one-off.",
+   "two_instruments_of_mine_were_REFUTED_first": "🔴 BOTH ARE RECORDED RATHER THAN DROPPED, because each one produced a confident number that was an artifact.\n\n  1. SHINGLE OVERLAP said 94 of 94 documents were model-authored. That is the threshold talking, not the data: the model SUMMARISES the author's request instead of quoting it, so a 6-word shingle never matches even when the content is entirely the author's. One flagged document was the author's own words about their own book.\n\n  2. PROPER-NOUN GROUNDING, checked against book text + glossary + the author's messages, said only 2 of 94 introduced entirely new names. THE GLOSSARY IS DOWNSTREAM OF THE TOOL UNDER TEST. A book holding 138 characters of text scored every one of 'Aethelgard', 'Elara', 'Kael', 'Bound Syndicate' as GROUNDED — because an earlier fabricated extraction had already written them into its glossary. Removing the glossary moves the count from 2 to 22 of 94.\n\n  AND THE 22 IS ALSO NOT A PRODUCT RATE. Median book text across these 94 calls is ZERO characters and 92 of 94 books hold under 500 — they are this loop's own empty fixtures, on which any document is ungrounded by construction. What the population DOES support is narrower and still damning: handed an empty book and no author text, the model invents a story to extract from rather than asking for one.",
+   "a_constraint_on_any_future_proof": "🔴 THE GLOSSARY CANNOT BE GROUND TRUTH FOR A GROUNDING CHECK, here or in any later fix's evidence. `glossary_extract_entities_from_doc` writes the candidates it extracts, so a check that asks 'is this name in the glossary?' asks the fabrication to vouch for itself. Ground truth is the book's own text plus the author's own messages, and nothing else.",
+   "the_prose_mechanism_EXISTS_and_is_explicit": "Checked before proposing anything: the registry recipe ALREADY says it in the imperative — 'feed it the user''s notes VERBATIM (paste exactly what they wrote)' and 'feed glossary_extract_entities_from_doc the story AS THE USER TOLD IT'. So this is not a missing instruction. It is the fifth prose intervention this row has now seen refuted, and it is why the remedy has to be structural.",
+   "what_is_NOT_covered": "- NOT FIXED, and nothing shipped for the fabrication arm. This cycle measured it and refuted two ways of measuring it.\n- THE COWRITE ARM IS UNTOUCHED. `book_chapter_save_draft.body` is 227 of the 686 and the row's original instance lives there; inventing prose is arguably the POINT of a drafting tool, so the grounding rule that fits an extract tool does not transfer to it, and this cycle does not claim it does.\n- THE BRACKETED-PLACEHOLDER ARM HAS NO LIVE INSTANCE. The row's batch-26 instance ('[Content for Ash chapter to be added]') does not reproduce: 0 of 686 prose arguments in the live store contain a bracketed placeholder. A guard for it would ship a rule with nothing to catch, so it was MEASURED AND REJECTED rather than written.\n- NO LIVE RUN. No production code changed.",
+   "blocked_by_dq": "DQ-T55"
   },
   "D-CLAIMED-WRITE-WITH-ZERO-TOOL-CALLS": {
    "state": "fixed",
@@ -5398,6 +5406,16 @@
    "state": "open",
    "defect_class": "model",
    "and_the_tool_was_UNREACHABLE_by_declaration": "The measured-turn answerability gate flags this scenario's turn as unable to reach composition_motif_bind_edit from the tool's own declared vocabulary — and the live run agrees: 0 calls, and the tool on the wire in 0 of 27 passes. So the model was never offered the tool it claimed to have used. That does not excuse the claim; it locates it."
+  },
+  "D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT": {
+   "state": "open",
+   "found": "2026-08-27",
+   "defect_class": "platform",
+   "status": "OPEN — found while measuring D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE, measured on the live store, not yet fixed.",
+   "what": "Having no document to work from, the model does not ask the author — it passes its own SENTENCE ABOUT THE ABSENCE OF A DOCUMENT as the document. The tool then extracts from, or saves, a message addressed to the user.\n\nMeasured over 686 prose-carrying tool arguments in `chat_messages.tool_calls`: 9 instances across 2 tools.\n\n    glossary_extract_entities_from_doc.source_markdown   8\n      'The user has not provided any story notes or descriptions yet.'\n      '[No story content provided yet. Please provide your story idea…]'\n      '(No source text provided in the current conversation history to extract from. I will ask the user to provide the story details…)'\n    book_chapter_save_draft.body                         1\n      'I will perform a consistency check on your story. Please provide the text or specify which chapters I should analyze.'\n\n🔴 THE LAST ONE IS THE WORST AND IT IS THE ONE A NARROW RULE MISSES: it is a CHAPTER BODY. That sentence would be saved into the manuscript as the chapter's prose.",
+   "why_it_is_a_DIFFERENT_cause_from_its_parent_row": "The parent row is FABRICATION — the model has nothing and invents a story. This is EMPTY-HANDEDNESS — the model has nothing, knows it, says so, and puts the saying of it in the payload slot. The parent's remedy (bind the document to the author's text) does not address it: a meta-statement would still be a document the model authored. Filed separately because the causes differ, not to raise a count.",
+   "precision_measured": "9 flagged of 686 prose arguments, and all 9 are genuine on inspection — no false positive on this corpus. Per clause: 'no … content/text/notes provided' 2, 'the user has not provided' 5, 'please provide' 7, 'I will ask the user' 1, 'to begin the extraction' 3 (they overlap).\n\nTHE FALSE-POSITIVE SURFACE IS NAMED: 'please provide' is the loosest clause and the only one that reaches the chapter-body instance — 8 of the 9 are caught without it, but the 9th, the one that would be written into a manuscript, is not. A chapter whose dialogue contains the literal phrase would be refused; none of the 227 recorded chapter bodies does.",
+   "what_would_fix_it": "The same shape as the shipped `_is_nil_uuid` / `_is_degenerate_uuid` arm one value class wider: a content argument that is RECOGNISABLY A MESSAGE ABOUT MISSING CONTENT is knowably not content — drop it and report the argument missing, so the model asks the author instead of writing to their book. Not yet written, not yet measured live."
   }
  },
  "deferred_questions": {
@@ -5703,6 +5721,16 @@
    "my_recommendation": "(a), with the line rendered as a SYSTEM annotation the FE can style separately rather than as assistant prose — it is the platform stating a fact about its own state, which is exactly what the confirm-card note already does one path over. (b) buys better wording at a cost the measurement does not justify: 92 of the 98 replies were already honest, so it would pay for 98 passes to fix 6.",
    "what_shipped_regardless_of_the_answer": "The measurement: `claimed_done_while_carded` + a report line + scripts/test_a_completion_claim_outlives_its_pending_card.py, 5 falsifiers red. Whichever option is chosen, the bar is what shows it worked.",
    "state": "open"
+  },
+  "DQ-T55": {
+   "state": "open",
+   "raised": "2026-08-27",
+   "question": "Should `source_markdown` on `glossary_extract_entities_from_doc` stop being a model-authored free-text argument — either replaced by a reference the runtime resolves (a chapter_id, or 'the author's last message'), or validated server-side against the book's text and the session's user turns before extraction runs?",
+   "why_it_is_not_mine": "It changes a registered tool's signature and the recipe built on it, across the glossary service and the agent registry. It also trades a real capability away: today an author can describe their world in chat and have it captured, and a strict binding would refuse the model's faithful SUMMARY of what they said along with its fabrications.",
+   "evidence": "686 prose-carrying tool arguments in the live store, 94 of them this tool's document. The row's cited fabrications are still there and were handed to the tool against several different books. The instruction to paste the author's words VERBATIM already exists in the recipe and does not hold.",
+   "why_a_sentence_will_not_do": "Five prose interventions have now been measured on this row and refuted, including one that made fabrication go from 4/5 to 5/5. The recipe's own 'paste exactly what they wrote' is as explicit as an instruction can be.",
+   "my_recommendation": "Validate rather than replace, and REPORT rather than refuse: keep the free-text argument, and have the runtime mark a document it cannot trace to the book or to the session's user turns, so the extraction's candidates arrive flagged 'unverified source' instead of silently entering the review queue as if the author had written them. A hard binding to a chapter_id would break the legitimate 'here are my notes' path, which is the tool's stated purpose. NOTE THE MEASUREMENT PROBLEM THIS INHERITS: the check must not consult the glossary, which this tool writes.",
+   "what_shipped_meanwhile": "Nothing for this row. A separate, differently-caused defect was found and filed while measuring it: D-THE-DOCUMENT-HANDED-TO-AN-EXTRACT-TOOL-IS-A-MESSAGE-ABOUT-HAVING-NO-DOCUMENT, 9 instances, precision 9/9 on 686 arguments."
   }
  },
  "carried_observations": [
@@ -6106,8 +6134,8 @@
   "tools_proven": 198,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 46,
-  "deferred_questions": 30,
+  "defects_open": 47,
+  "deferred_questions": 31,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
@@ -6121,7 +6149,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 203,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 193,
+  "defects_total": 194,
   "defects_fixed": 105,
   "defects_withdrawn": 16,
   "defects_superseded": 1
