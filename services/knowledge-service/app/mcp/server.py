@@ -672,12 +672,36 @@ async def memory_remember(
         # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
         # not the feature's name — the distinction that took glossary_curation_list from
         # surfaced 0/3 to called 3/3 with a correct answer.
+        # 🔴 `"that was wrong"` REMOVED, 2026-08-28. The answerability matcher normalises a
+        # synonym through `_answer_norm`, which STRIPS ARTICLES AND DEMONSTRATIVES — so this
+        # phrase reached the matcher as the bare predicate `"was wrong"`, which is ordinary
+        # English rather than a request to delete anything. Measured live: it made this tool —
+        # tier A, and its whole job is invalidating a stored fact — answerable on
+        #
+        #     "I just fixed a few paragraphs in chapter 3 — some dialogue WAS WRONG.
+        #      Can you redo the translation for just those?"
+        #
+        # a request about translation, on which R1 answerability then forces the tool onto the
+        # wire "whatever the budget decided". The demonstrative was doing the work: "that was
+        # wrong" points at a fact the user was just shown, and without it the phrase points at
+        # anything.
+        #
+        # THE OTHER FOUR ARE KEPT AND ARE NOT THE SAME SHAPE. "forget that" -> "forget",
+        # "retract that" -> "retract" and "remove that fact" -> "remove fact" all survive the
+        # strip as VERBS that still ask for this operation; "no longer true" is untouched. Only
+        # this one degraded into a predicate that describes a situation rather than requests an
+        # action.
+        #
+        # Fixed in the DECLARATION rather than in the matcher, per the owner's DQ-T32 decision
+        # (keep the contiguous match, fix declarations). Measured before assuming a class: over
+        # 564 distinct live requests, ZERO write-tier synonyms match 5% or more of the corpus
+        # and the most promiscuous is `add a character` at 3%, which is correct. So this is one
+        # bad declaration, not a systemic over-stripping problem, and it does not warrant a gate.
         synonyms=[
             "forget that",
             "no longer true",
             "remove that fact",
             "retract that",
-            "that was wrong",
         ],
         tool_name="memory_forget",
     ),
