@@ -438,6 +438,31 @@ def error_population(err: str | None, tool_call_count: int) -> str | None:
     return "other"
 
 
+def retry_gap_verdict(rows_by_role: dict) -> dict:
+    """How long the client waited before retrying, and whether that was its REAL budget.
+
+    A NAMED function rather than an inline block, because the guard for it has to call the
+    SHIPPED rule — the first version of that guard re-derived the gap itself and greped the
+    source for `TURN_TIMEOUT`, so BOTH falsifiers (hard-code the threshold, stop recording the
+    gap) stayed green. A test that recomputes what it is checking cannot fail when that
+    computation changes.
+    """
+    u = (rows_by_role or {}).get("user") or {}
+    if not (u.get("first") and u.get("last")) or u.get("n", 0) <= 1:
+        return {}
+    try:
+        from datetime import datetime  # noqa: PLC0415
+        a = datetime.fromisoformat(str(u["first"]).replace("+00", "+00:00"))
+        b = datetime.fromisoformat(str(u["last"]).replace("+00", "+00:00"))
+    except (ValueError, TypeError) as e:
+        return {"retry_gap_error": f"{type(e).__name__}: {e}"[:120]}
+    gap = round((b - a).total_seconds(), 1)
+    # ORGANIC means the client waited out the budget it actually had. A gap far below it means
+    # the deadline was artificially short — an instrument test, not a dead turn. Derived from
+    # TURN_TIMEOUT rather than a constant, so the label cannot go stale when the budget moves.
+    return {"retry_gap_s": gap, "organic_timeout": gap >= 0.5 * (TURN_TIMEOUT or 180)}
+
+
 def capture_dead_turn(session_id: str, since: str = "20m", book_id: str | None = None) -> dict:
     """Everything a TIMED-OUT turn leaves behind, captured AT THE MOMENT it happens.
 
@@ -473,6 +498,14 @@ def capture_dead_turn(session_id: str, since: str = "20m", book_id: str | None =
         # exactly what the row measured: two user rows about TURN_TIMEOUT apart, zero assistant.
         out["user_rows"] = out["rows_by_role"].get("user", {}).get("n", 0)
         out["no_assistant_row"] = bool(out["user_rows"]) and "assistant" not in out["rows_by_role"]
+        # 🔴 THE GAP IS WHAT SEPARATES A DEFECT FROM A DEMONSTRATION, and without it every
+        # capture reads the same. Measured across the 13 captures on disk 2026-08-27: ten sit
+        # at 178.9s — the runner's retry after a genuine TURN_TIMEOUT — and three sit at 0.7s,
+        # because the batch that PROVED this instrument forced its timeouts with a sub-second
+        # read deadline. All thirteen otherwise carry an identical signature (two user rows, no
+        # assistant row, surface advertised, orphaned turn), so a reader counting captures would
+        # have read three demonstrations as three instances of the defect. I did, for a minute.
+        out.update(retry_gap_verdict(out["rows_by_role"]))
     except (RuntimeError, OSError, ValueError, IndexError) as e:
         out["store_error"] = f"{type(e).__name__}: {e}"[:200]
     try:
