@@ -78,9 +78,13 @@ def _catalog() -> dict:
 def _tool_payload(td: dict) -> dict:
     """🔴 NORMALISED, AND THE NORMALISATION IS ITSELF A FINDING. LM Studio rejects a
     `parameters` with no `properties` object outright — 400, `path: [n, function, parameters,
-    properties], Required`. FOUR tools in the catalogue are shaped that way, and one of them,
-    `glossary_list_system_standards`, is advertised on the stalling turn. It fails FAST, so it
-    is not this stall; it would break any consumer that forwarded the schema unchanged."""
+    properties], Required`. FOUR tools in the CACHE are shaped that way, and one of them,
+    `glossary_list_system_standards`, is advertised on the stalling turn.
+
+    It is NOT this stall — it fails fast and loud, and the stall is silent. And it does not
+    break the product either: 3,375 persisted turns advertised that tool and COMPLETED, so the
+    shape the service forwards is not the shape this cache renders. The normalisation exists so
+    the probe can ask its real question, not because the platform needs it."""
     fn = {k: v for k, v in td["function"].items()
           if k in ("name", "description", "parameters")}
     params = dict(fn.get("parameters") or {})
