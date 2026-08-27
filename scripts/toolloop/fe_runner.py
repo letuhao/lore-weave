@@ -1258,9 +1258,25 @@ def report(results, scenarios, repeats):
             print(f"    ^ READ-INTENT TURN WROTE TO THE STORE in {len(_real)}/{len(rs)} runs "
                   f"— a defect whatever it said")
         elif wrote and sc.get("intent") == "read":
-            print(f"    ^ {len(wrote)}/{len(rs)} runs touched only turn-bookkeeping "
-                  f"({', '.join(sorted(TURN_BOOKKEEPING_TABLES))}) — written for every turn by "
-                  f"chat.turn_completed, not by the tool under test")
+            # 🔴 NAME THE TABLES THAT WERE ACTUALLY TOUCHED, AND THE RIGHT REASON FOR EACH.
+            # This line used to print the bookkeeping set unconditionally — so a batch whose
+            # only write was `entity_access_log` was explained as "turn-bookkeeping, written by
+            # chat.turn_completed", which is false about that table twice over: it is written
+            # BY the tool, and writing it is correct. A message that names the wrong reason is
+            # worse than none, because it teaches a reader the wrong exemption.
+            _touched = {t for r in wrote for t in (r.get("store_diff") or {})}
+            _why = {
+                "turn-bookkeeping, written for every turn by chat.turn_completed whatever tool "
+                "ran": sorted(_touched & TURN_BOOKKEEPING_TABLES),
+                "a read AUDIT row — the tool recording that it read, which is correct and is "
+                "not a lifecycle move": sorted(_touched & READ_AUDIT_TABLES),
+                "an UNSCOPED global count that any concurrent run moves, so it is attributable "
+                "to nobody": sorted(_touched & UNATTRIBUTABLE_GLOBAL_COUNTS),
+            }
+            for reason, tables in _why.items():
+                if tables:
+                    print(f"    ^ {len(wrote)}/{len(rs)} runs touched {', '.join(tables)} — "
+                          f"{reason}")
     print("\nA scenario is only informative across REPEATS — the consumer is stochastic, so "
           "'1/5 called' is a finding and '5/5 surfaced, 0/5 called' is a different finding "
           "from '0/5 surfaced'.")
@@ -1394,6 +1410,24 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
 #: book-sync scenarios alike.
 TURN_BOOKKEEPING_TABLES = frozenset({"loreweave_knowledge.extraction_pending"})
 
+#: A READ recording that it read. D-A-TIER-R-TOOL-WRITES-TO-THE-STORE's own sweep separates
+#: three shapes and only one is the defect: turn bookkeeping (above), a read AUDIT row (here),
+#: and a read tool ADVANCING A LIFECYCLE (the defect). Kept as its own set rather than folded
+#: into the bookkeeping one, because the REASONS differ and a reader who sees one name will
+#: assume the other's justification: bookkeeping is written by chat.turn_completed whatever
+#: tool ran, while this IS written by the tool — and writing it is correct.
+READ_AUDIT_TABLES = frozenset({"loreweave_knowledge.entity_access_log"})
+
+#: 🔴 GLOBAL COUNTERS, ATTRIBUTABLE TO NOBODY. `neo4j.Fact.total` counts every Fact in the
+#: database with no scope at all, so ANY concurrent run moves it — and this loop runs batches
+#: at concurrency 2-3. Measured 2026-08-27: of 20 read-intent runs flagged as writing to the
+#: store, 15 were the audit row above and 5 were this counter. Not one was a real write.
+#:
+#: It stays in the SNAPSHOT, where a global count is context. What it must not do is make a
+#: turn accountable for it — the same lesson `_world_counts` and the arc_template run-nonce
+#: paid for, arriving through a counter this loop added itself.
+UNATTRIBUTABLE_GLOBAL_COUNTS = frozenset({"neo4j.Fact.total", "neo4j.Fact.invalidated"})
+
 
 def read_intent_violations(wrote: list[dict]) -> list[dict]:
     """The runs a read-intent scenario is actually accountable for.
@@ -1404,8 +1438,9 @@ def read_intent_violations(wrote: list[dict]) -> list[dict]:
     would have hidden the 54 runs where a real write appears beside it. A test that copies the
     logic it is guarding cannot fail when that logic changes.
     """
+    ignore = TURN_BOOKKEEPING_TABLES | READ_AUDIT_TABLES | UNATTRIBUTABLE_GLOBAL_COUNTS
     return [r for r in wrote
-            if any(t not in TURN_BOOKKEEPING_TABLES for t in (r.get("store_diff") or {}))]
+            if any(t not in ignore for t in (r.get("store_diff") or {}))]
 
 
 def preflight_seed_asserts(scenarios) -> list[str]:
