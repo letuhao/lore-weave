@@ -3968,7 +3968,7 @@
    "state": "fixed"
   },
   "D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH": {
-   "status": "OPEN — REFRAMED by a control that already existed",
+   "status": "OPEN and now BLOCKED on DQ-T53, which is the owner action the row already named in its own words ('THE DIAGNOSIS IS CURRENTLY BLOCKED ON PROVIDER OBSERVABILITY, and that is an owner action'). It carried no `blocked_by_dq`, so the generator had been offering it as actionable work.",
    "what": "Across all 875 recorded runs, the 'upstream sent error with no message' / ReadTimeout stall is not spread evenly. It concentrates on turns that call composition_motif_search:\n    called composition_motif_search   41 runs   73% errored\n    motif-family tools, NO search     16 runs    0% errored\n    no motif tool at all             818 runs    6% errored\nA 12x difference against the baseline, and the middle row is the control that matters: sixteen runs used composition_motif_* tools WITHOUT the search and not one errored. So it is not the motif family, the fixture, or the domain — it tracks that single tool.",
    "why_it_matters": "This loop spent THIRTEEN refuted hypotheses on composition_motif_link_edit's ~49% stall — not load, not eviction, not probe contention, not service state, not turn count, not schema size, not encoding, not context pressure — and concluded the cause was not findable. Every one of those runs calls composition_motif_search, and so does every failing composition_motif_adopt run measured today (4 of 5 errored, each dying right after the search).",
    "what_it_is_NOT": "Payload size. Measured directly: a targeted query returns 4,898 bytes / 20 items, and detail=full returns 12,000. That is nothing against a 200K context, so 'the result is too big' is refuted rather than assumed.",
@@ -3979,7 +3979,9 @@
    "what_is_solid": "  * the search as an ANSWER: 0/5 errored (its own scenario, K=5)\n  * turns that must ACT on a search result: 73% errored over 41 runs\n  * motif-family tools that never call the search: 0% over 16 runs\n  * not payload size — a targeted query is 4,898 bytes, detail=full 12,000\nThe remaining hypothesis is emitting a TOOL CALL after a search result, which is the shape of the documented LM Studio parser defect the platform already records for this model — the structured tool-call channel emitting nothing while free text still works. That is testable by a scenario whose measured turn must call one tool AFTER a search, versus one that must only answer.",
    "narrowed_2026_08_23": "A CONTROLLED A/B INSIDE ONE BATCH. c-adopt3, K=5, one scenario, one query: 3 runs died, 2 did not. Everything the platform sends was identical between them.\n\n  * composition_motif_search returned 532 bytes, byte-identical, in all five runs (args identical too: {\"q\": \"Face-Slap Reversal\", \"scope\": \"system\"}). PAYLOAD REFUTED at fixed scenario, which is stronger than the earlier cross-scenario refutation.\n  * provider-registry logged 'chat context preflight' for pass 1 (14402 tok) AND pass 2 (14556 tok) in ALL five runs. So the failing request IS built and IS sent — the failure is inside pass 2, the first pass after the tool result. Previously it was not known whether the request was even reaching the provider.\n  * clean runs then log pass 3 (14723 tok) and a ~120-token title call; dying runs log neither.\n  * input token count on the failing pass is the SAME 14556 in both populations.\n\nSO: same input, same size, same tool result, different outcome. The failure is in GENERATION on the pass whose job is to emit the next tool call — not in anything the platform composes.\n\nIDLE-UNLOAD TESTED AND NOT SUPPORTED. If the model were being evicted during a slow tool call, longer pass1->pass2 gaps would fail. Measured the opposite ordering: died at 5.2s, 9.5s, 15.6s; survived at 16.2s, 18.1s. n=5, so this is recorded as 'not supported', NOT as a refutation with a direction.\n\n🔴 THE DIAGNOSIS IS CURRENTLY BLOCKED ON PROVIDER OBSERVABILITY, and that is an owner action. The provider is LM Studio at http://host.docker.internal:1234/v1 (provider_kind lm_studio, google/gemma-4-26b-a4b-qat, context_length 200000, credential active). Its server logs at ~/.lmstudio/server-logs have not been written since 2026-08-04 — nineteen days. The only place the reason for a provider-side generation failure exists is not being recorded, which is why thirteen hypotheses have been tested against platform-side data and all thirteen were refuted. Turning LM Studio's server logging on and re-running this exact batch (5 runs, ~4 minutes) would either name the cause or prove the provider silent about it.",
    "state": "open",
-   "defect_class": "infra"
+   "defect_class": "infra",
+   "blocked_by_dq": "DQ-T53",
+   "RE_DERIVED_2026_08_27_and_the_headline_was_an_over_estimate": "🔴 THE 73% DOES NOT SURVIVE A LARGER SAMPLE. Same three buckets, over 1,491 recorded runs instead of 875:\n\n                                 runs   errored    rate      (the row said)\n    calls composition_motif_search   89       36    40.4%      73% over 41\n    motif family, NO search          18        0     0.0%       0% over 16\n    no motif tool at all          1,384       85     6.1%       6% over 818\n\nThe rate HALVED as n doubled. What survives is the discrimination, and it is still large: 6.6x the baseline, with the zero-error control now at 18 runs. What does not survive is the headline figure, and a ledger claim is a lead rather than a fact.\n\nIT HAS NOT GONE AWAY EITHER. Restricted to runs recorded 2026-08-26 or later: 8 runs called the search and 3 errored (37.5%) against a 4.6% baseline over 131 runs."
   },
   "D-THE-TRANSPORT-STALL-IS-THREE-DIFFERENT-FAILURES": {
    "status": "OPEN — structural finding, 2026-08-23; it reframes the loop's biggest open question",
@@ -5624,6 +5626,16 @@
    "my_recommendation": "TRIGGER ON SHAPE, seeded as flip-pending ALLOW — the same change the standard already blessed once for K37's 14 — because it converts 'blocks NEW violations' from true-of-8-tools into true-of-41. Extending past Python is a second, larger question and should not ride along: a Go implementation is a new parser, not a widened predicate.\n\nNot my call either way. It reds a pre-commit hook for five service teams on its first run, and that cost is the owner's to accept.",
    "what_shipped_regardless_of_the_answer": "The census is derived rather than asserted: `python scripts/toolloop/out2_coverage.py` writes contracts/out2-lint-coverage.json. The LINT IS UNTOUCHED.",
    "state": "open"
+  },
+  "DQ-T53": {
+   "question": "Will the owner turn LM Studio's server logging back on? The diagnosis of the transport stall is blocked on it, and no amount of platform-side measurement can substitute.",
+   "why_it_is_the_owners": "It is an action on the owner's machine, outside the repository and outside anything this loop can reach: LM Studio at http://host.docker.internal:1234/v1 (provider_kind lm_studio, google/gemma-4-26b-a4b-qat, context_length 200000).",
+   "the_premise_verified_2026_08_27": "The newest file in ~/.lmstudio/server-logs is `2026-08-04.6.log`, written 2026-08-04 at 09:45 — TWENTY-THREE DAYS ago. The row recorded nineteen when it was written on the 23rd, so the premise has not merely held, it has aged.",
+   "why_nothing_else_will_do": "THIRTEEN hypotheses have been tested against platform-side data and all thirteen were refuted — not load, not eviction, not probe contention, not service state, not turn count, not schema size, not encoding, not context pressure, not payload size. The controlled A/B inside one batch (c-adopt3, K=5, 3 died and 2 did not) showed the failing request IS built and IS sent: provider-registry logged the pass-2 preflight at 14,556 tokens in ALL FIVE runs, identical input, identical 532-byte tool result, different outcome. The failure is in GENERATION on the pass whose job is to emit the next tool call. The only place that reason exists is the provider's own log, and it is not being written.",
+   "the_cost_of_answering_it": "Turning server logging on and re-running that exact batch is 5 runs, roughly four minutes. It either names the cause or proves the provider is silent about it — and the second answer is worth having too, because it would close thirteen refutations with a reason rather than with exhaustion.",
+   "my_recommendation": "TURN IT ON and re-run c-adopt3. I am not able to do it: it is a setting on the owner's own machine, and this loop reaches the provider only through the platform's own provider layer.",
+   "what_shipped_regardless_of_the_answer": "The concentration is RE-DERIVED and the row's headline number is corrected — see the defect row. The effect is real and persists; the figure was an over-estimate on a small sample.",
+   "state": "open"
   }
  },
  "carried_observations": [
@@ -6028,7 +6040,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 47,
-  "deferred_questions": 28,
+  "deferred_questions": 29,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
