@@ -64,9 +64,9 @@
    "rate": 1.0
   },
   "composition_authoring_run_manage": {
-   "calls": 19,
-   "runs": 25,
-   "rate": 0.76
+   "calls": 27,
+   "runs": 35,
+   "rate": 0.771
   },
   "composition_authoring_run_review": {
    "calls": 20,

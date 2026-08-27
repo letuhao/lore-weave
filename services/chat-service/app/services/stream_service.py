@@ -3376,6 +3376,74 @@ def _hollow_document_note(dropped: dict) -> str:
     )
 
 
+#: Arguments that set a SPEND CEILING. Measured, not guessed: across every recorded tool call
+#: in the live store, `budget_usd` on composition_authoring_run_manage is the only money-typed
+#: argument in use. `limit` (418 calls, 8 tools) is pagination and `spend` (113 calls, 12 tools)
+#: is a BOOLEAN — both would have been swept in by a name-shaped guess.
+MONEY_ARGS = frozenset({"budget_usd"})
+
+#: The author saying anything at all about money. Deliberately WIDE: a false negative here
+#: refuses a number the author really gave, which is the expensive mistake.
+_AUTHOR_MENTIONED_MONEY = re.compile(r"\$|dollar|usd|budget|spend", re.I)
+
+
+def _author_named_money(messages: list[dict] | None) -> bool:
+    """Did the AUTHOR raise money anywhere in this conversation?"""
+    for m in messages or ():
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str) and _AUTHOR_MENTIONED_MONEY.search(content):
+            return True
+    return False
+
+
+def invented_money_args(args_obj: dict, messages: list[dict] | None) -> list[str]:
+    """A spend ceiling the author never mentioned is not the model's to choose.
+
+    🔴 MEASURED 2026-08-27 over every `budget_usd` call in the live store — 16 of them, and the
+    discrimination is exact:
+
+        the author mentioned money   7 calls   budget_usd=5, and they had said "5 dollars"
+        the author said NOTHING      9 calls   budget_usd = 10 (x4), 5 (x3), 50 (x2)
+
+    Nine invented spend ceilings, no overlap with the seven real ones. The row this closes
+    measured three of them by hand and noted what saved the author: the call refused because
+    `pause_after_each_unit` was ALSO missing, so nothing was spent — "the guard that saved it
+    was an unrelated missing argument, not anything about money". Had the model filled both in,
+    a Tier-W card would have been minted for a $50 run nobody asked for, and a confirm card
+    defends against the wrong failure here: the author sees a plausible run and the number on
+    it is invented.
+
+    THE TEST IS THE AUTHOR'S OWN WORDS, and it is deliberately generous to them — `$`, `dollar`,
+    `usd`, `budget` or `spend` anywhere in any user turn is enough to keep the value. A false
+    negative refuses a number the author really gave; a false positive merely makes the model
+    ask. On the measured population the generous test still separates 9 from 7 cleanly.
+
+    Same drop-then-report-missing path as `_invented_supplier_ids`, so the model is told to ask
+    rather than told off.
+    """
+    if not isinstance(args_obj, dict):
+        return []
+    if _author_named_money(messages):
+        return []
+    return [name for name, value in args_obj.items()
+            if name in MONEY_ARGS and isinstance(value, (int, float)) and not isinstance(value, bool)]
+
+
+def _money_arg_note(dropped: dict) -> str:
+    """The sentence for a dropped spend ceiling — the generic missing-argument text would call
+    it forgotten, and a fabricated budget is not a forgotten one."""
+    named = sorted(dropped)
+    if not named:
+        return ""
+    return (
+        "You chose a spend ceiling the author never mentioned (" + ", ".join(named) + "). That "
+        "is the author's money and their decision, not a default for you to pick. Ask them what "
+        "budget they want and call this again with the number they give you."
+    )
+
+
 def _invented_supplier_ids(args_obj: dict, contract: dict | None,
                            tool_def_props: dict | None = None) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
@@ -7322,6 +7390,21 @@ async def _stream_with_tools(
                 # the argument missing, and say what was actually wrong. Independent of the
                 # contract lookup above — a hollow document is wrong for every supplier, and
                 # `_tool_def_for_args` being absent must not silence it.
+                # ── AND THE SAME SENTENCE FOR THE AUTHOR'S MONEY ─────────────────────────
+                # D-THE-MODEL-FABRICATES-A-MONEY-VALUE-ON-A-SPECULATIVE-FIRST-CALL. An id the
+                # runtime owes, a document the author owns, and a budget the author decides are
+                # the same failure one argument-kind apart. `messages` carries the author's own
+                # turns, so no plumbing is added to ask what they said.
+                _money_args = invented_money_args(args_obj, messages)
+                _money_vals = {n: args_obj.get(n) for n in _money_args}
+                if _money_args:
+                    for _nm in _money_args:
+                        args_obj.pop(_nm, None)
+                    logger.info(
+                        "dropped invented spend ceiling(s) %s from %s (session=%s) — the author "
+                        "never mentioned money; values=%s",
+                        _money_args, c["name"], session_id, _money_vals,
+                    )
                 _hollow_args = _hollow_document_args(args_obj)
                 _hollow_vals = {n: args_obj.get(n) for n in _hollow_args}
                 if _hollow_args:
@@ -7339,6 +7422,8 @@ async def _stream_with_tools(
                     _missing_args = sorted(set(_missing_args) | set(_invented_ids))
                 if _hollow_args:
                     _missing_args = sorted(set(_missing_args) | set(_hollow_args))
+                if _money_args:
+                    _missing_args = sorted(set(_missing_args) | set(_money_args))
                 if _missing_args:
                     blank_tool_args_streak += 1
                     if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
@@ -7443,6 +7528,9 @@ async def _stream_with_tools(
                     _hollow_note = _hollow_document_note(_hollow_vals)
                     if _hollow_note:
                         _ma_msg = (_ma_msg or "") + " " + _hollow_note
+                    _money_note = _money_arg_note(_money_vals)
+                    if _money_note:
+                        _ma_msg = (_ma_msg or "") + " " + _money_note
                     # ── D-REFUSAL-NAMES-A-TOOL-THE-TURN-CANNOT-SEE ───────────────────────────
                     # This refusal SAYS "call world_map_list first and match it to get the id".
                     # Until now it armed nothing: `_tools_named_in_refusal` runs on the dispatch
