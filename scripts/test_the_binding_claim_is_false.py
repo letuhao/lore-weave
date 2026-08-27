@@ -14,6 +14,22 @@ passed, so nothing arrived pre-bound. `motif_application` is swept by the DATA b
 appear in a diff when a binding is written. composition_motif_bind_edit was called 0 of 5 times
 and was on the wire in 0 of 27 passes, so the tool that performs the binding was never reached.
 
+🔴 REATTRIBUTED 2026-08-27, AND THE 5/5 ABOVE IS THE REASON THE ARM WAS RUN. The row's own
+open question was whether the tool's absence LICENSES the confabulation or whether the model
+would claim it anyway. c-bindwire1 answers it: same scenario, same fixture, one word changed so
+the turn reaches the tool by its own declared synonym —
+
+                                        c-silentprobe1        c-bindwire1
+    composition_motif_bind_edit advertised   0 of 27 passes      5 of 5 runs
+    the tool CALLED                          0 of 5              5 of 5
+    reply claims the binding is DONE         5 of 5              0 of 5
+    motif_application changed                0 of 5              0 of 5
+
+The confabulation did not survive the tool. Given something to call the model called it every
+time and reported the failure honestly. So the row is PLATFORM-class now, and this suite
+asserts that rather than the model attribution it was written under — the claim below is not
+weakened, it is re-pointed at what the evidence says.
+
 THE BATCH WAS RUN FOR A DIFFERENT ROW. D-SILENT-TURN-NO-CARD-NO-PROSE calls this scenario its
 reliable trigger — 0 clean runs in 23 attempts — and it had not been exercised since
 2026-08-22, which meant the recent absence of silent turns was the absence of the TRIGGER
@@ -101,7 +117,16 @@ def test_the_probe_found_ZERO_silent_turns():
 def test_both_rows_carry_the_result():
     assert "D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE" in LEDGER["defects"]
     new = LEDGER["defects"]["D-THE-MODEL-CLAIMS-A-BINDING-IT-NEVER-MADE"]
-    assert new["state"] == "open" and new["defect_class"] == "model"
+    assert new["state"] == "open"
+    # 🔴 PLATFORM, NOT MODEL, and the guard names WHY so the reattribution cannot be undone by
+    # someone who only reads this line. c-bindwire1 put the tool on the wire and the claim
+    # disappeared — 5/5 -> 0/5 — so the behaviour is a property of the surface, not the model.
+    assert new["defect_class"] == "platform", (
+        "the row is back to model-class; if that is deliberate it must answer c-bindwire1, "
+        "where the same scenario with the tool advertised produced 0 of 5 false claims"
+    )
+    assert new.get("blocked_by_dq") == "DQ-T58"
+    assert "c-bindwire1" in json.dumps(new), "the row no longer cites the arm it rests on"
     old = LEDGER["defects"]["D-SILENT-TURN-NO-CARD-NO-PROSE"]
     assert "the_trigger_was_re_run_2026_08_27" in old
     assert "WEAKER EVIDENCE THAN IT LOOKS" in old["the_trigger_was_re_run_2026_08_27"]
