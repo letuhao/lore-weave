@@ -3,8 +3,8 @@
  "_derived_by": "python scripts/toolloop/selection_rate.py",
  "min_runs": 5,
  "lottery_below": 0.5,
- "measured": 65,
- "lottery_count": 20,
+ "measured": 67,
+ "lottery_count": 21,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
@@ -17,6 +17,7 @@
   "glossary_book_sync_apply",
   "glossary_create_chapter_link",
   "glossary_create_evidence",
+  "glossary_extract_entities_from_doc",
   "glossary_propose_batch",
   "jobs_cancel",
   "jobs_pause",
@@ -28,6 +29,11 @@
   "translation_job_control"
  ],
  "rates": {
+  "book_chapter_save_draft": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
   "catalog_get_book": {
    "calls": 5,
    "runs": 25,
@@ -153,6 +159,11 @@
    "runs": 20,
    "rate": 1.0
   },
+  "glossary_extract_entities_from_doc": {
+   "calls": 0,
+   "runs": 10,
+   "rate": 0.0
+  },
   "glossary_ontology_delete": {
    "calls": 5,
    "runs": 5,
@@ -229,9 +240,9 @@
    "rate": 1.0
   },
   "plan_bootstrap_apply": {
-   "calls": 16,
-   "runs": 45,
-   "rate": 0.356
+   "calls": 24,
+   "runs": 60,
+   "rate": 0.4
   },
   "plan_keep_material": {
    "calls": 5,
