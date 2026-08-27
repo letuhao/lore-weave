@@ -81,9 +81,32 @@ class TestARealIdentifierIsNeverTouched:
         assert _invented_supplier_ids({"title": "TODO: name this chapter"}, None, None) == []
         assert _invented_supplier_ids({"query": "what is unknown about Aldric"}, None, None) == []
 
-    def test_a_context_id_is_still_exempt(self):
-        """The 5-red-tests lesson: the runtime injects these and repairs them itself."""
-        assert _invented_supplier_ids({"book_id": "UNKNOWN_ID_PLEASE_PROVIDE"}, None, None) == []
+    def test_a_context_id_IS_NOT_exempt_from_THIS_arm(self):
+        """🔴 REVERSED 2026-08-27 ON EVIDENCE, and the old assertion is quoted so the change is
+        not mistaken for a widening that slipped through: it read "the runtime injects these and
+        repairs them itself" and required `book_id="UNKNOWN_ID_PLEASE_PROVIDE"` to survive.
+
+        The exemption's real reason — recorded on the arm below — is that the RUNTIME injects
+        context ids and they are not guaranteed to be UUIDs, so dropping one once deleted a
+        value the runtime itself had supplied. That reasoning does not reach a value carrying
+        the word `unknown` or `placeholder`. The runtime does not inject those; a model does.
+
+        MEASURED over every recorded tool call: 320 non-UUID context ids, and not one looks
+        like a runtime injection. 155 carry one of these tokens —
+        `current_book_id_placeholder` alone appears 144 times — and the rest are fixture names,
+        book TITLES, "all" and "book_list". The old assertion protected a value nothing
+        produces, at the cost of 155 real ones.
+        """
+        assert _invented_supplier_ids(
+            {"book_id": "UNKNOWN_ID_PLEASE_PROVIDE"}, None, None) == ["book_id"]
+
+    def test_and_the_exemption_the_5_RED_TESTS_BOUGHT_still_holds(self):
+        """The narrowing must not reopen the case that cost five tests. `b1` is what the runtime
+        injects in a degraded turn; it carries no placeholder token, so this arm cannot see it
+        and every other arm still exempts it."""
+        props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        assert _invented_supplier_ids({"book_id": "b1"}, None, props) == []
+        assert _invented_supplier_ids({"book_id": "b1"}, None, None) == []
 
 
 class TestTheWordBoundaryIsRealNotSubstring:

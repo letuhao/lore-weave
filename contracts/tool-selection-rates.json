@@ -3,7 +3,7 @@
  "_derived_by": "python scripts/toolloop/selection_rate.py",
  "min_runs": 5,
  "lottery_below": 0.5,
- "measured": 67,
+ "measured": 68,
  "lottery_count": 20,
  "lottery": [
   "catalog_get_book",
@@ -29,6 +29,11 @@
  ],
  "rates": {
   "book_chapter_save_draft": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
+  "book_update_details": {
    "calls": 5,
    "runs": 5,
    "rate": 1.0

@@ -128,6 +128,40 @@ class TestTheContextIdsAreDeliberatelyExempt:
         props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
         assert _invented_supplier_ids({"book_id": "b1"}, None, props) == []
 
+    def test_a_context_id_holding_a_PLACEHOLDER_WORD_is_dropped(self):
+        """🔴 THE EXEMPTION IS PER-ARM, AND THIS ARM IS NOT ENTITLED TO IT. The exemption
+        exists because the RUNTIME injects context ids and they are not guaranteed to be
+        UUIDs. That reasoning cannot reach a value containing the word `placeholder`: the
+        runtime does not inject those, only a model does.
+
+        MEASURED 2026-08-27 over every recorded call — 320 non-UUID context ids, 155 of which
+        carry one of these tokens, dominated by `current_book_id_placeholder` at 144."""
+        props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        for value in ("current_book_id_placeholder", "placeholder_book_id",
+                      "YOUR_BOOK_ID_HERE", "[chapter_id_placeholder]"):
+            assert _invented_supplier_ids({"book_id": value}, None, props) == ["book_id"], value
+
+    def test_the_b1_EXEMPTION_STILL_HOLDS_beside_it(self):
+        """The narrowing must not reopen the case that cost five red tests. `b1` carries no
+        placeholder token, so the arm above cannot see it and the exemption is untouched."""
+        props = {"book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        assert _invented_supplier_ids({"book_id": "b1"}, None, props) == []
+
+    def test_what_this_STILL_DOES_NOT_REACH_is_asserted_not_assumed(self):
+        """🔴 165 OF THE 320 ARE NOT COVERED and the biggest are named here, so nobody reads
+        this widening as having closed D-FIXTURE-NAME-IS-THE-MOST-PLAUSIBLE-LOOKING-ID. A
+        fixture name, a book TITLE and "all" carry no placeholder token; catching them needs
+        the declaration-driven arm, which is the one that once deleted a runtime value."""
+        props = {"project_id": {"type": "string", "description": "the project (a UUID)"},
+                 "book_id": {"type": "string", "description": "the book's id (UUID)"}}
+        for arg, value in (
+            ("project_id", "LOOP-THROWAWAY-composition-derivative-edit-seeded-0-f5d5d3ed"),
+            ("book_id", "all"),
+            ("book_id", "book_list"),
+            ("project_id", "Mị Đế"),
+        ):
+            assert _invented_supplier_ids({arg: value}, None, props) == [], (arg, value)
+
     def test_but_a_non_context_id_beside_it_still_is(self):
         """The exemption is per-argument, not per-call: a bad world_id is still caught when a
         context id is present in the same args."""

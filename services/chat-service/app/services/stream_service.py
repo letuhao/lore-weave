@@ -3562,9 +3562,24 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # token list is deliberately SMALL and matched on word-ish boundaries: every entry is a
         # word that appears in a filled-in-by-the-model stub and never in a UUID, a slug or a
         # code. A hex id cannot contain any of them.
+        # 🔴 A CONTEXT ID IS NOT EXEMPT FROM *THIS* ARM, and the exemption's own reason is why.
+        # `_RUNTIME_CONTEXT_IDS` is excluded everywhere else because the RUNTIME injects those
+        # values and they are not guaranteed to be UUIDs — dropping one once deleted a value the
+        # runtime itself had supplied. That reasoning does not reach a value containing the word
+        # `placeholder`: the runtime does not inject those, only a model does.
+        #
+        # MEASURED 2026-08-27 over every recorded call — 320 non-UUID context ids, of which the
+        # token list matches 155:
+        #     144  book_id    = "current_book_id_placeholder"
+        #       3  book_id    = "placeholder_book_id"
+        #       2  chapter_id = "[chapter_id_placeholder]"
+        #       2  project_id = "current_project_id_placeholder"
+        #       1  book_id    = "YOUR_BOOK_ID_HERE"        …and 3 more
+        # Not one of them could have come from the runtime. The other 165 — fixture names,
+        # "all", "book_list", a book TITLE — are NOT reached here and still need the
+        # declaration-driven arm, which is the one carrying the dispatch risk.
         if (
             _identifierish
-            and name not in _RUNTIME_CONTEXT_IDS
             and isinstance(value, str)
             and _PLACEHOLDER_TOKEN_RE.search(value)
         ):
