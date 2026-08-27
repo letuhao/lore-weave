@@ -9864,8 +9864,16 @@ async def stream_response(
                 # 380-odd lines above), and a verifier measured the outage going unrecorded on a real
                 # turn. Re-arming here now would DISCARD that record, which is the failure the sixth
                 # recurrence's own comment predicted. See `instrument.arm_turn_surface`.
+                # DQ-T31 — …and the DECLARATION arm: a gated tool whose own declared synonyms
+                # answer this request is exempt, and only that tool. This is the ONLY place it
+                # can be done: R1 answerability rescues the tool into the one-off build (which
+                # is handed the UNFILTERED catalog), but the per-pass build reads
+                # `discovery_catalog` and replaces that list on the first pass — so the rescue
+                # lands in a list that is discarded. Restoring the tool BEFORE the removal is
+                # what lets R1's own promise hold for it.
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
+                    request_text=user_message_content,
                 )
                 # ── D-SUPERSEDED-TOOL-COMPETES-WITH-ITS-REPLACEMENT ───────────────────────
                 # CAT-4 states the invariant in tool_discovery: "A legacy tool must never be
@@ -12519,8 +12527,16 @@ async def resume_stream_response(
             # failure WS-3 was written to fix, re-entered through the capability floor.
             # CP-0.2 — armed at the top of this function, not here: the catalogue fetch 26 lines
             # above is a narrowing too, and re-arming here would discard whatever it registered.
+            # DQ-T31 — the declaration arm survives the suspend, for the SAME reason
+            # `pinned_step_tools` does. A resume re-derives its surface from scratch, so
+            # without this a tool the author's own words named would be present on the pass
+            # that raised the confirm card and GONE on the pass that acts on the approval —
+            # the resumed turn reading an instruction it can no longer satisfy, which is the
+            # failure WS-3 was written to fix. `user_message_content` is the original request,
+            # carried on the suspend record precisely so a resume can re-derive from it.
             resume_discovery_catalog = filter_intent_gated_setup_tools(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
+                request_text=susp.user_message_content,
             )
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}

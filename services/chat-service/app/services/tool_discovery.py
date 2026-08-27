@@ -540,10 +540,39 @@ def drop_superseded_tools(
     return kept, dropped
 
 
+def _declaration_named_setup_tools(
+    catalog: list[dict], request_text: str | None, gated: "set[str] | frozenset[str]",
+) -> set[str]:
+    """The gated tools whose OWN declared synonyms answer this request.
+
+    🔴 THE MATCH IS RUN AGAINST THE GATED TOOLS ALONE, NOT THE WHOLE CATALOGUE, and that is
+    not an optimisation. ``answerable_tools`` ranks its matches and caps the result at
+    ``ANSWERABLE_MAX``; run over 300-odd tools, a gated tool that genuinely answers the
+    request could be crowded out of the cap by unrelated ones and the arm would open only
+    sometimes. Handing it a catalogue of just the gated tools asks the question this gate
+    actually has — *does the request use THIS tool's declared vocabulary* — and makes the
+    answer independent of what else happens to be in the catalogue.
+
+    Imported inside the function: ``tool_surface`` imports from this module, so a top-level
+    import would be a cycle. The platform's own matcher is used rather than reimplemented —
+    a second copy of the normalisation would drift from the first, and the first is already
+    the thing the answerability contract is written against.
+    """
+    if not request_text or not gated:
+        return set()
+    gated_defs = [td for td in catalog if tool_name(td) in gated]
+    if not gated_defs:
+        return set()
+    from app.services.tool_surface import answerable_tools
+
+    return {n for n in answerable_tools(request_text, gated_defs) if n in gated}
+
+
 def filter_intent_gated_setup_tools(
     catalog: list[dict],
     injected_skill_codes: list[str] | set[str],
     rail_step_tools: "set[str] | frozenset[str] | None" = None,
+    request_text: str | None = None,
 ) -> list[dict]:
     """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
     world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
@@ -566,10 +595,45 @@ def filter_intent_gated_setup_tools(
 
     Scope stays tight: only the steps of a rail actually pinned this turn are exempt, so an
     unrelated "write chapter 1" turn still cannot reach these tools — which is the over-reach
-    N5a-FULL exists to stop."""
+    N5a-FULL exists to stop.
+
+    ``request_text`` — DQ-T31's DECLARATION ARM (owner decision, 2026-08-27). A gated tool
+    whose OWN declared synonyms answer this request is exempt, and only that tool.
+
+    🔴 THE GATE OPENED ON VOCABULARY AND NOT ON WHAT WAS ASKED FOR, AND R1 COULD NOT REACH IN.
+    ``_is_world_setup_intent`` is a substring match over a hand-written marker list, so the
+    gate stayed SHUT on requests that named a gated tool outright — measured on
+    ``glossary_book_sync_apply`` with the prompt *"Take the upstream changes — apply the
+    standard updates to this book"*, which is two of its declared synonyms VERBATIM and
+    against the live catalogue makes it the ONLY answerable tool, with no competitor. It
+    surfaced 0/2 and was called 0/2.
+
+    R1 answerability promises such a tool the wire "whatever the budget, the domain selection
+    or the rail decided", and for a gated tool it cannot deliver — not through any fault of
+    R1's. The one-off build is handed the UNFILTERED catalog and R1 does force the tool in
+    there; the PER-PASS build is handed the catalog AFTER this filter and REPLACES that list
+    on the first pass. So the rescue lands in a list that is immediately discarded, and every
+    pass the model actually sees is built from a catalogue the tool was removed from. The only
+    place that can be fixed is here, before the removal.
+
+    THIS IS THE SAME SHAPE AS ``rail_step_tools`` AND IS SCOPED THE SAME WAY. A rail naming a
+    tool is a signal that this turn is about it; a request using the tool's own declared words
+    is the same signal from the other direction, and *"guidance and capability move as ONE
+    signal"* applies to both. So the exemption is per-TOOL, never per-turn: matching
+    ``glossary_book_sync_apply`` does not un-gate the other four, which is what widening the
+    marker list would have done.
+
+    AND IT DELIBERATELY DOES NOT WIDEN THE MARKERS. The other half of this gate's defect is a
+    false POSITIVE — ``codex`` is a marker, so *"draft the prose for 'Chapter I — The Ember
+    Codex'"* opens the gate on a pure prose turn (the gate fires on 11 of 186 corpus prompts,
+    and at least one is that). A longer marker list fixes the shut side by enlarging the open
+    side. A declaration match cannot: a tool's synonyms are its author's statement about what
+    it is for, reviewable in the declaration, and matching them is evidence about THIS tool
+    rather than a guess about the turn."""
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
     _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    _exempt -= _declaration_named_setup_tools(catalog, request_text, _exempt)
     # P1 · THE SEVENTH FRAME, and the last one upstream. This drops tools at CATALOG ASSEMBLY —
     # before domain selection, before the hot seed, before the advertise loop, i.e. before every
     # stage instrumented so far. A verifier's accounting landed on exactly this set twice: the four
