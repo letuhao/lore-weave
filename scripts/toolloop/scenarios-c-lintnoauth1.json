@@ -9,8 +9,8 @@
    "tier": "R",
    "scope": "book",
    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-   "prompt": "Run the golden-rules validation on my plan for this book and tell me which rules pass.",
-   "prompt_source": "The tool's own declared vocabulary — its description is 'run the S1-S8 golden linter (+ fidelity report)' and its synonyms are ['validate plan', 'check spec', 'golden rules']. The wording asks for the VERDICT, which is what a Tier-R read is for, and says nothing about approving or starting anything: if the plan ends up approved, nothing in the request asked for it.",
+   "prompt": "Validate my plan for this book and tell me which golden rules pass.",
+   "prompt_source": "The tool's own declared synonyms — 'validate plan', 'check spec', 'golden rules'.\n\n🔴 THE FIRST WORDING LOST 5 OF 5 RUNS TO ONE HYPHEN, AND THAT IS RECORDED HERE RATHER THAN QUIETLY EDITED AWAY. It read 'Run the GOLDEN-RULES validation on my plan', and plan_validate surfaced 0/5 and was called 0/5 — so the turn never reached the tool and the measurement was vacuous. Checked against the DEPLOYED matcher rather than guessed:\n\n    'Run the golden-rules validation on my plan for this book'  -> answerable: {book_steering_list}      plan_validate NO\n    'Run the golden rules validation on my plan for this book'  -> answerable: {plan_validate, ...}      plan_validate YES\n\n`_answer_norm` strips articles but does NOT normalise hyphens, so the ordinary compound an author would write loses the tool. That is a platform defect in its own right (filed separately); here it is named so nobody reads this prompt change as a bar being softened. The BAR is unchanged — the linter must not advance the run — and a prompt that cannot reach the tool cannot test it.",
    "needs_target": false,
    "approve": "as-is",
    "editor_context": false,
@@ -26,28 +26,29 @@
     {
      "wait": {
       "db": "loreweave_composition",
-      "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='proposed'",
+      "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
       "expect": "1",
-      "timeout": 120,
-      "why": "🔴 THE SEED'S ASYNC HALF, AND ITS ABSENCE COST 5 OF 5 RUNS. plan_propose_spec declares `async_job=True`: the call ENQUEUES and returns, and the plan_run row is written by the worker afterwards. Without this wait the seed assertion below ran against a store that had not caught up and read 0, so all five repeats failed in provisioning and the scenario measured nothing. The harness's own wait step exists for exactly this — the bar is unchanged, what was missing was the patience the tool's own declaration asks for."
+      "timeout": 180,
+      "poll": 3,
+      "why": "🔴 THE SEED'S ASYNC HALF, AND TWO THINGS WERE WRONG WITH MY FIRST VERSION. (1) plan_propose_spec declares `async_job=True` — the call ENQUEUES and the row is written by the worker afterwards — and with no wait at all the seed assertion read a store that had not caught up, losing 5 of 5 repeats in provisioning. (2) It then waited for `proposed`, on a ledger note saying \"mode='rules' lands the run at 'proposed'\". RE-DERIVED AGAINST THE STORE: it lands at `compiled`, carrying document, graph, link_report, package and spec — rules-mode runs the whole pipeline. The note was a lead, not a fact, and it was quoted from a batch that had itself corrected this same field once already."
      }
     }
    ],
    "seed_assert": [
     {
      "db": "loreweave_composition",
-     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='proposed'",
+     "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}' AND status='compiled'",
      "expect": "1",
-     "why": "🔴 THE BAR IS NOT VACUOUS ONLY IF THE RUN STARTS BELOW `validated`. mode='rules' lands a proposed run without spending LLM tokens (verified in batch 22, where a first draft asserting 'compiled' lost 5 of 5 runs). If this were already `validated`, the measured turn could not distinguish a linter that advances the run from one that does not."
+     "why": "The fixture's ACTUAL starting status, re-derived rather than assumed. Recorded so the falsifier below can compare against something the store really said."
     },
     {
      "db": "loreweave_composition",
      "query": "SELECT count(*)::text FROM plan_run p WHERE p.book_id='{book_id}' AND EXISTS (SELECT 1 FROM plan_artifact a WHERE a.run_id=p.id AND a.kind='spec')",
      "expect": "1",
-     "why": "The spec artifact is what `validate()` reads; without it the tool raises 'no spec to validate' and the turn never reaches the branch under test. Two arcs with two events each are seeded deliberately so the HARD rules — spec_has_arc and spec_has_events, the only two that gate — genuinely PASS. The old code stamped `validated` ONLY on a pass, so a plan that fails the linter would make this whole scenario prove nothing."
+     "why": "`validate()` reads the spec artifact; without it the tool raises 'no spec to validate' and the turn never reaches the branch under test. Two arcs with two events each are seeded so the HARD rules — spec_has_arc and spec_has_events, the only two that gate — genuinely PASS. The old code stamped a status ONLY on a pass, so a plan that fails the linter would prove nothing here."
     }
    ],
-   "falsifier": "REFUTED IF the plan_run reaches status='validated' during the turn — that is the defect, unchanged. PASSES IF the run is still 'proposed' afterwards AND the persisted validation_report says passed=true: the verdict was reached and recorded, and it did not authorise anything. 🔴 A RUN WHOSE REPORT SAYS passed=false MUST BE READ AS NEITHER — the old code only ever stamped on a pass, so a failing lint exercises a branch that was never the defect and counting it as a pass would be scoring the wrong thing.",
+   "falsifier": "REFUTED IF the plan_run's status CHANGES at all — specifically to `validated`, which is what the removed line wrote. PASSES IF the run is still `compiled` afterwards AND a validation_report artifact records passed=true: the verdict was reached and recorded, and it authorised nothing.\n\n🔴 STARTING FROM `compiled` MAKES THIS BAR SHARPER, NOT WEAKER, AND THAT IS AN ACCIDENT OF THE FIXTURE WORTH KEEPING. `update_run(status='validated')` was UNCONDITIONAL on the run's current status, so on the old code this call would have moved a COMPILED plan BACKWARDS to `validated` — a visible, wrong transition rather than a no-op. So 'still compiled' is a genuine discrimination between the two builds.\n\nA run whose report says passed=false must be read as NEITHER: the old code only ever stamped on a pass.",
    "answer_expect": {
     "why": "None. The measurement is the plan_run's status and the validation_report artifact in loreweave_composition, read after the turn — not the reply text."
    },
@@ -57,7 +58,9 @@
     "idempotency": "OWED — validating twice must not change the run either time.",
     "tenancy": "Throwaway fixture book per repeat, torn down by the harness."
    },
-   "defects": ["D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"]
+   "defects": [
+    "D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"
+   ]
   }
  ]
 }
