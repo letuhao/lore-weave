@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import argparse
 import functools
+
+import selection_rate
 import json
 import hashlib
 import pathlib
@@ -171,8 +173,28 @@ class Gate:
         # cannot stand is 0 — a tool never invoked has not been exercised, whatever the turn did.
         # A gated proposal (a confirm card) counts: the tool ran and its gate held.
         called = int(t.get("called_count") or 0)
+        # 🔴 "PROVEN" OVER A 1-IN-50 TOOL AND OVER A 50-IN-50 TOOL ARE NOT THE SAME SENTENCE.
+        # D-A-LOW-RATE-TOOL-CANNOT-BE-PROVEN-WITHOUT-SAMPLING-FOR-A-VERDICT: for a tool the model
+        # picks reliably this bar is a fair test; for one it picks 15% of the time a fresh K=5
+        # batch is close to a coin flip, and whichever way it lands the batch is concludable in
+        # one direction and not the other.
+        #
+        # Measured across every batch on disk 2026-08-27: 19 of 65 measured tools sit below a
+        # 0.5 selection rate — translation_job_control at 1 call in 50 — and EVERY ONE of the
+        # non-zero ones is already `proven`.
+        #
+        # The bar is NOT changed. What counts as reachable-at-a-rate is DQ-T51 and belongs to the
+        # owner; changing it here would redefine `proven` for every stochastic tool in the
+        # denominator by side effect. The rate is STATED so a reader knows which sentence they
+        # are being handed.
+        _rate = selection_rate.rate_for(t["tool"])
+        _rate_note = ""
+        if _rate and _rate["rate"] < selection_rate.LOTTERY_BELOW:
+            _rate_note = (f" [selection rate {_rate['rate']:.2f} across the corpus — "
+                          f"{_rate['calls']}/{_rate['runs']}; this verdict rests on a draw the "
+                          "model loses more often than it wins]")
         self._check(
-            called >= 1, f"[{t['tool']}] LIVE called ({called}/{len(runs)})",
+            called >= 1, f"[{t['tool']}] LIVE called ({called}/{len(runs)}){_rate_note}",
             "the tool under test was never invoked on any run — the model answered by another "
             "route, so nothing here is evidence about THIS tool")
 

@@ -4198,11 +4198,13 @@
    "defect_class": "model"
   },
   "D-A-LOW-RATE-TOOL-CANNOT-BE-PROVEN-WITHOUT-SAMPLING-FOR-A-VERDICT": {
-   "status": "OPEN - structural, surfaced 2026-08-23 while working P11-DISTRIBUTION. Needs an owner ruling, not a fix.",
+   "status": "OPEN and now BLOCKED on DQ-T51. It said 'Needs an owner ruling, not a fix' in its own words and carried no `blocked_by_dq`, so the generator had been offering it as actionable work.",
    "what": "The LIVE bar asks for K>=5 with at least one call and zero errored runs. For a tool the model picks reliably that is a fair test. For a tool it picks ~15% of the time it is a lottery: translation_job_control stands at 3 calls in 20 runs across four arms, so a fresh K=5 batch has roughly even odds of containing a call - and whichever way it lands, the batch is concludable in one direction and not the other.\n\nP11-DISTRIBUTION already names the trap ('a tool chosen 3 times in 15 is not proven by the 3'), which means the loop cannot prove such a tool without doing the thing it forbids. Re-running until a call appears is sampling for a verdict; concluding blocked on a zero sample over-reads it - I did exactly that earlier the same day and had to withdraw it.\n\nSo a low-rate tool sits outside both verdicts. The bar was written for reachability, and reachability at a RATE is a different measurement.",
    "recommendation_for_owner": "Either state a rate bar (e.g. a tool must be chosen in >= N of M runs to count as reachable, and below that it is a SELECTION defect rather than an unproven tool), or allow a direct probe to satisfy LIVE for tools whose selection rate is separately recorded. NOT MY CALL - it changes what 'proven' means for every stochastic tool in the denominator.",
    "state": "open",
-   "defect_class": "instrument"
+   "defect_class": "instrument",
+   "blocked_by_dq": "DQ-T51",
+   "the_measurable_half_is_done": "The ruling is the owner's; measuring the population is not. 65 tools have >= 5 recorded runs and 19 sit below a 0.5 selection rate, EVERY non-zero one of them already `proven` — translation_job_control on 1 call in 50. The rate is derived into contracts/tool-selection-rates.json and the gate now states it on the LIVE bar, so a verdict says which sentence it is handing the reader. The bar itself is untouched."
   },
   "D-A-STORED-FACT-IS-UNFINDABLE-BY-THE-SEARCH-THAT-EXISTS-TO-FIND-IT": {
    "status": "FIXED - proven live 2026-08-26, batch c-factsearch1, K=5, zero errored runs, and the original direct-probe reproduction now passes on the same build.",
@@ -5596,6 +5598,15 @@
    "my_recommendation": "SPLIT IT, and report the two halves as different measurements. The justification is a property of the scenario and not of its result: a falsifier that its own prompt cannot reach is unevaluable by construction, and would have been unevaluable had the tool passed selection every time. That is what makes this (a) rather than (b) — but I am not the one who gets to decide that, because I am also the one who benefits from the count.",
    "what_shipped_regardless_of_the_answer": "The MECHANICAL half needs no decision and is done: `gate.py` now labels the DATA falsifier bar UNEVALUATED when `called_count` is 0, so an unevaluated prediction can no longer read as a satisfied one. 241 of 671 tool entries on disk are in that condition. The bar still PASSES — `LIVE called` already fails those batches, and failing this one too would red every legitimate `blocked` conclusion.",
    "state": "open"
+  },
+  "DQ-T51": {
+   "question": "What does `proven` mean for a tool the model picks a minority of the time? Either state a RATE BAR — a tool must be chosen in >= N of M runs to count as reachable, and below that it is a SELECTION defect rather than an unproven tool — or allow a direct probe to satisfy LIVE for tools whose selection rate is separately recorded.",
+   "why_it_is_the_owners": "It changes what `proven` means for every stochastic tool in the denominator, including 19 already concluded. And the loop cannot resolve it by measuring more: re-running until a call appears is SAMPLING FOR A VERDICT, and concluding `blocked` on a zero sample over-reads it — both were done once and withdrawn.",
+   "the_population_measured_2026_08_27": "Across every raw record on disk, counting only non-errored runs of scenarios that declare an expect_tool — 65 tools with >= 5 runs, 19 below a 0.5 selection rate:\n\n    0.00  composition_generate                0/34    0.25  propose_edit          5/20\n    0.00  glossary_book_sync_apply            0/20    0.27  derivative_edit       4/15\n    0.02  translation_job_control             1/50    0.27  motif_adopt           4/15\n    0.07  kg_ontology_propose                 1/15    0.30  provider_inventory    9/30\n    0.18  jobs_pause                          8/44    0.33  glossary_propose_batch 5/15\n    0.20  catalog_get_book                    5/25    0.36  plan_bootstrap_apply 16/45\n    0.20  glossary_create_evidence            9/45    0.37  kg_triage_schema_write 13/35\n    0.20  jobs_cancel                         7/35    0.40  create_chapter_link   4/10\n    0.25  composition_build_cast_and_graph  30/120    …\n\n🔴 EVERY ONE OF THE NON-ZERO ENTRIES IS ALREADY `proven`. translation_job_control is proven on 1 call in 50 runs.",
+   "what_this_does_NOT_say": "It does NOT say those conclusions are wrong. Each tool worked on the runs where it was called, and that is what the batch measured. It says `proven` carries a different weight for them, and until today nothing in the ledger recorded which.",
+   "my_recommendation": "STATE A RATE BAR rather than allow a direct probe. A probe answers 'does the tool work when called', which the batch already answers on the runs where it was called; the question a low rate raises is 'can a user reach it', and a probe cannot answer that because it bypasses selection entirely. A rate bar also names the right defect — a tool at 0.02 has a SELECTION problem, and calling it unproven points the next cycle at the wrong half.\n\nI am not deciding it: the threshold is a product judgement about how often a user may have to rephrase, and I am also the party whose count improves either way.",
+   "what_shipped_regardless_of_the_answer": "The rate is now DERIVED and STATED. `scripts/toolloop/selection_rate.py` writes contracts/tool-selection-rates.json, and `gate.py`'s LIVE bar appends the corpus rate when it is below 0.5: `LIVE called (2/5) [selection rate 0.20 across the corpus — 7/35; this verdict rests on a draw the model loses more often than it wins]`. The BAR IS UNCHANGED — changing it here would redefine `proven` by side effect, which is the decision itself.",
+   "state": "open"
   }
  },
  "carried_observations": [
@@ -6000,7 +6011,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 48,
-  "deferred_questions": 26,
+  "deferred_questions": 27,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 131,
