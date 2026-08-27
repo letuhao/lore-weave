@@ -248,8 +248,49 @@ _ANSWER_STOPWORDS = re.compile(
 ANSWERABLE_MAX = 8
 
 
+#: A HYPHEN IS PUNCTUATION BETWEEN WORDS, NOT A LETTER — and treating it as a letter cost a
+#: whole live batch. `plan_validate` declares the synonym "golden rules"; a scenario prompt
+#: written *"Run the GOLDEN-RULES validation on my plan"* — the compound form a careful writer
+#: actually uses — left it NOT answerable, while the spaced form made it answerable. Measured
+#: against the deployed matcher, one character apart:
+#:
+#:     'the golden-rules validation…'  ->  answerable {book_steering_list}      plan_validate NO
+#:     'the golden rules validation…'  ->  answerable {plan_validate, …}        plan_validate YES
+#:
+#: The batch ran K=5 with ZERO errors and 0/5 called: a clean-looking run that measured nothing,
+#: because the tool was never on the wire.
+#:
+#: 🔴 WIDENING THIS NORMALISER IS THE THING THAT MANUFACTURED THE TIES, so the widening was
+#: measured before it was written rather than after. Stripping ARTICLES collapsed
+#: "write chapter" / "write A chapter" / "write THE chapter" into one string and destroyed the
+#: distinction their authors had drawn between create and edit. Collapsing hyphens does not do
+#: that — over the 1,194 synonyms declared by the 199 LIVE tools (legacy excluded per the
+#: catalogue-census rule; the whole-catalogue figure would be a different and wrong number):
+#:
+#:     colliding normalised synonyms today        13
+#:     colliding after hyphen -> space            13      NEW COLLISIONS: 0
+#:
+#: What it buys: 10 synonyms are declared WITH a hyphen and were unreachable from the spaced
+#: form — `co-write`, `re-translate changed`, `un-index chapter`, `reverse-engineer arc` — and
+#: 1,095 multi-word synonyms were unreachable from a hyphenated request.
+#:
+#: 🔴 UNDERSCORES ARE DELIBERATELY NOT INCLUDED, AND THE CONTROL IS WHY. The obvious version of
+#: this fix collapses both. `_exact_name_pattern` guards a tool NAME with `(?<![a-z0-9_])`
+#: precisely because a name is an IDENTIFIER — its own docstring records `book_list` matching
+#: inside `book_list_chapters` before it shipped. Turning `_` into a space makes that boundary
+#: a space, and the bug returns. Measured over the live names: hyphen-only leaves 0 names
+#: matching inside another name; hyphen AND underscore produces 3, among them `book_list` inside
+#: `composition_motif_book_list` and `world_map_update` inside `world_map_update_marker` — a
+#: tool this ledger already records reporting a write it never made. So the broader fix would
+#: have dragged a destructive sibling onto the wire to solve a punctuation problem.
+_ANSWER_HYPHEN = re.compile(r"[‐-―\-]+")
+
+
 def _answer_norm(text: str) -> str:
-    return re.sub(r"\s+", " ", _ANSWER_STOPWORDS.sub(" ", text.lower())).strip()
+    return re.sub(
+        r"\s+", " ",
+        _ANSWER_STOPWORDS.sub(" ", _ANSWER_HYPHEN.sub(" ", text.lower())),
+    ).strip()
 
 
 #: A synonym written entirely in latin script. `\b` is only meaningful for these.
