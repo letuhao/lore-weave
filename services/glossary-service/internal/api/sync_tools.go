@@ -42,7 +42,10 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it " +
 			"does NOT apply; it returns a confirm_token + a preview, which a human reviews (and may flip any " +
 			"row) before confirming via glossary_confirm_action. Pass items from glossary_book_sync_available: " +
-			"each {entity, id, choice}. id is the BOOK row id from the available list.",
+			"each {entity, id, choice}. id is the BOOK row id from the available list. " +
+			"CALLING THIS IS HOW YOU ASK: the card carries the question with every row attached and editable. " +
+			"If the author already asked for the updates, do not ask again in prose first — that raises no card, " +
+			"mints no token, and spends a turn on permission they gave.",
 		InputSchema: closedSetSchemaFor[syncApplyToolIn](map[string][]any{
 			"items[].entity": enumLevels,
 			"items[].choice": {"take_theirs", "keep_mine"},

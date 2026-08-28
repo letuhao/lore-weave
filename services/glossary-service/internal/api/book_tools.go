@@ -45,7 +45,10 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"copying the picked genres/kinds (+ their attributes & links) down into the book tier. " +
 			"High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, " +
 			"which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are " +
-			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
+			"always included. Args are genre/kind CODES (see glossary_list_system_standards). " +
+			"CALLING THIS IS HOW YOU ASK: the card carries the question with the preview attached. " +
+			"If the author already asked for the setup, do not ask again in prose first — that raises no card, " +
+			"mints no token, and spends a turn on permission they gave.",
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
 		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
