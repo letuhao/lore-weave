@@ -17,9 +17,21 @@ The whole sweep was reverted to HEAD and replaced by this narrow, verified chang
 transform over exception handling cannot see scope, and this file's handlers come in several
 shapes.
 
-WHAT IS FIXED HERE: the two sites in composition.authoring_run_gate that are genuinely nameable —
-the caller's own token payload, and an upstream BookClientError. What is NOT fixed is the other
-~50 bare sites across this file; that is recorded on the ledger row, not silently widened.
+WHAT IS FIXED HERE: one site in composition.authoring_run_gate is genuinely nameable — an
+upstream BookClientError. What is NOT fixed is the other ~50 bare sites across this file; that is
+recorded on the ledger row, not silently widened.
+
+🔴 THE PAYLOAD SITE WAS "FIXED" ONCE AND THEN CORRECTED, 2026-08-28. It was first named on the
+reasoning "the caller minted the token and supplied the field, so naming it discloses nothing it
+did not already have." That reasoning does not survive reading BOTH live mint sites —
+composition_authoring_run_gate (legacy) and composition_authoring_run_manage's op=gate, its only
+successor, which delegates to the identical function — both validate run_id with `_uuid()` before
+minting. The branch is PROVABLY UNREACHABLE by any legitimate caller; a malformed value can only
+mean a forged or corrupted token, which `_verify`'s own ConfirmTokenInvalid -> bare 400 mapping
+already exists for. Detail helps a legitimate caller act; here there is none, and detail on a
+forged token helps only the forger. It now re-raises ConfirmTokenInvalid and joins the bare set,
+via a nested try so the AST gate — which only inspects handlers that call HTTPException directly
+— correctly stops treating this site as nameable, without weakening the gate for the other sites.
 """
 from __future__ import annotations
 
@@ -28,14 +40,40 @@ import pathlib
 from app.routers import actions
 
 SRC = pathlib.Path(actions.__file__).read_text(encoding="utf-8")
-GATE = SRC[SRC.index("async def _execute_authoring_run_gate"):][:3000]
+GATE = SRC[SRC.index("async def _execute_authoring_run_gate"):][:4500]
 
 
-def test_the_payload_parse_names_what_is_malformed():
-    """The caller minted the token and supplied the field. Naming it discloses nothing it did not
-    already have."""
-    seg = GATE[GATE.index("except (KeyError, ValueError, TypeError) as exc:"):][:700]
-    assert '"detail": str(exc)' in seg
+def test_the_payload_parse_is_PROVABLY_UNREACHABLE_and_stays_bare():
+    """Confirmed by reading every mint site, not asserted: both composition_authoring_run_gate
+    and composition_authoring_run_manage's op=gate (its only live successor) validate run_id with
+    `_uuid()` before minting, so a malformed value can only come from a forged/corrupted token —
+    which is `_verify`'s ConfirmTokenInvalid, already bare, reused here rather than named."""
+    seg = GATE[GATE.index("except (KeyError, ValueError, TypeError) as exc:"):][:1300]
+    assert "raise ConfirmTokenInvalid" in seg
+    assert '"detail": str(exc)' not in seg
+    # And the OUTER conversion, mirroring `_verify`'s own established mapping exactly.
+    outer = GATE[GATE.index("except ConfirmTokenInvalid as exc:"):][:250]
+    assert '{"code": "action_error"}' in outer
+    assert '"detail": str(exc)' not in outer
+
+
+def test_both_live_mint_sites_validate_run_id_before_minting():
+    """The claim the correction rests on, pinned against the SOURCE rather than trusted from a
+    docstring — if a future change lets either mint site skip validation, this goes red before
+    the payload branch's bare answer becomes a real information gap."""
+    mcp_src = pathlib.Path(actions.__file__).parent.parent.joinpath(
+        "mcp", "server.py").read_text(encoding="utf-8")
+    gate_fn = mcp_src[mcp_src.index("async def composition_authoring_run_gate"):][:900]
+    assert 'run_id = _uuid(args.run_id, "run_id")' in gate_fn, (
+        "composition_authoring_run_gate no longer validates run_id before minting — the payload "
+        "branch this test's sibling covers may be reachable again"
+    )
+    # op=gate delegates to the SAME function (no separate mint path to check).
+    manage_fn = mcp_src[mcp_src.index('if args.op == "gate":'):][:250]
+    assert "composition_authoring_run_gate(" in manage_fn, (
+        "op=gate no longer delegates to composition_authoring_run_gate — verify its own mint "
+        "site validates run_id before trusting the payload branch stays unreachable"
+    )
 
 
 def test_the_upstream_failure_is_distinguishable_from_a_rejected_request():

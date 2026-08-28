@@ -1074,14 +1074,24 @@ async def _execute_authoring_run_gate(
     from app.deps import get_authoring_run_service
 
     try:
-        run_id = UUID(str(payload["run_id"]))
-    except (KeyError, ValueError, TypeError) as exc:
-        # D-CONFIRM-REFUSAL-IS-AN-OPAQUE-ACTION-ERROR. This is the caller's OWN token payload —
-        # it minted the token and supplied the field — so naming what is malformed discloses
-        # nothing it did not already have. Contrast the LookupError below, which stays uniform.
-        raise HTTPException(
-            status_code=400, detail={"code": "action_error", "detail": str(exc)},
-        ) from exc
+        try:
+            run_id = UUID(str(payload["run_id"]))
+        except (KeyError, ValueError, TypeError) as exc:
+            # D-CONFIRM-REFUSAL-IS-AN-OPAQUE-ACTION-ERROR, CORRECTED 2026-08-28. Named here once,
+            # on the reasoning that the caller minted the token and supplied the field. That
+            # reasoning does not survive reading BOTH live mint sites:
+            # composition_authoring_run_gate (legacy) and composition_authoring_run_manage's
+            # op=gate, its only successor — which delegates to the SAME function — both validate
+            # run_id with `_uuid()` before minting, so payload["run_id"] is always a well-formed
+            # UUID when a genuine token decodes here. This branch is PROVABLY UNREACHABLE by any
+            # legitimate caller; a malformed value can only mean a forged or corrupted token
+            # payload, which is `_verify`'s own ConfirmTokenInvalid -> bare 400 mapping, reused
+            # here rather than inventing a second, differently-worded answer to the same
+            # underlying problem. Detail helps a legitimate caller act; here there is none, and
+            # detail on a forged token helps only the forger calibrate it.
+            raise ConfirmTokenInvalid(str(exc)) from exc
+    except ConfirmTokenInvalid as exc:
+        raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     svc = await get_authoring_run_service()
     await _authoring_run_in_book(svc, run_id, book_id, envelope_user)
     bearer = mint_service_bearer(envelope_user, settings.jwt_secret)
