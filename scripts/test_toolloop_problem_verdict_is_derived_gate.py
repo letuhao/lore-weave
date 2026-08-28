@@ -69,14 +69,27 @@ class TestTheDqBacklogIsDerived:
         Not a snapshot of 17 — that would rot the same way. The assertion is the RELATION: the
         derived set strictly contains the hand-typed one, so the stale list can never again be
         the thing that gets read.
+
+        🔴 AND THE RELATION ROTTED ANYWAY, 2026-08-28. `hand < derived` assumed the backlog only
+        ever GROWS. It does not: the owner answered DQ-T31 and DQ-T32, they left the derived open
+        set, and a strict-subset check went red because questions got DECIDED. A guard that fails
+        when the work succeeds is measuring the wrong thing.
+
+        What the original defect was actually about is unchanged and is what is asserted now:
+        nothing in the frozen list may be a question the LEDGER has never heard of. A hand-typed
+        name that the ledger cannot account for is the stale-list failure; a hand-typed name the
+        ledger has since ANSWERED is the list doing its job and then being overtaken.
         """
         led = _ledger()
         probs = json.loads(PROBLEMS.read_text(encoding="utf-8"))
         hand = set(probs["deferred_questions_backlog"]["registered_open"])
         derived = {k for k, _ in pr.open_dqs(led)}
-        assert hand < derived, (
-            f"the hand-typed list is not a strict subset of the derived one: "
-            f"only-in-hand={sorted(hand - derived)}")
+        unknown = hand - derived - set(led["deferred_questions"])
+        assert not unknown, (
+            f"the frozen list names questions the ledger has never heard of: {sorted(unknown)}")
+        assert derived - hand, (
+            "the derived set adds nothing over the hand-typed list, so the stale list is still "
+            "as good as the generator — which was the original defect")
         assert probs["deferred_questions_backlog"].get("_SUPERSEDED_2026_08_25"), (
             "the hand-typed list must be marked superseded, or someone will edit it and "
             "believe it did something")

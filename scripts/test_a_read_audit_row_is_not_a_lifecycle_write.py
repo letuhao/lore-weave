@@ -123,11 +123,23 @@ def test_the_corpus_no_longer_produces_a_FALSE_flag():
     assert flagged == 0, dict(tables)
 
 
-def test_the_row_records_the_mechanical_half_and_keeps_its_DQ():
+def test_the_row_records_the_mechanical_half_whatever_its_state():
+    """🔴 RE-ANCHORED 2026-08-28. This pinned `state == "open"` and `blocked_by_dq == "DQ-T45"`.
+    DQ-T45 has since been answered and the row closed on a live run, so the pin went red for the
+    work being FINISHED — the one outcome a guard should never punish.
+
+    What actually matters here survives the row's state and is asserted instead: the mechanical
+    half — the separation of a read AUDIT row from a lifecycle write — must stay written down.
+    Lose that and the next reader re-derives it from a store diff, which is how the entity
+    access log got counted as a write in the first place."""
     r = LEDGER["defects"]["D-A-TIER-R-TOOL-WRITES-TO-THE-STORE"]
-    assert r["state"] == "open" and r.get("blocked_by_dq") == "DQ-T45"
-    assert "the_mechanical_half_2026_08_27" in r
-    assert LEDGER["deferred_questions"]["DQ-T45"]["state"] == "open"
+    assert "the_mechanical_half_2026_08_27" in r, (
+        "the mechanical half is no longer recorded on the row that owns it")
+    # The row may be open or fixed, but it must not claim a block on a settled question.
+    named = str(r.get("blocked_by_dq") or "")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")
 
 
 # ── the explanation, which was false before it was right ─────────────────────────────────

@@ -779,7 +779,8 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     # and on the next run the model found one through `book_list` and proposed writes into it. A
     # leaked fixture is not litter — it is an extra, plausible, wrongly-scoped write target
     # sitting on the account, and it makes the NEXT batch's evidence unattributable.
-    from provision import sweep_orphan_translation_jobs, sweep_orphans
+    from provision import (sweep_orphan_translation_jobs, sweep_orphans,
+                           sweep_phantom_job_projections)
     swept = await asyncio.to_thread(sweep_orphans)
     if swept:
         print(f"swept {len(swept)} leaked fixture(s) from a previous run before starting")
@@ -797,6 +798,19 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     swept_jobs = await asyncio.to_thread(sweep_orphan_translation_jobs)
     if swept_jobs:
         print(f"swept {swept_jobs} orphaned translation job(s) whose book no longer exists")
+    # 🔴 AND THE PROJECTION ROWS THE SWEEP ABOVE ORPHANS, which is a worse leak than the one it
+    # repairs. Deleting a translation_jobs row leaves loreweave_jobs.job_projection untouched — a
+    # different database, no FK — and job_projection is the table jobs_list actually READS.
+    # Measured 2026-08-28: 92 controllable translation rows in the projection, 0 of them with a
+    # job row still present, all 92 on the harness account. Every one was advertised with
+    # control_caps ["cancel"] against a job that cannot be found.
+    #
+    # Called HERE and not only from inside the book sweep, because that function returns early
+    # when no orphaned BOOKS remain — which is exactly today's state, so the 92 phantoms it had
+    # already created were unreachable by their own cleanup.
+    swept_phantoms = await asyncio.to_thread(sweep_phantom_job_projections)
+    if swept_phantoms:
+        print(f"swept {swept_phantoms} phantom job_projection row(s) whose job row is gone")
 
     async with httpx.AsyncClient(timeout=TURN_TIMEOUT) as client:
         await auth.login(client)

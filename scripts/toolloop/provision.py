@@ -859,6 +859,62 @@ def sweep_orphan_translation_jobs() -> int:
     n = oracle.db_query("loreweave_translation",
                         f"WITH d AS (DELETE FROM translation_jobs WHERE book_id IN ({oq}) "
                         f"RETURNING 1) SELECT count(*)::text FROM d")
+    sweep_phantom_job_projections()
+    try:
+        return int(n[0][0])
+    except (IndexError, TypeError, ValueError):
+        return 0
+
+
+def sweep_phantom_job_projections() -> int:
+    """Projection rows whose JOB ROW is gone — debris the sweep above makes, on the surface that
+    advertises control_caps.
+
+    🔴 MEASURED 2026-08-28, AND THIS SWEEP IS WHAT CAUSED IT. `sweep_orphan_translation_jobs`
+    deletes from `loreweave_translation.translation_jobs` and never touched
+    `loreweave_jobs.job_projection`, which is a SEPARATE DATABASE with no FK to it. So every run
+    turned an orphaned-book job into a PHANTOM: a projection row for a job that no longer exists
+    anywhere.
+
+        translation_jobs                                     6 rows, 0 controllable
+        job_projection, service=translation, controllable    92 rows
+        ...of those 92, job_id present in translation_jobs    0
+
+    That is strictly worse than the debris it replaced. `job_projection` is the table `jobs_list`
+    reads, so all 92 were advertised with control_caps ["cancel"] against a job row that cannot be
+    found, and every cancel would fail. The row this sweep was written for —
+    D-JOBS-LIST-ADVERTISES-CANCEL-ON-JOBS-THAT-CANNOT-BE-CANCELLED — is about exactly that, so the
+    harness half of the fix was manufacturing fresh instances of the product half.
+
+    CONSERVATIVE BY CONSTRUCTION, and deliberately narrower than the leak it repairs:
+      * the HARNESS ACCOUNT only (`owner_user_id = OWNER_ID`) — a real user's rows are never read
+        or written, which matters because a projection row is legitimately allowed to outlive
+        nothing here except this harness's own deletes;
+      * `service='translation'` only — the one producer this harness SQL-seeds and deletes;
+      * and only where the job_id is genuinely ABSENT from `translation_jobs`, resolved by
+        fetching the live ids and deleting by explicit id list rather than by a predicate, because
+        the two tables live in different databases and no single statement can join them.
+
+    A projection row is written AFTER its job row (producer -> outbox -> relay), so a row whose
+    job_id is missing was deleted, never merely not-yet-created. There is no window this races.
+    """
+    proj = oracle.db_query(
+        "loreweave_jobs",
+        "SELECT job_id::text FROM job_projection "
+        f"WHERE service='translation' AND owner_user_id='{OWNER_ID}'")
+    proj_ids = [r[0] for r in (proj or []) if r and r[0]]
+    if not proj_ids:
+        return 0
+    live = oracle.db_query("loreweave_translation", "SELECT job_id::text FROM translation_jobs")
+    alive = {r[0] for r in (live or []) if r and r[0]}
+    phantom = [j for j in proj_ids if j not in alive]
+    if not phantom:
+        return 0
+    pq = ",".join("'" + j.replace("'", "''") + "'" for j in phantom)
+    n = oracle.db_query(
+        "loreweave_jobs",
+        f"WITH d AS (DELETE FROM job_projection WHERE job_id IN ({pq}) "
+        f"AND owner_user_id='{OWNER_ID}' RETURNING 1) SELECT count(*)::text FROM d")
     try:
         return int(n[0][0])
     except (IndexError, TypeError, ValueError):

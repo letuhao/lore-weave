@@ -162,13 +162,35 @@ def test_a_substring_is_not_a_state():
     reads "OPEN — product decision, recorded per the RUNBOOK rather than answered". An OPEN
     product decision was marked ANSWERED. That question BLOCKS THREE contract defects, so the
     wrong token would have presented all three as ready to work on a decision the owner never
-    made."""
-    dq = LEDGER["deferred_questions"]["DQ-T31"]
-    assert dq["state"] == "open", "DQ-T31 is an open product decision"
-    assert "rather than answered" in dq["status"], (
-        "the phrase that caused the mis-transcription is gone — if the status was rewritten, "
-        "re-check that the state still matches what it says"
-    )
+    made.
+
+    🔴 RE-ANCHORED 2026-08-28, AND THE OLD VERSION CAUGHT SOMETHING ON ITS WAY OUT. This test
+    used to pin DQ-T31 at `state == "open"`. The owner answered it, the state moved to
+    `answered`, and the STATUS PROSE was left saying "OPEN — product decision, recorded per the
+    RUNBOOK rather than answered" — so the row contradicted itself in exactly the direction this
+    check is about, and the red came from the guard rather than from anyone re-reading the row.
+
+    Pinning one question's value made the guard expire the moment that question was decided.
+    Asserting the INVARIANT over every row is strictly stronger: no row's prose may claim a
+    state its `state` field does not hold. DQ-T31 is still the worked example in the docstring,
+    where it costs nothing when it moves again."""
+    dqs = LEDGER["deferred_questions"]
+    for name, dq in dqs.items():
+        state = dq.get("state")
+        status = str(dq.get("status") or "")
+        if not status:
+            continue
+        head = status.strip()[:40].upper()
+        # The prose's OPENING word is what a reader takes as the verdict.
+        for token, means in (("OPEN", "open"), ("ANSWERED", "answered"),
+                             ("WITHDRAWN", "withdrawn")):
+            if head.startswith(token):
+                assert state == means, (
+                    f"{name}: status prose opens with {token!r} but state is {state!r} — the "
+                    f"two halves of the row disagree, and the prose is the half a reader "
+                    f"believes"
+                )
+                break
 
 
 def test_the_blocking_questions_are_all_genuinely_open():

@@ -75,21 +75,46 @@ def test_the_corpus_holds_BOTH_kinds_and_they_are_separable():
     assert forced, "no FORCED capture found — the discrimination has nothing to separate"
     assert organic, "no ORGANIC capture found — likewise"
     assert all("deadturn" in n for n, _ in forced), forced
-    assert {s for _, s in organic} == {"translation-update-settings"}, sorted({s for _, s in organic})
+    # 🔴 THE SCENARIO SET IS NOT PINNED, 2026-08-28. This asserted the organic captures were
+    # exactly {"translation-update-settings"}. A new organic capture arrived from a later batch
+    # (c-armrefusal1) and the pin went red for the corpus GROWING, which is the one thing a
+    # corpus is supposed to do. What the row actually needed — that the ten organic captures of
+    # 2026-08-27 were one scenario, not three — is a statement about that measurement and is
+    # recorded in this module's docstring, where new data cannot falsify it by accident.
+    assert len(organic) >= 2, organic
 
 
-def test_the_two_kinds_are_INDISTINGUISHABLE_without_the_gap():
-    """Why the field had to be added rather than left to a reader's judgement: every other
-    signal in the capture is identical across both kinds."""
+def test_the_other_signals_do_NOT_reliably_separate_the_two_kinds():
+    """Why the gap field had to be added rather than left to a reader's judgement.
+
+    🔴 RE-DERIVED 2026-08-28, AND THE ORIGINAL PREMISE IS NOW FALSE. This asserted that EVERY
+    capture shares one signature, so no other signal could tell forced from organic. A new
+    capture broke it:
+
+        13 captures (to 2026-08-27)   user_rows=2  no_assistant_row=True   orphaned=True
+         1 capture  (c-armrefusal1)   user_rows=2  no_assistant_row=FALSE  orphaned=FALSE
+
+    That difference is not drift — it is the TURN CEILING working. `_bounded_turn_stream` shipped
+    the same day for DQ-T56, and it persists a visible assistant row when a turn runs past its
+    ceiling instead of leaving the turn orphaned. The one post-ceiling organic capture therefore
+    HAS an assistant row, and the pre-ceiling thirteen do not.
+
+    So the honest claim is weaker than the original and does not rot: the other signals do not
+    RELIABLY separate the kinds, because a forced and an organic capture still share a signature
+    exactly. It is deliberately not the stronger 'no_assistant_row now discriminates' — that
+    would rest on a single post-ceiling capture, and one sample cannot establish a rule."""
     caps = _captures()
-    sigs = set()
+    sigs = {}
     for _, _, dt in caps:
         lines = " ".join(str(x) for x in (dt.get("log_lines") or []))
-        sigs.add((dt.get("user_rows"), dt.get("no_assistant_row"),
-                  "agent-surface advertised" in lines, "orphaned turn" in lines))
-    assert len(sigs) == 1, (
-        f"the signatures now differ ({sigs}) — a reader could tell forced from organic without "
-        f"the gap, and this guard's premise should be re-derived"
+        sig = (dt.get("user_rows"), dt.get("no_assistant_row"),
+               "agent-surface advertised" in lines, "orphaned turn" in lines)
+        sigs.setdefault(sig, set()).add(bool(_verdict(dt).get("organic_timeout")))
+    ambiguous = [s for s, kinds in sigs.items() if len(kinds) > 1]
+    assert ambiguous, (
+        f"every signature now maps to exactly one kind ({sigs}) — a reader COULD tell forced "
+        f"from organic without the gap, and this guard's premise should be re-derived rather "
+        f"than kept"
     )
 
 
