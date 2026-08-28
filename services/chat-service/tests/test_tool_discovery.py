@@ -1575,13 +1575,22 @@ def _patch_embedding_model(ref: tuple[str, str] | None = ("user_model", "embed-m
     """HIGH-2 fix: `search_catalog_semantic` no longer takes the turn's chat
     `model_source`/`model_ref` — it resolves the user's configured
     embedding-capable model via `provider_client.get_provider_client()
-    .get_default_model("embedding", user_id)` first. Tests must patch THAT
+    .resolve_embedding_model(user_id)` first. Tests must patch THAT
     resolution (never the real provider-registry) — pass `ref=None` to
-    simulate "user has no embedding model configured" (the fast pre-network
-    skip path); the default `ref` simulates a configured model so the
-    pre-existing embedding-blend tests keep exercising the embed call."""
+    simulate "user has no embedding-capable model at all" (the fast
+    pre-network skip path); the default `ref` simulates a resolved model so
+    the pre-existing embedding-blend tests keep exercising the embed call.
+
+    D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE renamed the
+    resolution call from the strict `get_default_model("embedding", ...)`
+    (404s unless the user EXPLICITLY set a default — measured 2026-08-28:
+    zero accounts on the deployment ever had) to `resolve_embedding_model`,
+    which falls back to the user's best ACTIVE embedding-capable model
+    server-side. Mocking the OLD name here left it unpatched and the real
+    (unmocked) method ran, returning something the caller could not unpack —
+    fixed by mocking the name that is actually called now."""
     mock_provider = AsyncMock()
-    mock_provider.get_default_model = AsyncMock(return_value=ref)
+    mock_provider.resolve_embedding_model = AsyncMock(return_value=ref)
     return patch("app.client.provider_client.get_provider_client", return_value=mock_provider)
 
 

@@ -195,3 +195,86 @@ func TestDefaultModels_RejectsForeignModel(t *testing.T) {
 		t.Fatalf("foreign model: expected 400, got %d (%s)", rr.Code, rr.Body.String())
 	}
 }
+
+// D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE. The strict internalGetDefaultModel
+// 404s unless the user EXPLICITLY set an 'embedding' default — measured 2026-08-28: zero
+// accounts on the live deployment ever had, while 7 active embedding-capable models existed
+// across the platform. chat-service's intent-skill router (the sole path that injects a domain
+// skill when no explicit pin exists) needs this model to vectorize the turn's intent, so it
+// silently never fired for anyone. internalResolveEmbeddingModel mirrors
+// internalResolvePlannerModel's fallback shape: explicit default first, else the best ACTIVE
+// model carrying the embedding capability flag.
+
+func TestEmbeddingModel_FallsBackToActiveEmbeddingCapableModel(t *testing.T) {
+	srv, pool := integrationServer(t)
+	owner := uuid.New()
+	embed := seedModelWithCapability(t, pool, owner, "embed-fallback", `{"embedding": true}`)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_default_models WHERE owner_user_id=$1`, owner)
+	})
+
+	// No explicit 'embedding' default is set — the strict per-capability lookup alone 404s.
+	if rr := internalDefault(t, srv, owner, "embedding"); rr.Code != http.StatusNotFound {
+		t.Fatalf("strict default-models lookup: expected 404 (nothing set), got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	// The fallback-aware resolver finds the active embedding-capable model anyway.
+	req := httptest.NewRequest(http.MethodGet, "/internal/embedding-model?user_id="+owner.String(), nil)
+	rr := httptest.NewRecorder()
+	srv.internalResolveEmbeddingModel(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("embedding-model resolve: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	var resolved struct {
+		UserModelID string `json:"user_model_id"`
+		Source      string `json:"source"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resolved)
+	if resolved.UserModelID != embed.String() || resolved.Source != "embedding_fallback" {
+		t.Fatalf("embedding resolve mismatch: %+v (want %s / embedding_fallback)", resolved, embed)
+	}
+}
+
+func TestEmbeddingModel_PrefersExplicitDefaultOverFallback(t *testing.T) {
+	srv, pool := integrationServer(t)
+	owner := uuid.New()
+	pinned := seedModelWithCapability(t, pool, owner, "embed-pinned", `{"embedding": true}`)
+	other := seedModelWithCapability(t, pool, owner, "embed-other", `{"embedding": true}`)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_default_models WHERE owner_user_id=$1`, owner)
+	})
+	_ = other // a second embedding-capable model exists so "pick the pinned one, not just any" is a real check
+
+	if rr := putDefault(t, srv, owner, "embedding", `{"user_model_id":"`+pinned.String()+`"}`); rr.Code != http.StatusOK {
+		t.Fatalf("set embedding default: expected 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/embedding-model?user_id="+owner.String(), nil)
+	rr := httptest.NewRecorder()
+	srv.internalResolveEmbeddingModel(rr, req)
+	var resolved struct {
+		UserModelID string `json:"user_model_id"`
+		Source      string `json:"source"`
+	}
+	_ = json.Unmarshal(rr.Body.Bytes(), &resolved)
+	if resolved.UserModelID != pinned.String() || resolved.Source != "embedding_default" {
+		t.Fatalf("expected the PINNED default, not the fallback: %+v (want %s / embedding_default)", resolved, pinned)
+	}
+}
+
+func TestEmbeddingModel_NoneWhenTheUserHasNoEmbeddingCapableModelAtAll(t *testing.T) {
+	srv, pool := integrationServer(t)
+	owner := uuid.New()
+	// Only a CHAT model — no embedding capability anywhere on this account.
+	_ = seedModelWithCapability(t, pool, owner, "chat-only", `{"chat": true}`)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM user_default_models WHERE owner_user_id=$1`, owner)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/embedding-model?user_id="+owner.String(), nil)
+	rr := httptest.NewRecorder()
+	srv.internalResolveEmbeddingModel(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 (no embedding-capable model), got %d (%s)", rr.Code, rr.Body.String())
+	}
+}

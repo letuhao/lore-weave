@@ -501,6 +501,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/web-search", s.internalWebSearch)                       // S5 — BYOK web search (deep-research)
 		r.Get("/default-models/{capability}", s.internalGetDefaultModel) // per-user default model fallback
 		r.Get("/planner-model", s.internalResolvePlannerModel)           // MED-6 — planner model w/ chat fallback
+		r.Get("/embedding-model", s.internalResolveEmbeddingModel)       // D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE — embedding model w/ capability-flag fallback
 
 		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
 		r.Post("/billing/estimate", s.internalBillingEstimate)

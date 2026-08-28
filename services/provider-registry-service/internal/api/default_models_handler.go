@@ -257,3 +257,64 @@ LIMIT 1`, userID).Scan(&modelID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_model_id": modelID.String(), "model_source": "user_model", "source": "chat_fallback"})
 }
+
+// internalResolveEmbeddingModel — GET /internal/embedding-model?user_id= (X-Internal-Token).
+//
+// D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE. chat-service's intent-skill router
+// (skill_router.route_additional_skills) is the ONLY path that injects a domain skill when
+// `lazy_skill_bodies` is on (the default) and the turn has no explicit pin — and it needs an
+// embedding model to vectorize the turn's intent. It called the STRICT `internalGetDefaultModel`
+// for capability="embedding", which 404s whenever the user has not explicitly set one.
+//
+// MEASURED 2026-08-28: not one account on this deployment has EVER set an explicit 'embedding'
+// default (0 of every user_default_models row, across every capability that table holds), while
+// 7 active user_models across the platform DO carry {"embedding": true} — including two on the
+// account this row's own live batches ran against. So the router has never fired for anyone, on
+// any turn, not because no embedding-capable model exists, but because nothing ever picked one.
+//
+// Same fallback SHAPE as internalResolvePlannerModel just above, for the same reason (MED-6): an
+// explicit default is a power-user override, and its absence must not mean "no capability", only
+// "no preference stated" — fall back to the best ACTIVE model that actually carries the
+// capability flag.
+func (s *Server) internalResolveEmbeddingModel(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.URL.Query().Get("user_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "DEFAULT_MODELS_VALIDATION", "invalid user_id")
+		return
+	}
+	// 1. Explicit 'embedding' default (a power user pinned a specific model).
+	var modelID uuid.UUID
+	err = s.pool.QueryRow(r.Context(), `
+SELECT d.user_model_id
+FROM user_default_models d
+JOIN user_models um ON um.user_model_id = d.user_model_id AND um.is_active = true
+WHERE d.owner_user_id = $1 AND d.capability = 'embedding'`, userID).Scan(&modelID)
+	if err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user_model_id": modelID.String(), "model_source": "user_model", "source": "embedding_default"})
+		return
+	}
+	if err != pgx.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve embedding default")
+		return
+	}
+	// 2. Fallback: the user's best active embedding-capable model. Deterministic tie-break by id
+	// (no "prefer X" signal exists for embedding the way tool_calling does for planner).
+	err = s.pool.QueryRow(r.Context(), `
+SELECT user_model_id
+FROM user_models
+WHERE owner_user_id = $1 AND is_active = true
+  AND capability_flags @> '{"embedding":true}'::jsonb
+ORDER BY user_model_id
+LIMIT 1`, userID).Scan(&modelID)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "EMBEDDING_MODEL_NONE", "no active embedding-capable model for this user")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve an embedding model")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_model_id": modelID.String(), "model_source": "user_model", "source": "embedding_fallback"})
+}

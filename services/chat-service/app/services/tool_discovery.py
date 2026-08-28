@@ -1631,17 +1631,23 @@ _EMBEDDING_MODEL_CACHE: dict[str, tuple[float, tuple[str, str] | None]] = {}
 
 
 async def _resolve_embedding_model(user_id: str) -> tuple[str, str] | None:
-    """The caller's configured embedding-capable model as ``(model_source,
-    model_ref)``, or ``None`` when the user has no `embedding`-capability
-    default configured. Never raises — `get_default_model()` itself is
-    best-effort."""
+    """The caller's embedding-capable model as ``(model_source, model_ref)``, or ``None``
+    when they have no ACTIVE embedding-capable model at all. Never raises.
+
+    D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE. This used the strict
+    `get_default_model("embedding", user_id)`, which 404s unless the user EXPLICITLY set an
+    'embedding' default — measured 2026-08-28: zero accounts on this deployment ever had, while
+    7 active embedding-capable models exist across the platform. `resolve_embedding_model`
+    falls back to the user's best active embedding-capable model server-side (provider-
+    registry's `internalResolveEmbeddingModel`, mirroring the existing planner-model
+    fallback), so this now returns None only when the user genuinely has no such model."""
     now = time.monotonic()
     cached = _EMBEDDING_MODEL_CACHE.get(user_id)
     if cached is not None and now < cached[0]:
         return cached[1]
     from app.client.provider_client import get_provider_client  # noqa: PLC0415
 
-    ref = await get_provider_client().get_default_model("embedding", user_id)
+    ref = await get_provider_client().resolve_embedding_model(user_id)
     _EMBEDDING_MODEL_CACHE[user_id] = (now + _EMBEDDING_MODEL_CACHE_TTL_S, ref)
     return ref
 
