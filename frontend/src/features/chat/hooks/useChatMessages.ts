@@ -5,6 +5,7 @@ import { chatApi } from '../api';
 import type { ChatMessage, AgentSurfaceState, ContextBudget, CompactionEvent } from '../types';
 import { runChatStream, assembleAssistantMessage } from './runChatStream';
 import type { ChatStreamArgs, StreamPhase, ReasoningEffortLevel } from './runChatStream';
+import { getEditorTarget } from '../context/editorBridge';
 import type { StreamPins } from './useContextRack';
 import { useChatLiveStateOptional } from '../providers/ChatLiveStateContext';
 
@@ -70,6 +71,26 @@ function loadPermissionMode(): PermissionMode {
   } catch {
     return 'write';
   }
+}
+
+// D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE. propose_edit's replace_selection
+// presupposes a selection the turn never carried, so the model could not tell a real target from
+// a guess. Snapshotted at SEND TIME — mirroring how ProposeEditCard already reads the live
+// selection at propose/apply time (`context/editorBridge.ts`) rather than subscribing
+// continuously, which would re-render the chat subtree on every selection change.
+const SELECTED_TEXT_PREVIEW_CHARS = 200;
+
+export function withSelectionSnapshot(
+  editorContext: { book_id: string; chapter_id: string } | undefined,
+): { book_id: string; chapter_id: string; has_selection?: boolean; selected_text?: string } | undefined {
+  if (!editorContext) return editorContext;
+  const sel = getEditorTarget()?.handle.getSelection();
+  if (!sel) return editorContext; // no mounted editor (e.g. a popped-out window) — omit, not guess
+  return {
+    ...editorContext,
+    has_selection: !sel.empty,
+    ...(sel.empty ? {} : { selected_text: sel.text.slice(0, SELECTED_TEXT_PREVIEW_CHARS) }),
+  };
 }
 
 export function useChatMessages(
@@ -267,7 +288,7 @@ export function useChatMessages(
             ...(editFromSequence != null ? { editFromSequence } : {}),
             ...(thinking != null ? { thinking } : {}),
             ...(reasoningEffort != null ? { reasoningEffort } : {}),
-            ...(editorContext ? { editorContext } : {}),
+            ...(editorContext ? { editorContext: withSelectionSnapshot(editorContext) } : {}),
             ...(studioContext ? { studioContext } : {}),
             ...(composeMode != null ? { composeMode } : {}),
             ...(bookContext ? { bookContext } : {}),
@@ -517,7 +538,7 @@ export function useChatMessages(
         ...(editFromSequence != null ? { editFromSequence } : {}),
         ...(thinking != null ? { thinking } : {}),
         ...(reasoningEffort != null ? { reasoningEffort } : {}),
-        ...(editorContext ? { editorContext } : {}),
+        ...(editorContext ? { editorContext: withSelectionSnapshot(editorContext) } : {}),
         ...(studioContext ? { studioContext } : {}),
         ...(composeMode != null ? { composeMode } : {}),
         ...(bookContext ? { bookContext } : {}),

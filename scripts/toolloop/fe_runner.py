@@ -276,7 +276,7 @@ def pending_approval(out) -> dict | None:
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
                     thinking=False, effort="off", timeout=None,
                     permission_mode="write", approve=None, max_approvals=3,
-                    enabled_skills=None):
+                    enabled_skills=None, editor_context_extra=None):
     """One real turn, including the approvals a user would have clicked.
 
     🔴 `timeout=None` MEANS "READ THE GLOBAL NOW", AND THE DEFAULT USED TO BE `TURN_TIMEOUT`
@@ -322,6 +322,13 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
         body["enabled_skills"] = list(enabled_skills)
     if book_id and chapter_id:
         body["editor_context"] = {"book_id": book_id, "chapter_id": chapter_id}
+        if editor_context_extra:
+            # D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE — a live browser sends
+            # has_selection/selected_text alongside book_id/chapter_id (context/editorBridge.ts's
+            # getEditorTarget().handle.getSelection(), snapshotted at send time). This harness
+            # drives no editor, so a scenario states the fact directly via `editor_context_extra`
+            # rather than the harness guessing what a real selection would have been.
+            body["editor_context"].update(editor_context_extra)
     if book_id:
         body["book_context"] = {"book_id": book_id}
 
@@ -602,6 +609,7 @@ async def _drive_turns(client, auth, sc, idx, fx, sid, turns, prior):
                               chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
                               permission_mode=sc.get("permission_mode", "write"),
                               enabled_skills=sc.get("enabled_skills"),
+                              editor_context_extra=sc.get("editor_context_extra"),
                               approve=sc.get("approve"),
                               # 🔴 A HARNESS CONSTANT WAS DECIDING A MEASUREMENT. max_approvals
                               # defaulted to 3 with no way to say otherwise. Measured 2026-08-23 on

@@ -9367,6 +9367,28 @@ async def stream_response(
             book_context_note += (
                 " For a tool that requires chapter_id, use the exact id above; never pass a placeholder."
             )
+        # D-PROPOSE-EDIT-ACTS-ON-EDITOR-STATE-THE-TURN-CANNOT-SEE. propose_edit's two operations
+        # (insert_at_cursor / replace_selection) presuppose editor state the turn never carried
+        # before today, so a model asked to rewrite a passage could not tell whether calling
+        # replace_selection was grounded in anything the author actually selected. `has_selection`
+        # is additive (older FEs never send it; None is silently treated as "unknown", same as
+        # today) — only stated when the FE explicitly reports it either way.
+        _has_sel = (editor_context or {}).get("has_selection")
+        if _has_sel is True:
+            _sel_text = (editor_context or {}).get("selected_text")
+            book_context_note += (
+                " The author currently has text SELECTED in the editor"
+                + (f' ("{_sel_text}")' if _sel_text else "")
+                + " — propose_edit's replace_selection targets exactly that span."
+            )
+        elif _has_sel is False:
+            book_context_note += (
+                " The author has NOTHING selected in the editor right now — propose_edit's"
+                " replace_selection has no target. Calling it anyway mints a card the author"
+                " cannot apply (Apply is refused with 'Select the text to replace, then Apply'),"
+                " a wasted round trip. Use insert_at_cursor, or ask the author to select text"
+                " first."
+            )
         book_context_note += _ORIENTATION_SCENT  # 28 AN-9 / AN-C2 — the discovery scent
         # _DISCOVERY_SCENT is NOT applied — measured and refuted, see its definition.
 
