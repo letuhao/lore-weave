@@ -96,8 +96,16 @@ def test_bookkeeping_alone_does_not_count_as_a_write():
 
 
 def test_the_row_carries_the_correction_and_is_LINKED():
+    """🔴 RE-ANCHORED 2026-08-28. This pinned `blocked_by_dq == "DQ-T33"` and the DQ's `state ==
+    "open"`. DQ-T33 was answered the same day and the row's block was correctly cleared — a
+    resume pointer must never aim at a settled question — so pinning either value punishes the
+    decision landing. What survives is the substance: the correction stays on the row whatever
+    its current block state, and IF the row still claims a block, that question must genuinely
+    still be open."""
     r = LEDGER["defects"]["D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-WRITES-AND-SAYS-NOTHING"]
-    assert r.get("blocked_by_dq") == "DQ-T33"
     assert "RE_DERIVED_2026_08_27_the_claim_as_stated_has_ZERO_instances" in r
     assert "the_defect_restated" in r
-    assert LEDGER["deferred_questions"]["DQ-T33"]["state"] == "open"
+    named = r.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")

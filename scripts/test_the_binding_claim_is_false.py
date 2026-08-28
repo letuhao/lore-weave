@@ -125,7 +125,13 @@ def test_both_rows_carry_the_result():
         "the row is back to model-class; if that is deliberate it must answer c-bindwire1, "
         "where the same scenario with the tool advertised produced 0 of 5 false claims"
     )
-    assert new.get("blocked_by_dq") == "DQ-T58"
+    # RE-ANCHORED 2026-08-28: DQ-T58 was answered and the row's block was correctly cleared —
+    # a pin on the DQ name would punish the decision landing. If a block is still claimed, it
+    # must genuinely still be open.
+    named = new.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")
     assert "c-bindwire1" in json.dumps(new), "the row no longer cites the arm it rests on"
     old = LEDGER["defects"]["D-SILENT-TURN-NO-CARD-NO-PROSE"]
     assert "the_trigger_was_re_run_2026_08_27" in old

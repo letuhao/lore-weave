@@ -780,7 +780,7 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     # leaked fixture is not litter — it is an extra, plausible, wrongly-scoped write target
     # sitting on the account, and it makes the NEXT batch's evidence unattributable.
     from provision import (sweep_orphan_translation_jobs, sweep_orphans,
-                           sweep_phantom_job_projections)
+                           sweep_phantom_job_projections, sweep_archived_structure_templates)
     swept = await asyncio.to_thread(sweep_orphans)
     if swept:
         print(f"swept {len(swept)} leaked fixture(s) from a previous run before starting")
@@ -811,6 +811,13 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     swept_phantoms = await asyncio.to_thread(sweep_phantom_job_projections)
     if swept_phantoms:
         print(f"swept {swept_phantoms} phantom job_projection row(s) whose job row is gone")
+    # 🔴 AND THE ARCHIVED STRUCTURE TEMPLATES A RESTORE-DISCOVERY SCENARIO LEAVES. USER-scoped,
+    # not book-scoped, so no throwaway-book teardown ever reaches them — measured 2026-08-28: one
+    # seeded probe arrived alongside 32 other archived templates dated back to 2026-07-30, and the
+    # model refused to guess which one the author meant among 33 candidates.
+    swept_templates = await asyncio.to_thread(sweep_archived_structure_templates)
+    if swept_templates:
+        print(f"swept {swept_templates} archived structure_template row(s) from the harness account")
 
     async with httpx.AsyncClient(timeout=TURN_TIMEOUT) as client:
         await auth.login(client)

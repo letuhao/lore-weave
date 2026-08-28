@@ -8348,6 +8348,7 @@ class _StructTemplateEditArgs(ForbidExtra):
     name: str | None = None              # create (req), update, clone
     kind: str | None = None              # create, update
     beats: list[dict[str, Any]] | None = None  # create, update
+    include_archived: bool = False       # list — D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE
 
 
 @mcp_server.tool(
@@ -8357,7 +8358,10 @@ class _StructTemplateEditArgs(ForbidExtra):
         "story beats a plan is shaped by — Save the Cat, Hero's Journey, Story Circle, Web Novel "
         "Arc, Kishōtenketsu, Three-Act, plus your own) — the unified template entry point. "
         "op=list returns the built-ins + your own with their beats; use it to find the "
-        "template_id to pass to plan_compile. op=create (needs name; optional kind/beats). "
+        "template_id to pass to plan_compile. Pass include_archived=true to also see ARCHIVED "
+        "templates of yours, which is where the template_id for op=restore comes from — without "
+        "it an archived template is invisible and the restore is unreachable. "
+        "op=create (needs name; optional kind/beats). "
         "op=update your own (needs template_id + expected_version; only passed fields change). "
         "op=clone copies one (needs template_id; optional new name) — clone a built-in to customise "
         "it, built-ins are never edited in place. op=archive soft-archives (needs template_id; "
@@ -8376,7 +8380,12 @@ async def composition_structure_template_edit(ctx: MCPContext, args: _StructTemp
     if args.op == "list":
         tc = _ctx(ctx)
         repo = StructureTemplatesRepo(get_pool())
-        rows = await repo.list_for_user(tc.user_id)
+        # D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE. `list_for_user` has taken
+        # `include_archived` all along (canon.py's own router already passes it through for the
+        # FE) — this call site never did. Same shape as composition_list_canon_rules: implemented
+        # capability, unexposed, and NOT a catalogue addition — one optional argument on a tool
+        # that already ships.
+        rows = await repo.list_for_user(tc.user_id, include_archived=args.include_archived)
         return {"templates": [
             {
                 "template_id": str(t.id),
@@ -8386,6 +8395,7 @@ async def composition_structure_template_edit(ctx: MCPContext, args: _StructTemp
                 # be customised (the System-tier write rule). Leaving the agent to infer that from a
                 # null owner is how a user ends up trying to edit a shared row.
                 "builtin": t.owner_user_id is None,
+                "archived": t.is_archived,
                 "beat_count": len(t.beats or []),
                 "beats": [
                     {"key": b.get("key"), "label": b.get("label"), "purpose": b.get("purpose")}

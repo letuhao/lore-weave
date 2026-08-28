@@ -921,6 +921,44 @@ def sweep_phantom_job_projections() -> int:
         return 0
 
 
+def sweep_archived_structure_templates() -> int:
+    """Archived user-tier structure templates on the HARNESS ACCOUNT — debris an ARCHIVE-then-
+    RESTORE scenario leaves, because the row it creates is USER-scoped, not book-scoped, and no
+    throwaway-book teardown ever reaches it.
+
+    🔴 MEASURED 2026-08-28, WRITING THE FIRST LIVE SCENARIO FOR
+    D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE'S structure-template family. A single seeded
+    probe template, `op=list include_archived=true`'d back on every run, arrived alongside 32
+    OTHER archived templates dated back to 2026-07-30 -- E2E/smoke/batch-numbered names from every
+    prior loop that ever touched this tool family. The scenario still passed (the seeded template
+    was always found), but the model reasonably refused to guess WHICH archived template the
+    author meant among 33 candidates and asked instead of restoring -- an ambiguity this harness
+    manufactured, not a product defect.
+
+    CONSERVATIVE BY CONSTRUCTION: the harness account (`OWNER_ID`) never holds real user data
+    (established throughout this ledger), and only ARCHIVED rows are touched -- a live template
+    might still be referenced by an old fixture's plan_run, but an archived one, by definition,
+    is not in use. No FK references `structure_template` (checked before the first manual cleanup
+    this function replaces), so a delete cannot orphan another table's row.
+    """
+    rows = oracle.db_query(
+        COMP_DB,
+        f"SELECT id::text FROM structure_template WHERE owner_user_id='{OWNER_ID}' "
+        f"AND is_archived")
+    ids = [r[0] for r in (rows or []) if r and r[0]]
+    if not ids:
+        return 0
+    iq = ",".join("'" + i.replace("'", "''") + "'" for i in ids)
+    n = oracle.db_query(
+        COMP_DB,
+        f"WITH d AS (DELETE FROM structure_template WHERE id IN ({iq}) "
+        f"AND owner_user_id='{OWNER_ID}' RETURNING 1) SELECT count(*)::text FROM d")
+    try:
+        return int(n[0][0])
+    except (IndexError, TypeError, ValueError):
+        return 0
+
+
 def sweep_orphan_worlds(older_than_minutes: int = 0) -> list[str]:
     """🔴 A WORLD IS NOT BOOK-SCOPED, SO THE BOOK SWEEP ABOVE NEVER SAW ONE.
 

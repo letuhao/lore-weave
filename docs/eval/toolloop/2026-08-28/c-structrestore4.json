@@ -1,0 +1,1228 @@
+{
+  "batch": "c-structrestore4",
+  "generated_by": "fe_runner",
+  "approval_mode": "as-is",
+  "tools": [
+    {
+      "tool": "composition_structure_template_edit",
+      "scenario": "structure-template-restore-finds-its-own-id",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the model asks the AUTHOR for a template_id (the recorded failure shape for this family before today's fix), OR it invents a template_id, OR it calls composition_structure_template_edit op=list WITHOUT include_archived and reports there is nothing to restore, OR the template is restored with NO card despite a confirm mechanism existing for it (Tier A is direct, so no card is correct). Store check: structure_template has exactly ONE row with this name for this owner -- a restore must never create a second template.",
+      "answer_expect": {
+        "all_of": [
+          "beat sheet"
+        ],
+        "why": "The template's NAME can only have come from the archived listing -- it is not in the prompt (the prompt says 'my custom story-structure template', never the name). A reply that talks about restoring in the abstract proves nothing; naming it proves the model actually saw the archived row."
+      },
+      "falsifier_sha": "e5e99d351747308c",
+      "ship_audit": {
+        "gate": "OWED -- Tier A; the restore mutates the user's own template library.",
+        "absent_case": "a template_id that does not exist must be refused -- not covered here.",
+        "idempotency": "restoring an already-active template must not duplicate it -- not covered here.",
+        "tenancy": "user-scoped (owner_user_id), not book-scoped -- op=list is filtered to the caller's own rows plus built-ins."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a046ac-fa48-711d-9942-5df1c32e6bd3",
+          "project_id": "01a046ac-fb89-7343-9b9e-b6f0a11e3472",
+          "seed_ids": {
+            "01a046ac-fa48-711d-9942-5df1c32e6bd3": "fixture book_id",
+            "01a046ac-fb89-7343-9b9e-b6f0a11e3472": "fixture project_id (composition_work)",
+            "01a046ac-fadd-736d-8b35-54e701fe50e3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a046ac-fbf9-7f44-be85-ff2e6650a478": "seed[0] composition_structure_template_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_structure_template_edit.owner_user_id"
+          },
+          "session_id": "01a046ad-465c-7277-a6f0-10aaa85c7df3",
+          "prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "scenario_prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_structure_template_edit"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "composition_structure_template_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_structure_template_edit",
+              "result_head": "{\"ok\": true, \"result\": {\"templates\": [{\"template_id\": \"0190ce00-0000-7000-8000-000000000002\", \"name\": \"Hero's Journey\", \"kind\": \"hero_journey\", \"builtin\": true, \"archived\": false, \"beat_count\": 12, \"beats\": [{\"key\": \"ordinary_world\", \"label\": \"Ordinary World\", \"purpose\": \"Hero's normal life before t"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_structure_template_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.84693+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.840644+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.66911+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.84693+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:42:16.840644+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several archived templates. Which one would you like me to restore?\n\n**Archived Templates:**\n*   **B21 Probe 6c8f0f** (beat_sheet)\n*   **B21 Seed Smoke** (beat_sheet)\n*   **i223 my copy** (save_the_cat)\n*   **i224 empty beats** (custom)\n*   **i224 real** (custom)\n*   **i227 RENAMED** (custom)\n*   **smoke.f2_structure_10847503 (edited)** (generic)\n*   **smoke.f2_structure_2a6a24cd (edited)** (generic)\n*   **smoke.f2_structure_30befa2a (edited)** (generic)\n*   **smoke.f2_structure_633d7e5b (edited)** (generic)\n*   **smoke.f2_structure_7b554a42 (edited)** (generic)\n*   **smoke.f2_structure_817896aa (edited)** (generic)\n*   **smoke.f2_structure_830dc27e (edited)** (generic)\n*   **smoke.f2_structure_c563fe33 (edited)** (generic)\n*   **smoke.f2_structure_c5bcd9be (edited)** (generic)\n*   **smoke.f2_structure_cba01193 (edited)** (generic)\n*   **smoke.f2_structure_cddc0b23 (edited)** (generic)\n*   **smoke.f2_structure_d1e03ad6 (edited)** (generic)\n*   **smoke.f2_structure_db2f8566 (edited)** (generic)\n*   **smoke.f2_structure_e7704c3e (edited)** (generic)\n*   **smoke.f2_structure_eab7145b (edited)** (generic)\n*   **Loop Probe Beat Sheet Gavonesi** (test)\n*   **Loop Probe Beat Sheet Luvasilo** (test)\n*   **Loop Probe Beat Sheet Luvetope** (test)\n*   **Loop Probe Beat Sheet Mulanemo** (test)\n*   **Loop Probe Beat Sheet Nuzamupi** (test)\n*   **Loop Probe Beat Sheet Roninuve** (test)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a046ad-d01c-7fd7-ae07-b696dcda3a8c",
+          "project_id": "01a046ad-d16c-7669-b9da-06c6419e8d7d",
+          "seed_ids": {
+            "01a046ad-d01c-7fd7-ae07-b696dcda3a8c": "fixture book_id",
+            "01a046ad-d16c-7669-b9da-06c6419e8d7d": "fixture project_id (composition_work)",
+            "01a046ad-d0bc-70e0-a300-d621a7aae60c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a046ad-d1e2-7cb5-9afd-e2f41fbc6813": "seed[0] composition_structure_template_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_structure_template_edit.owner_user_id"
+          },
+          "session_id": "01a046ae-20b9-7df5-bdcf-82327915c173",
+          "prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "scenario_prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_structure_template_edit"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "composition_structure_template_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_structure_template_edit",
+              "result_head": "{\"ok\": true, \"result\": {\"templates\": [{\"template_id\": \"0190ce00-0000-7000-8000-000000000002\", \"name\": \"Hero's Journey\", \"kind\": \"hero_journey\", \"builtin\": true, \"archived\": false, \"beat_count\": 12, \"beats\": [{\"key\": \"ordinary_world\", \"label\": \"Ordinary World\", \"purpose\": \"Hero's normal life before t"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_structure_template_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.601938+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.595686+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.419932+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.601938+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:43:11.595686+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several archived templates. Which one would you like me to restore?\n\n**Archived Templates:**\n*   **B21 Probe 6c8f0f** (beat_sheet)\n*   **B21 Seed Smoke** (beat_sheet)\n*   **i223 my copy** (save_the_cat)\n*   **i224 empty beats** (custom)\n*   **i224 real** (custom)\n*   **i227 RENAMED** (custom)\n*   **smoke.f2_structure_10847503 (edited)** (generic)\n*   **smoke.f2_structure_2a6a24cd (edited)** (generic)\n*   **smoke.f2_structure_30befa2a (edited)** (generic)\n*   **smoke.f2_structure_633d7e5b (edited)** (generic)\n*   **smoke.f2_structure_7b554a42 (edited)** (generic)\n*   **smoke.f2_structure_817896aa (edited)** (generic)\n*   **smoke.f2_structure_830dc27e (edited)** (generic)\n*   **smoke.f2_structure_c563fe33 (edited)** (generic)\n*   **smoke.f2_structure_c5bcd9be (edited)** (generic)\n*   **smoke.f2_structure_cba01193 (edited)** (generic)\n*   **smoke.f2_structure_cddc0b23 (edited)** (generic)\n*   **smoke.f2_structure_d1e03ad6 (edited)** (generic)\n*   **smoke.f2_structure_db2f8566 (edited)** (generic)\n*   **smoke.f2_structure_e7704c3e (edited)** (generic)\n*   **smoke.f2_structure_eab7145b (edited)** (generic)\n*   **Loop Probe Beat Sheet Gavonesi** (test)\n*   **Loop Probe Beat Sheet Kazigono** (test)\n*   **Loop Probe Beat Sheet Luvasilo** (test)\n*   **Loop Probe Beat Sheet Luvetope** (test)\n*   **Loop Probe Beat Sheet Mulanemo** (test)\n*   **Loop Probe Beat Sheet Nuzamupi** (test)\n*   **Loop Probe Beat Sheet Roninuve** (test)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a046ae-b0d9-7bc2-bc79-495f1c773ff7",
+          "project_id": "01a046ae-b247-7ff6-8817-9aaff9873a9e",
+          "seed_ids": {
+            "01a046ae-b0d9-7bc2-bc79-495f1c773ff7": "fixture book_id",
+            "01a046ae-b247-7ff6-8817-9aaff9873a9e": "fixture project_id (composition_work)",
+            "01a046ae-b174-70f3-b9c6-56720e3eac17": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a046ae-b2bd-7313-8057-7f514aa258c2": "seed[0] composition_structure_template_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_structure_template_edit.owner_user_id"
+          },
+          "session_id": "01a046ae-feaa-7ec0-8313-5b0b71ae30d6",
+          "prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "scenario_prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_structure_template_edit"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "composition_structure_template_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_structure_template_edit",
+              "result_head": "{\"ok\": true, \"result\": {\"templates\": [{\"template_id\": \"0190ce00-0000-7000-8000-000000000002\", \"name\": \"Hero's Journey\", \"kind\": \"hero_journey\", \"builtin\": true, \"archived\": false, \"beat_count\": 12, \"beats\": [{\"key\": \"ordinary_world\", \"label\": \"Ordinary World\", \"purpose\": \"Hero's normal life before t"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_structure_template_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:09.164941+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:09.159417+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:08.947892+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:09.164941+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:44:09.159417+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several archived templates. Which one would you like me to restore?\n\n**Archived Templates:**\n*   **B21 Probe 6c8f0f** (beat_sheet)\n*   **B21 Seed Smoke** (beat_sheet)\n*   **i223 my copy** (save_the_cat)\n*   **i224 empty beats** (custom)\n*   **i224 real** (custom)\n*   **i227 RENAMED** (custom)\n*   **smoke.f2_structure_10847503 (edited)** (generic)\n*   **smoke.f2_structure_2a6a24cd (edited)** (generic)\n*   **smoke.f2_structure_30befa2a (edited)** (generic)\n*   **smoke.f2_structure_633d7e5b (edited)** (generic)\n*   **smoke.f2_structure_7b554a42 (edited)** (generic)\n*   **smoke.f2_structure_817896aa (edited)** (generic)\n*   **smoke.f2_structure_830dc27e (edited)** (generic)\n*   **smoke.f2_structure_c563fe33 (edited)** (generic)\n*   **smoke.f2_structure_c5bcd9be (edited)** (generic)\n*   **smoke.f2_structure_cba01193 (edited)** (generic)\n*   **smoke.f2_structure_cddc0b23 (edited)** (generic)\n*   **smoke.f2_structure_d1e03ad6 (edited)** (generic)\n*   **smoke.f2_structure_db2f8566 (edited)** (generic)\n*   **smoke.f2_structure_e7704c3e (edited)** (generic)\n*   **smoke.f2_structure_eab7145b (edited)** (generic)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a046af-896a-70e6-b213-3d6615a69243",
+          "project_id": "01a046af-8ac4-74b0-98fe-176c3b65c267",
+          "seed_ids": {
+            "01a046af-896a-70e6-b213-3d6615a69243": "fixture book_id",
+            "01a046af-8ac4-74b0-98fe-176c3b65c267": "fixture project_id (composition_work)",
+            "01a046af-8a08-7fb8-a1fb-2c9f87648c5c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a046af-8b54-7134-bd41-14bfbce69300": "seed[0] composition_structure_template_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_structure_template_edit.owner_user_id"
+          },
+          "session_id": "01a046af-dd1d-7498-947f-bc6394573b74",
+          "prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "scenario_prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_structure_template_edit"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "composition_structure_template_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_structure_template_edit",
+              "result_head": "{\"ok\": true, \"result\": {\"templates\": [{\"template_id\": \"0190ce00-0000-7000-8000-000000000002\", \"name\": \"Hero's Journey\", \"kind\": \"hero_journey\", \"builtin\": true, \"archived\": false, \"beat_count\": 12, \"beats\": [{\"key\": \"ordinary_world\", \"label\": \"Ordinary World\", \"purpose\": \"Hero's normal life before t"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_structure_template_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.587909+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.578308+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.392811+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.587909+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:04.578308+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several archived templates. Which one would you like me to restore?\n\n**Archived Templates:**\n*   **B21 Probe 6c8f0f** (beat_sheet)\n*   **B21 Seed Smoke** (beat_sheet)\n*   **i223 my copy** (save_the_cat)\n*   **i224 empty beats** (custom)\n*   **i224 real** (custom)\n*   **i227 RENAMED** (custom)\n*   **smoke.f2_structure_10847503 (edited)** (generic)\n*   **smoke.f2_structure_2a6a24cd (edited)** (generic)\n*   **smoke.f2_structure_30befa2a (edited)** (generic)\n*   **smoke.f2_structure_633d7e5b (edited)** (generic)\n*   **smoke.f2_structure_7b554a42 (edited)** (generic)\n*   **smoke.f2_structure_817896aa (edited)** (generic)\n*   **smoke.f2_structure_830dc27e (edited)** (generic)\n*   **smoke.f2_structure_c563fe33 (edited)** (generic)\n*   **smoke.f2_structure_c5bcd9be (edited)** (generic)\n*   **smoke.f2_structure_cba01193 (edited)** (generic)\n*   **smoke.f2_structure_cddc0b23 (edited)** (generic)\n*   **smoke.f2_structure_d1e03ad6 (edited)** (generic)\n*   **smoke.f2_structure_db2f8566 (edited)** (generic)\n*   **smoke.f2_structure_e7704c3e (edited)** (generic)\n*   **smoke.f2_structure_eab7145b (edited)** (generic)\n*   **Loop Probe Beat Sheet Gavonesi** (test)\n*   **Loop Probe Beat Sheet Kazigono** (test)\n*   **Loop Probe Beat Sheet Luvasilo** (test)\n*   **Loop Probe Beat Sheet Luvetope** (test)\n*   **Loop Probe Beat Sheet Mulanemo** (test)\n*   **Loop Probe Beat Sheet Nuzamupi** (test)\n*   **Loop Probe Beat Sheet Pozolulo** (test)\n*   **Loop Probe Beat Sheet Roninuve** (test)\n*   **Loop Probe Beat Sheet Tapesisa** (test)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a046b0-603f-7512-8f7c-8085b686e84f",
+          "project_id": "01a046b0-617f-7e6d-a353-b2946de640a6",
+          "seed_ids": {
+            "01a046b0-603f-7512-8f7c-8085b686e84f": "fixture book_id",
+            "01a046b0-617f-7e6d-a353-b2946de640a6": "fixture project_id (composition_work)",
+            "01a046b0-60d3-72c7-94da-b53ba66f8dae": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a046b0-61fb-72bf-84d4-b6403af804f1": "seed[0] composition_structure_template_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_structure_template_edit.owner_user_id"
+          },
+          "session_id": "01a046b0-adc8-7a5b-aa58-c98cd2496632",
+          "prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "scenario_prompt": "I need to manage structure template -- please restore the one I accidentally archived.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_structure_template_edit"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "composition_structure_template_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_structure_template_edit",
+              "result_head": "{\"ok\": true, \"result\": {\"templates\": [{\"template_id\": \"0190ce00-0000-7000-8000-000000000002\", \"name\": \"Hero's Journey\", \"kind\": \"hero_journey\", \"builtin\": true, \"archived\": false, \"beat_count\": 12, \"beats\": [{\"key\": \"ordinary_world\", \"label\": \"Ordinary World\", \"purpose\": \"Hero's normal life before t"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 42,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_structure_template_edit"
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            },
+            {
+              "pass_size": 44,
+              "of_the_called": [
+                "composition_structure_template_edit"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_structure_template_edit",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.557723+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.551337+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.379036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.557723+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-28 04:45:59.551337+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've found several archived templates. Which one would you like me to restore?\n\n**Archived Templates:**\n*   **B21 Probe 6c8f0f** (beat_sheet)\n*   **B21 Seed Smoke** (beat_sheet)\n*   **i223 my copy** (save_the_cat)\n*   **i224 empty beats** (custom)\n*   **i224 real** (custom)\n*   **i227 RENAMED** (custom)\n*   **smoke.f2_structure_10847503 (edited)** (generic)\n*   **smoke.f2_structure_2a6a24cd (edited)** (generic)\n*   **smoke.f2_structure_30befa2a (edited)** (generic)\n*   **smoke.f2_structure_633d7e5b (edited)** (generic)\n*   **smoke.f2_structure_7b554a42 (edited)** (generic)\n*   **smoke.f2_structure_817896aa (edited)** (generic)\n*   **smoke.f2_structure_830dc27e (edited)** (generic)\n*   **smoke.f2_structure_c563fe33 (edited)** (generic)\n*   **smoke.f2_structure_c5bcd9be (edited)** (generic)\n*   **smoke.f2_structure_cba01193 (edited)** (generic)\n*   **smoke.f2_structure_cddc0b23 (edited)** (generic)\n*   **smoke.f2_structure_d1e03ad6 (edited)** (generic)\n*   **smoke.f2_structure_db2f8566 (edited)** (generic)\n*   **smoke.f2_structure_e7704c3e (edited)** (generic)\n*   **smoke.f2_structure_eab7145b (edited)** (generic)\n*   **Loop Probe Beat Sheet Gavonesi** (test)\n*   **Loop Probe Beat Sheet Kazigono** (test)\n*   **Loop Probe Beat Sheet Luvasilo** (test)\n*   **Loop Probe Beat Sheet Luvetope** (test)\n*   **Loop Probe Beat Sheet Mulanemo** (test)\n*   **Loop Probe Beat Sheet Nuzamupi** (test)\n*   **Loop Probe Beat Sheet Pozolulo** (test)\n*   **Loop Probe Beat Sheet Roninuve** (test)\n*   **Loop Probe Beat Sheet Tapesisa** (test)\n*   **Loop Probe Beat Sheet Tuporesa** (test)"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

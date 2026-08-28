@@ -94,8 +94,13 @@ def test_the_LINT_ITSELF_is_untouched():
 
 
 def test_the_row_is_LINKED_and_the_recommendation_does_not_decide():
+    """🔴 RE-ANCHORED 2026-08-28: DQ-T52 was answered and this row's block was correctly
+    cleared. A pin on `state == "open"` would punish the decision landing; what survives is that
+    the recommendation, preserved verbatim, never crossed into deciding it."""
     row = LEDGER["defects"]["D-THE-OUT2-LINT-ONLY-INSPECTS-TOOLS-THAT-ARE-ALREADY-COMPLIANT"]
-    assert row.get("blocked_by_dq") == "DQ-T52"
+    named = row.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")
     dq = LEDGER["deferred_questions"]["DQ-T52"]
-    assert dq["state"] == "open"
     assert "Not my call" in dq["my_recommendation"]

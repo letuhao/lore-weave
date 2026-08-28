@@ -117,8 +117,15 @@ def test_the_finding_that_makes_this_matter():
 
 
 def test_the_row_is_LINKED_and_the_recommendation_does_not_decide():
+    """🔴 RE-ANCHORED 2026-08-28: DQ-T51 was answered and this row's block was correctly
+    cleared, so pinning `state == "open"` punishes the decision landing rather than testing
+    anything about the row. What must survive regardless is that the RECOMMENDATION, preserved
+    verbatim on the DQ, never crossed into deciding it — and if the row still claims a block,
+    that question must genuinely still be open."""
     row = LEDGER["defects"]["D-A-LOW-RATE-TOOL-CANNOT-BE-PROVEN-WITHOUT-SAMPLING-FOR-A-VERDICT"]
-    assert row.get("blocked_by_dq") == "DQ-T51"
+    named = row.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")
     dq = LEDGER["deferred_questions"]["DQ-T51"]
-    assert dq["state"] == "open"
     assert "I am not deciding it" in dq["my_recommendation"]

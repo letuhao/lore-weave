@@ -116,8 +116,17 @@ def test_the_translation_population_that_motivated_the_row_is_CLEARED():
 
 
 def test_the_row_keeps_its_DQ_and_records_the_audit():
+    """🔴 RE-ANCHORED 2026-08-28. DQ-T46 has since been answered TWICE — the owner's first
+    answer named a mechanism jobs-service could not build, the question went back corrected,
+    and the owner answered again ('ask the owning service'). The row's block was correctly
+    cleared both times a real answer landed, so pinning `blocked_by_dq == "DQ-T46"` or
+    `state == "open"` punishes exactly the progress this loop exists to make. What survives is
+    the audit content, and — if the row still claims a block — that the named question is
+    genuinely still open."""
     r = LEDGER["defects"]["D-JOBS-LIST-ADVERTISES-CANCEL-ON-JOBS-THAT-CANNOT-BE-CANCELLED"]
-    assert r["state"] == "open" and r.get("blocked_by_dq") == "DQ-T46"
     assert "the_other_services_audit_2026_08_27" in r
     assert "and_the_vacuous_check_IS_the_finding" in r
-    assert LEDGER["deferred_questions"]["DQ-T46"]["state"] == "open"
+    named = r.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")

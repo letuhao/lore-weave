@@ -118,17 +118,24 @@ def test_the_population_is_worth_the_label():
 
 def test_the_row_is_LINKED_to_its_deferred_question():
     """🔴 THE ROW SAID "the owner decides" IN ITS OWN WORDS AND CARRIED NO LINK, so the
-    generator offered it as actionable work. `blocked_by_dq` is the only field it reads."""
+    generator offered it as actionable work. `blocked_by_dq` is the only field it reads.
+
+    RE-ANCHORED 2026-08-28: DQ-T50 was answered and this row's block was correctly cleared, so
+    a pin on `state == "open"` punishes the decision landing rather than testing the link. If the
+    row still claims a block, that question must genuinely still be open."""
     row = LEDGER["defects"]["D-THE-GBUILD-SCENARIO-CANNOT-TEST-ITS-OWN-FALSIFIER"]
-    assert row.get("blocked_by_dq") == "DQ-T50"
+    named = row.get("blocked_by_dq")
+    if named:
+        assert LEDGER["deferred_questions"][named]["state"] == "open", (
+            f"the row is blocked on {named}, which is no longer open")
     dq = LEDGER["deferred_questions"]["DQ-T50"]
-    assert dq["state"] == "open"
     assert "my_recommendation" in dq, "a DQ without a recommendation is a question, not a hand-off"
 
 
 def test_the_recommendation_does_not_decide_it():
     """SAFETY, verbatim: DQs get a RECOMMENDATION and are DECIDED BY THE OWNER. A recommendation
-    that reads as a decision is a decision."""
+    that reads as a decision is a decision. This checks the RECOMMENDATION text, preserved
+    verbatim once the owner answers — not the DQ's current state, which answering legitimately
+    moves."""
     dq = LEDGER["deferred_questions"]["DQ-T50"]
-    assert dq["state"] == "open"
     assert "I am not" in dq["my_recommendation"] or "owner" in dq["my_recommendation"].lower()
