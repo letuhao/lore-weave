@@ -58,11 +58,10 @@ THE RUN ENDS ONLY WHEN `scripts/toolloop/goal_prompt_all_defects.py --check` rep
 open defect, or says every one left is DQ-blocked. NOTHING ELSE ENDS IT. One defect fixed is ONE \
 CYCLE, never the run: the moment a row reaches `fixed`, open the next one IN THE SAME TURN.
 
-THE 2026-08-28 DECISIONS ARE THE WORK. Fourteen DQs were answered; each ruling is under \
-`answer_2026_08_28` on its DQ row. READ IT BEFORE BUILDING. Several carry a CONDITION — T47 needs \
-the FE to hold caret+selection, T64 an equivalence check. If one fails the question goes BACK \
-CORRECTED. Never substitute a mechanism quietly: T46 named an orphan test jobs-service cannot \
-perform, and reopening was the honest move.
+THE OWNER'S DECISIONS ARE THE WORK. Each ruling is under `answer_2026_08_28` on its DQ row. READ \
+IT BEFORE BUILDING. Several carry a CONDITION — T47 needs the FE to hold caret+selection, T64 an \
+equivalence check. If one fails the question goes BACK CORRECTED. Never substitute a mechanism \
+quietly: T46 and T44 each named something unbuildable and reopening was the honest move.
 
 NEVER STOP FOR — asking whether to go on; offering to hand back; "want me to…" or "next I'll…" \
 then silence; a finished cycle; a green suite; a long report; a tidy stopping point. Any turn \
