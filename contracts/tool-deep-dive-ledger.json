@@ -4361,7 +4361,8 @@
    "state": "open",
    "defect_class": "contract",
    "queue_group": 4,
-   "unblocked_2026_08_28": "DQ-T32 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes."
+   "unblocked_2026_08_28": "DQ-T32 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes.",
+   "blocked_by_dq": "DQ-T68"
   },
   "D-THE-WRITER-IS-SHIPPED-WITHOUT-THE-READER": {
    "status": "WITHDRAWN 2026-08-26 — BOTH halves accounted for, and the second one by a measurement that REFUTED the row rather than by a repair.",
@@ -6147,6 +6148,13 @@
    "blocked_by": "a precision/recall tradeoff this loop should not guess at, per the row's own unmeasured caveats, which now apply with a LIVE router rather than a hypothetical one",
    "question": "Now that the intent-skill router genuinely runs (fixed the same day, D-A-TOOL-REACHES-THE-WIRE-WITHOUT-ITS-DOMAINS-GUIDANCE), its top-2 cap and 0.35 floor are visibly too loose to discriminate for at least one real prompt -- 12 of 12 skills clear the floor, and the two that win the cap are not the one the prompt needed. Three independent levers, any of which could move the outcome, none of which is obviously right without measuring the others held constant:\n\n  (a) RAISE ROUTER_MAX_ADDITIONS (2 -> 3 or more) -- lets more of what clears the floor through, at the cost of injecting MORE skills per turn (context cost, and the risk the comment already named: 'the flood when the whole set clears the floor').\n  (b) RAISE ROUTER_CONFIDENCE_THRESHOLD -- make the floor actually filter, so fewer skills compete for the same 2 slots. Risks excluding genuinely relevant skills if the embedding model's scores are generally compressed (which 0.36-0.51 across 12 unrelated-sounding skills suggests they may be).\n  (c) IMPROVE THE SKILL-EMBEDDING TEXTS OR THE EMBEDDING MODEL -- if the real problem is that skill descriptions embed too similarly to each other (admin scoring 0.44 on a non-admin prompt is a real clue), tuning the cap or threshold treats the symptom.\n\nNone of these should be picked by guessing at one prompt.",
    "my_recommendation": "Measure before moving any lever. Build the frequency instrument the parent row's own 'what is NOT known' already called for -- for a representative corpus of real prompts (this loop has used a 564- and a 2,135-prompt live corpus elsewhere), compute the router's OWN score distribution per prompt (cheap: no LLM call needed, this is pure embedding + cosine, exactly how I ran the single-prompt probe above) and report: how often does the CORRECT domain (by some independent signal, e.g. which tools actually got called) clear the floor but miss the cap; how often does an UNRELATED skill make the cap. That single measurement would tell (a) whether raising the cap helps without flooding, and (b) whether the floor or the embedding quality is the real ceiling. I am not choosing a lever without it."
+  },
+  "DQ-T68": {
+   "state": "open",
+   "raised": "2026-08-28",
+   "blocked_by": "a product decision about conversation scope, the row's own framing, unchanged since 2026-08-23",
+   "question": "R1 answerability keys on ONLY the current turn's user text (`user_message_content = _stripped_msg`, verified against the deployed code -- no lookback exists). A two-turn journey -- instruct, then confirm -- loses every tool on the confirmation turn, because 'Yes, please create them.' matches no tool's declared vocabulary. Measured live (batch c-planapply3, K=5): plan_bootstrap_apply and its transitively-forced supplier are both on the wire on the instructing turn and both ABSENT on the confirming turn, surfaced 0/5, called 0/5.\n\nThe shape of a fix is clear -- when the current turn's text yields no answerable tools AND the previous assistant turn ended in a question, the request under discussion is still the earlier user message, so R1 should also consider it. The POLICY is not clear: how far back to look (one turn only? until a topic genuinely changes?), and how to tell a genuine confirmation ('yes, please create them') from an unrelated bare affirmative ('yes' answering something else entirely, or agreeing to a DIFFERENT proposal made two turns ago). Checked: no 'ended in a question' detector or lookback mechanism exists anywhere in chat-service today -- this is new capability, not a wiring gap.\n\nAlso measured (2026-08-24): what the author is actually TOLD on all 5 runs is worse than 'the tool didn't fire' -- 1 of 5 falsely claimed the write happened, and 4 of 5 promised work that would 'continue' after the turn ends, which no turn can do. That half is filed separately (D-A-TURN-PROMISES-WORK-THAT-CONTINUES-AFTER-IT-ENDS, unblocked, does not depend on this decision) and is arguably the more urgent of the two.",
+   "my_recommendation": "A NARROW version, scoped tightly enough to avoid guessing at the general policy: when (a) the current turn's answerable set is empty, AND (b) the immediately PRIOR assistant turn's tool_calls history shows a tool was surfaced-but-not-called or a card was minted (i.e. there was a real pending action, not just prose), re-run R1 against the prior USER turn's text too, additively. This is deliberately narrower than 'look back until the topic changes' -- it only fires when there is a CONCRETE pending action to confirm, which is a structural signal (a card, a forced-supplier chain) rather than a guess about conversational topic drift. I have not measured this narrower version's precision/recall and would do so before shipping it, same discipline as every other fix this loop has shipped today. Not deciding the general 'how far back' question -- that is genuinely the owner's, as the row's own filer said in 2026-08-23 and nothing since has changed that."
   }
  },
  "carried_observations": [
@@ -6551,7 +6559,7 @@
   "tools_blocked": 0,
   "defects_proven": 25,
   "defects_open": 36,
-  "deferred_questions": 43,
+  "deferred_questions": 44,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 132,
