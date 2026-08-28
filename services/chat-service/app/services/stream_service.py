@@ -9218,7 +9218,21 @@ async def stream_response(
         try:
             from app.client.registry_workflows_client import get_workflows_client
 
-            _wf_surface = "admin" if _admin else ("editor" if _editor else ("book" if _book_scoped else "chat"))
+            # D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN. The registry's
+            # own closed set is book|editor|studio (validWorkflowSurfaces, workflows.go), and
+            # `_studio` was computed above (line ~9192) for OTHER purposes but never reached this
+            # ternary — so a Studio Compose-panel turn, which sends BOTH studio_context AND
+            # editor_context (a chapter open in the dock), fell to "editor" here, identical to
+            # the LEGACY standalone editor. Measured live: 4 of 5 studio-surface turns reported 9
+            # workflows as available when only 6 are studio-scoped — the always-on twin was not
+            # missing a filter, it was asking the registry for the WRONG bucket. `_studio` checked
+            # before `_editor` (studio always implies editor_context is also present when a
+            # chapter is open; editor alone never implies studio) restores parity with
+            # registry_list_workflows's own `surface` argument, so the two tools now agree instead
+            # of the always-on one winning the race with the wrong answer.
+            _wf_surface = ("admin" if _admin else
+                          ("studio" if _studio else
+                          ("editor" if _editor else ("book" if _book_scoped else "chat"))))
             _wfs = await get_workflows_client().get_workflows(
                 str(user_id), book_id=str(_ctx_book_id or ""), surface=_wf_surface,
                 mode=permission_mode,

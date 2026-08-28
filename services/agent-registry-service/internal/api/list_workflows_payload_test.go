@@ -18,6 +18,13 @@ import (
 // delegates to THIS tool on 20 of 20 runs (batch c-regwf6), so every correct workflow answer
 // the platform now produces comes through a description that under-declared its own result.
 //
+// 🔴 OWNER, 2026-08-28: correct it fully, accept the measured cost. Naming all five fields WAS
+// measured to move a surface question from 5/5 to 3/5 (c-regwf7 vs c-regwf8/c-regwf6) — the
+// guard below was removed for exactly that reason on 2026-08-26. The owner declined both softer
+// options (keep the known-false sentence; a non-enumerating rewrite) and chose truth over
+// score, so the field list is corrected here and the regression is recorded as a SEPARATE,
+// unsolved cause rather than a reason to keep the description wrong.
+//
 // The guard compares the description against the STRUCT rather than a hand-written list, so a
 // sixth field cannot be added without either updating the sentence or turning this red.
 
@@ -39,7 +46,7 @@ func listWorkflowsDescription(t *testing.T) string {
 	t.Helper()
 	// The description is a literal in mcpHandler; assert against the one place it lives by
 	// re-declaring the marker text we expect to find it by.
-	const marker = "List the curated multi-step workflows"
+	const marker = "List EVERY workflow the platform ships"
 	src := readSourceFile(t, "mcp_server.go")
 	i := strings.Index(src, marker)
 	if i < 0 {
@@ -54,27 +61,23 @@ func listWorkflowsDescription(t *testing.T) string {
 	return rest[:j]
 }
 
-// 🔴 THE PAYLOAD GUARD WAS REMOVED AFTER ITS OWN FIX MEASURED WORSE, 2026-08-26.
-//
-// The description under-declares its result: it says "slug + title + description" and the
-// tool returns five fields (workflowMeta adds tier and status). That is still TRUE, and a
-// guard asserting "describe what you return" stood here.
-//
-// Correcting the sentence to name all five made the ANSWERS WORSE, isolated by a control that
-// changed nothing else:
-//     c-regwf7  corrected description : 3/5 registry_list_workflows, 2/5 workflow_list
-//                                       and those 2 listed ALL TWELVE workflows for a
-//                                       question that named the STUDIO surface
-//     c-regwf8  reverted, one line     : 5/5 registry_list_workflows, 0 wrong
-//     c-regwf6  before any of it, K=20 : 20/20 registry_list_workflows, 0 wrong
-//
-// Mentioning `tier` and `status` on a tool answering a SURFACE question apparently makes it
-// read as less apt for the ask. The mechanism is not established; the effect is.
-//
-// So the guard is gone rather than left red: keeping a test that demands a change measured to
-// hurt would make the next person ship it. The DEFECT stays open in the ledger with this
-// measurement on it. This is the SECOND time this exact tool pair has punished an accuracy
-// fix — the twin's self-filter wording was reverted for the same reason.
+// workflowMeta's fields, named exactly as the JSON tags this description claims to describe
+// (see workflowSummary/toolListWorkflows's response shape). A sixth field added there without
+// updating this list — or this test — is the drift the guard exists to catch.
+var workflowMetaFields = []string{"slug", "title", "description", "tier", "status"}
+
+func TestListWorkflowsDescriptionNamesEveryReturnedField(t *testing.T) {
+	desc := strings.ToLower(listWorkflowsDescription(t))
+	var missing []string
+	for _, f := range workflowMetaFields {
+		if !strings.Contains(desc, f) {
+			missing = append(missing, f)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("the description under-declares its own payload — missing %v", missing)
+	}
+}
 
 func TestListWorkflowsDescriptionDoesNotInviteSelfFiltering(t *testing.T) {
 	// The twin's measured lesson: telling the model it could narrow the list ITSELF made the
@@ -94,5 +97,16 @@ func TestTheStepListIsStillDisclaimed(t *testing.T) {
 	desc := listWorkflowsDescription(t)
 	if !strings.Contains(desc, "not the full step list") {
 		t.Fatal("the description no longer says it withholds the steps — the L1/L2 boundary is unstated")
+	}
+}
+
+func TestTheSurfaceArgumentIsStillOfferedNotJustDescribed(t *testing.T) {
+	// D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN's own finding: this
+	// tool's surface filter is real (measured (no filter) 12, book 12, editor 11, studio 6) and
+	// is what its always-on twin structurally cannot do. The description must keep pointing at
+	// it, or the one thing that makes this tool worth calling over the twin goes unstated.
+	desc := listWorkflowsDescription(t)
+	if !strings.Contains(desc, "surface") {
+		t.Fatal("the description no longer mentions the surface filter")
 	}
 }

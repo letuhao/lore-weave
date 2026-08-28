@@ -3002,6 +3002,14 @@
    "note": "RENAMED, not retired. This tool is now composition_build_cast_and_graph — read that row; all of this one's history moved there.\n\nTHIS ROW EXISTS SO THE EVIDENCE STILL RESOLVES. Twenty-one batch files under docs/eval/toolloop/2026-08-14/ record runs made under the OLD name, and they keep it deliberately: they are records of what happened, and rewriting them to match a later rename would falsify the very measurements the rename is judged against. The audit reads those files and requires a ledger row per tool name it finds, so without this redirect the instrument refuses.\n\nWHY THE RENAME: measured surfaced 5/5, called 0/5, and 0 organic calls in the four weeks since it shipped. The owner's framing — a tool that is never CALLED is never FOUND, and if the cause is a confusing name or description that is a DISTINGUISHABILITY problem — is what put the name under test. The old name led with `glossary`, which is not the noun a caller uses when they ask for a knowledge graph.\n\nTHE RENAME DID NOT WORK: 0/20 under the new name, surfaced 20/20. Recorded in full on the new row.",
    "evidence_class": "renamed",
    "counts_toward_release": false
+  },
+  "workflow_list": {
+   "state": "proven",
+   "cycle": "batch-40 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-28/c-studiowf1.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-28/c-studiowf1.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -4260,14 +4268,18 @@
    "what_is_NOT_covered": "The gate's OTHER failure direction is untouched and deliberately so: `codex` is still a marker, so a chapter titled 'The Ember Codex' still opens the gate on a prose turn (D-A-CHAPTER-TITLE-OPENS-THE-WORLD-SETUP-GATE). The declaration arm adds no false positives of its own — asserted over five prompts including both measured prose cases — but it does not remove the marker list's."
   },
   "D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN": {
-   "status": "OPEN - measured 2026-08-23. It explains one blocked tool and is worth a sweep for others.",
+   "status": "FIXED 2026-08-28. Investigating the twin's own retracted/reversed recommendation (give workflow_list a surface argument, or make it honest about lacking one) found a THIRD, cheaper option neither row identified: workflow_list already fetches a SURFACE-SCOPED result server-side. The surface it asked for was just computed wrong.",
    "what": "registry_list_workflows (federated, Tier R) and workflow_list (consumer-local, dispatched inside stream_service) answer the same question with the same data - both return 12 workflows, same slugs, same slug/title/description shape. workflow_list is in the ALWAYS-ON CORE, so it is on every pass of every turn; the federated tool must win a hot-seed slot. A user's words cannot separate them.\n\nMeasured: asked 'What workflows are available to me?', the model called workflow_list 5/5 and gave a correct, complete answer. The gate's DATA bars pass on that evidence including 'answer is true'. The federated tool is unreachable on this surface by construction, and declares no superseded_by - the inverse of DQ-T2, which is about tools that declare deprecation and name no successor.",
    "worth_sweeping": "The always-on core also carries tool_list, tool_load, confirm_action and web_search. Any federated tool that duplicates one of those is unreachable for the same reason and would look like a model failure in this loop's evidence. Not swept yet; recorded as owed.",
    "sweep_result": "SWEPT, and it is small. Comparing every federated tool's declared synonyms against the always-on consumer-local set across 315 tools, three overlaps:\n\n  registry_list_workflows vs workflow_list  - 5 shared: workflows, list workflows, my workflows,\n                                              what workflows, recipes  <- the blocked tool\n  registry_get_workflow   vs workflow_load  - 1 shared: 'workflow steps'\n  web_search              vs web_search     - SAME NAME, and BY DESIGN: the core sources its def from `catalog_index.get(name) or generic_frontend_tool_def(name)`, so a federated core tool is advertised from the catalogue's own definition. One tool, not a collision.\n\nSo the real population is TWO, both in the registry_* workflow family, and registry_get_workflow is the weaker case (one shared phrase, and the two may genuinely differ in scope).\n\n🔴 METHOD LIMIT, STATED SO THE NUMBER IS NOT OVER-READ. The consumer-local tools do not publish a _meta.synonyms list to compare against - I supplied their vocabularies by hand from their code and descriptions. The registry_list_workflows result does not rest on that (its duplication was established by CALLING both and getting the same 12 slugs); the other two do. A hand-written comparison set can miss a duplicate whose wording I did not think of, so THREE is a lower bound.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
    "queue_group": 4,
-   "unblocked_2026_08_28": "DQ-T39 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes."
+   "unblocked_2026_08_28": "DQ-T39 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes.",
+   "the_real_cause_2026_08_28": "`turn_workflows` (what workflow_list returns) is fetched via `get_workflows_client().get_workflows(..., surface=_wf_surface, ...)` — already scoped, not a flat unfiltered list. The registry's own closed set is book|editor|studio (validWorkflowSurfaces, agent-registry-service/workflows.go). `_wf_surface`'s derivation (`\"admin\" if _admin else (\"editor\" if _editor else (\"book\" if _book_scoped else \"chat\"))`) never produced \"studio\" — even though `_studio = bool(studio_context)` sat one line above it, computed for a different purpose (agent-surface telemetry) and never consulted here.\n\nThe Studio Compose panel sends BOTH studio_context AND editor_context (a chapter open in the dock mirrors the legacy standalone editor's own shape exactly), so a real Studio turn and a legacy-editor turn were indistinguishable to this ternary — both fell to \"editor\", which studio's own registry answer shows returns 11, five more than studio's true 6.\n\nFIX: `_studio` checked BEFORE `_editor` (studio always co-occurs with editor_context; editor alone never implies studio, so this ordering cannot make a legacy-editor turn misclassify). One line, one chokepoint, no new argument invented and no capability made less discoverable — the opposite of either option the twin row proposed.",
+   "also_applied_2026_08_28_the_owners_T39_decision": "The ORIGINAL half of this row — 'What workflows are available to me?' answered correctly by workflow_list 5/5, so registry_list_workflows never wins that race — is unaffected by the surface bug (both tools agree there; workflow_list's unfiltered answer was always correct). For THAT half the owner chose rename+re-describe per their own T41 rule: neither tool retired, each description now states which half it is. registry_list_workflows = 'the CATALOGUE half'; workflow_list = 'the RUNNER half, turn-scoped to what can actually be loaded right now'. Applied together since both changes land on the same two description strings; recorded as two separate owner decisions implemented in one edit, not conflated into one.",
+   "proven_live_2026_08_28": "RE-DERIVED before trusting the row's own number: registry_list_workflows called live with surface=None/book/editor/studio -> 12/12/11/6, exact slug match to the row's prior claim.\n\nfe_runner never simulated the Studio surface at all (no scenario ever set studio_context) — extended with a `studio_context` scenario field, book_id auto-filled from the resolved fixture (a scenario cannot know a throwaway book's real id).\n\nbatch c-studiowf1, K=5, real provider, throwaway book, studio_context={} + editor_context both set (the real Compose-panel shape), same prompt as the row's ORIGINAL instance ('What workflows are available to me?'):\n\n    workflow_list called 5/5, 0 errors\n    tool result: 6 workflows, EXACT slug match to registry_list_workflows' own surface=studio answer, on all 5 runs\n    (pre-fix this was 9 of 12, per the twin row's live measurement)",
+   "what_is_NOT_covered": "  * registry_get_workflow vs workflow_load (the row's 'worth sweeping' weaker case, one shared phrase) is untouched.\n  * THE HAND-BUILT SYNONYM COMPARISON REMAINS A LOWER BOUND, as the row already states — consumer-local tools publish no _meta.synonyms to compare against.\n  * Whether OTHER always-on consumer-local tools have the same 'computes a scoping key it never fully utilises' shape is unmeasured; this fix is specific to _wf_surface."
   },
   "D-A-REQUIRED-ARGUMENT-ONLY-THE-AUTHOR-CAN-SUPPLY-HAS-NO-ASK-PATH": {
    "status": "FIXED — the disposition is on `state_reason`. THE LINE BELOW IS WHAT THIS STATUS SAID WHEN THE ROW WAS FILED and is kept verbatim as the record, not as a current claim: “OPEN - measured 2026-08-23 on composition_authoring_run_manage.”",
@@ -4748,10 +4760,11 @@
    "refuted_if": "The model answers a surface-scoped question with workflow_list anyway — returning all 12 where 6 are correct — or asks rather than calling. Then the twin wins even where it is WRONG, which is a stronger version of the duplicate finding and I say so rather than reaching for another prompt.\n\n🔴 AND THE ORIGINAL ARM KEEPS ITS RESULT EITHER WAY. 'What workflows are available to me?' answered by workflow_list on 5 of 5 is CORRECT behaviour — the answer was true and complete — and a surface-scoped arm does not retire that finding.",
    "outcome": "The theory held on the schemas and the refutation clause fired on the model. Measured, K=5:\n    4 of 5 runs answered from workflow_list and reported NINE workflows as 'available on the studio surface' — five of them are not (draw-a-map, kg-build, lore-so-far, populate-from-notes, translation-pass). The studio has six.\n    1 of 5 called registry_list_workflows and named studio workflows only.\n\nSo the always-on twin does not merely win a duplicate race; it makes the model WRONG on a question it structurally cannot answer, and confidently. The arm is refuted and is recorded as such rather than concluded.",
    "recommendation_reversed": "🔴 DO NOT MARK registry_list_workflows visibility=legacy / superseded_by=workflow_list. That was my recommendation on file and it is WRONG: it would delete the only tool that can answer a surface-scoped workflow question, and the measured consequence of answering such a question without it is a wrong list presented as fact.\n\nTHE QUESTION I NOW RECOMMEND PUTTING instead — still the owner's — is how an always-on consumer-local tool should coexist with a federated tool that is strictly more capable. Two shapes worth weighing, neither of which I am choosing:\n  * give workflow_list the same `surface` argument, so the always-on answer can be correct; or\n  * have workflow_list's description say what it CANNOT do (it cannot narrow by surface) and name registry_list_workflows for that case, which is the cheaper change and leaves the capability where it is.\nThe first makes the twin sufficient; the second makes the twin honest. The measurement does not decide between them.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
    "queue_group": 4,
-   "unblocked_2026_08_28": "DQ-T39 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes."
+   "unblocked_2026_08_28": "DQ-T39 is answered, so this row is no longer waiting on a decision. The block is cleared rather than left pointing at a settled question — a stale blocked_by_dq aims the run's own resume pointer at work nobody owes.",
+   "closed_alongside_2026_08_28": "Closes with the federated-duplication row: this row's own retracted recommendation ('give workflow_list a surface argument, or make it honest') was superseded by finding the cheaper real cause — workflow_list already computes a surface-scoped fetch, the surface value itself was wrong. Fixed there; this row's finding (the twin structurally could not answer a studio-scoped question, confirmed live 12/12/11/6) is what motivated and is now resolved by that fix. See D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN for the live proof."
   },
   "D-GLOSSARY-BUILD-FORBIDS-THE-ALTERNATIVE-BUT-NEVER-CLAIMS-THE-CASE": {
    "status": "THEORY REFUTED 2026-08-24 by the run that tested it. The description change is KEPT but is NOT a fix.",
@@ -5385,11 +5398,11 @@
    "what_is_NOT_covered": "- THE OTHER 54 RUNS ARE UNEXAMINED. They carry a real store change beside the bookkeeping and are still flagged, correctly — but whether each of those is a genuine read-intent violation was not reviewed here.\n- NO OTHER PER-TURN WRITER WAS LOOKED FOR. extraction_pending is the one that surfaced; whether the platform writes anything else on chat.turn_completed is unmeasured, so the set may be incomplete rather than complete.\n- NO BATCH WAS RE-RUN to see the new output live. The predicate is unit-proven in both directions and the report line is unchanged; a batch would only re-observe the same store_diffs already on disk."
   },
   "D-REGISTRY-LIST-WORKFLOWS-UNDER-DECLARES-ITS-PAYLOAD-TOO": {
-   "status": "OPEN - BLOCKED on DQ-T49. The inaccuracy is confirmed, the obvious fix is measured WORSE and reverted with a control, and what is left is a trade between an honest description and correct answers - which is not mine to make.",
+   "status": "FIXED 2026-08-28. OWNER: correct it fully, accept the measured cost. Applied together with the T39 rename (same description string) — see D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN. The description now names all five returned fields (slug, title, description, tier, status); Go guard TestListWorkflowsDescriptionNamesEveryReturnedField pins it against the struct rather than a hand-written list. The 5/5->3/5 routing regression this correction was measured to cause (c-regwf7) is recorded as a SEPARATE, unsolved cause — an accurate description degrading routing means the routing keys on length/field-overlap rather than meaning — and is not chased here; the owner explicitly chose truth over the score.",
    "what": "registry_list_workflows advertises: 'Returns each workflow's slug + title + description — not the full step list.' The deployed tool returns slug, title, description, tier AND status (workflows.go `workflowMeta`). Same shape as D-WORKFLOW-LIST-DESCRIBES-A-PAYLOAD-IT-NO-LONGER-RETURNS, on the twin.",
    "why_it_matters": "This is the tool the model delegates to on 25 of 25 runs in the fixed state - every correct answer measured on the sibling row came through it. A caller reading its description concludes `tier` is not available and answers a tier question from something else, which is exactly the failure the sibling measured.",
    "not_investigated": "Whether it ALSO omits `surfaces`. It does not return surfaces at all (the filter is server-side via the `surface` argument), so unlike its twin the omission may be correct - the caller is meant to narrow by ARGUMENT here, not by reading a field. That difference is the whole reason the sibling's self-filter advice was measured harmful, so the fix is not a copy of the sibling's.",
-   "state": "open",
+   "state": "fixed",
    "defect_class": "contract",
    "queue_group": 4,
    "measured_by": "docs/eval/toolloop/2026-08-14/c-regwf7.json (the corrected wording) and c-regwf8.json (the revert control), K=5 each, against c-regwf6.json (K=20); deployed catalogue vs workflowMeta, 2026-08-26",
@@ -6503,28 +6516,28 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 198,
+  "tools_concluded": 199,
   "tools_in_cycle": 0,
-  "tools_proven": 198,
+  "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 40,
+  "defects_open": 37,
   "deferred_questions": 42,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
-   "gate_backed": 131,
+   "gate_backed": 132,
    "prose_note_pre_gate": 67,
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
-  "concluded_in_release_surface": 198,
-  "remaining_in_release_surface": 0,
+  "concluded_in_release_surface": 199,
+  "remaining_in_release_surface": -1,
   "shippable_denominator": 198,
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
-  "tools_concluded_including_deprecated": 203,
+  "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 198,
-  "defects_fixed": 115,
+  "defects_fixed": 118,
   "defects_withdrawn": 17,
   "defects_superseded": 1
  },

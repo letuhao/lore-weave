@@ -276,7 +276,7 @@ def pending_approval(out) -> dict | None:
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
                     thinking=False, effort="off", timeout=None,
                     permission_mode="write", approve=None, max_approvals=3,
-                    enabled_skills=None, editor_context_extra=None):
+                    enabled_skills=None, editor_context_extra=None, studio_context=None):
     """One real turn, including the approvals a user would have clicked.
 
     🔴 `timeout=None` MEANS "READ THE GLOBAL NOW", AND THE DEFAULT USED TO BE `TURN_TIMEOUT`
@@ -331,6 +331,14 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
             body["editor_context"].update(editor_context_extra)
     if book_id:
         body["book_context"] = {"book_id": book_id}
+    if studio_context is not None:
+        # D-A-FEDERATED-TOOL-DUPLICATED-BY-AN-ALWAYS-ON-CONSUMER-LOCAL-TWIN — the Studio Compose
+        # panel sends studio_context alongside editor_context (ComposePanel.tsx). This harness
+        # simulated only the legacy chapter editor's shape until now, so no scenario could ever
+        # reach the _wf_surface="studio" branch — the very thing the fix under test depends on.
+        # book_id is filled in from the already-resolved fixture (like editor_context's own),
+        # not from the scenario JSON — a scenario cannot know the throwaway book's real id.
+        body["studio_context"] = {**({"book_id": book_id} if book_id else {}), **studio_context}
 
     out = {"text": "", "tool_calls": [], "surface": None, "surfaces": [], "run_id": None,
            "events": Counter(), "error": None, "_args": {}, "approvals": [],
@@ -610,6 +618,7 @@ async def _drive_turns(client, auth, sc, idx, fx, sid, turns, prior):
                               permission_mode=sc.get("permission_mode", "write"),
                               enabled_skills=sc.get("enabled_skills"),
                               editor_context_extra=sc.get("editor_context_extra"),
+                              studio_context=sc.get("studio_context"),
                               approve=sc.get("approve"),
                               # 🔴 A HARNESS CONSTANT WAS DECIDING A MEASUREMENT. max_approvals
                               # defaulted to 3 with no way to say otherwise. Measured 2026-08-23 on
