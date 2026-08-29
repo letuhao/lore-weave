@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 21 of 23 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 22 of 24 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (5/6) · `T48` (15/16) · `T49` (1/1)
+**OPEN:** `T33` (5/6) · `T48` (16/17) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24500,6 +24500,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48o 2026-08-30 — **"tests green" run across every service I changed this week, and it caught a RED my own commit left behind**
+
+  ```
+  knowledge-service  unit   4445 passed      (1 FAILED before the fix below)
+  composition-service unit  3688 passed
+  knowledge-gateway  jest    142 passed · 12 suites
+  glossary-service   go test ./...  clean
+  ```
+
+  🎯 **T48's second criterion is *tests green*, and I had changed behaviour in three services
+  this week without running their suites.** `critic.py` and `critic_policy.py` (C46),
+  `fake_truth_store.py` (T48n), `causal_edges.py` (T33g), plus a restored DDL (T25z). Run now,
+  across all four.
+
+  🔴 **ONE RED, AND IT WAS MINE — rule 5, landing on me.**
+  `test_the_schema_no_longer_declares_a_passage_vector_index` asserted the passage DDL is
+  absent. **T25z restored it** — because T25o's deletion premise was false and the index showed
+  4090 reads — and I moved the code without moving its test. *"A gate's number moves in the
+  SAME COMMIT as the code that moved it"* applies to a test as much as a ratchet, and the T25z
+  commit shipped a red one.
+
+  ⚖️ **The test has now been wrong twice, so v3 asserts NEITHER answer.**
+
+  ```
+  v1  demanded the DDL SURVIVE
+  v2  (T25o) inverted it to demand the DDL be ABSENT — on a claim about configuration
+      nobody had checked, which T25z measured false
+  v3  DERIVES the coupling, exactly as the ENTITY test beside it already did
+  ```
+
+  The entity test's own docstring had already written the lesson v2 ignored: *"the previous
+  version demanded the DDL UNCONDITIONALLY, and that is a criterion which outlives its
+  reason."* v3 reads the deployment declarations — the same predicate `port-adoption-gate`
+  prints — and requires the DDL **while** any deployment reads passages from neo4j, permitting
+  its deletion the day none does. The same test now allows the ending T25 is waiting for and
+  forbids the shortcut that broke dev.
+
+  🧪 **BITE T48o-1 — the exact shape T25o shipped and nothing caught.**
+
+  ```
+  comment out `CREATE VECTOR INDEX passage_embeddings_1024` while a deployment
+  still declares neo4j
+     FAIL  "still read passages from neo4j and no passage_embeddings_1024 index is
+            declared. A missing vector index RAISES (52U00/52N37), so this is a 500
+            in waiting — measured on the dev graph at readCount 4090"
+  ```
+
+  📐 **Only `_1024` is coupled, and the other four stay deleted for T25u's measured reason** —
+  `readCount 0, lastRead NULL` on both stacks. The test asserts that too, so a well-meaning
+  restore of the whole family reds: an index over a property nothing writes protects no read
+  path.
+
+  **QC (a) gates:** four plan gates green, by direct exit code; `plan-final-verification` PASS.
+  **QC (b) live smoke:** N/A — one test file and no service behaviour changed here. The
+  behaviour these suites cover was live-proven in its own cycles (C46 vs a rebuilt composition
+  image, T33g vs a rebuilt knowledge image).
+  **QC (c) real data:** the four suite runs above, on this tree.
+
+  ⛔ **T48 stays `[~]`.** Two of its three criteria are now measured — *tests green* here,
+  *nothing silently dropped* at T48n — and the first, *every task fully implemented*, waits on
+  T33's labels.
   ---
   ### ✅ T48n 2026-08-30 — **§14's attribution was never measured: 3 of the 9 sweep reds were THIS PLAN's or pure scan noise**
 

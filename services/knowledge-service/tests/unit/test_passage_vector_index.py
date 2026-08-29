@@ -40,24 +40,73 @@ class _RecordingSession:
         return None
 
 
-def test_the_schema_no_longer_declares_a_passage_vector_index():
-    """T25 ③ step 3 landed: `ensure_passage_vector_index` is the SOLE definition.
+def _reads_passages_from_neo4j() -> list[str]:
+    """Deployment declarations whose passage READ PRIMARY is not `postgres`. Derived.
 
-    This test previously asserted the opposite — that the name matched a declaration in
-    `neo4j_schema.cypher` — and its docstring said it was expected to go red on the commit
-    that deleted that DDL, so whoever deleted it would confront becoming the only owner
-    rather than finding out from a benchmark that stopped running. It went red on exactly
-    that commit and is inverted here, deliberately.
-
-    It keeps teeth in the other direction now: re-adding the DDL would give one index two
-    owners that can drift in options (`vector.dimensions`, the similarity function) while
-    agreeing on the name.
+    The same predicate `port-adoption-gate` prints as `passage read-primary declarations`,
+    re-derived here so the test and the gate cannot disagree about what the tree says. An
+    interpolation `${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}` counts as its DEFAULT, because
+    that is what a deployment setting nothing receives — dev sets nothing, which is exactly
+    how it ended up serving passages from an index whose DDL had been deleted.
     """
-    declared = re.findall(r"CREATE VECTOR INDEX (passage_embeddings_\d+)", _SCHEMA.read_text())
-    assert declared == [], (
-        f"the schema declares {declared} again — passage vectors read from Postgres "
-        f"(§3.3) and `ensure_passage_vector_index` is the only definition these names "
-        f"should have"
+    import glob as _glob
+
+    root = pathlib.Path(__file__).resolve().parents[4]
+    out: list[str] = []
+    for pat in ("infra/*.env", "infra/.env", "infra/.env.*", "infra/*.yml", "infra/*.yaml"):
+        for path in _glob.glob(str(root / pat)):
+            try:
+                text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for m in re.finditer(
+                    r"KNOWLEDGE_VECTOR_READ_PRIMARY\s*[:=]\s*[\"']?"
+                    r"(?:\$\{KNOWLEDGE_VECTOR_READ_PRIMARY:-)?([A-Za-z0-9_]+)", text):
+                if m.group(1).strip().lower() != "postgres":
+                    out.append(f"{pathlib.Path(path).name}={m.group(1)}")
+    return out
+
+
+def test_the_PASSAGE_vector_ddl_tracks_the_DECLARATIONS_that_need_it():
+    """§9.2's coupling, applied to the PASSAGE family — and this test has been wrong twice.
+
+    v1 demanded the DDL survive. v2 (T25o) inverted it to demand the DDL be ABSENT, on the
+    claim that "dev and iso both read them from pgvector now, so this DDL had no reader
+    left." **That claim was about configuration nobody had checked**, and T25z measured it
+    false: dev declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it runs the compose default
+    `neo4j`, and `passage_embeddings_1024` showed **readCount 4090, lastRead 08-23** — two
+    days AFTER the DDL that creates it had been deleted. The index survived only as residue
+    in an existing database; the next Neo4j rebuild was a `ProcedureCallFailed` 500.
+
+    So this is v3, and it asserts neither answer. It DERIVES the coupling, the way the
+    entity test beside it does, so the same test permits the deletion the day the last
+    deployment moves to postgres AND requires the DDL while one has not. A criterion that
+    outlives its reason is what produced v2.
+
+    ⚠️ Only `_1024` is coupled. The other four dimensions read `readCount 0, lastRead NULL`
+    on both stacks — T25u's own criterion for deleting the event family — so they stay gone.
+    """
+    schema = _declarations(_SCHEMA.read_text())
+    declared = re.findall(r"CREATE VECTOR INDEX (passage_embeddings_\d+)", schema)
+    readers = _reads_passages_from_neo4j()
+
+    if readers:
+        assert "passage_embeddings_1024" in declared, (
+            f"{readers} still read passages from neo4j and no passage_embeddings_1024 index "
+            f"is declared. A missing vector index RAISES (52U00/52N37), so this is a 500 in "
+            f"waiting — measured on the dev graph at readCount 4090 (T25z)"
+        )
+    else:
+        assert declared == [], (
+            f"every deployment declares postgres for passage reads and {declared} is still "
+            f"declared. §9.2's coupling: the DDL goes when the path nobody can take goes"
+        )
+
+    stale = [d for d in declared if d != "passage_embeddings_1024"]
+    assert stale == [], (
+        f"{stale} declared, but only _1024 has readers — the other dimensions read "
+        f"readCount 0 / lastRead NULL on both stacks, which is T25u's own criterion for "
+        f"deleting a family. Restoring them adds indexes over properties nothing writes"
     )
 
 
