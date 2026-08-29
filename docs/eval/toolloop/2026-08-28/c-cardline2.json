@@ -1,0 +1,1308 @@
+{
+  "batch": "c-cardline2",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_canon_rule_restore",
+      "scenario": "canon-rule-restore-LEAVES-THE-CARD-PENDING",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the suspended turn's stored text does NOT end with the server line 'Nothing has been saved yet; confirm the card above to apply it.', OR the line appears on a turn that did NOT suspend (finish_reason != 'awaiting_input'), which is the inversion the owner's build note warns about. THE RESTORE IS EXPECTED NOT TO LAND HERE — the card is deliberately left unapproved, so an unchanged store is the CORRECT outcome and is not a failure of the tool.",
+      "answer_expect": {
+        "all_of": [
+          "nothing has been saved yet"
+        ],
+        "why": "The server line is deterministic; if it is absent the fix did not fire."
+      },
+      "falsifier_sha": "a6a5915d12d722dc",
+      "ship_audit": {
+        "gate": "OWED — Tier A; the restore mutates author-declared canon.",
+        "absent_case": "a rule_id that does not exist must be refused — not covered here.",
+        "idempotency": "restoring an already-active rule must not duplicate it — not covered here.",
+        "tenancy": "project-scoped; the listing is VIEW-gated on the book."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a04ea6-32eb-7dd0-ab73-14e207023e60",
+          "project_id": "01a04ea6-3423-7663-ac0e-7fb931080b58",
+          "seed_ids": {
+            "01a04ea6-32eb-7dd0-ab73-14e207023e60": "fixture book_id",
+            "01a04ea6-3423-7663-ac0e-7fb931080b58": "fixture project_id (composition_work)",
+            "01a04ea6-337c-784e-a3fb-c970a5face9f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a04ea6-34b9-708d-b067-c1332fd01476": "seed[0] composition_canon_rule_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_canon_rule_create.created_by"
+          },
+          "session_id": "01a04ea6-8298-7b0d-ab6c-66ea66446f79",
+          "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "scenario_prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_canon_rule_edit",
+            "composition_list_canon_rules"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_canon_rule_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_list_canon_rules",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_list_canon_rules",
+              "result_head": "{\"ok\": true, \"result\": {\"rules\": [{\"id\": \"01a04ea6-34b9-708d-b067-c1332fd01476\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a04ea6-3423-7663-ac0e-7fb931080b58\", \"text\": \"Magic always costs HP.\", \"scope\": \"world\", \"entity_id\": null, \"from_order\": null, \"until_order\": null,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "call": "composition_list_canon_rules"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "call": "composition_canon_rule_edit"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.606284+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.312381+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.306476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.140385+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.606284+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.312381+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:51:50.306476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a04ea6-fc28-723c-a4ee-513806ce3d79",
+          "project_id": "01a04ea6-fd69-77c1-a9ac-0a4a81341e25",
+          "seed_ids": {
+            "01a04ea6-fc28-723c-a4ee-513806ce3d79": "fixture book_id",
+            "01a04ea6-fd69-77c1-a9ac-0a4a81341e25": "fixture project_id (composition_work)",
+            "01a04ea6-fcbd-7003-9f81-b7804911e6e8": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a04ea6-fe05-718c-8140-9d74d41231f7": "seed[0] composition_canon_rule_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_canon_rule_create.created_by"
+          },
+          "session_id": "01a04ea7-4d6c-7167-aef6-24f36eb8ab38",
+          "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "scenario_prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_canon_rule_edit",
+            "composition_list_canon_rules"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_canon_rule_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_list_canon_rules",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_list_canon_rules",
+              "result_head": "{\"ok\": true, \"result\": {\"rules\": [{\"id\": \"01a04ea6-fe05-718c-8140-9d74d41231f7\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a04ea6-fd69-77c1-a9ac-0a4a81341e25\", \"text\": \"Magic always costs HP.\", \"scope\": \"world\", \"entity_id\": null, \"from_order\": null, \"until_order\": null,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "call": "composition_list_canon_rules"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "call": "composition_canon_rule_edit"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:42.140896+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.839432+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.832801+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.660812+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:42.140896+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.839432+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:52:41.832801+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a04ea7-bbd6-7b73-9f13-0ed1aed64c25",
+          "project_id": "01a04ea7-bd6c-7ac5-9883-51f68604cd84",
+          "seed_ids": {
+            "01a04ea7-bbd6-7b73-9f13-0ed1aed64c25": "fixture book_id",
+            "01a04ea7-bd6c-7ac5-9883-51f68604cd84": "fixture project_id (composition_work)",
+            "01a04ea7-bc90-7a22-9561-823087f0ec95": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a04ea7-be0f-7f10-95a7-b757d1172dee": "seed[0] composition_canon_rule_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_canon_rule_create.created_by"
+          },
+          "session_id": "01a04ea8-10c5-74fa-85e6-78aadfbb9c28",
+          "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "scenario_prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_canon_rule_edit",
+            "composition_list_canon_rules"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_canon_rule_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_list_canon_rules",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_list_canon_rules",
+              "result_head": "{\"ok\": true, \"result\": {\"rules\": [{\"id\": \"01a04ea7-be0f-7f10-95a7-b757d1172dee\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a04ea7-bd6c-7ac5-9883-51f68604cd84\", \"text\": \"Magic always costs HP.\", \"scope\": \"world\", \"entity_id\": null, \"from_order\": null, \"until_order\": null,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "call": "composition_list_canon_rules"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "call": "composition_canon_rule_edit"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:31.441141+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:31.0044+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.987628+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.768389+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:31.441141+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:31.0044+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:53:30.987628+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a04ea8-853c-7cb3-b5af-b0e462d95820",
+          "project_id": "01a04ea8-86c1-7528-91cb-d5dda3e858b2",
+          "seed_ids": {
+            "01a04ea8-853c-7cb3-b5af-b0e462d95820": "fixture book_id",
+            "01a04ea8-86c1-7528-91cb-d5dda3e858b2": "fixture project_id (composition_work)",
+            "01a04ea8-85eb-70fe-8691-f6685204d337": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a04ea8-8767-7f30-bcab-3b365e1681ca": "seed[0] composition_canon_rule_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_canon_rule_create.created_by"
+          },
+          "session_id": "01a04ea8-d7e0-7846-98eb-d56573aa0476",
+          "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "scenario_prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_canon_rule_edit",
+            "composition_list_canon_rules"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_canon_rule_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_list_canon_rules",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_list_canon_rules",
+              "result_head": "{\"ok\": true, \"result\": {\"rules\": [{\"id\": \"01a04ea8-8767-7f30-bcab-3b365e1681ca\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a04ea8-86c1-7528-91cb-d5dda3e858b2\", \"text\": \"Magic always costs HP.\", \"scope\": \"world\", \"entity_id\": null, \"from_order\": null, \"until_order\": null,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "call": "composition_list_canon_rules"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "call": "composition_canon_rule_edit"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.895395+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.546116+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.528483+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.314771+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.895395+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.546116+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:54:22.528483+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a04ea9-4fda-7128-be6a-e003af07add0",
+          "project_id": "01a04ea9-516a-783e-827d-92d359334115",
+          "seed_ids": {
+            "01a04ea9-4fda-7128-be6a-e003af07add0": "fixture book_id",
+            "01a04ea9-516a-783e-827d-92d359334115": "fixture project_id (composition_work)",
+            "01a04ea9-50aa-798c-9340-2ad89775aa71": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a04ea9-5216-7c18-abcc-740c0f33470b": "seed[0] composition_canon_rule_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_canon_rule_create.created_by"
+          },
+          "session_id": "01a04ea9-9797-772f-b86b-878f06b5896d",
+          "prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "scenario_prompt": "Undo delete rule — I archived a canon rule by mistake, please restore it.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_canon_rule_edit",
+            "composition_list_canon_rules"
+          ],
+          "surfaced_tools": [
+            "book_chapter_bulk_create",
+            "book_chapter_create",
+            "book_chapter_restore_revision",
+            "book_chapter_save_draft",
+            "book_chapter_update_meta",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_canon_rule_edit",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_list_canon_rules",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_list_canon_rules",
+              "result_head": "{\"ok\": true, \"result\": {\"rules\": [{\"id\": \"01a04ea9-5216-7c18-abcc-740c0f33470b\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"project_id\": \"01a04ea9-516a-783e-827d-92d359334115\", \"text\": \"Magic always costs HP.\", \"scope\": \"world\", \"entity_id\": null, \"from_order\": null, \"until_order\": null,"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "call": "composition_list_canon_rules"
+            },
+            {
+              "pass_size": 60,
+              "of_the_called": [
+                "composition_canon_rule_edit",
+                "composition_list_canon_rules"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_canon_rule_edit"
+              ]
+            },
+            {
+              "call": "composition_canon_rule_edit"
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.760145+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.417037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.409932+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.218437+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.760145+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.417037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 17:55:14.409932+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it."
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 5
+    }
+  ]
+}

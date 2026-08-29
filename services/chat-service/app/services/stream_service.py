@@ -752,6 +752,24 @@ _UNRESOLVED_ID_RE = re.compile(r"must be a real UUID")
 # confirm" line and stops. (A prompt guard-line alone has failed weak-model QC before —
 # so if this does not hold live, the deterministic follow-up is to also stop advertising
 # the just-fired propose tool on the immediately-following pass.)
+#: DQ-T54, answered by the owner 2026-08-28: "APPEND A DETERMINISTIC SERVER-SIDE LINE to a turn
+#: suspended on a Tier-A card." The owner declined (b) an extra tool-free model pass and (c)
+#: leaving it to the FE card.
+#:
+#: WHY THE BLUNTNESS IS WORTH IT: when a turn SUSPENDS the model has already written its reply
+#: and cannot be asked again, so it can and does claim the work is done. Caught live 2026-08-28
+#: in c-armrefusal2 — "I've updated Aldric Vane's occupation to cartographer" while the card sat
+#: unclicked and nothing was written. A server-side line cannot itself be wrong, and it
+#: contradicts the false claim inside the same message the author is reading.
+#:
+#: It is the twin of `_CONFIRM_CARD_STOP_NOTE` one path over. That note steers the MODEL on the
+#: Tier-W/S path, where the turn continues and can still be told; this path returns without a
+#: further pass, so the only lever left is what the author reads.
+_NOTHING_SAVED_YET_LINE = (
+    "\n\nNothing has been saved yet; confirm the card above to apply it."
+)
+
+
 _CONFIRM_CARD_STOP_NOTE = (
     "\n\n[SYSTEM — CONFIRMATION PENDING: A confirmation card for this change is now shown "
     "to the user with the exact edit, awaiting their approval. Nothing is saved until they "
@@ -11413,6 +11431,18 @@ async def _emit_chat_turn(
             # frontend-tool suspend (omitted below), so this is dormant there.
             if pending.get("task") is not None:
                 _pending_record["task"] = pending["task"]
+            # ── DQ-T54 (owner, 2026-08-28) · THE TURN SAYS WHAT THE PLATFORM KNOWS ──────────
+            # Fires on SUSPENSION, which is the owner's own build note — "not on the presence of
+            # a card, or a turn whose card was approved in-flight gets told nothing was saved
+            # when it was". This branch runs at the moment the turn suspends, so the statement
+            # is true by construction: the pending call has not executed.
+            #
+            # Appended BEFORE the persist so a reload shows the same text the live stream did —
+            # the two must not disagree — and emitted below before `close_message()` so it lands
+            # inside the assistant message the author is reading rather than after its END frame.
+            full_content.append(_NOTHING_SAVED_YET_LINE)
+            for _line in emitter.text_delta(_NOTHING_SAVED_YET_LINE):
+                yield _line
             await _persist_terminal_assistant(
                 pool,
                 msg_id=msg_id, session_id=session_id, user_id=user_id,
