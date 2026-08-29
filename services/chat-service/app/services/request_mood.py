@@ -56,13 +56,47 @@ _CONSTRUCT = re.compile(
     re.I,
 )
 
+#: D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT / D-A-STOP-REQUEST-PROPOSES-A-COST-BEARING-
+#: START. Asked "Cancel my translation job — stop the runaway translation run", the model checked
+#: jobs_list, found nothing running, and then called translation_start_job AND
+#: translation_retranslate_dirty — minting a confirm token for each. Asked to STOP work, it
+#: proposed STARTING it, on two spend-bearing tools, 5 of 5 on the sibling row. Its own reply
+#: showed it knew: "I don't see any translation jobs currently running." The correct turn ends
+#: there.
+#:
+#: A halt verb ALONE is not a halt request, and the corpus says so loudly. Measured over 1,917
+#: real user messages, three versions:
+#:    v1  bare verb                       47 matched, and they included
+#:                                        "Count from 1 to 2000 … Do NOT stop early" — the
+#:                                        opposite of a stop request.
+#:    v2  + must name WORK, no construct  12 matched, still catching harness probe LABELS
+#:                                        ("RUN-D7-KILL: list the chapters…").
+#:    v3  + verb not hyphen-joined         8 matched (0.42%), ALL of them genuine.
+#: Each narrowing was forced by a false positive the previous one produced, not chosen up front.
+
+#: A negated halt verb is not a halt request. "Do not stop early" asks for the opposite.
+_HALT_NEGATED = re.compile(
+    r"\b(?:do\s+not|don't|never|without)\s+(?:\w+\s+){0,2}?(?:stop|cancel|abort|halt|kill)\b",
+    re.I,
+)
+
+#: The verb, never as part of a hyphenated token — "RUN-D7-KILL" is a probe's own label.
+_HALT_VERB = r"(?<![-\w])(?:cancel|stop|abort|halt|kill)\b"
+#: …and it must be aimed at WORK. "Stop" with no object is not this.
+_HALT_WORK = r"\b(?:job|jobs|run|runs|task|tasks|translation|extraction|generation|process)\b"
+
+_HALT = re.compile(
+    rf"{_HALT_VERB}[^.?!]{{0,40}}?{_HALT_WORK}|{_HALT_WORK}[^.?!]{{0,25}}?{_HALT_VERB}", re.I,
+)
+
+HALT = "halt"
 INSPECT = "inspect"
 CONSTRUCT = "construct"
 UNKNOWN = "unknown"
 
 
 def request_mood(text: str | None) -> str:
-    """``inspect`` | ``construct`` | ``unknown`` — what the user's own words asked for.
+    """``inspect`` | ``construct`` | ``halt`` | ``unknown`` — what the user's own words asked for.
 
     ``inspect`` is only returned for an unambiguous look-request: an inspect marker AND no
     construct verb anywhere in the message. Everything else is ``construct`` (a construct verb is
@@ -73,6 +107,13 @@ def request_mood(text: str | None) -> str:
         return UNKNOWN
     constructs = bool(_CONSTRUCT.search(text))
     inspects = bool(_INSPECT.search(text))
+    # HALT is checked FIRST and requires the absence of a construct verb, exactly as `inspect`
+    # does — "cancel the job and then rewrite chapter 2" is mixed, and a mixed request must keep
+    # every existing behaviour. Ordered before the others because a halt request carries neither
+    # an inspect marker nor a construct verb, so it would otherwise fall through to `unknown` and
+    # the distinction would be unavailable to callers that need it.
+    if not constructs and not _HALT_NEGATED.search(text) and _HALT.search(text):
+        return HALT
     if inspects and not constructs:
         return INSPECT
     if constructs and not inspects:

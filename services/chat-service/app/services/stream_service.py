@@ -59,6 +59,7 @@ from app.db.suspended_runs import (
 from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
 from app.db.message_sequence import next_sequence_num
 from app.services.id_ledger import IdLedger
+from app.services.request_mood import HALT as HALT_MOOD
 from app.services.request_mood import request_mood, standing_grant_applies
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
@@ -2224,6 +2225,64 @@ _AUTHOR_SOURCED_TOOLS = {"glossary_extract_entities_from_doc"}
 #: The one reference the platform can resolve today. glossary-service refuses any other value by
 #: name, so the two sides agree on the vocabulary rather than each guessing.
 _SOURCE_REF_LAST_USER_MESSAGE = "last_user_message"
+
+
+def _halt_turn_refusal(
+    tool: str, tool_def: dict | None, request_text: str | None,
+) -> str | None:
+    """D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT — a STOP request must not START work.
+
+    MEASURED: asked "Cancel my translation job — stop the runaway translation run", the model
+    checked jobs_list, found nothing running, and then called translation_start_job AND
+    translation_retranslate_dirty, minting a confirm token for each. On the sibling row
+    (D-A-STOP-REQUEST-PROPOSES-A-COST-BEARING-START) that shape is 5 of 5. Nothing executed — the
+    Tier-W cards held — but a confirm card is the LAST line, not the only one, and the click is a
+    human's to make on a card that says "start translation" when they asked to cancel one.
+
+    🔴 THE TEST IS THE TOOL'S OWN DECLARED VOCABULARY, never its name. There is no `starts_work`
+    flag to read: checked against the live catalogue, translation_start_job,
+    translation_retranslate_dirty, translation_start_extraction and
+    composition_authoring_run_create carry only {tier, scope, synonyms, async} — nothing that
+    separates starting from stopping. A `*_start_*` prefix rule would be exactly the name
+    classifier CP-4.d deleted for inferring a property from fragments of an identifier.
+
+    So the question asked is the one `answerable_tools` already answers everywhere else on this
+    surface — does THIS tool's declaration answer THIS request? Measured against the live
+    catalogue on the row's own two prompts:
+
+        translation_job_control          answerable   (synonyms: "cancel the translation", …)
+        jobs_cancel                      answerable   on "Stop the translation one."
+        translation_start_job            NOT          (synonyms: "translate", "start translation")
+        translation_retranslate_dirty    NOT
+        translation_start_extraction     NOT
+        composition_authoring_run_create NOT
+
+    Four for four on the wrong side, and the right tools on the right side, with no list of names
+    written anywhere.
+
+    SCOPED TO WRITES. A read on a halt turn is how the model FINDS the job to stop — jobs_list is
+    the correct first move and must stay free. Only a tiered W/A call is refused, which is also
+    the only kind that can spend or change anything.
+
+    Returns the refusal text, or None to let the call proceed.
+    """
+    if not request_text or request_mood(request_text) != HALT_MOOD:
+        return None
+    if tool_def is None:
+        return None
+    tier = tool_tier(tool_def)
+    if tier not in ("W", "A", "S"):
+        return None  # a READ is how the turn finds what to stop
+    if answerable_tools(request_text, [tool_def]):
+        return None  # its own declaration answers a stop request — this IS the right tool
+    return (
+        f"REFUSED: this turn asked to STOP work, and '{tool}' does not declare that it stops "
+        "anything — its own synonyms describe starting or changing work. Nothing was called. "
+        "If you meant to halt something, use the tool whose declared vocabulary matches the "
+        "request (a job-control or cancel tool); if the user's request was already satisfied "
+        "because nothing is running, SAY SO and stop — do not propose new work they did not ask "
+        "for."
+    )
 
 
 def _resolve_authors_source(
@@ -6488,6 +6547,30 @@ async def _stream_with_tools(
                     yield {"tool_call": {
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": scope_err,
+                    }}
+                    continue
+
+                # ── D-ASKED-TO-STOP-WORK-THE-MODEL-PROPOSED-STARTING-IT ─────────────────
+                # Placed with the subagent-scope refusal above, and for the same reason: a call
+                # that must not happen is stopped BEFORE it runs, and comes back as a tool error
+                # the model can read and act on, not as a silent drop.
+                _halt_err = _halt_turn_refusal(
+                    c["name"], cat_index.get(c["name"]) or plain_index.get(c["name"]),
+                    request_text,
+                )
+                if _halt_err:
+                    logger.warning(
+                        "halt-turn gate: refused %s on a STOP request (session=%s) — the tool's "
+                        "own declaration does not answer a stop", c["name"], session_id,
+                    )
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content({"error": _halt_err}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": _parse_tool_args(c["arguments"]), "ok": False,
+                        "result": None, "error": _halt_err,
                     }}
                     continue
 
