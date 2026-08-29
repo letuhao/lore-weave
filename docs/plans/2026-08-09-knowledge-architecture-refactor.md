@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T33 — the sheet is COMPLETE and awaits only the PO's 20 labels.**
+**RESUME: T33's 20 labels — the plan's last input. T48 → T49 follow.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -26342,6 +26342,75 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   truth starts, and the generation-SSOT run recorded that exact mistake as its own debt row.
   (depends on T48)
 
+  ---
+  ### ✅ T49b 2026-08-30 — **the handoff's "one call owed" was answered five commits ago, and its T25 line stated a claim T25z REFUTED**
+
+  ```
+  handoff-staleness-gate   FAIL -> OK   (D-QC5-PROSE-JUDGE-FIRES named as owed, closed at C46)
+  the T25 line             "LANDED 2026-08-22 ... passage DDL deleted"  <- refuted by T25z
+  edit shape               38 added · 12 replaced · nothing deleted
+  ```
+
+  🎯 **T49a established that only the ARCHIVE half waits on T48** — *"the handoff half does
+  not, and it was stale"* — so this is the half that was available, and it had gone stale again
+  in exactly the way T49a warned: *"Regenerate this list; do not append to it."*
+
+  🔴 **Two claims, both wrong in the direction that costs a session.**
+
+  ```
+  "What is genuinely owed: ONE call — D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE"
+      DECIDED and BUILT at C46, row closed at C48. A next session would have opened a
+      settled question — the plan's own priced failure: "eight days lost to exactly this".
+
+  "T25 ③ — LANDED 2026-08-22 (T25o). Dropping the Neo4j vector indexes..."
+      T25z REFUTED that premise: the index's own counter read 4090 reads, lastRead 08-23,
+      and the DDL is RESTORED. A handoff asserting a deletion that was reverted points the
+      next reader at a graph state that does not exist.
+  ```
+
+  📐 **`handoff-staleness-gate` caught the first one and could not have caught the second**, and
+  that boundary is worth stating: it checks whether a named DEFERRAL is closed, so it found
+  `D-QC5-PROSE-JUDGE-FIRES`. The T25 line names no deferral — it makes a claim about a FILE — so
+  no gate saw it. It was found by re-reading the section against this week's work, which is what
+  T49 is for and why it is a row rather than a script.
+
+  ⚖️ **What the section now says is one thing, and it is not a decision:** the 20 labels on
+  T33's sheet. Everything else is a re-run. The census pointer is kept as COMMANDS —
+  *"read the census from the commands, never from here"* — with the 08-30 numbers beside a note
+  that the paragraph will age and the two commands will not.
+
+  ⚠️ **STRUCK, NOT DELETED, and that is T49a's rule applied to its own successor.** *"A
+  retraction that deletes what it retracts leaves no retraction."* Both wrong claims stay on the
+  page with the measurement that killed them. 38 added, 12 replaced, nothing removed.
+
+  ⚠️ **I MASKED A GATE'S EXIT CODE TWICE IN ONE SESSION, WITH THE SAME MISTAKE.**
+
+  ```
+  python scripts/handoff-staleness-gate.py 2>&1 | head -12 ; echo $?   ->  0
+  python scripts/handoff-staleness-gate.py >/dev/null 2>&1 ; echo $?   ->  1
+  ```
+
+  The first time (T48n) I nearly published *"the full sweep exits 0 on failures"* — a false
+  alarm about CI. This time the gate printed `FAIL` and reported success in the same breath.
+  A pipeline's status is the LAST command's, and `head`/`tail` always succeed. Every gate check
+  in this cycle is a direct invocation for that reason.
+
+  ⚠️ **And the patch script failed on CRLF, then a heredoc ate the fix.** `SESSION_HANDOFF.md`
+  is CRLF (1342 line endings), so an anchor written with `\\n` matched nothing — the same hazard
+  the BITE rule already states for edits (*"exact-match replace silently no-ops on CRLF"*),
+  landing on the READ side. The repair used `\\r\\n` in a heredoc, which collapsed it to a real
+  newline: **the fourth heredoc escape collapse this session.** Written to a file with `chr(13)`
+  and `chr(10)` instead. The lesson is not "be careful" — it is that a patch with escapes does
+  not go through the shell.
+
+  **QC (a) gates:** `handoff-staleness-gate` OK and `deferral-gate` OK, both by DIRECT exit
+  code; four plan gates green.
+  **QC (b) live smoke:** N/A — this cycle edits one document. No service, no seam.
+  **QC (c) real data:** the two corrected claims are checked against this week's own
+  measurements (C46/C48 for the deferral, T25z's `readCount 4090` for the DDL).
+
+  ⛔ **T49 stays `[~]`.** Its remaining half is `/aif-archive`, which waits on T48, which waits
+  on T33's labels. The handoff half is current as of 2026-08-30.
   ---
   ### ✅ T49a 2026-08-23 — **the handoff's "whole remaining list" was three-quarters STALE, and nothing was checking it**
 

@@ -28,23 +28,49 @@ mechanism that made a settled question read as open for eight days and stopped a
 nobody owed."* A stale blocker list does not merely age — it sends the next session at work that
 does not exist. Regenerate this list; do not append to it.
 
-**What is genuinely owed: ONE call.**
+**What is genuinely owed: 20 LABELS, and nothing else.**
 
-- **`D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`** — accept prose-judge false positives as the
-  local-model ceiling, knowing this judge is **ON by default and reaches authors**, or spend on
-  precision. §7.2 accepted exactly this for the *role* judge, and the reason it was affordable —
-  that judge is **off** by default — does not transfer. Evidence: C26 adjudicated 3-of-4 false on
-  a critic users do not get; **C30 adjudicated 4-of-4 false on the critic they do**.
+- **`T33`'s causal labelling sheet** —
+  [`2026-08-24-t33-causal-labelling-sheet.md`](../measurements/2026-08-24-t33-causal-labelling-sheet.md).
+  20 event pairs from two real chapters, `causal_pass_ran: true`, the extractor asserting an
+  ordered edge on 2 of them, every `LABEL:` blank. Fill `labelled_by:` with a name and each
+  `LABEL:` with `causes` / `precedes` / `unknown`, then
+  `python scripts/t33-causal-labelling-sheet.py --score <sheet>`.
+  **`--score` REFUSES a sheet signed by an assistant** — a detector graded against labels its
+  own author wrote is green by construction, so this one input cannot be automated away.
+  It settles stop condition 3, which has been *unfalsifiable* (not failing) since 2026-08-11.
 
-**And one row that is a re-run, not a task.** `T48`'s first criterion is *"every task fully
-implemented"*, and `plan-final-verification` refuses a QC row that certifies open work. `T49` is
-⛔ and depends on it — `T49`'s remaining half is `/aif-archive`; the handoff half is this section.
+⛔ **~~What is genuinely owed: ONE call — `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`~~ —
+DECIDED AND BUILT 2026-08-30, and the deferral is CLOSED.** Kept struck because the retraction
+is the record. The PO chose *spend on precision first*; C45 then measured that precision on
+cases it was NOT derived from — **14/14 in-sample against 0/5 held out** — so C46 gated the
+attribution channel OFF by default (`canon_violations_enabled`, per-book, params override),
+leaving the four dimension scores and the craft notes untouched. `QC-5` closed on that basis at
+C48, and the basis is CHECKED rather than asserted: `qc5-acceptance-gate --closure` reds if the
+channel is turned back on without a `HELD-OUT-HOLDS` run.
+
+**And two rows that are a re-run, not a task.** `T48`'s first criterion is *"every task fully
+implemented"*, and `plan-final-verification` refuses a QC row that certifies open work — so T48
+unblocks the moment T33 is scored. `T49` is ⛔ and depends on it: its remaining half is
+`/aif-archive`; the handoff half is this section, rewritten 2026-08-30.
+
+**Read the census from the commands, never from here** — `python scripts/plan-final-verification.py`
+and `sed -n 46p` on the plan. On 2026-08-30 those read **66 of 69 rows done, 3 open**
+(`T33`, `T48`, `T49`), with `T17`, `T25` and `QC-5` closed this week. This paragraph will age;
+those two commands will not.
 
 ⛔ **The superseded 2026-08-21 list, kept because the retraction is the point:**
 
 **Four things need a person, and none of them is more effort:**
 
-1. ~~**`T25` ③ — a write grant.**~~ **LANDED 2026-08-22 (T25o).** Dropping the Neo4j vector indexes is a destructive write to the
+1. ~~**`T25` ③ — a write grant.**~~ ~~**LANDED 2026-08-22 (T25o).**~~ ⚠️ **CORRECTED 2026-08-30
+   (T25z): the passage DDL deletion's premise was FALSE, and the DDL is RESTORED.** T25o deleted
+   it as *"no reader left"*; the index's own counter read **4090 reads, lastRead 08-23**, and dev
+   declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it serves passages from Neo4j. Dev was one
+   rebuild away from a 500. The exit is now a mechanical predicate — `port-adoption-gate`'s
+   `passage read-primary declarations` — and `T25` closed on that coupling (§19). The dev cutover
+   moves to MERGE-TO-MAIN, where the sibling `infra` stack is retired rather than worked around.
+   Original note kept: dropping the Neo4j vector indexes is a destructive write to the
    dev graph that the 2026-08-21 GRANTS do not cover. Same shape as the recanon grant.
    Before granting it, note the soak has **disarmed itself twice** (T25c-2, T25f) and the dev
    `passage` scope has never landed a write — the content-hash skip-gate refuses to re-embed
