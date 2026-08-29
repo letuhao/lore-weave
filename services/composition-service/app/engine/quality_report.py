@@ -68,6 +68,11 @@ def _empty_critic(err: str = "critic_error") -> dict[str, Any]:
         "violations_dropped": 0,
         "violations_raw_count": 0,
         "violations_dropped_labels": [],
+        # QC-5 C46 — the attribution channel gate stamps these on every healthy
+        # critique, so the degrade shape carries them too. Caught by the paired test
+        # in the same commit that added them, which is the arrangement working.
+        "canon_violations_suppressed": True,
+        "violations_withheld_count": 0,
         # QC-5: the verification pass adds a FIFTH, for the same reason and caught by the
         # same paired test — which is the point of comparing key SETS rather than a
         # literal. A consumer reading `violations_unverified` on a healthy judge would

@@ -147,6 +147,7 @@ async def test_judge_prose_ACTUALLY_CALLS_the_verifier():
     crit = await critic.judge_prose(
         judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
+        emit_canon_violations=True,
     )
     assert len(judge.calls) == 2, "the verifier must be a SECOND call, not a re-read of the first"
     assert crit["violations"] == [], "the refuted verdict must not reach the caller"
@@ -162,6 +163,7 @@ async def test_a_CONFIRMED_verdict_still_reaches_the_caller_through_judge_prose(
     crit = await critic.judge_prose(
         judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
+        emit_canon_violations=True,
     )
     assert len(crit["violations"]) == 1
     assert crit.get("violations_unverified", 0) == 0
@@ -178,6 +180,7 @@ async def test_no_violations_costs_no_verifier_call():
     crit = await critic.judge_prose(
         judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
+        emit_canon_violations=True,
     )
     assert len(judge.calls) == 1
     assert crit["violations"] == []
@@ -200,6 +203,7 @@ async def test_the_VERIFIER_ROLE_routes_the_audit_to_its_own_model():
         judge, user_id="u", model_source="s", model_ref="critic-model", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
         verifier_source="vs", verifier_ref="verifier-model",
+        emit_canon_violations=True,
     )
     assert judge.calls[0]["model_ref"] == "critic-model"
     assert judge.calls[1]["model_ref"] == "verifier-model", "the audit must go to the verifier"
@@ -215,6 +219,7 @@ async def test_no_verifier_configured_FALLS_BACK_to_the_critic():
     await critic.judge_prose(
         judge, user_id="u", model_source="s", model_ref="critic-model", passage=FIXTURE_PASSAGE,
         active_rules=RULES, present_facts=[], profile=NEUTRAL,
+        emit_canon_violations=True,
     )
     assert len(judge.calls) == 2, "the audit must still happen"
     assert judge.calls[1]["model_ref"] == "critic-model"
@@ -315,3 +320,40 @@ async def test_a_PARAPHRASED_span_still_reaches_the_verifier():
     )
     assert dropped == []
     assert len(judge.calls) == 1, "it must still reach the semantic check"
+
+
+# ── QC-5 C46 — the attribution channel gate, at the entry point ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_judge_prose_WITHHOLDS_attributions_by_default():
+    """🔴 THE WIRING, not the policy. `canon_violations_enabled` passing its own tests proves
+    nothing about whether `judge_prose` honours it — a correct switch nothing reads is the
+    shape this plan has found repeatedly (C29, C32, C34). This drives the real entry point.
+
+    NEVER silently: the withheld count and a marker ride the envelope, because "the judge
+    found nothing" and "the judge was not allowed to say" need opposite responses.
+    """
+    judge = ScriptedJudge(_critique_with_one_violation())
+    crit = await critic.judge_prose(
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
+        active_rules=RULES, present_facts=[], profile=NEUTRAL,
+    )
+    assert crit["violations"] == [], "the default must withhold the attribution"
+    assert crit["canon_violations_suppressed"] is True
+    assert crit["violations_withheld_count"] == 1, "the count must say what was withheld"
+    assert len(judge.calls) == 1, "a suppressed channel must not pay for a verifier round trip"
+
+
+@pytest.mark.asyncio
+async def test_the_four_dimensions_and_craft_notes_SURVIVE_suppression():
+    """The whole reason this is a NARROW control (PO, 2026-08-30). C45 indicted the
+    attribution channel; it did not fault the scores or the craft notes, and turning those
+    off would discard feedback no measurement has faulted."""
+    judge = ScriptedJudge(_critique_with_one_violation())
+    crit = await critic.judge_prose(
+        judge, user_id="u", model_source="s", model_ref="m", passage=FIXTURE_PASSAGE,
+        active_rules=RULES, present_facts=[], profile=NEUTRAL,
+    )
+    for dim in ("coherence", "voice_match", "pacing", "canon_consistency"):
+        assert crit[dim] is not None, f"{dim} must survive — it was never what was faulted"
+    assert "craft_notes" in crit

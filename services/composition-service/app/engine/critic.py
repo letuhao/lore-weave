@@ -407,6 +407,7 @@ async def judge_prose(
     profile: BookProfile, max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     verifier_source: str | None = None, verifier_ref: str | None = None,
+    emit_canon_violations: bool = False,
 ) -> dict[str, Any]:
     """Run the advisory critique. Returns the generation_job.critic dict. CC4:
     any LLM/timeout/parse failure degrades to an empty critique with an `error`
@@ -503,6 +504,25 @@ async def judge_prose(
     # Always stamped, even at zero — `violations_dropped` beside it is, and a key that
     # appears only when it is non-zero makes every consumer write a `.get`, which is how
     # a missing field and a clean result become the same observation.
+    # QC-5 C46 — the ATTRIBUTION CHANNEL, gated. Measured: C44 put the judge at 4/4 false
+    # attributions on canon-conforming prose with one rule in play, and C45 measured the
+    # precision pass at 14/14 IN-SAMPLE against 0/5 HELD OUT. The PO's C31 conditional
+    # ("spend on precision first; if precision cannot be reached, default the judge OFF")
+    # therefore fires, narrowed to the one output the evidence indicts (PO, 2026-08-30).
+    #
+    # ⚠️ **The parameter DEFAULTS to the product default, and that is deliberate.** C34 found
+    # the verifier role passed at one of three `judge_prose` call sites; the same forgetting
+    # here must fail SAFE, so a caller that says nothing suppresses. Emitting is opt-in.
+    #
+    # NEVER silent. The raw count and a marker ride the envelope, because "the judge was
+    # refuted" and "the passage is clean" need opposite responses — the same reason
+    # `violations_dropped` and `violations_unverified` are stamped even at zero.
+    if not emit_canon_violations:
+        crit["canon_violations_suppressed"] = True
+        crit["violations_withheld_count"] = len(crit["violations"])
+        crit["violations"] = []
+    else:
+        crit["canon_violations_suppressed"] = False
     crit["violations_unverified"] = 0
     if crit["violations"]:
         # The verifier is its OWN role (`ModelRole.CRITIC_VERIFIER`), falling back to the

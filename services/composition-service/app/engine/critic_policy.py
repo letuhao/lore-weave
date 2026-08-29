@@ -50,6 +50,7 @@ from typing import Any
 __all__ = [
     "CriticStatus", "CriticResolution", "resolve_critic", "resolve_critic_refs",
     "critic_enabled",
+    "canon_violations_enabled",
     "resolve_critic_verified",
 ]
 
@@ -127,6 +128,40 @@ def critic_enabled(settings: Mapping[str, Any] | None, params: Mapping[str, Any]
         return bool(p["critic_enabled"])
     val = (settings or {}).get("critic_enabled")
     return True if val is None else bool(val)
+
+
+def canon_violations_enabled(settings: Mapping[str, Any] | None,
+                             params: Mapping[str, Any] | None) -> bool:
+    """Does this run ATTRIBUTE canon violations to the author? Default **FALSE**.
+
+    🔴 **Why this is a separate switch from `critic_enabled`, and why it defaults off.**
+    QC-5 C45 measured the precision pass on cases it was NOT derived from: C31 reported
+    **14/14** historical false positives dropped — the set that motivated building it — and
+    held out it dropped **0/5**, on the PO's own target tier. C44 measured the underlying
+    judge at **4/4 false attributions on canon-conforming prose with a single rule in play**.
+
+    The PO's C31 decision was conditional: *"spend on precision first; if precision cannot be
+    reached, default the judge OFF."* Precision cannot be reached. But the measurement indicts
+    exactly one output — the `violations[]` channel — and `critic_enabled` gates the whole
+    critique, including the four dimension scores and the craft notes QC-5 C17 valued. Turning
+    those off would discard feedback nothing has faulted, so the PO chose the narrow control
+    (2026-08-30).
+
+    TIER, before the name (rule 4): the per-book Work setting, beside `critic_model_ref` and
+    `critic_enabled`, with run params as an override — the same precedence order
+    `resolve_critic` and `critic_enabled` use, because one concept must not grow a second
+    precedence rule.
+
+    ⚙️ **Re-enabling is a MEASUREMENT, not an opinion.** `scripts/qc5-verifier-heldout.py`
+    returns `HELD-OUT-HOLDS` only when a distinct verifier drops every false positive on
+    drafts it was not derived from. That is the condition under which a book should turn this
+    back on, and it is why the switch exists rather than the channel being deleted.
+    """
+    p = params or {}
+    if "canon_violations_enabled" in p:
+        return bool(p["canon_violations_enabled"])
+    val = (settings or {}).get("canon_violations_enabled")
+    return False if val is None else bool(val)
 
 
 def resolve_critic(settings: Mapping[str, Any] | None, drafter_ref: Any) -> CriticResolution:

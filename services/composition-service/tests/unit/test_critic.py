@@ -111,7 +111,8 @@ async def test_judge_prose_happy_returns_four_dims_and_violations():
     judge = FakeJudge(content=content)
     out = await critic.judge_prose(judge, user_id="u", model_source="user_model", model_ref="m",
                                    passage="prose", active_rules=[{"rule_id": "r1", "text": "no magic"}],
-                                   present_facts=[], profile=NEUTRAL)
+                                   present_facts=[], profile=NEUTRAL,
+                                   emit_canon_violations=True)
     assert out["coherence"] == 5 and out["canon_consistency"] == 2
     assert out["violations"][0]["rule_id"] == "r1"
     # the critic ran with the distinct critic ref

@@ -2065,9 +2065,28 @@ judge OFF behind an explicit user-controlled setting on the FE."* Precision was 
 measured in-sample at 14/14 and **held-out at 0/5**. The conditional's second branch is what the
 measurement points at.
 
-**What is BUILT and what is the PO's.** The user-controlled setting exists and is reachable
-(C32), tiered as a per-book Work setting with a run-param override (rule 4). What is not taken
-here is the **shipped default**: `critic_policy.critic_enabled` documents its own TRUE as
+✅ **DECIDED AND BUILT — the PO chose the NARROW control (2026-08-30, C46).** Four options were
+put: flip `critic_enabled`, a narrow channel switch, measurement-only, or an auto-gate. The PO
+took the narrow one, and it is what the evidence supports: C45 indicted the `violations[]`
+channel and faulted neither the four dimension scores nor the craft notes QC-5 C17 valued.
+
+`canon_violations_enabled` — TIER first (rule 4): per-book Work setting beside `critic_model_ref`
+and `critic_enabled`, run params as override, the same precedence order the other two use.
+**Default FALSE.** `judge_prose` takes `emit_canon_violations`, and **its parameter default is
+the product default** — C34 found the verifier role passed at one call site of three, so a caller
+that forgets here must fail SAFE. Emitting is opt-in.
+
+Never silent: `violations_withheld_count` and `canon_violations_suppressed` ride the envelope,
+because *"the judge found nothing"* and *"the judge was not allowed to say"* need opposite
+responses. Live, against a rebuilt image: `raw 1 · withheld 1 · suppressed true · violations []
+· craft_notes 1`.
+
+**Re-enabling is a MEASUREMENT, not an opinion:** `qc5-verifier-heldout` returns
+`HELD-OUT-HOLDS` only when a distinct verifier drops every false positive on drafts it was not
+derived from. That is the condition for a book to turn the channel back on.
+
+**~~What is not taken here is the shipped default~~** — superseded by the decision above. The
+reasoning it recorded still stands for `critic_enabled` itself, which is UNCHANGED: `critic_policy.critic_enabled` documents its own TRUE as
 *"deliberately: flipping the shipped default is a product decision, not a consequence of adding
 the control"*, and n=5 on one book is thin evidence for a fleet-wide flip. So the measurement is
 recorded and WIRED — `scripts/qc5-verifier-heldout.py`, selftested and bitten — so that

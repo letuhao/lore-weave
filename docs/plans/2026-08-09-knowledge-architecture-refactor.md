@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: QC-5 §18 — the PO call the conditional now points at: default the judge OFF.**
+**RESUME: QC-5 §2.1 — re-score the acceptance criterion now the channel is gated.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**64 of 69 rows done · 5 open · 71 of 109 evidence blocks closed inside them.**
+**64 of 69 rows done · 5 open · 72 of 110 evidence blocks closed inside them.**
 
-**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/62) · `T48` (14/15) · `T49` (1/1)
+**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (34/63) · `T48` (14/15) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11763,6 +11763,87 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C46 2026-08-30 — **the PO's conditional, EXECUTED: the attribution channel is off by default and the craft feedback survives**
+
+  ```
+  NEW  canon_violations_enabled(settings, params)   TIER: per-book Work setting · params override
+  judge_prose(..., emit_canon_violations=False)     the parameter default IS the product default
+  live, REBUILT image   raw 1 · withheld 1 · suppressed true · violations [] · craft_notes 1
+  composition unit      3688 passed
+  ```
+
+  🎯 **C31's conditional fired and this is the execution.** The PO's words: *"**Spend on
+  precision first**; if precision cannot be reached, default the judge OFF."* C45 measured that
+  precision cannot be reached — **14/14 in-sample against 0/5 held out**, on the PO's own target
+  tier — and C44 put the underlying judge at **4/4 false attributions on canon-conforming prose
+  with a single rule in play**.
+
+  ⚖️ **NARROW, because that is what the evidence indicts (PO, 2026-08-30).** Four options were
+  put and the PO took the narrow one. `critic_enabled` gates the WHOLE critique; the measurement
+  faulted the `violations[]` channel and neither the four dimension scores nor the craft notes
+  QC-5 C17 valued (*"one substantive craft note each"*). Turning those off would have discarded
+  feedback nothing has faulted.
+
+  ```
+  the switch     canon_violations_enabled — DEFAULT FALSE
+  the tier       per-book Work setting, beside critic_model_ref and critic_enabled,
+                 run params as override — the SAME precedence resolve_critic uses,
+                 because one concept must not grow a second precedence rule (rule 4)
+  unchanged      critic_enabled stays TRUE. Its own docstring calls flipping it a product
+                 decision, and this measurement was never about it.
+  ```
+
+  🔬 **THE PARAMETER'S DEFAULT IS THE PRODUCT DEFAULT, and that inverts C34's failure mode.**
+  C34 found the verifier role wired at **one `judge_prose` call site of three**, so a forgetful
+  caller got the WORSE behaviour. Here `emit_canon_violations` defaults to `False`: a call site
+  that says nothing SUPPRESSES. Emitting is opt-in, so the same forgetting fails safe.
+
+  📐 **Never silent, and that is not decoration.** `violations_withheld_count` and
+  `canon_violations_suppressed` ride the envelope even at zero — *"the judge found nothing"* and
+  *"the judge was not allowed to say"* need opposite responses, the same reason
+  `violations_dropped` and `violations_unverified` are stamped. A suppressed channel also skips
+  the verifier call, so it costs one LLM round trip less rather than more.
+
+  🧪 **BITES — each removes one half, and they fail differently.**
+
+  ```
+  C46-1  line 410: default `False` -> `True`
+           FAIL  test_judge_prose_WITHHOLDS_attributions_by_default
+                 — a caller that forgets now EMITS, which is exactly C34's shape
+  C46-2  drop the `violations_withheld_count` stamp
+           FAIL  the same test, on the COUNT — suppressing silently turns
+                 "withheld" into "clean", the two readings that must never merge
+  ```
+
+  ⚠️ **THE SUITE CAUGHT A REAL DEFECT IN MY CHANGE, and it was the paired degrade test.**
+  `_empty_critic` must carry every key the success shape does, and my two new keys were not in
+  it — so a consumer reading `critic["canon_violations_suppressed"]` would have worked on a
+  healthy judge and raised `KeyError` the moment one degraded. **That is the precise bug the
+  function's own docstring says it exists to prevent**, and the test that caught it was written
+  after the last time it happened (`craft_notes`, then `violations_dropped`). Fixed in the same
+  commit.
+
+  ```
+  6 failed on the first run: 4 verifier tests + 2 critic tests
+    4 were tests of the VERIFIER path asserting the OLD default — opted in explicitly,
+      because a test that gets the gate's behaviour by accident is testing the wrong thing
+    2 were the degrade shape and the happy path — one a real defect, one an opt-in
+  ```
+
+  **QC (a) gates:** composition unit **3688 passed**; `test_critic_policy` 33, `test_critic_verifier`
+  15 (4 new), four plan gates green; `gate-wiring-gate` 114.
+  **QC (b) live smoke vs a REBUILT image:** `iso.sh build composition-service` + restart, then the
+  shipped `/critique` route on 28217 — `raw 1 · withheld 1 · suppressed true · violations [] ·
+  craft_notes 1 · coherence 5 · voice 4 · pacing 4`. The judge still finds it; the author is no
+  longer told it.
+  **QC (c) real data:** an unmodified flow-produced draft of the acceptance book — the same
+  held-out control arm C45 measured at 0/5.
+
+  ⛔ **What this does NOT do: claim the judge is fixed.** It is not. The channel is off because
+  the precision to justify it does not exist yet, and `qc5-verifier-heldout` is the measurement
+  that turns it back on — `HELD-OUT-HOLDS` only when a distinct verifier drops every false
+  positive on drafts it was not derived from.
   ---
   ### 🔻 QC-5 C45 2026-08-24 — **C31's precision verifier was validated on the 14 cases that motivated it. Held out, it drops 0 of 5.**
 

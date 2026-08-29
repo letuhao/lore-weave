@@ -655,7 +655,8 @@ class EngineCriticSeam:
         from app.db.repositories.canon_rules import CanonRulesRepo
         from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
-        from app.engine.critic_policy import critic_enabled, resolve_critic_refs
+        from app.engine.critic_policy import (
+            canon_violations_enabled, critic_enabled, resolve_critic_refs)
         from app.engine.model_roles import role_ref
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
@@ -803,6 +804,9 @@ class EngineCriticSeam:
             present_facts=bible.as_present_facts(),
             profile=profile,
             verifier_source=_ver_src, verifier_ref=_ver_ref,
+            # QC-5 C46 — attribution channel OFF unless this book opted in.
+            emit_canon_violations=canon_violations_enabled(
+                work_settings, params),
         )
         # The grounding rides the verdict. A `canon_consistency` scored against an `untimed`
         # or `empty` bible is a weaker number than one scored `as_of`, and nothing downstream

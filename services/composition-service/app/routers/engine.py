@@ -64,7 +64,8 @@ from app.engine.stitch import prepend_scene_headings, stitch_chapter
 from app.engine.canon_check import canon_envelope, unguarded_envelope
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.critic_policy import (
-    CriticResolution, CriticStatus, resolve_critic_verified,
+    CriticResolution, CriticStatus, canon_violations_enabled,
+    resolve_critic_verified,
 )
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
@@ -2108,12 +2109,17 @@ async def critique(
     # audited by the critic. `judge_prose` has three call sites and the role was passed at
     # one — the same one-concept-N-readers shape `resolve_critic` records an eighth copy of.
     _ver_src, _ver_ref = role_ref(settings_dict, "critic_verifier")
+    # QC-5 C46 — the attribution channel is OFF unless this book turned it on. Resolved
+    # HERE as well as in the authoring path, because C34 found the verifier role wired at
+    # one call site of three and this is the one the studio and the QC-5 harness call.
+    _emit_v = canon_violations_enabled(settings_dict, (job.input or {}).get("params"))
     critic = await judge_prose(
         llm, user_id=str(user_id),
         model_source=str(critic_res.source), model_ref=str(critic_res.ref),
         passage=passage, active_rules=active_rules, present_facts=present_facts,
         profile=from_settings(settings_dict),
         verifier_source=_ver_src, verifier_ref=_ver_ref,
+        emit_canon_violations=_emit_v,
     )
     # WHICH judge answered, stamped on the verdict itself. The authoring path already does
     # this (`authoring_run_service.py`), and the studio renders both fields; this route did
