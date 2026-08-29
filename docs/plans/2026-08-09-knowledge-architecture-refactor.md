@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 27 of 29 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 28 of 30 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (20/21) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (21/22) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,73 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48t 2026-08-30 — **the leg whose ABSENCE hid T48s: the goal's proof now covers the spine the architecture exists for**
+
+  ```
+  NEW  scripts/bitemporal-window-live-smoke.py    9-case --selftest · 2 LIVE bites · wired
+  architecture-live-proof   4 legs -> 5      PROVEN · ran 5 · skipped 0 · failed 0
+  live   head 50 · as_of 1/3/6/10 -> 25/33/41/50 · max_ordinal 1e6/2e6/6e6/1e7
+  ```
+
+  🎯 **T48s existed because nothing asked.** The proof's four legs are the backend, the store,
+  the KAL surface and the port. A spoiler window can be advertised, computed and thrown away —
+  and every one of those four stays green. So the leg that would have caught it is now the
+  fifth, and the loop closes: the defect was found by probing a gap in the proof, and the gap
+  is gone.
+
+  ⚖️ **THREE ASSERTIONS, because any two of them pass on a broken system.**
+
+  ```
+  MONOTONIC    a wider window never returns fewer rows
+  BOUNDED      every row's valid_from_ordinal <= position × STRIDE
+  NON-VACUOUS  the narrow window is strictly smaller than the unwindowed head
+  ```
+
+  A read that **ignores** the window is perfectly monotonic — that is exactly the state T48s
+  found. A read that returns **nothing** satisfies monotonic and bounded trivially — that is
+  the state T48s's own half-fix produced, when the route passed a raw chapter number onto an
+  axis of `chapter × 1_000_000`. So `EMPTY` and `LEAKS` are checked BEFORE monotonicity: the
+  cheap property must not be allowed to answer for the expensive one.
+
+  🧪 **BOTH BITES ARE LIVE, AND BOTH REPRODUCE THE REAL DEFECT — not a fixture of it.** Each
+  was rebuilt into the iso image and re-run through the KAL:
+
+  ```
+  T48t-1  remove the stride conversion (the route's raw chapter number)
+            as_of=1  ->  0 rows                              verdict EMPTY
+  T48t-2  `if as_of is None:` -> `if True:` in the AGE adapter
+            as_of=1  -> 50 rows · max_ordinal 10 000 000 · ceiling 1 000 000
+            verdict LEAKS — "a row was returned whose story position is AFTER the
+            requested one — the window is advertised and not applied. This is T48s, exactly"
+  ```
+
+  **That is rule 3 in its strongest form**: the detector is validated against the two states
+  the system actually occupied this afternoon, reached by rebuilding the image into each one.
+
+  ⚠️ **My first attempt at the second bite broke the file instead of the behaviour** — I
+  commented out three lines of an f-string and left a dangling `)`, so the service failed to
+  start and the smoke returned **ERROR**. That is the correct verdict for a failed probe (a
+  transport failure is never a silent pass) but it proves nothing about the leak, so the bite
+  was redone as a one-line `if True:`. **A bite that breaks the syntax has not bitten the
+  behaviour.**
+
+  📐 **`--min-legs` stays the floor rather than the leg count.** Five legs exist; the floor is
+  what must actually RUN, because a run where legs SKIP returns no failures and "0 failed over
+  0 legs" is the vacuous pass this file was built to refuse. Run at `--min-legs 5` above, all
+  five executed.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **9/9** (new, wired into
+  `.githooks/pre-commit`); `architecture-live-proof --selftest` 8/8; `gate-wiring-gate` OK;
+  four plan gates green by direct exit code.
+  **QC (b) live smoke vs REBUILT images:** four `iso.sh build knowledge-service` cycles — the
+  fix, two bites, and the restore — every verdict above an HTTP response from that container.
+  **QC (c) real data:** the acceptance corpus's 紂王 neighbourhood, 81 edges across ten
+  chapters, which is the only reason a window bug was visible at all.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels. What this adds
+  is that the goal's sentence now covers the bi-temporal spine, so the next reader inherits a
+  proof that would have caught T48s on the day it landed.
   ---
   ### ✅ T48s 2026-08-30 — **the spoiler window was COMPUTED AND DISCARDED: a reader at chapter 1 was served chapter 10's relationships**
 

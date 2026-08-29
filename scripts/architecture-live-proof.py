@@ -122,7 +122,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--entity-id", default="")
     ap.add_argument("--declared-census")
     ap.add_argument("--other-census")
-    ap.add_argument("--min-legs", type=int, default=3)
+    ap.add_argument("--min-legs", type=int, default=3)   # 5 legs exist; the floor
+                                                        # is what must RUN
     ap.add_argument("--min-data", type=int, default=1)
     args = ap.parse_args(argv)
 
@@ -162,6 +163,16 @@ def main(argv: list[str]) -> int:
           "--book-id", args.book_id, "--user-id", args.user_id,
           "--internal-token", args.internal_token, "--entity-id", args.entity_id,
           "--min-data", str(args.min_data)]
+         if (args.book_id and args.user_id and args.internal_token and args.entity_id)
+         else None))
+    # T48t — the leg whose ABSENCE hid T48s. The four above cover the backend, the store,
+    # the surface and the port; none of them the bi-temporal spine, which is what this
+    # architecture is for. A spoiler window can be advertised, computed and discarded, and
+    # every one of the other legs stays green.
+    leg("5 TEMPORAL a windowed read HOLDS its story position",
+        ([py, "scripts/bitemporal-window-live-smoke.py", "--base-url", args.base_url,
+          "--book-id", args.book_id, "--user-id", args.user_id,
+          "--internal-token", args.internal_token, "--entity-id", args.entity_id]
          if (args.book_id and args.user_id and args.internal_token and args.entity_id)
          else None))
     leg("4 PORT     class (d) discharged by one of §10.1's two paths",

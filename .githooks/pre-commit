@@ -169,6 +169,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # SKIPped returns no failures, and "no leg failed" over zero legs is the vacuous pass
 # this repo keeps paying for. The floor is checked BEFORE the failure count.
 "$PY" "$ROOT/scripts/architecture-live-proof.py" --selftest
+# The BI-TEMPORAL leg. T48s found the spoiler window computed and DISCARDED: a reader
+# held at chapter 1 was served chapter 10, because the port had no parameter to put
+# the value in. It was invisible because nothing asked -- the goal's proof covered
+# backend, store, surface and port, and not the spine the architecture exists for.
+# Only the selftest runs here; --base-url needs a live stack.
+"$PY" "$ROOT/scripts/bitemporal-window-live-smoke.py" --selftest
 # A Go `replace` whose target the image build cannot resolve. This gate ALREADY EXISTED
 # and CI already ran it via `gate-wiring-gate --run-all` -- it was green on 2026-08-30
 # while alert-recorder and canary-controller could not be built at all. The wiring was
