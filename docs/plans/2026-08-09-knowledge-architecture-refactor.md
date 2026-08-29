@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 19 of 21 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 20 of 22 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (4/5) · `T48` (14/15) · `T49` (1/1)
+**OPEN:** `T33` (4/5) · `T48` (15/16) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24416,6 +24416,98 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48n 2026-08-30 — **§14's attribution was never measured: 3 of the 9 sweep reds were THIS PLAN's or pure scan noise**
+
+  ```
+  full sweep re-run          9 gate(s) RED, same shape §14 recorded on 08-24
+  §14's claim                "none names a file this plan touched"        <- FALSE
+  discharged here            ai-provider-gate · raw-sql-lint · language-bias-gate
+  remaining                  6, each re-attributed by MEASUREMENT
+  ```
+
+  🎯 **T48's criterion is *nothing silently dropped*, and §14 dropped something.** It filed all
+  eight non-runner reds as *"other work — none names a file this plan touched"*. That sentence
+  was a reading, not a measurement. Re-run and traced file by file:
+
+  ```
+  raw-sql-lint         8 sites — 6 of them in age_graph_store.py, age_session.py,
+                       age_anchor_scores.py, age_bootstrap.py: THIS PLAN'S OWN ADAPTERS
+  language-bias-gate   fake_truth_store.py — this plan's in-memory DOUBLE
+  ai-provider-gate     38 findings, every one inside frontend/dist-s01 and dist-s6
+  ```
+
+  🔴 **ai-provider-gate's 38 were ALL its own scan scope.** `EXCLUDE_DIRS` held `dist` by exact
+  name; the isolated-stack builds produce `dist-s01` and `dist-s6`, so the gate was reading
+  provider names out of **minified JavaScript** and reporting them as SDK imports. Not one was
+  real, and the sweep carried them for weeks.
+
+  **A gate whose findings are all artifacts of its own scan is worse than a silent one** — it
+  teaches the reader to skip the output, which is how the other eight became background noise.
+  Fixed by prefix-matching build dirs, because the next one is `dist-s7` and nobody will
+  remember this.
+
+  ⚖️ **raw-sql-lint: 8 identifier interpolations, each READ, then baselined with its reason.**
+  AGE takes the graph name as a LITERAL inside `cypher()` — it is not bindable — and the value
+  comes from `graph_name_for()`, which returns `g_shared` or `g_` + validated hex and **RAISES**
+  on anything failing `_VALID_GRAPH_NAME`. So the slot cannot carry user text: an illegal name
+  is an exception, never a query. The benchmark's `pg_total_relation_size('{cell.table}')` reads
+  its own module-level table list; no request reaches it.
+
+  🔬 **language-bias-gate named the DOUBLE, and that is the divergence family this plan keeps
+  finding.** `fake_truth_store` filtered with a bare `.lower()`, which is wrong on CJK and on
+  any script where casefold and lower differ. A double that folds differently from the store it
+  stands in for is how a test agrees with the double and the double agrees with nothing. Now
+  folds through `loreweave_extraction.name_normalize` — the repo's one home for it — imported
+  lazily so the adapter keeps no import-time SDK dependency.
+
+  🧪 **BITES — both prove the fix did not blind the gate.**
+
+  ```
+  T48n-1  a NEW value interpolation inside a BASELINED file
+            FAIL — age_graph_store.py:301 flagged by line. The baseline is per-SITE,
+            not per-file, so declaring six sites did not silence the seventh.
+  T48n-2  a real `import anthropic` in real source
+            FAIL — fake_truth_store.py:6. Excluding build variants did not exclude source.
+  ```
+
+  ⚠️ **I ALSO REPORTED THE SWEEP AS EXITING 0 ON FAILURES, AND THAT WAS MY PIPE.** The
+  background run came back `exit code 0` while printing nine reds, which reads as a broken
+  runner — a serious claim. `sys.exit(main())` is correct; I had piped through `tail`, so the
+  shell reported **tail's** status. Proven rather than assumed:
+
+  ```
+  direct exit: 1        through a pipe to tail: 0        PIPESTATUS[0]: 1
+  ```
+
+  Same family as this repo's `grep -c || echo 0` lore, and I nearly published a false alarm
+  about CI. Rule 2 applies to a number that reads as *failure* too.
+
+  ⛔ **The remaining SIX, re-attributed by measurement rather than by sentence:**
+
+  ```
+  gate-number-visibility-gate   a script, not a service
+  llm-budget-ssot-gate          composition-service (critic.py, self_heal.py)
+  pagination-cap-lint           glossary-service (mirror_truth_handler.go)
+  projection-coverage-lint      crates/ — 7 unprojected glossary events
+  guard-redability-gate         composition-service + one knowledge-service prompt file
+  transitions-validation-lint   CRLF in the WORKING TREE; the index is i/lf, .gitattributes
+                                says *.sh text eol=lf. A Linux runner never sees it.
+  ```
+
+  These are other people's files and stay theirs — but they are now attributed by a **file
+  list**, not by a claim, so the next reader can check the claim instead of inheriting it.
+
+  **QC (a) gates:** `raw-sql-lint` OK (12 baselined), `language-bias-gate` OK,
+  `ai-provider-gate` OK — three that were red on 08-24; four plan gates green;
+  `plan-final-verification` PASS; `gate-wiring-gate` 114 wired.
+  **QC (b) live smoke:** N/A — no service seam is crossed. The one behavioural change is in a
+  test double; `pytest -k truth` **36 passed**.
+  **QC (c) real data:** the sweep itself, re-run over all 114 gates on this tree.
+
+  ⛔ **T48 stays `[~]`.** Its first criterion is *every task fully implemented* and T33 is open,
+  waiting on the PO's labels. What this cycle removes is the false claim that the sweep's reds
+  were all somebody else's.
   ---
   ### ✅ T48m 2026-08-24 — **the GOAL says "a live run proves it" and no single command ran that proof — now one does, and it SKIPS a leg rather than claiming it**
 

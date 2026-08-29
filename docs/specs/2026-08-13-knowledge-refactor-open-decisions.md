@@ -1913,7 +1913,9 @@ DELEGATION (that `gate-wiring-gate` reports every gate wired-or-exempt) instead 
 be the sweep. Both properties are pinned by a `--selftest`, because a PASS line is prose and
 prose is not run.
 
-**Retry/registration:** the eight belong to whoever owns those files. `gate-wiring-gate --run-all`
+🔴 **CORRECTED 2026-08-30 (T48n) — the attribution above was a READING, not a measurement, and it was wrong.** Re-run file by file: `raw-sql-lint` named six sites in **this plan's own AGE adapters**, `language-bias-gate` named **this plan's in-memory double**, and `ai-provider-gate`'s 38 findings were **all** inside `frontend/dist-s01`/`dist-s6` — build output its `EXCLUDE_DIRS` matched by exact name only. All three are discharged in T48n; the remaining six are re-attributed by a FILE LIST so the next reader can check the claim instead of inheriting it.
+
+**Retry/registration:** the six belong to whoever owns those files. `gate-wiring-gate --run-all`
 already names them on every CI run; nothing here suppresses them, and no `KNOWN_RED` row was added
 — an acknowledgement list that absorbs other people's defects is how they stop being defects.
 

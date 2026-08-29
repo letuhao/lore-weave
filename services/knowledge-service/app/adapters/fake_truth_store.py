@@ -23,6 +23,25 @@ __all__ = ["FakeTruthStore"]
 _ORDINAL_SCOPES = ("book",)
 
 
+
+def _fold(s: str) -> str:
+    """NFKC + casefold, the repo's shared spine — not a bare `.lower()`.
+
+    A DOUBLE that folds differently from the real store is the divergence class this plan
+    keeps finding: the test agrees with the double, the double agrees with nothing, and the
+    disagreement only shows up on data the suite never uses. `.lower()` is wrong on CJK and
+    on any script where casefold and lower differ (Turkish dotless i, German sharp s), and
+    this store's own subject matter is a multilingual corpus.
+
+    `loreweave_extraction.name_normalize` is the one home for it (ML-2, `language-bias-gate`).
+    Imported lazily so the adapter keeps no import-time dependency on the SDK.
+    """
+    try:
+        from loreweave_extraction.name_normalize import nfkc_casefold
+    except Exception:                      # noqa: BLE001 — a double must never fail to import
+        return s.casefold()
+    return nfkc_casefold(s)
+
 class FakeTruthStore:
     def __init__(self, facts: list[TruthFact] | None = None) -> None:
         self._facts: list[TruthFact] = list(facts or [])
@@ -96,8 +115,8 @@ class FakeTruthStore:
         out = [
             f for f in self._facts
             if f.scope == scope and f.confidence >= min_confidence
-            and (query is None or query.lower() in f.value.lower()
-                 or query.lower() in f.attribute.lower())
+            and (query is None or _fold(query) in _fold(f.value)
+                 or _fold(query) in _fold(f.attribute))
             and (as_of is None or self._covers(f, as_of))
         ]
         return out[:limit]
