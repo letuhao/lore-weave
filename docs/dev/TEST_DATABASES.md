@@ -23,7 +23,7 @@ recorded to compare.
 | `TEST_NEO4J_URI` (+ `_USER`, `_PASSWORD`) | ~411, incl. the conformance suite's **neo4j** arm and the QC-2 fake-parity file | a dedicated instance — see below |
 | `TEST_KNOWLEDGE_DB_URL` | ~282 repo/migration tests | a throwaway Postgres whose DB NAME carries `test`/`smoke`/`scratch`/… |
 | `TEST_VECTOR_DB_URL` | 24 pgvector tests (`PgVectorStore`) | a throwaway `loreweave/postgres-knowledge:18` |
-| `TEST_AGE_DSN` | the AGE repo-layer proof + AGE conformance arm | the isolated `knowledge-pg` (AGE + pgvector) |
+| `TEST_AGE_DSN` | the AGE repo-layer proof + AGE conformance arm — **115 tests**, and AGE is the DEFAULT backend | a THROWAWAY `loreweave/postgres-knowledge:18`; the same `lw-know-test` container below serves it (`CREATE EXTENSION age`) |
 
 ## The three containers
 
@@ -49,6 +49,30 @@ export TEST_NEO4J_PASSWORD=throwaway_test
 docker run -d --name lw-know-test -e POSTGRES_PASSWORD=throwaway   -e POSTGRES_DB=loreweave_knowledge_test -p 7996:5432 loreweave/postgres-knowledge:18
 export TEST_KNOWLEDGE_DB_URL="postgresql://postgres:throwaway@localhost:7996/loreweave_knowledge_test"
 ```
+
+### ⚠️ `TEST_AGE_DSN` — verified 2026-08-30, and the recipe CHANGED
+
+This row used to read *"the isolated `knowledge-pg`"*. **These tests create and drop graphs**,
+so pointing them at a live stack's database is the hazard `_guard_throwaway` exists to refuse —
+and a recipe that names a live DB is one people rightly decline to run, which is how the
+DEFAULT BACKEND's own conformance arm came to skip by default.
+
+`lw-know-test` already carries AGE (same image), so one container serves both:
+
+```bash
+export TEST_AGE_DSN="postgresql://postgres:throwaway@localhost:7996/loreweave_knowledge_test"
+```
+
+**Measured on `services/knowledge-service/tests/integration`, 2026-08-30:**
+
+```
+default (nothing set)      238 passed ·  834 skipped
++ the three containers     955 passed ·  117 skipped     <- +717
++ TEST_AGE_DSN            1070 passed ·    2 skipped     <- +115, the AGE conformance arm
+```
+
+The last two are correct: `test_shadow_differential` skips when no divergences are RECORDED
+for an engine, and there are none. Everything else runs.
 
 ## The other services
 

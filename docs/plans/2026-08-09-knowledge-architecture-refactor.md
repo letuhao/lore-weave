@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 22 of 24 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 23 of 25 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (5/6) · `T48` (16/17) · `T49` (1/1)
+**OPEN:** `T33` (5/6) · `T48` (17/18) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24500,6 +24500,76 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48p 2026-08-30 — **832 integration tests do not run by default, and 115 of them are the DEFAULT BACKEND's own conformance arm**
+
+  ```
+  default (nothing set)      238 passed ·  834 skipped
+  + the three containers     955 passed ·  117 skipped      <- +717
+  + TEST_AGE_DSN            1070 passed ·    2 skipped      <- +115, the AGE conformance arm
+  ```
+
+  🎯 **T48's *tests green* is only a claim about what RAN.** The unit suites are green
+  (T48o: 4445 + 3688 + 142 + go), but `tests/integration` reports green while **78 % of it
+  skips** — the `env-gated integration tests skip and the green suite lies` shape, at scale.
+  The suite never fails; it just declines to answer.
+
+  🔴 **THE LARGEST SKIP BLOCK IS THIS PLAN'S OWN SUBJECT.** Of the 117 that survived standing
+  up the three documented containers, **essentially all** were `TEST_AGE_DSN not set`:
+
+  ```
+  67  the AGE adapter is not being conformed
+   9  the migration needs a real destination
+   9  needs the T42b image (AGE + pgvector)
+   8  the AGE half of the repo layer
+   4  the shadow needs BOTH engines
+  ```
+
+  **AGE is the DEFAULT backend** (§8.1) and the entire refactor's terminus. Its conformance
+  suite — the thing that proves the adapter honours the port — does not run unless someone
+  exports a variable, and nothing said so out loud. `port-adoption-gate` reports
+  `AGE coverage 118/119` from a static AST scan; the 115 tests that EXERCISE it were skipping.
+
+  ⚖️ **And the documented recipe is why nobody ran them.** `TEST_DATABASES.md` said
+  `TEST_AGE_DSN` should be *"the isolated `knowledge-pg`"* — a LIVE stack database. These tests
+  create and drop graphs, so that is precisely what `_guard_throwaway` exists to refuse, and a
+  recipe naming a live DB is one people rightly decline to follow. **A safe recipe was never
+  written, so the safe thing to do was skip.**
+
+  📐 **Fixed by measurement, not by exhortation:** `lw-know-test` already carries AGE (same
+  `loreweave/postgres-knowledge:18` image — `CREATE EXTENSION age` verified), so ONE throwaway
+  container serves both `TEST_KNOWLEDGE_DB_URL` and `TEST_AGE_DSN`. The registry row now says
+  so, with the three-line progression above beside it.
+
+  ✅ **All 832 pass.** Nothing was hiding a failure — which is the good outcome and also the
+  reason this went unnoticed: skipping cost nothing visible.
+
+  ⚠️ **THE REMAINING TWO SKIPS ARE CORRECT, and checked rather than assumed.**
+
+  ```
+  test_shadow_differential.py:586  no expected divergences recorded for age
+  test_shadow_differential.py:586  no expected divergences recorded for kuzu
+  ```
+
+  A divergence test with zero recorded divergences has nothing to assert. That is a skip that
+  means something, which is what the other 832 were not.
+
+  ⚠️ **My readiness loop said "all three ready after 1 check", and Neo4j does not start in a
+  second.** Rule 2 on my own instrument: re-probed each connection individually
+  (`vec ok` / `know ok` / `neo4j ok`) rather than trusting a compound `&&` that can pass for
+  the wrong reason.
+
+  **QC (a) gates:** `test-env-registry-gate` OK (8 env-gated variables, all documented);
+  four plan gates green by direct exit code.
+  **QC (b) live smoke:** the goal's own proof re-run after this week's changes to
+  `causal_edges`, `fake_truth_store` and the restored DDL — **PROVEN, 4 legs, 0 skipped**.
+  **QC (c) real data:** three throwaway containers (`lw-vec-test`, `lw-know-test`,
+  `lw-neo4j-test`), every DB name carrying `test`, removed afterwards. Rule 6 holds: nothing
+  touched dev.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* still waits on T33's labels. What is
+  now measured is the other two criteria, and *tests green* means 832 more tests than it did
+  this morning.
   ---
   ### ✅ T48o 2026-08-30 — **"tests green" run across every service I changed this week, and it caught a RED my own commit left behind**
 
