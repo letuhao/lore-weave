@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import re
 import sys
 
@@ -201,6 +202,126 @@ def labeller_ok(who: str) -> bool:
     return bool(who.strip()) and not _MACHINE.search(who)
 
 
+
+
+def _sheet_text(args, pairs, pred, *, causal_pass_ran: bool) -> str:
+    """The sheet's markdown. ONE renderer for both stores — two would drift."""
+    out = [
+        "# T33 — causal labelling sheet",
+        "",
+        "labelled_by: ",
+        "",
+        "> Fill each `LABEL:` with exactly one of `causes` / `precedes` / `unknown`.",
+        "> `causes` = the earlier event DIRECTLY brings about or enables the later one.",
+        "> `precedes` = it clearly happens after, but you cannot show causation.",
+        "> `unknown` = you cannot tell, or they are unrelated. **Prefer `unknown`** — the row's",
+        "> own criterion says a wrong order is worse than an absent one.",
+        "",
+        "Ordering within a chapter is `Event.event_order`, present on every event in scope.",
+        "Read from the store the deployment DECLARES (`age`), not from Neo4j — reading the",
+        "wrong store is what made an earlier draft report the extractor as never having run.",
+        "",
+        "```json",
+        json.dumps({"project_id": args.project_id, "chapters": args.chapter_ids,
+                    "causal_pass_ran": causal_pass_ran,
+                    "pairs": {p[0]: {"earlier": p[2]["id"], "later": p[3]["id"],
+                                     "chapter": p[1]} for p in pairs},
+                    "system_predicted": pred}, ensure_ascii=False, indent=1),
+        "```",
+        "",
+    ]
+    for pid, ch, a, b in pairs:
+        out += [f"#### PAIR {pid}", "",
+                f"**earlier** — {a['title']}", f"> {(a.get('summary') or '')[:300]}", "",
+                f"**later** — {b['title']}", f"> {(b.get('summary') or '')[:300]}", "",
+                "LABEL:", ""]
+    return chr(10).join(out)
+
+
+
+def _age(sql_cypher: str, cols: str, *, port: int, db: str, graph: str) -> list[list[str]]:
+    """Run one Cypher against AGE through psql and return the rows as strings.
+
+    🔴 **THE SHEET READ THE WRONG STORE, and this is why it now reads the configured one.**
+    The first version spoke Bolt to Neo4j. The service's declared backend is `age` (§8.1), so
+    the causal extractor's 134 edges landed in AGE and the sheet reported
+    `causal_pass_ran: false` over a project that had just been processed. The instrument said
+    "the extractor was never run here" about a run that had finished minutes earlier.
+
+    That is the third instrument defect in this row alone — `created_at` ordering, a one-row
+    `keys()` sample, and now the store itself — and all three failed the same direction:
+    toward "there is nothing here".
+    """
+    full = ("LOAD 'age'; SET search_path = ag_catalog, public; "
+            "SELECT * FROM cypher('" + graph + "', $$ " + sql_cypher + " $$) AS (" + cols + ");")
+    r = subprocess.run(
+        ["psql", "-h", "localhost", "-p", str(port), "-U", "loreweave", "-d", db,
+         "-At", "-F", "|", "-c", full],
+        capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "PGPASSWORD": "loreweave_dev"})
+    if r.returncode != 0:
+        raise SystemExit("AGE query failed: " + r.stderr[:300])
+    out = []
+    for line in r.stdout.strip().split(chr(10))[2:]:      # skip LOAD / SET
+        if line:
+            out.append([c.strip().strip('"') for c in line.split("|")])
+    return out
+
+
+def _emit_age(args) -> int:
+    """Build the sheet from AGE — the store the declared deployment actually reads."""
+    P = args.project_id
+    chapters = "[" + ",".join("'" + c + "'" for c in args.chapter_ids) + "]"
+    rows = _age(
+        "MATCH (e:Event {project_id:'" + P + "'})-[:EVIDENCED_BY]->(x:ExtractionSource) "
+        "WHERE x.source_id IN " + chapters + " "
+        "RETURN x.source_id AS ch, e.id AS id, e.title AS title, e.summary AS summary, "
+        "e.event_order AS eo",
+        "ch agtype, id agtype, title agtype, summary agtype, eo agtype",
+        port=args.age_port, db=args.age_db, graph=args.age_graph)
+
+    by_ch: dict[str, list] = {}
+    for ch, eid, title, summary, eo in rows:
+        try:
+            order = int(eo)
+        except (TypeError, ValueError):
+            order = 2147483647
+        by_ch.setdefault(ch, []).append(
+            {"id": eid, "title": title, "summary": summary, "eo": order})
+    for ch in by_ch:
+        by_ch[ch].sort(key=lambda e: e["eo"])
+
+    pairs, n = [], 0
+    for ch in args.chapter_ids:
+        evs = by_ch.get(ch, [])
+        for gap in (1, 2):
+            for i in range(len(evs) - gap):
+                n += 1
+                pairs.append((f"P{n}", ch, evs[i], evs[i + gap]))
+    pairs = pairs[: args.pairs]
+
+    edges = {}
+    for rel in ("CAUSES", "PRECEDES"):
+        for a, b in _age(
+                "MATCH (a:Event {project_id:'" + P + "'})-[r:" + rel + "]->(b:Event) "
+                "RETURN a.id AS a, b.id AS b", "a agtype, b agtype",
+                port=args.age_port, db=args.age_db, graph=args.age_graph):
+            edges[(a, b)] = rel.lower()
+    index = {(x[2]["id"], x[3]["id"]): x[0] for x in pairs}
+    pred = {index[k]: v for k, v in edges.items() if k in index}
+
+    out = _sheet_text(args, pairs, pred, causal_pass_ran=bool(edges))
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8", newline=chr(10)) as fh:
+        fh.write(out)
+    print(f"[t33-sheet] {len(pairs)} pair(s) from {len(args.chapter_ids)} chapter(s) "
+          f"-> {args.out}")
+    print(f"[t33-sheet] AGE holds {len(edges)} ordered edge(s) in this project; the system "
+          f"asserts one on {len(pred)} of the sheet's pairs")
+    print("[t33-sheet] every LABEL is BLANK. This script does not write labels (rule 3).")
+    return 0
+
+
 def _emit(args) -> int:
     from neo4j import GraphDatabase  # imported here so --selftest needs no driver
 
@@ -313,6 +434,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--pairs", type=int, default=20)
     ap.add_argument("--out", default=os.path.join(
         ROOT, "docs", "measurements", "2026-08-24-t33-causal-labelling-sheet.md"))
+    ap.add_argument("--store", default="age", choices=("age", "neo4j"),
+                    help="which store to read; the declared backend is `age` (§8.1)")
+    ap.add_argument("--age-port", type=int, default=25556)
+    ap.add_argument("--age-db", default="loreweave_knowledge_vectors")
+    ap.add_argument("--age-graph", default="g_shared")
     ap.add_argument("--bolt", default="bolt://localhost:7688")
     ap.add_argument("--user", default="neo4j")
     ap.add_argument("--password", default="loreweave_dev_neo4j")
@@ -326,7 +452,7 @@ def main(argv: list[str]) -> int:
         if not args.project_id or not args.chapter_ids:
             print("[t33-sheet] --project-id and --chapter-ids are required")
             return 2
-        return _emit(args)
+        return _emit_age(args) if args.store == 'age' else _emit(args)
     ap.print_help()
     return 2
 

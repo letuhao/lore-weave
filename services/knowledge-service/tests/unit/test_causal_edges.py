@@ -101,3 +101,92 @@ def test_causal_edges_requires_internal_token():
               "book_id": "00000000-0000-0000-0000-000000000000",
               "model_source": "user_model", "model_ref": "m1"})
     assert resp.status_code == 401
+
+
+# ── T33g: one ordered pair, ONE relation ───────────────────────────────────────────────────
+#
+# Measured on the acceptance corpus 2026-08-30: the extractor wrote 134 edges across 124
+# distinct ordered pairs — 10 pairs carried BOTH `CAUSES` and `PRECEDES`. The prompt asks for
+# "exactly one of" and the model obeys; the duplication is structural. `_WINDOW` is 12 and
+# `_STRIDE` is 6, so consecutive windows overlap by half and a pair in the overlap is judged
+# twice, in two different contexts. `edges` is a set of TRIPLES, so both judgements survive.
+
+from app.extraction.causal_edges import reconcile_relations
+
+
+def test_two_windows_that_AGREE_leave_one_edge():
+    kept, disagreed = reconcile_relations([("a", "b", "causes"), ("a", "b", "causes")])
+    assert kept == [("a", "b", "causes")]
+    assert disagreed == []
+
+
+def test_two_windows_that_DISAGREE_keep_the_WEAKER_claim():
+    """The module's own rule, not a new one: 'PREFER unknown over guessing: a wrong order is
+    worse than an absent one.' Two windows that cannot agree on WHY have not established why;
+    what they agree on is the ORDER."""
+    kept, disagreed = reconcile_relations([("a", "b", "causes"), ("a", "b", "precedes")])
+    assert kept == [("a", "b", "precedes")]
+    assert disagreed == [("a", "b")]
+
+
+def test_the_resolution_does_not_depend_on_which_window_came_first():
+    """Set iteration order must not decide world order — the same reason `drop_cycles` is
+    handed a sorted list."""
+    one, _ = reconcile_relations([("a", "b", "causes"), ("a", "b", "precedes")])
+    two, _ = reconcile_relations([("a", "b", "precedes"), ("a", "b", "causes")])
+    assert one == two == [("a", "b", "precedes")]
+
+
+def test_DIFFERENT_pairs_are_untouched():
+    """The control: reconciling must not collapse edges that were never in conflict, or it
+    would quietly delete the extractor's actual output."""
+    kept, disagreed = reconcile_relations(
+        [("a", "b", "causes"), ("b", "c", "precedes"), ("a", "c", "causes")])
+    assert kept == [("a", "b", "causes"), ("a", "c", "causes"), ("b", "c", "precedes")]
+    assert disagreed == []
+
+
+def test_a_reversed_pair_is_a_DIFFERENT_pair():
+    """(a,b) and (b,a) are distinct claims; only the cycle guard may refuse the second."""
+    kept, disagreed = reconcile_relations([("a", "b", "causes"), ("b", "a", "precedes")])
+    assert len(kept) == 2 and disagreed == []
+
+
+class _ScriptedLLM:
+    """Answers each window differently, which is what overlapping windows actually do."""
+
+    def __init__(self, contents):
+        self._contents = list(contents)
+        self.calls = 0
+
+    async def submit_and_wait(self, **kw):
+        i = min(self.calls, len(self._contents) - 1)
+        self.calls += 1
+        return _job(self._contents[i])
+
+
+async def test_infer_causal_edges_ACTUALLY_RECONCILES_a_disagreeing_pair():
+    """THE WIRING, not the rule.
+
+    `reconcile_relations` passing its own tests proves nothing about whether
+    `infer_causal_edges` calls it — BITE T33g-2 proved exactly that: removing the call left
+    all five pure-function tests green. A correct filter that nothing invokes is the shape
+    this repo keeps finding.
+
+    The overlap has to be REAL or the test measures nothing: `_WINDOW` is 12 and `_STRIDE`
+    is 6, so window A is events[0:12] and window B is events[6:18]. Only a pair inside
+    events[6:12] is judged twice. My first draft used three events, produced ONE window, and
+    failed for that reason rather than the one it was written for.
+
+    The E-labels are per-window, which is the point of `event_tokens`: the same pair is
+    (E7,E8) in window A and (E1,E2) in window B.
+    """
+    events = [{"id": f"e{i}", "title": f"T{i}", "summary": ""} for i in range(1, 15)]
+    llm = _ScriptedLLM(['[["E7","E8","causes"]]', '[["E1","E2","precedes"]]'])
+    out = await infer_causal_edges(llm, user_id="u", model_source="user_model",
+                                   model_ref="m1", events=events)
+    assert llm.calls >= 2, "the windows must OVERLAP or nothing is judged twice"
+    pairs = [(a, b) for a, b, _rel in out]
+    assert len(pairs) == len(set(pairs)), f"one pair must carry ONE relation, got {out}"
+    assert ("e7", "e8", "precedes") in out, f"the weaker claim must survive, got {out}"
+    assert ("e7", "e8", "causes") not in out

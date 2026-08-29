@@ -223,6 +223,44 @@ def _job_content(job: Any) -> str:
     return ""
 
 
+def reconcile_relations(
+    edges: list[tuple[str, str, str]],
+) -> tuple[list[tuple[str, str, str]], list[tuple[str, str]]]:
+    """One ordered pair, ONE relation. Returns (kept, pairs that disagreed).
+
+    🔴 **MEASURED 2026-08-30 (T33g), on a real corpus.** The extractor ran over 122 events of
+    the acceptance corpus and wrote 134 edges across **124** distinct ordered pairs — so **10
+    pairs carried BOTH `CAUSES` and `PRECEDES`**. The prompt asks the model for *"exactly one
+    of"*, and it obeys; the duplication is structural, not a model error:
+
+        `_WINDOW` is 12 and `_STRIDE` is 6, so consecutive windows OVERLAP by half. A pair in
+        the overlap is judged TWICE, in two different contexts, and the two judgements need
+        not agree. `edges` is a set of (a, b, relation) TRIPLES, so both survive dedup — the
+        set is deduping the wrong key.
+
+    The result is a graph asserting *"A causes B"* and *"A merely precedes B"* about the same
+    pair. That is exactly the collapse this module's docstring exists to prevent, reached from
+    the other direction: *"they are different strengths of assertion and collapsing them loses
+    the distinction a canon check needs."*
+
+    **A disagreement resolves to the WEAKER claim**, which is this module's own stated rule
+    rather than a new one: *"PREFER 'unknown' over guessing: a wrong order is worse than an
+    absent one."* Two windows that cannot agree on WHY have not established why; what they do
+    agree on is the order. So `causes` + `precedes` keeps `precedes`, and the pair is returned
+    so the caller can log how often the windows disagreed.
+    """
+    seen: dict[tuple[str, str], str] = {}
+    disagreed: list[tuple[str, str]] = []
+    for a, b, rel in edges:
+        prior = seen.get((a, b))
+        if prior is None:
+            seen[(a, b)] = rel
+        elif prior != rel:
+            disagreed.append((a, b))
+            seen[(a, b)] = REL_PRECEDES        # the weaker of the two, always
+    return sorted((a, b, rel) for (a, b), rel in seen.items()), sorted(set(disagreed))
+
+
 async def infer_causal_edges(
     llm: Any, *, user_id: str, model_source: str, model_ref: str,
     events: list[dict[str, Any]],
@@ -289,7 +327,15 @@ async def infer_causal_edges(
     # Sort BEFORE the cycle guard so the refusal is deterministic: which edge of a cycle gets
     # dropped must not depend on set iteration order, or two runs over the same corpus would
     # disagree about world order and neither would be reproducible.
-    kept, refused = drop_cycles(sorted(edges))
+    # One ordered pair may only carry ONE relation. The windows overlap by half, so a pair
+    # in the overlap is judged twice and the two judgements need not agree — measured at 10
+    # of 124 pairs on the acceptance corpus (T33g). Reconciled BEFORE the cycle guard, so the
+    # guard sees the graph that will actually be written.
+    reconciled, disagreed = reconcile_relations(sorted(edges))
+    if disagreed:
+        logger.info("causal-edges: %d pair(s) judged differently by overlapping windows; "
+                    "kept the weaker `precedes` for each", len(disagreed))
+    kept, refused = drop_cycles(reconciled)
     if refused:
         logger.warning("causal-edges: refused %d edge(s) that would close a cycle: %s",
                        len(refused), refused[:5])

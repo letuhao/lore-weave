@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T48 §6.4 — the verification re-run; T33 waits on the PO's labels.**
+**RESUME: T33 — the sheet is COMPLETE and awaits only the PO's 20 labels.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 20 of 22 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 21 of 23 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (4/5) · `T48` (15/16) · `T49` (1/1)
+**OPEN:** `T33` (5/6) · `T48` (15/16) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10250,6 +10250,90 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
+  ---
+  ### ✅ T33g 2026-08-30 — **the extractor RAN, and its own output carried a contradiction: 10 pairs asserted BOTH `causes` and `precedes`**
+
+  ```
+  causal-edges on lw-iso, 122 events    edges_written 134  ->  124 distinct ordered pairs
+  pairs carrying BOTH relations         10                 <- the finding
+  after the fix, against a REBUILT image  edges_written 124 · CAUSES 62 · PRECEDES 62 · BOTH 0
+  the sheet now carries predictions      causal_pass_ran: true · 2 of 20 pairs
+  ```
+
+  🎯 **The GRANT's half that needed no labels, done.** The sheet was built at T33f but its
+  manifest read `causal_pass_ran: false` — the extractor had never run on this project, so
+  there was nothing for the PO's labels to be scored against. Run now over the acceptance
+  corpus's 122 events on `lw-iso` (LLM spend and graph writes THERE, per the grant).
+
+  🔴 **134 EDGES OVER 124 DISTINCT PAIRS, AND THE ARITHMETIC IS THE DEFECT.** Ten ordered pairs
+  carried **both** `CAUSES` and `PRECEDES`. The prompt asks the model for *"exactly one of"* and
+  it obeys — the duplication is structural:
+
+  ```
+  _WINDOW = 12 · _STRIDE = 6   ->  window A = events[0:12], window B = events[6:18]
+  a pair inside events[6:12] is judged TWICE, in two different contexts
+  `edges` is a set of (a, b, RELATION) TRIPLES — so both judgements survive dedup
+  ```
+
+  **The set was deduping the wrong key.** The result is a graph asserting *"A causes B"* and
+  *"A merely precedes B"* about the same pair — precisely the collapse this module's docstring
+  exists to prevent, reached from the other direction: *"they are different strengths of
+  assertion and collapsing them loses the distinction a canon check needs."*
+
+  ⚖️ **A disagreement resolves to the WEAKER claim, and that is the module's OWN rule.** Its
+  prompt already says *"PREFER 'unknown' over guessing: a wrong order is worse than an absent
+  one."* Two windows that cannot agree on WHY have not established why; what they agree on is
+  the order. So `causes` + `precedes` keeps `precedes`, and the count is LOGGED rather than
+  quietly merged — live, from the rebuilt image:
+
+  ```
+  causal-edges: 10 pair(s) judged differently by overlapping windows;
+                kept the weaker `precedes` for each
+  CAUSES 72 -> 62   PRECEDES 62 -> 62   BOTH 10 -> 0
+  ```
+
+  🧪 **BITES — and the second one is the lesson.**
+
+  ```
+  T33g-1  resolve to the STRONGER claim instead
+            FAIL  ×2 — the weaker-claim test and the order-independence test
+  T33g-2  drop the reconcile call from `infer_causal_edges` entirely
+            PASS — all 14. My tests covered the PURE FUNCTION and not the WIRING.
+            A correct filter that nothing calls is the shape this repo keeps finding,
+            and I had just written one.
+  ```
+
+  **So the wiring test was added and T33g-2 retried: it now FAILS by name.** Its first draft
+  used three events and produced ONE window — no overlap, nothing judged twice — so it failed
+  for the wrong reason. `_WINDOW`/`_STRIDE` mean the overlap only exists at `events[6:12]`, so
+  the fixture is fourteen events and the disagreeing pair sits inside it. **A test of an
+  overlap has to actually overlap.**
+
+  ⚠️ **AND THE SHEET WAS READING THE WRONG STORE.** After 134 edges were written it still
+  reported `causal_pass_ran: false`. The emitter spoke Bolt to Neo4j; the declared backend is
+  `age` (§8.1), so every edge went to AGE and the instrument saw an empty graph:
+
+  ```
+  AGE   CAUSES 72 · PRECEDES 62          iso Neo4j (what the sheet read)   0
+  ```
+
+  It reported *"the extractor was never run here"* about a run that had finished minutes
+  earlier — and `PASS-NEVER-RAN` exists precisely to say that, so the wrong reading would have
+  been believed. **Third instrument defect in this row alone** — `created_at` ordering, a
+  one-row `keys()` sample, and now the store — and all three failed toward *"there is nothing
+  here"*. The emitter now reads the configured backend, with `--store` defaulting to `age`.
+
+  **QC (a) gates:** `t33-causal-labelling-sheet --selftest` 17/17; knowledge
+  `test_causal_edges` + `test_causal_edges_order` **29 passed** (5 new pure + 1 wiring);
+  four plan gates green.
+  **QC (b) live smoke vs a REBUILT image:** `iso.sh build knowledge-service` + restart, the
+  edges cleared on iso, and the re-run's `edges_written: 124` and the disagreement log line
+  are both from that container.
+  **QC (c) real data:** the acceptance corpus's own 122 events; 62/62/0 read back out of AGE.
+
+  ⛔ **T33 stays `[~]` — one input remains and it is not code.** The sheet is complete:
+  `causal_pass_ran: true`, 20 pairs, the system asserting an edge on 2 of them, every `LABEL:`
+  blank. `--score` refuses it until a person signs it, which is the grant enforced in code.
   ---
   ### ✅ T33f 2026-08-24 — **the reference corpus the stop condition has always needed — and the sheet's own instrument was wrong twice before it was right**
 
