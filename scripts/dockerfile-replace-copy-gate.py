@@ -26,8 +26,26 @@ WHAT IT CHECKS
 For every containerised Go service (`services/*/` with BOTH `go.mod` and `Dockerfile`):
 every `replace ... => <relative path>` target that points OUTSIDE the service directory
 must be COPYed into the image by some `COPY` instruction — directly, or via an ancestor
-directory. A Dockerfile that copies the whole context (`COPY . …`) is exempt: it cannot
-miss anything.
+directory. A Dockerfile that copies the whole context (`COPY . …`) is exempt ONLY when the
+context it is BUILT with actually contains the target.
+
+🔴 **AMENDED 2026-08-30. That exemption was unconditional, and it was wrong — measured.**
+This gate reported `43 replace target(s) · 0 not copied` while TWO services could not be built
+at all, and both were skipped by exactly this branch:
+
+    alert-recorder      compose declares `context: ../services/alert-recorder` — the SERVICE
+                        directory. `COPY . .` then copies the service and nothing else, so
+                        `../../contracts/alerts` can never be inside it. Its Dockerfile also
+                        carried `COPY ../../contracts/alerts/`, a source that ESCAPES any
+                        context and so resolves to nothing in every context.
+    canary-controller   nothing declares an image build for it anywhere. `deploy.yml` runs
+                        `cd services/canary-controller && go build ./...` on the HOST, where
+                        the replace resolves on disk, so its Dockerfile is never exercised.
+
+`COPY . .` does not mean "everything"; it means "the build context", and this gate never asked
+what that was. An exemption that assumes a fact it does not check is the shape this repo keeps
+paying for — and here it kept a critical bug green for months while its own deferral
+(`D-NO-CI-BUILDS-ANY-SERVICE-IMAGE`) sat filed as out of scope.
 
     python scripts/dockerfile-replace-copy-gate.py            # gate
     python scripts/dockerfile-replace-copy-gate.py --list     # every pair, resolved
@@ -43,6 +61,7 @@ Exit 0 = every replace resolves inside the image · 1 = at least one does not.
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import re
 import shutil
@@ -95,6 +114,57 @@ def _copied_sources(dockerfile_text: str) -> tuple[list[str], bool]:
     return sources, whole
 
 
+def declared_contexts(root: str) -> dict[str, str]:
+    """`{service name: repo-relative build context}`, DERIVED from the compose files.
+
+    Derived because the whole defect was an assumption about the context. A service absent
+    from this map has no declared image build at all, which is not a reason to exempt it —
+    it is a reason to say so.
+    """
+    out: dict[str, str] = {}
+    pats = [os.path.join(root, "infra", "*.yml"), os.path.join(root, "infra", "*.yaml")]
+    for path in sorted(q for pat in pats for q in glob.glob(pat)):
+        try:
+            text = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        here = os.path.dirname(path)
+        ctx = None
+        for line in text.splitlines():
+            m = re.match(r"\s*context:\s*(\S+)", line)
+            if m:
+                ctx = m.group(1).strip().strip('"').strip("'")
+                continue
+            m = re.match(r"\s*dockerfile:\s*(\S+)", line)
+            if m and ctx is not None:
+                dfile = m.group(1).strip().strip('"').strip("'")
+                joined = os.path.normpath(os.path.join(here, ctx, dfile))
+                rel_ctx = os.path.relpath(os.path.normpath(os.path.join(here, ctx)), root)
+                svc = os.path.basename(os.path.dirname(joined))
+                out.setdefault(svc, rel_ctx.replace(os.sep, "/"))
+                ctx = None
+    return out
+
+
+def whole_context_covers(ctx, repo_rel: str) -> bool:
+    """Does `COPY . .` under this declared context bring `repo_rel` in?
+
+    `None` — nothing declares a build — is NOT coverage. That is canary-controller, whose
+    Dockerfile no workflow has ever run.
+    """
+    if ctx is None:
+        return False
+    ctx = ctx.strip("./")
+    return ctx in ("", ".") or repo_rel == ctx or repo_rel.startswith(ctx + "/")
+
+
+def escaping_sources(sources):
+    """COPY sources that leave the build context. Docker resolves every source from the
+    context ROOT, so a `../` prefix never reaches the parent — it addresses a path that is
+    simply absent, in every context. Always a defect, never a style choice."""
+    return [s for s in sources if s.startswith("../") or "/../" in s]
+
+
 def _satisfied(repo_rel: str, sources: list[str]) -> bool:
     """A COPY of the path itself, or of any ancestor directory, brings it in."""
     return any(
@@ -108,6 +178,7 @@ def audit(root: str) -> tuple[list[tuple[str, str, str]], int]:
     (service, replace-as-written, repo-relative target)."""
     services_dir = os.path.join(root, "services")
     violations: list[tuple[str, str, str]] = []
+    contexts = declared_contexts(root)
     checked = 0
     if not os.path.isdir(services_dir):
         return violations, checked
@@ -120,8 +191,10 @@ def audit(root: str) -> tuple[list[tuple[str, str, str]], int]:
             continue
         with open(dockerfile, encoding="utf-8") as fh:
             sources, whole = _copied_sources(fh.read())
-        if whole:
-            continue
+        ctx = contexts.get(service)
+        # A source that escapes the context can never resolve, whatever the context is.
+        for bad in escaping_sources(sources):
+            violations.append((service, bad, "COPY source escapes the build context"))
         for written in _replace_targets(gomod):
             absolute = os.path.normpath(os.path.join(service_dir, written))
             repo_rel = os.path.relpath(absolute, root).replace(os.sep, "/")
@@ -130,8 +203,11 @@ def audit(root: str) -> tuple[list[tuple[str, str, str]], int]:
             if repo_rel.startswith(f"services/{service}/"):
                 continue
             checked += 1
-            if not _satisfied(repo_rel, sources):
-                violations.append((service, written, repo_rel))
+            if _satisfied(repo_rel, sources):
+                continue
+            if whole and whole_context_covers(ctx, repo_rel):
+                continue
+            violations.append((service, written, repo_rel))
     return violations, checked
 
 
@@ -186,7 +262,25 @@ RUN go mod download
 """
 
 
-def _write_tree(root: str, dockerfile: str) -> None:
+# alert-recorder's real shape: a source with `../..`, which Docker resolves from the CONTEXT
+# ROOT and therefore never finds. It NAMES the target, which is why it read as correct.
+_DOCKERFILE_ESCAPES = """FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY ../../sdks/go/thing /src/sdks/go/thing
+COPY ../../contracts/other /src/contracts/other
+COPY . /src
+RUN go mod download
+"""
+
+
+def _write_tree(root: str, dockerfile: str, context: str | None = None,
+                dockerfile_path: str = "services/selftest-service/Dockerfile") -> None:
+    """`context` writes an infra/ compose file DECLARING the build context.
+
+    Added 2026-08-30 with the amendment: `COPY . .` is coverage only under a context that
+    contains the target, so a case that does not say what its context is cannot assert
+    either verdict. `None` = no declared image build, which is canary-controller's shape.
+    """
     service = os.path.join(root, "services", "selftest-service")
     os.makedirs(service, exist_ok=True)
     for shared in ("sdks/go/thing", "contracts/other"):
@@ -195,20 +289,37 @@ def _write_tree(root: str, dockerfile: str) -> None:
         fh.write(_SELFTEST_GOMOD)
     with open(os.path.join(service, "Dockerfile"), "w", encoding="utf-8") as fh:
         fh.write(dockerfile)
+    if context is not None:
+        infra = os.path.join(root, "infra")
+        os.makedirs(infra, exist_ok=True)
+        with open(os.path.join(infra, "docker-compose.yml"), "w", encoding="utf-8") as fh:
+            fh.write("services:\n  selftest-service:\n    build:\n"
+                     "      context: " + context + "\n"
+                     "      dockerfile: " + dockerfile_path + chr(10))
 
 
 def selftest() -> int:
     cases = [
-        ("every replace copied", _DOCKERFILE_GOOD, 0, 2),
-        ("one shared module never copied", _DOCKERFILE_MISSING, 1, 2),
-        ("an ANCESTOR copy satisfies it", _DOCKERFILE_ANCESTOR, 0, 2),
-        ("COPY . takes the whole context", _DOCKERFILE_WHOLE_CONTEXT, 0, 0),
+        ("every replace copied", _DOCKERFILE_GOOD, 0, 2, None),
+        ("one shared module never copied", _DOCKERFILE_MISSING, 1, 2, None),
+        ("an ANCESTOR copy satisfies it", _DOCKERFILE_ANCESTOR, 0, 2, None),
+        # ── the amendment, 2026-08-30 ────────────────────────────────────────────────
+        # `COPY . .` used to be an unconditional exemption. It reported 0 violations while
+        # two services could not be built, so each of these three says WHICH context.
+        ("COPY . under a REPO-ROOT context takes everything",
+         _DOCKERFILE_WHOLE_CONTEXT, 0, 2, ".."),
+        ("COPY . under the SERVICE-DIR context takes only the service — alert-recorder",
+         _DOCKERFILE_WHOLE_CONTEXT, 2, 2, "../services/selftest-service"),
+        ("COPY . with NO declared build at all is not coverage — canary-controller",
+         _DOCKERFILE_WHOLE_CONTEXT, 2, 2, None),
+        ("a COPY source that ESCAPES the context is a defect in every context",
+         _DOCKERFILE_ESCAPES, 2, 2, ".."),
     ]
     failures: list[str] = []
-    for label, dockerfile, want_violations, want_checked in cases:
+    for label, dockerfile, want_violations, want_checked, context in cases:
         tmp = tempfile.mkdtemp(prefix="dfrc-gate-")
         try:
-            _write_tree(tmp, dockerfile)
+            _write_tree(tmp, dockerfile, context)
             violations, checked = audit(tmp)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

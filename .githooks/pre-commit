@@ -163,6 +163,14 @@ command -v python >/dev/null 2>&1 || PY=python3
 # SKIPped returns no failures, and "no leg failed" over zero legs is the vacuous pass
 # this repo keeps paying for. The floor is checked BEFORE the failure count.
 "$PY" "$ROOT/scripts/architecture-live-proof.py" --selftest
+# A Go `replace` whose target the image build cannot resolve. This gate ALREADY EXISTED
+# and CI already ran it via `gate-wiring-gate --run-all` -- it was green on 2026-08-30
+# while alert-recorder and canary-controller could not be built at all. The wiring was
+# never the problem: its `COPY . .` exemption was unconditional, and `COPY . .` means
+# 'the build context', which for alert-recorder is the SERVICE directory. Amended to
+# derive the declared context; run here too so the answer is local and immediate.
+"$PY" "$ROOT/scripts/dockerfile-replace-copy-gate.py" --selftest
+"$PY" "$ROOT/scripts/dockerfile-replace-copy-gate.py"
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call graph_repos with no Cypher of its own, pass that gate, and still break on an engine

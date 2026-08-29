@@ -2096,6 +2096,40 @@ recorded and WIRED — `scripts/qc5-verifier-heldout.py`, selftested and bitten 
 verdict is `HELD-OUT-HOLDS` only when a distinct verifier drops every false positive on drafts it
 was not derived from.
 
+## 19 · T25 closes on the COUPLING; the dev cutover moves to merge-to-main — DECIDED (PO, 2026-08-30)
+
+**Cited by plan row `T25`.**
+
+T25 had no open deferral left and still could not close on its own terms: its exit is deleting
+the passage vector DDL, and T25z made that a **mechanical predicate** —
+`passage read-primary declarations 2/2 non-postgres` must reach 0. Under the PO's iso-only
+decision (2026-08-24) dev never flips, so it sits at 2 indefinitely, and T48/T49 stay blocked
+behind a row that is finished in every sense except a condition nothing in this plan can meet.
+
+**DECIDED — close on the coupling, exactly as §9.2 did for the ENTITY DDL.** That section's
+words apply unchanged: *"it is not a scheduling call and it is not owed to anyone: the condition
+is mechanical and already written down."* T25 closes on what is proven — ① the backup path, ②
+the cutover switch, ③ steps 1/2/5, ④ the event index deleted on a measured zero-read — with the
+passage DDL's exit as a CONSEQUENCE that `port-adoption-gate` prints on every run. The gate goes
+red the day a deployment declares `postgres` and the DDL has not followed.
+
+**The dev cutover is not abandoned; it is RESCHEDULED to merge-to-main (PO, 2026-08-30):**
+*"close it, and add other task when we merge to main branch, we will retire old infra."* At that
+point the sibling `infra` stack is retired rather than worked around, which removes both blockers
+T25y measured at once — the container that predates the dual-write, and the instruction to leave
+that stack alone.
+
+**OWED AT MERGE-TO-MAIN, and it is a list, not a gesture:**
+
+1. Retire the sibling `infra` compose project; stand dev up from this checkout.
+2. `backfill-passages` per project so the Postgres secondary is non-empty — **measure passage
+   search before AND after**, because an empty secondary fails SILENTLY (§9.1 option 2, the
+   shape this plan has caught five times).
+3. `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres` in `infra/.env.example` and the compose default.
+4. Delete `passage_embeddings_1024` from `neo4j_schema.cypher` — only once
+   `port-adoption-gate` reports `passage read-primary declarations 0/0`.
+5. Re-run `architecture-live-proof --run` against the new dev; leg 2's censuses come from it.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

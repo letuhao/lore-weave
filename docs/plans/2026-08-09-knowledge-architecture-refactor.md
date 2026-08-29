@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: QC-5 §2.1 — re-score the acceptance criterion now the channel is gated.**
+**RESUME: T33 — the PO's 20 labels are the last input; QC-5 has no open deferral.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**64 of 69 rows done · 5 open · 72 of 110 evidence blocks closed inside them.**
+**65 of 69 rows done · 4 open · 54 of 83 evidence blocks closed inside them.**
 
-**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (34/63) · `T48` (14/15) · `T49` (1/1)
+**OPEN:** `T33` (4/5) · `QC-5` (35/62) · `T48` (14/15) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -7496,7 +7496,7 @@ vectors and validity intervals live in different stores.
   their answers become identical.
   (depends on T23)
 
-- [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
+- [x] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path** — **CLOSED 2026-08-30 on the COUPLING (§19, PO).** ① ② ③ steps 1/2/5 ④ all proven; the passage DDL's exit is a CONSEQUENCE `port-adoption-gate` prints every run (`passage read-primary declarations 2/2`), not a step someone must remember — §9.2's rule, applied to the passage scope. The dev cutover moves to MERGE-TO-MAIN, where the sibling `infra` stack is retired rather than worked around (§19 carries the five owed steps)
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.1. Unfinished, not undecided.
   **① backup path ✅ · ② cutover switch ✅ (2026-08-13) · ③ PASSAGE indexes ✅ (2026-08-22,
   T25o) — soak SOAKING, dev cut over, DDL deleted · ④ EVENT index ✅ (2026-08-23, T25u) —
@@ -11764,6 +11764,88 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ---
   ---
+  ### ✅ QC-5 C47 2026-08-30 — **the PO refused the deferral, and two services had never been buildable — while the gate for it was GREEN**
+
+  ```
+  15 containerised Go services audited     2 could not be built AT ALL
+  alert-recorder      COPY ../../contracts/alerts/   a source OUTSIDE the build context
+  canary-controller   contracts/meta, sdks/go/metapg  never COPYed
+  both now build      sha256:f1b984db…   sha256:2463dcc6…
+  ```
+
+  🎯 **The deferral was wrong to exist and the PO said so.** `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE`
+  was filed *"out of this plan's scope"* while recording that *"the suite is green has never
+  implied the service can be deployed, for ANY service in this repo."* Asked whether to accept
+  it or fix it, the PO answered: *"i don't think this is right defer, why you keep a critical
+  bug and don't fix it?"* — and the audit that followed proves the instinct: the class was still
+  live in two services months later.
+
+  🔴 **AND `dockerfile-replace-copy-gate` ALREADY EXISTED, RAN IN CI, AND WAS GREEN OVER BOTH.**
+  It reported `43 replace target(s) · 0 not copied` on a tree with two unbuildable images. The
+  wiring was never the problem — `gate-wiring-gate --run-all` drives it on every CI run. **Its
+  exemption was the problem**, and the gate's own docstring stated it as a fact:
+
+  ```
+  "A Dockerfile that copies the whole context (COPY . …) is exempt: it cannot miss anything."
+  ```
+
+  **`COPY . .` does not mean "everything". It means "the build context",** and the gate never
+  asked what that was. Both broken services have `COPY . .`, and both were skipped by that one
+  branch — measured, not reasoned:
+
+  ```
+  alert-recorder      compose declares  context: ../services/alert-recorder   <- the SERVICE dir
+  canary-controller   nothing declares an image build at all; deploy.yml runs
+                      `cd services/canary-controller && go build ./...` on the HOST,
+                      where the replace resolves on disk and the Dockerfile is never opened
+  ```
+
+  ⚖️ **AMENDED, NOT REPLACED — and I nearly did replace it.** I wrote a new gate of the same
+  name before noticing the file already existed; the Write tool said *"updated"*, not
+  *"created"*, and I read past it. Reverted and the ORIGINAL amended in place, because two gates
+  answering one question is the "one home" violation this repo keeps finding. The amendment is
+  three rules, each earned by a measured case:
+
+  ```
+  1  `COPY . .` is coverage ONLY when the DECLARED context contains the target
+     — derived from infra/*.yml, because the defect WAS an assumption about the context
+  2  no declared build at all is NOT coverage      (canary-controller)
+  3  a COPY source with `../` escapes any context  (alert-recorder) — it NAMES the target,
+     which is exactly why it read as correct
+  ```
+
+  🧪 **VALIDATED ON THE CASES IT MISSED, which is rule 3 with real inputs rather than fixtures.**
+
+  ```
+  amended gate vs the ORIGINAL broken Dockerfiles:
+    alert-recorder:     `=> ../../contracts/alerts` never COPYs contracts/alerts
+    canary-controller:  `=> ../../contracts/meta`   never COPYs contracts/meta
+    canary-controller:  `=> ../../sdks/go/metapg`   never COPYs sdks/go/metapg
+  selftest 7/7, including the three the amendment adds and the REPO-ROOT control that
+  must still pass — a gate that reds on every `COPY . .` would just get disabled
+  ```
+
+  ⚠️ **The old selftest asserted the wrong thing, and it had to go red before it could be
+  fixed.** Its case *"COPY . takes the whole context → 0 violations"* encoded the very
+  assumption that was false, so it failed the moment the exemption became conditional. Replaced
+  by three cases that each name their context — repo-root (0), service-dir (2),
+  none-declared (2) — because a case that does not say what its context is cannot assert either
+  verdict.
+
+  ⚠️ **Two self-inflicted stops, both already in my own notes.** I patched the gate through a
+  heredoc and the escapes collapsed (`\\n` became a real newline, `\\'` became `'`), producing two
+  syntax errors — the hazard I have recorded and walked into anyway. Redone through a written
+  file. And I overwrote an existing artefact without reading it first, which is the rule about
+  looking at the target before writing over it.
+
+  **QC (a) gates:** `dockerfile-replace-copy-gate --selftest` **7/7** and live PASS over 15
+  services (46 targets, up from 43 — the two skipped services are now actually checked); wired
+  into `.githooks/pre-commit` as well as CI; `gate-wiring-gate` 114; four plan gates green.
+  **QC (b) live proof:** `docker build` on both, from the repo root — the two sha256 digests
+  above. A static gate cannot prove an image builds; only a build can, so both were built.
+  **QC (c) real data:** the audit is over all 15 containerised Go services in this repo, and the
+  two findings are the ones that had shipped green since they were written.
+  ---
   ### ✅ QC-5 C46 2026-08-30 — **the PO's conditional, EXECUTED: the attribution channel is off by default and the craft feedback survives**
 
   ```
@@ -14412,7 +14494,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   pins the DIFFERENCE, so if `judge_prose` ever stops stamping keys the new comparison cannot
   quietly collapse back into the old weaker one and pass for the old wrong reason.
 
-  ### 🔻 DEFERRAL `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`
+  ### ~~DEFERRAL~~ `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE` — QC-5: **DECIDED AND BUILT 2026-08-30 (C46).** Its *To unblock* was *"a PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling... or spend on precision here."* Precision was spent on (C31) and then MEASURED on cases it was not derived from — **14/14 in-sample, 0/5 held out** (C45). The PO's conditional therefore fired, narrowed to the one output the evidence indicts: `canon_violations_enabled` defaults FALSE, the four dimension scores and craft notes still ship, and the channel returns when `qc5-verifier-heldout` reports `HELD-OUT-HOLDS`. The judge is not fixed — it is no longer allowed to tell an author something measured at 4/4 false.
 
   <!-- doc-language-gate: ok -- the span below IS the evidence -->
 
@@ -15846,7 +15928,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   scores. Those come from the D5 continuity critic, a different pass this endpoint does not
   run. The glossary delta is 0 by design (`persist:false` — a read-only run).
 
-  ### 🔻 DEFERRAL `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE` — found by the detector's live smoke
+  ### ~~DEFERRAL~~ `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE` — QC-5: **FIXED 2026-08-30 (C47), not deferred.** The PO refused the deferral — *"why you keep a critical bug and don't fix it?"* — and the refusal was right: measured across all 15 containerised Go services, **two could not be built at all** and had never been buildable. `alert-recorder` and `canary-controller` now build (image sha256 pasted in C47), and the gate that was supposed to catch them is amended, because it had been GREEN over both.
 
   | | |
   |---|---|
