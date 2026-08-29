@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 23 of 25 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 24 of 26 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (5/6) · `T48` (17/18) · `T49` (1/1)
+**OPEN:** `T33` (5/6) · `T48` (18/19) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24500,6 +24500,76 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48q 2026-08-30 — **a ratchet visible only on SUCCESS is invisible exactly when something is wrong**
+
+  ```
+  sweep reds  9 -> 4       cleared here: transitions-validation-lint · gate-number-visibility-gate
+  cleared at T48n          ai-provider-gate · raw-sql-lint · language-bias-gate
+  remaining 4              llm-budget-ssot · pagination-cap · projection-coverage · guard-redability
+  ```
+
+  🎯 **`transitions-validation-lint.sh` was never a repo defect — it was my checkout.**
+  `.gitattributes` says `*.sh text eol=lf`, the index is `i/lf`, and the working tree was
+  `w/crlf`, so bash read `$'\\r'` as a command. Renormalised to LF: `git diff` is **empty** and
+  `git ls-files --eol` now reads `i/lf w/lf`. §14 said *"a Linux runner never sees it"* and that
+  was right — nothing to commit, one red gone.
+
+  ⚠️ **`git status` said `M` on a file with an empty diff**, which is the stat cache, not a
+  change. Checked with `git diff` rather than trusting the porcelain — the same discipline as
+  every other number this week.
+
+  🔴 **`gate-number-visibility-gate` reported `NO_SIGNAL_BASELINE = 14 never reaches the
+  output`, and MY FIRST FIX DID NOT WORK — for the reason that is the actual finding.** I put
+  the ratchet on `llm-budget-ssot-gate`'s PASS line. That gate is currently RED for an unrelated
+  reason, so the PASS branch never executes and the number still never printed.
+
+  **A ratchet visible only on success is invisible exactly while something is wrong** — which is
+  when drift is most likely and least noticed. The visibility gate says it plainly: *"The number
+  IS the mechanism: it is what makes a slow regression visible commit by commit instead of
+  turning up in an audit."* A gate that has been red for weeks is precisely where a baseline
+  can move unobserved.
+
+  ```
+  before   printed only inside `if rc == 0:`        -> silent on every red run
+  after    printed unconditionally before `return`  -> every run, pass or fail
+           NO_SIGNAL_BASELINE 14/14 — a SHRINK-ONLY ratchet; lower it in the
+           commit that lowers the count (rule 5).
+  ```
+
+  🧪 **BITE T48q-1** — the ratchet stops reaching the output:
+
+  ```
+  llm-budget-ssot-gate.py: NO_SIGNAL_BASELINE = 14 never reaches the output     exit 1
+  ```
+
+  Non-vacuous, and it bites the WIRING rather than the constant: the visibility gate RUNS each
+  gate and reads real output, so a static declaration would not have satisfied it and a
+  cosmetic one would not have failed.
+
+  ⛔ **The remaining four are other people's files, and they are now a LIST rather than a
+  claim** (T48n corrected §14's blanket attribution):
+
+  ```
+  llm-budget-ssot-gate      composition-service — critic.py, self_heal.py     3 findings
+  pagination-cap-lint       glossary-service — mirror_truth_handler.go        2
+  projection-coverage-lint  crates/ — 7 unprojected glossary events           7
+  guard-redability-gate     composition-service ×2 + knowledge wiki/prompt.py 3 of 22 guards
+  ```
+
+  `guard-redability-gate`'s DoD-4b touches `knowledge-service/app/wiki/prompt.py`, which is this
+  service but not this plan's port/adapter work — measured and named rather than swept into
+  "not ours", because that sentence is what T48n had to correct.
+
+  **QC (a) gates:** `gate-number-visibility-gate` OK (was red), `transitions-validation-lint`
+  OK (was red); four plan gates green by direct exit code.
+  **QC (b) live smoke:** N/A — a print statement and a line-ending normalisation. No service,
+  no seam.
+  **QC (c) real data:** the sweep's own reds, re-run individually; `git ls-files --eol` before
+  and after.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels. The sweep is
+  down from nine reds to four, and each of the four names the files it belongs to.
   ---
   ### ✅ T48p 2026-08-30 — **832 integration tests do not run by default, and 115 of them are the DEFAULT BACKEND's own conformance arm**
 
