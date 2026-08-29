@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T33 §4.3 — the causal labelling sheet: ~20 pairs, 2 chapters, the PO labels.**
+**RESUME: T25 ③ §9.1 — the dev passage cutover; backfill, flip, delete the DDL.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 103 of 149 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 104 of 150 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (36/46) · `T25` (18/24) · `T33` (3/4) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T17` (36/46) · `T25` (18/24) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10019,6 +10019,99 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
+  ---
+  ### ✅ T33f 2026-08-24 — **the reference corpus the stop condition has always needed — and the sheet's own instrument was wrong twice before it was right**
+
+  ```
+  NEW  scripts/t33-causal-labelling-sheet.py   --emit / --score / --selftest 17
+  sheet   20 pairs · 2 chapters (第1回/第2回) · 34 events · real book, real reading order
+  labels  BLANK. The PO labels; this script never writes one (GRANT 2026-08-24, rule 3).
+  ```
+
+  🎯 **Stop condition 3 has been unfalsifiable since 08-11, and the plan says so in its own
+  words:** *"covered 4 / total 1184. ⛔ That ratio does NOT evaluate this stop condition, in
+  either direction… the dev database is residue from ad-hoc runs, so its denominator is not a
+  population the design chose."* A ratio over residue answers a question nobody asked. What was
+  missing was never analysis — it was **ground truth**, and ground truth has to come from a
+  person.
+
+  ⚖️ **THE SCORER IS THE DELIVERABLE, NOT THE SHEET.** The stop condition's failure mode is
+  *"degrades to `unknown` everywhere"* — an extractor that asserts nothing. **Over an empty
+  prediction set precision is vacuously 1.0**, so a scorer that reported precision would hand
+  the stop condition's own signature a perfect score. `NO-PREDICTIONS` is a distinct verdict and
+  it fails. **BITE X** removes that branch:
+
+  ```
+  X  line 114: `if not asserted:` -> `if False:`
+       ZeroDivisionError: division by zero   at  round(tp / len(asserted), 3)
+  ```
+
+  **It does not fail a test — it raises.** Precision over an empty prediction set is not a wrong
+  number, it is *not a number*, which is a stronger argument for the verdict than any assertion
+  would have been.
+
+  🔬 **AND THE MIRROR, because QC-5 clause 2 is where this repo learned that one.** If the
+  labeller marks every pair `unknown`, the sheet cannot discriminate a working extractor from a
+  silent one — `NO-POSITIVES`, UNSCORABLE, not a pass and not the system's failure.
+
+  🔴 **A ZERO MUST SAY WHICH ZERO IT IS, and this project's zero is the one §4.3 already
+  retracted.** Measured: **all four** ordered edges in the store sit in ONE project
+  (`019f9f41`, the acceptance book). The book this sheet is built from holds **none** — not
+  because the extractor is silent but because **it was never run there**:
+
+  ```
+  019fefde (封神演义)   122 events · event_order 122/122 · real chapters · CAUSES/PRECEDES  0
+  019f9f41 (acceptance) 32 events · event_order   6/32  · 2 of its 4 "chapters" are
+                                                            live-anchor-proof-* test artifacts
+  ```
+
+  **There is no project in dev where a real corpus and a causal run coincide**, and §4.3's
+  `9.38 %` baseline is computed over the second of those. So the manifest records
+  `causal_pass_ran: false` and the scorer answers `PASS-NEVER-RAN`, not `NO-PREDICTIONS` —
+  rule 13 mechanised, so nobody can re-run §4.3's substitution by accident.
+
+  ⚠️ **MY INSTRUMENT WAS WRONG TWICE, AND BOTH ARE THE SAME MISTAKE AS T54i's ROW COUNTER.**
+
+  ```
+  1  I sampled `keys(e)` on ONE event of ONE project, concluded :Event has no reading
+     ordinal, and ordered the sheet by `created_at`. It has `event_order` — on 1130 of
+     1186 events store-wide and on 122 of 122 in scope. The first sheet put a flashback
+     (禹王治水) ahead of the scene that frames it, which would have asked the PO to judge
+     causation between two events the sheet itself had mis-ordered.
+  2  BITE X "did not fire" — no FAIL line. It had CRASHED, and my grep for `FAIL` hid it.
+     `stale-deferral-gate`'s bite 78 records this exact hazard; I walked into it anyway.
+  ```
+
+  **A single-row `keys()` sample is not a schema**, and it is the same shape as reading one
+  envelope and calling a working endpoint empty.
+
+  🔒 **THE GRANT IS ENFORCED IN CODE, not promised in prose.** *"The PO labels the ground truth;
+  you build the sheet, never the labels you then grade."* `--score` refuses a sheet whose
+  `labelled_by` is blank or names an assistant, proven live on the emitted sheet:
+
+  ```
+  [t33-score] REFUSED — `labelled_by: (blank)` is not a person.
+    The ground truth must come from someone other than the thing being graded;
+    a detector scored against its own author's labels is green by construction.
+  ```
+
+  **BITE Y** drops the machine check and reds exactly that control while every scoring case
+  stays green.
+
+  **QC (a) gates:** `t33-causal-labelling-sheet --selftest` **17/17** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` 114, all wired or exempted; four plan gates green.
+  **QC (b) live smoke:** N/A — no service seam is crossed. The script speaks Bolt to dev and
+  writes one markdown file; no route, no image, no container.
+  **QC (c) real data:** every number above is a live read of dev on 7688 (rule 1) — 1186 events,
+  1130 with `event_order`, 4 ordered edges in 1 project, 34 events across 第1回/第2回. **Dev was
+  read and never written** (rule 6): the sheet is a file, and `infer_causal_edges` was not run,
+  because persisting its output is a MERGE into a non-throwaway graph that no GRANT covers.
+
+  ⛔ **WHAT IS OWED, and it is two things in order.** ① the PO fills the 20 `LABEL:` fields.
+  ② the extractor is run over those two chapters so there is something to score — on `lw-iso`
+  or against a throwaway, since the dev write is not granted. **Only then does stop condition 3
+  have a verdict**, and for the first time it will be a verdict rather than a ratio over
+  residue.
   ---
   ### ✅ T33c 2026-08-23 — **T33's OWN bite, run live: edges non-zero and the DAG acyclic — with the detector proven able to fail**
 

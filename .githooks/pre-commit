@@ -139,6 +139,13 @@ command -v python >/dev/null 2>&1 || PY=python3
 # gate prints on every run. Gates ratchet; deferrals do not, so this one closes the loop.
 "$PY" "$ROOT/scripts/discharged-deferral-gate.py" --selftest
 "$PY" "$ROOT/scripts/discharged-deferral-gate.py"
+# T33's reference corpus. Only the SELFTEST runs here -- --emit needs dev Neo4j and --score
+# needs a sheet a person has filled in. What the selftest protects is the two verdicts that
+# stop a vacuous run reading as a pass: NO-PREDICTIONS (an extractor that asserts nothing
+# has no precision -- removing that branch raises ZeroDivisionError, it is not a number) and
+# PASS-NEVER-RAN (a project with no edge at all was never run over, which is the exact
+# substitution spec 4.3 retracted). Plus the guard that this script never writes a label.
+"$PY" "$ROOT/scripts/t33-causal-labelling-sheet.py" --selftest
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call graph_repos with no Cypher of its own, pass that gate, and still break on an engine
