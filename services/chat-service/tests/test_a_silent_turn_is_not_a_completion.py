@@ -65,7 +65,13 @@ class TestTheCallSiteIsActuallyWired:
     bound the default. A helper test would have stayed green over the whole defect."""
 
     def test_the_silent_flag_is_computed_from_the_visible_text(self):
-        assert "_silent_turn = not final_text.strip()" in SRC
+        """UPDATED 2026-08-28 — the EXPRESSION moved, the guarantee did not.
+
+        DQ-T33's answer appends the last tool error to `full_content` for a turn that produced
+        none of its own, so `final_text` is no longer empty on exactly the turns this guard
+        exists to catch. The flag is therefore taken from `full_content` BEFORE that append —
+        see the test below, which is the one that keeps the guarantee honest."""
+        assert '_silent_turn = not "".join(full_content).strip()' in SRC
 
     def test_the_clean_finish_insert_binds_it(self):
         """The bind, not merely the variable: this is the exact expression whose absence IS the
@@ -83,8 +89,27 @@ class TestTheCallSiteIsActuallyWired:
         assert all("is_error=_silent_turn" in b for b in binds), binds
 
     def test_it_is_computed_before_it_is_bound(self):
-        assert SRC.index("_silent_turn = not final_text.strip()") < SRC.index(
+        assert SRC.index('_silent_turn = not "".join(full_content).strip()') < SRC.index(
             "is_error=_silent_turn")
+
+    def test_the_flag_is_taken_BEFORE_the_tool_error_fallback_is_appended(self):
+        """🔴 THE REGRESSION THIS EXISTS TO STOP, and it would be invisible in every count.
+
+        DQ-T33 makes a silent turn speak the tool's own last error, which lands in
+        `full_content`. If the flag were recomputed after that append — or simply left reading
+        `final_text` — every rescued turn would record `completed`, and the 67 measured failures
+        this guard converted would silently become successes again. The turn still failed: the
+        MODEL produced nothing. Only the author's experience improved."""
+        flag = SRC.index('_silent_turn = not "".join(full_content).strip()')
+        append = SRC.index("full_content.append(_tool_last_word)")
+        assert flag < append, (
+            "the silent flag is computed AFTER the fallback is appended, so a rescued turn now "
+            "records as a completion — the guard has been inverted"
+        )
+        # …and it must not be recomputed from the post-append text anywhere later.
+        assert "_silent_turn = not final_text" not in SRC, (
+            "the flag is recomputed from final_text, which now contains the surfaced tool error"
+        )
 
 
 class TestItIsScopedAwayFromTheCardCase:

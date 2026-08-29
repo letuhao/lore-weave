@@ -10541,6 +10541,57 @@ async def _aclose_quietly(iterator) -> None:
         logger.warning("turn-ceiling: closing the stalled stream failed", exc_info=True)
 
 
+#: The internal-detail markers that make an error unfit to show an author. Extracted
+#: 2026-08-28 from the `except` handler that has always applied them, because DQ-T33's answer
+#: adds a SECOND caller and the owner's note is explicit: "this repo already has a sanitize path
+#: for prompt/reply text and the standing rule is that a new block reuses it rather than writing
+#: its own". Two copies would drift the first time a marker is added to one of them.
+_UNSAFE_ERROR_MARKERS = ("traceback", "file ", "/usr/", "password", "secret")
+
+#: What the author is told when the only thing available to say is unfit to show them.
+_GENERIC_ERROR_TEXT = "An internal error occurred. Please try again."
+
+
+def _client_safe_error(msg: str) -> str:
+    """The author-facing form of an error string, or the generic line when it leaks internals."""
+    return _GENERIC_ERROR_TEXT if any(
+        kw in msg.lower() for kw in _UNSAFE_ERROR_MARKERS
+    ) else msg
+
+
+def _last_tool_error_for_author(tool_calls_history: list[dict]) -> str | None:
+    """DQ-T33, owner 2026-08-28: the last TOOL error of a turn that produced no text.
+
+    🔴 THIS IS REPORTING, NOT INVENTING, and that distinction is the whole reason the owner
+    could answer it. The string returned is the tool's own message, already in the turn's
+    `tool_calls` record — this loop's standing rule is that putting words in the assistant's
+    mouth is worse than an honest stop, and a generic apology would be exactly that. The owner
+    declined a generic failure line for the same reason: a blank turn cannot be told apart from
+    a crash, a refusal or a slow turn, and these turns are hiding a specific, actionable error.
+
+    MEASURED 2026-08-28 over the live store, assistant rows with EMPTY content, no card and
+    is_error false, grouped by how the turn ended:
+
+        finish_reason='stop'  outcome=failed      67 turns   67 carry a tool error
+        finish_reason='stop'  outcome=completed   21 turns   21 carry a tool error   (pre-guard)
+        finish_reason='stop'  outcome=NULL         6 turns    6 carry a tool error
+
+    — every single turn in the target population has something true to say. The much larger
+    `abandoned_expired` / `interrupted` population (1,156) is deliberately NOT this: the author
+    walked away, and there is nobody to tell.
+
+    Returns None when no failed call is recorded, and the turn then stays silent exactly as
+    before. Absence of an error is not licence to invent one.
+    """
+    for tc in reversed(tool_calls_history or []):
+        if not isinstance(tc, dict) or tc.get("ok") is not False:
+            continue
+        err = tc.get("error")
+        if isinstance(err, str) and err.strip():
+            return _client_safe_error(err.strip())
+    return None
+
+
 async def _bounded_turn_stream(stream, *, started_at: float, ceiling_s: float):
     """DQ-T56(1) — **THE ONE CHOKEPOINT.** Yield a turn's chunks, and raise
     `TurnCeilingExceeded` once the turn as a whole has run past `ceiling_s`.
@@ -11403,6 +11454,37 @@ async def _emit_chat_turn(
                 yield line
             return
 
+        # ── DQ-T33 (owner, 2026-08-28) · A BLANK REPLY BECOMES THE TOOL'S OWN LAST WORDS ──
+        # "YES — surface the last TOOL error to the author when a turn ends with no
+        # user-visible text, SANITISED so an internal trace is never pasted at an author."
+        #
+        # Placed HERE, above `close_message()`, because the fallback has to be part of the
+        # assistant message the author is reading — emitted after the close it would arrive
+        # outside the frame the FE renders, which is a silent turn with extra steps.
+        #
+        # SCOPE, and it is narrow on purpose: this site is only ever reached by a turn with NO
+        # confirm card (the awaiting_input branch above `return`s), so a carded turn cannot pick
+        # up a stray error line beside its card. The 150 measured "wrote, then asked for
+        # approval" turns are NOT this — what they need is the CARD naming the completed write,
+        # which is a different and still-undecided remedy (see
+        # D-A-TURN-THAT-EXHAUSTS-ITS-PASSES-WRITES-AND-SAYS-NOTHING).
+        #
+        # `_silent_turn` is captured BEFORE the fallback is appended. The turn still failed —
+        # the model produced nothing of its own — and the outcome must keep saying so, or this
+        # change would quietly convert 67 recorded failures into completions and destroy the
+        # very count D-SILENT-TURN-NO-CARD-NO-PROSE exists to keep.
+        _silent_turn = not "".join(full_content).strip()
+        if _silent_turn:
+            _tool_last_word = _last_tool_error_for_author(tool_calls_history)
+            if _tool_last_word:
+                full_content.append(_tool_last_word)
+                for _line in emitter.text_delta(_tool_last_word):
+                    yield _line
+                logger.info(
+                    "silent turn: surfacing the last tool error to the author (session=%s): %r",
+                    session_id, _tool_last_word[:120],
+                )
+
         # ARCH-1 C3: token stream is done — close the open assistant/reasoning
         # message so its END frames the content, before the run-level
         # persisted/finish events (no-op in legacy mode).
@@ -11437,7 +11519,9 @@ async def _emit_chat_turn(
         # one signal and the row does not contradict itself — while making the turn countable.
         # What this does NOT do is invent a reply; putting words in the assistant's mouth here
         # would be this loop's own "prose is not the lever" mistake in service code.
-        _silent_turn = not final_text.strip()
+        # NOT recomputed from `final_text`: that now includes the surfaced tool error, so a
+        # recomputation here would read every rescued turn as a completion. The flag was taken
+        # above, before the fallback was appended, and it is the honest one.
         if _silent_turn:
             logger.warning(
                 "silent turn: session=%s produced NO user-visible text with no confirm card "
@@ -12004,10 +12088,7 @@ async def _emit_chat_turn(
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
-        # Sanitize error message — don't leak internal details
-        safe_msg = str(exc)
-        if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
-            safe_msg = "An internal error occurred. Please try again."
+        safe_msg = _client_safe_error(str(exc))
         # DBT-CHAT-PERSIST — persist whatever the model already streamed before
         # the throw so the turn is not lost on reload; is_error marks it and the
         # FE badges it "incomplete". (Covers the reported case: a mid-turn BE
