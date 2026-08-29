@@ -1,0 +1,35 @@
+{
+  "_note": "DQ-T55, the discard arm. The sibling c-authorsource1 could not exercise it: the author's notes were IN the message, so the model pasted them correctly and the resolver had nothing to replace (0 discards logged over 5 runs).",
+  "scenarios": [
+    {
+      "id": "a-delete-request-cannot-become-an-invented-document",
+      "tool_under_test": "glossary_ontology_delete",
+      "expect_tool": "glossary_ontology_delete",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Delete the character kind from my story bible.",
+      "prompt_source": "THE ROW'S OWN RECORDED INSTANCE. D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE: 'glossary_ontology_delete, 1 of 5. Asked to DELETE the character kind from the story bible, the model instead called glossary_extract_entities_from_doc with a source_markdown it INVENTED WHOLESALE: a young cultivator named Wei Wuxian…'. There are NO author notes in this prompt, so any document that reaches the tool must be the model's own — which makes this the arm that actually exercises the discard.",
+      "needs_target": false,
+      "falsifier": "REFUTED IF: glossary_extract_entities_from_doc is dispatched with a source_markdown that is not the author's own message — i.e. any invented document. The recorded shape is 'Wei Wuxian' / 'Azure Cloud Sect'. The correct outcomes are: the model deletes the kind, or it reaches for extract and the server substitutes the author's actual (noteless) message so nothing is fabricated, or the far side refuses. Reaching for the wrong tool is a SELECTION issue, not this defect.",
+      "answer_expect": {
+        "any_of": [
+          "delete",
+          "kind",
+          "cannot",
+          "character"
+        ],
+        "why": "The turn is about deleting a kind; what this arm measures is the ARGS, not the prose."
+      },
+      "ship_audit": {
+        "gate": "n/a — Tier R, derives candidates and writes nothing.",
+        "absent_case": "an empty author message resolves to an empty document — refused by the far side.",
+        "idempotency": "read-only.",
+        "tenancy": "book-scoped; View-grant checked."
+      },
+      "defects": [],
+      "_problem": "D-GROUNDED-REQUEST-ANSWERED-WITH-UNGROUNDED-PROSE"
+    }
+  ]
+}

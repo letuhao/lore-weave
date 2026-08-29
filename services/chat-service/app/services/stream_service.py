@@ -2214,6 +2214,66 @@ def _crosswired_ids(
     )
 
 
+#: The tools whose source document is the AUTHOR'S, never the model's (DQ-T55). Keyed by tool
+#: name because the rule is about a specific contract, not about an argument called
+#: `source_markdown` — `plan_propose_spec.source_markdown` carries 174 of the 686 measured
+#: prose-bearing arguments and is the model AUTHORING A PLAN, which is its job. Widening this by
+#: field name would break that tool while claiming to fix this one.
+_AUTHOR_SOURCED_TOOLS = {"glossary_extract_entities_from_doc"}
+
+#: The one reference the platform can resolve today. glossary-service refuses any other value by
+#: name, so the two sides agree on the vocabulary rather than each guessing.
+_SOURCE_REF_LAST_USER_MESSAGE = "last_user_message"
+
+
+def _resolve_authors_source(
+    args_obj: dict, tool: str, user_message_content: str | None,
+) -> None:
+    """DQ-T55 — resolve `source_ref` into the author's own text, and DISCARD what the model wrote.
+
+    🔴 THE MEASURED DEFECT: asked to DELETE a glossary kind, the model instead called
+    `glossary_extract_entities_from_doc` with a `source_markdown` it invented wholesale — "a young
+    cultivator named Wei Wuxian who lives in the Azure Cloud Sect" — and the SAME invented
+    document was handed to the tool against several different books. A canned sample it reaches
+    for, not a slip. Extracting from it populates the author's world with a story they never
+    wrote, which the row calls the worst user-visible outcome this loop has measured.
+
+    FIVE PROSE INTERVENTIONS WERE MEASURED AND REFUTED FIRST, including the registry recipe
+    already saying it in the imperative — "feed it the user's notes VERBATIM (paste exactly what
+    they wrote)". That is why the remedy is structural: the field stops being the model's to fill.
+
+    The overwrite is UNCONDITIONAL, not a fill-if-blank like `_inject_context_ids` beside it. A
+    fill-if-blank would leave exactly the fabrication case untouched, because a fabricating model
+    always supplies text — the empty case was never the problem.
+    """
+    if tool not in _AUTHOR_SOURCED_TOOLS or not isinstance(args_obj, dict):
+        return
+    ref = str(args_obj.get("source_ref") or "").strip()
+    if not ref:
+        # No reference named. Leave the args ALONE so glossary-service issues its own refusal,
+        # which names the accepted value — one refusal, written once, on the side that owns the
+        # contract. Inventing a second message here would drift from it.
+        args_obj.pop("source_markdown", None)
+        return
+    if ref != _SOURCE_REF_LAST_USER_MESSAGE:
+        # Unresolvable reference: strip any text so the far side cannot extract from whatever the
+        # model happened to attach, and let it refuse by name.
+        args_obj.pop("source_markdown", None)
+        return
+    resolved = (user_message_content or "").strip()
+    _prior = args_obj.get("source_markdown")
+    args_obj["source_markdown"] = resolved
+    if isinstance(_prior, str) and _prior.strip() and _prior.strip() != resolved:
+        # WARNING, not info: the model composed a document and it was thrown away. That is the
+        # defect firing, and it must be visible — a silent discard would make this fix
+        # unmeasurable in exactly the way the five refuted prose fixes were.
+        logger.warning(
+            "DQ-T55: discarded %d chars of MODEL-AUTHORED source_markdown for %s and substituted "
+            "the author's own message (%d chars). The model wrote: %r",
+            len(_prior), tool, len(resolved), _prior[:200],
+        )
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -6812,6 +6872,29 @@ async def _stream_with_tools(
                     studio=bool((context_ids or {}).get("studio")),
                     id_ledger=_id_ledger,
                 )
+                # ── DQ-T55 · THE AUTHOR'S DOCUMENT IS NOT THE MODEL'S TO WRITE ──────────────
+                # Owner 2026-08-28: "REPLACE source_markdown WITH A REFERENCE THE RUNTIME
+                # RESOLVES … so the server fetches the text and the model cannot author its own
+                # source at all. The point is STRUCTURAL, not defensive: fabricated source
+                # material stops being something to detect and becomes something that cannot be
+                # expressed."
+                #
+                # HERE, and not in glossary-service, because this is the only layer that can tell
+                # the model's text from the server's. Both arrive in the same MCP payload; the
+                # service on the far side has no way to know who wrote the field. The trust
+                # boundary is this dispatch, so the enforcement is this dispatch.
+                #
+                # It also has to be here for a plainer reason: nothing on the far side can READ
+                # the author's last message. glossary-service has no book client at all (one is
+                # referenced in a test and nowhere else) and chat-service has no chapter-text
+                # read either — which is why `chapter_id`, the owner's other named reference, is
+                # NOT built. Recorded on the row rather than dropped.
+                # `request_text`, not `user_message_content` — the latter is the name this turn's
+                # message carries in `_emit_chat_turn` and it is NOT in scope inside the tool
+                # loop. Writing it here parsed cleanly and would have raised NameError on every
+                # extract call: a fix that looks shipped and is dead. Caught by checking the
+                # function's actual parameters rather than by reading the line back.
+                _resolve_authors_source(args_obj, c["name"], request_text)
                 # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
                 # 🔴 **POSITION IS THE WHOLE MECHANISM, AND THE FIRST PLACEMENT WAS WRONG.** This
                 # sat just before `mcp_execute_tool`, ~700 lines below — AFTER the
