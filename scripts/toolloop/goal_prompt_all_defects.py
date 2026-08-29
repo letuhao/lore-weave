@@ -42,7 +42,7 @@ BUDGET = 4000
 NAMED = 2
 #: Characters of each named row's invariant to show. Enough to RECOGNISE the row, not to
 #: understand it — a row needing more than this has narration where its invariant should be.
-EXCERPT = 30
+EXCERPT = 24
 #: Class order inside the queue. Contract first (see the module docstring); the rest follow by how
 #: directly they block a user-visible behaviour. A class missing here sorts last, never vanishes.
 CLASS_ORDER = ("contract", "platform", "infra", "model", "instrument")
@@ -54,50 +54,54 @@ OBJECTIVE. A defect is DONE when its invariant is NAMED, enforced at ONE chokepo
 is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the fix is shown by a \
 LIVE run through the real chat path. Then `state: fixed` with evidence on the row.
 
-THE RUN ENDS ONLY WHEN `scripts/toolloop/goal_prompt_all_defects.py --check` reports no \
-open defect, or says every one left is DQ-blocked. NOTHING ELSE ENDS IT. One defect fixed is ONE \
-CYCLE, never the run: the moment a row reaches `fixed`, open the next one IN THE SAME TURN.
+THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports no open defect, or says every \
+one left is DQ-blocked. NOTHING ELSE ENDS IT. One defect fixed is ONE CYCLE, never the run: the \
+moment a row reaches `fixed`, open the next one IN THE SAME TURN.
 
-THE OWNER'S DECISIONS ARE THE WORK. Each ruling is under `answer_2026_08_28` on its DQ row. READ \
-IT BEFORE BUILDING. Several carry a CONDITION — T47 needs the FE to hold caret+selection, T64 an \
-equivalence check. If one fails the question goes BACK CORRECTED. Never substitute a mechanism \
-quietly: T46 and T44 each named something unbuildable and reopening was the honest move.
+THE OWNER'S DECISIONS ARE THE WORK. Each ruling sits under `answer_*` on its DQ row. READ IT \
+BEFORE BUILDING and build it AS WORDED. If it cannot be built, the question goes BACK CORRECTED \
+with the measurement showing why — never substitute a mechanism quietly.
 
-NEVER STOP FOR — asking whether to go on; offering to hand back; "want me to…" or "next I'll…" \
-then silence; a finished cycle; a green suite; a long report; a tidy stopping point. Any turn \
-that has not moved a row to `fixed` MUST END IN A TOOL CALL. Reporting is not progress.
+NEVER STOP FOR — asking whether to go on; offering to hand back; "want me to…" then silence; a \
+finished cycle; a green suite; a long report; a tidy stopping point. Any turn that has not moved \
+a row to `fixed` MUST END IN A TOOL CALL. Reporting is not progress.
 
-BLOCKED IS NOT STOPPED. A defect needing a decision gets its DQ recorded and you MOVE ON. Stop \
-only when --check says everything left is blocked.
+BLOCKED IS NOT STOPPED. A defect needing a decision gets its DQ recorded and you MOVE ON.
 
 UNIT. ONE defect per cycle — a floor on rigour, not a cap on effort. DO NOT BATCH ON A BROKEN \
 PLATFORM: a batch measures the platform, not the fix.
 
 METHOD, in order. 1 INVESTIGATE BEFORE THEORISING: `docker logs infra-<svc>-1`, \
-loreweave_chat.chat_messages.tool_calls, batch JSON under docs/eval/toolloop/, store diffs. Read \
-what happened, then reason. 2 NAME THE INVARIANT AND FIX THE CLASS: one cause under 15 names is \
-one cause; prefer a registration-time gate that FAILS THE BUILD; check FIRST whether the \
-mechanism EXISTS and is merely EMPTY. 3 RUN THE CONTROL THAT COULD REFUTE YOU before writing the \
-fix — measure PRECISION and RECALL, record what you rejected. 4 DEPLOY AND VERIFY BY CONTENT: \
-sha256 from INSIDE the container; restart ai-gateway on a description change. 5 PROVE IT LIVE: \
-real provider, K>=5, throwaway fixture.
+chat_messages tool_calls/advertised/withheld, batch JSON, store diffs. Read, then \
+reason. 2 NAME THE INVARIANT AND FIX THE CLASS at ONE chokepoint — prefer the \
+place that DESTROYS the information; check FIRST whether the mechanism exists and is merely \
+EMPTY. 3 RUN THE CONTROL THAT COULD REFUTE YOU before writing the fix — measure cost and RECALL, \
+record what you rejected. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the container; \
+restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, K>=5, throwaway \
+fixture.
 
 EVIDENCE. Proven by a RUN, never by the code looking right, never by a helper test alone — assert \
-the CALL SITE. VERIFY THE VARIED INPUT REACHED THE MODEL: a change confirmed in the container is \
-not a change in the prompt, and a null result from an input the model never saw is a lie. Run \
-the whole owning suite SERIALLY. A failed attempt is RECORDED, not quietly retried. Every fix \
-states what it does NOT cover.
+the CALL SITE. A CLEAN ARM PROVES NOTHING UNTIL YOU SHOW IT REACHED THE PATH: a scenario that \
+auto-approves never suspends. VERIFY THE VARIED INPUT REACHED THE MODEL. Run the whole owning \
+suite SERIALLY. A failed attempt is RECORDED, not quietly retried. Every fix states what it does \
+NOT cover.
+
+CHECK YOUR OWN INSTRUMENT BEFORE REPORTING ITS ANSWER. A census returning a shocking number is \
+usually measuring itself — a key-name scan called 82 rows unproven where 7 was true, a slice \
+reading past its branch failed on code it never named.
 
 ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; if a bar is wrong, leave it \
-RED and say so. A baseline may only SHRINK. Never split a defect to inflate the count; a re-scope \
-must name a DIFFERENT cause. Never write `fixed` when the live run exercised only part of the fix \
-— say which part is unproven. Re-derive every number; a ledger claim is a lead, not a fact.
+RED and say so. A baseline may only SHRINK. Never split a defect to inflate the count. Never \
+write `fixed` when the live run exercised only part of the fix — say which part is unproven. A \
+row that STOPPED REPRODUCING is not fixed: no fix, no credit. When your own control refutes your \
+own row, WITHDRAW IT and record what misled you. Re-derive every number; a ledger claim is a \
+lead, not a fact.
 
 SAFETY. Never write to the dogfood book: one throwaway fixture per scenario, torn down. A \
 read-only TOOL does not make a read-only TURN. Auth only via /v1/auth/login using git-ignored \
 docs/dev/LOCAL_TEST_ENV.md; never scrape a token or invent a credential. SELECT before any DML. \
-Everything through the provider layer. The 11 DQs still open get a RECOMMENDATION from you and \
-are DECIDED BY THE OWNER — never decide one yourself to unblock a defect."""
+Every open DQ gets a RECOMMENDATION from you and is DECIDED BY THE OWNER — never decide or close \
+one yourself to unblock a defect."""
 
 
 #: A deferred question NAME, matched whole. `DQ-T4` and `DQ-T45` are different questions and one
