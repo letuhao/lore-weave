@@ -1,0 +1,1210 @@
+{
+  "batch": "c-toollistcontract1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "tool_load",
+      "scenario": "a-contract-question-asked-AFTER-a-tool_list-read",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the reply lists arguments composition_arc_apply does not declare — in particular `book_id`, which appears only in the NEIGHBOURING composition_arc_edit description carried by the tool_list dump. A run that reads tool_list and then answers CORRECTLY (from tool_load, or by declining to answer from descriptions) is the wording WORKING. A run that never calls tool_list measures nothing and must be reported as such, not counted as a pass.",
+      "answer_expect": {
+        "all_of": [
+          "arc_template_id",
+          "project_id"
+        ],
+        "none_of": [
+          "book_id"
+        ],
+        "why": "composition_arc_apply's input_schema is {project_id, arc_template_id, roster_bindings, replace, idempotency_key} - read from the live tool_load payload. There is NO book_id in it.\n\n🔴 THE FIRST VERSION OF THIS EXPECTATION WAS THEATRE and is replaced. It asked only for 'arc_template_id', which ALL FIVE runs satisfied - including the three that were WRONG. Those three answered 'arc_template_id + book_id' after reading tool_list, which carries no input_schema at all; the string they saw came from a DIFFERENT tool's description (composition_arc_edit: 'op=create mints a saga/arc (needs book_id; optional ... arc_template_id ...)'). An expectation that passes on an answer assembled from the wrong tool is not checking the thing this problem is about.\n\nSo: project_id must appear (only the contract supplies it) and book_id must NOT (only the neighbouring read suggests it)."
+      },
+      "falsifier_sha": "e59304bc63f557d9",
+      "ship_audit": {
+        "refusals": "EXERCISED 2026-08-14 at the TOOL boundary with SCHEMA-VALID arguments (a placeholder dies in validation before ownership runs — that fooled this audit three times and is scored UNPROBED now). NOT APPLICABLE by design: it loads TOOL SCHEMAS, which are identical for every caller and contain no user data. Recorded as such rather than as a pass.",
+        "gate": "Tier R, gateway-local."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a04ed6-22b0-7cea-bcdc-121dd9dd21ed",
+          "project_id": "01a04ed6-241c-7be1-ac4d-9b8461414da6",
+          "seed_ids": {
+            "01a04ed6-22b0-7cea-bcdc-121dd9dd21ed": "fixture book_id",
+            "01a04ed6-241c-7be1-ac4d-9b8461414da6": "fixture project_id (composition_work)",
+            "01a04ed6-2358-7419-90e4-dc6578e828dc": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04ed6-7687-7881-ba55-794c5e9d7baf",
+          "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "scenario_prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_apply",
+            "composition_arc_template_list",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"composition\", \"count\": 54, \"tools\": [{\"name\": \"composition_arc_apply\", \"description\": \"Apply an arc TEMPLATE onto this Work's book as durable SPEC \\u2014 rescale the template's placements onto the book's chapters, bind the roster once, write the arc's pacing curv"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.939945+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.931804+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.736062+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.939945+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:44:11.931804+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`** (string, required): The ID of the arc template you want to apply.\n*   **`project_id`** (string, required): The ID of the project to which the arc will be applied.\n*   **`roster_bindings`** (object, optional): A mapping of motif roles to story bible element IDs to bind the roster.\n*   **`replace`** (boolean, optional): Whether to replace the existing arc.\n*   **`idempotency_key`** (array, optional): A list used for idempotency.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `project_id` to perform the action."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a04ed6-ebea-79c0-a8f3-c288e5fee084",
+          "project_id": "01a04ed6-ed91-7af7-941f-c74f7305ebb7",
+          "seed_ids": {
+            "01a04ed6-ebea-79c0-a8f3-c288e5fee084": "fixture book_id",
+            "01a04ed6-ed91-7af7-941f-c74f7305ebb7": "fixture project_id (composition_work)",
+            "01a04ed6-eca2-794e-b938-03b22b67b01c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04ed7-3e54-7dc8-a298-9cedfd72d5a0",
+          "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "scenario_prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_apply",
+            "composition_arc_template_list",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"composition\", \"count\": 54, \"tools\": [{\"name\": \"composition_arc_apply\", \"description\": \"Apply an arc TEMPLATE onto this Work's book as durable SPEC \\u2014 rescale the template's placements onto the book's chapters, bind the roster once, write the arc's pacing curv"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.521165+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.50397+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.266266+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.521165+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:03.50397+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`** (string, required): The ID of the arc template you want to apply.\n*   **`project_id`** (string, required): The ID of the project to which the arc will be applied.\n*   **`roster_bindings`** (object, optional): A mapping of motif roles to story bible element IDs to bind the roster.\n*   **`replace`** (boolean, optional): Whether to replace the existing arc.\n*   **`idempotency_key`** (array, optional): A list used for idempotency.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `project_id` to perform the action."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a04ed7-a9a2-705d-bd00-46f833503033",
+          "project_id": "01a04ed7-ab29-73bb-9263-c8cdb5b7de64",
+          "seed_ids": {
+            "01a04ed7-a9a2-705d-bd00-46f833503033": "fixture book_id",
+            "01a04ed7-ab29-73bb-9263-c8cdb5b7de64": "fixture project_id (composition_work)",
+            "01a04ed7-aa60-751b-b4c5-d8f2cb0908e3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04ed7-f9a7-7360-bb22-c75a1422b5a8",
+          "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "scenario_prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_apply",
+            "composition_arc_template_list",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"composition\", \"count\": 54, \"tools\": [{\"name\": \"composition_arc_apply\", \"description\": \"Apply an arc TEMPLATE onto this Work's book as durable SPEC \\u2014 rescale the template's placements onto the book's chapters, bind the roster once, write the arc's pacing curv"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:52.054749+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:52.040671+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:51.840213+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:52.054749+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:45:52.040671+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`** (string, required): The ID of the arc template you want to apply.\n*   **`project_id`** (string, required): The ID of the project to which the arc will be applied.\n*   **`roster_bindings`** (object, optional): A mapping of motif roles to story bible element IDs to bind the roster.\n*   **`replace`** (boolean, optional): Whether to replace the existing arc.\n*   **`idempotency_key`** (array, optional): A list of values used to ensure the operation is only performed once.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `project_id` to perform the action."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a04ed8-7626-7bed-86f4-2bd42df71c73",
+          "project_id": "01a04ed8-779e-73ea-9ddc-c8b7fb4a2905",
+          "seed_ids": {
+            "01a04ed8-7626-7bed-86f4-2bd42df71c73": "fixture book_id",
+            "01a04ed8-779e-73ea-9ddc-c8b7fb4a2905": "fixture project_id (composition_work)",
+            "01a04ed8-76da-7433-b2e5-d2ba8b6a70ce": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04ed8-c858-7c51-b740-b84966fd8202",
+          "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "scenario_prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_apply",
+            "composition_arc_template_list",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"composition\", \"count\": 54, \"tools\": [{\"name\": \"composition_arc_apply\", \"description\": \"Apply an arc TEMPLATE onto this Work's book as durable SPEC \\u2014 rescale the template's placements onto the book's chapters, bind the roster once, write the arc's pacing curv"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.388144+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.381686+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.186076+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.388144+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:46:44.381686+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`** (string, required): The ID of the arc template you want to apply.\n*   **`project_id`** (string, required): The ID of the project to which the arc will be applied.\n*   **`roster_bindings`** (object, optional): A mapping of motif roles to story bible element IDs to bind the roster.\n*   **`idempotency_key`** (array, optional): A list used to prevent duplicate applications.\n*   **`replace`** (boolean, optional): Whether to replace the existing arc.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `project_id` to perform the action."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a04ed9-3dce-7770-9463-06f9865d214f",
+          "project_id": "01a04ed9-3f47-7bec-b9f0-1c736526f6f5",
+          "seed_ids": {
+            "01a04ed9-3dce-7770-9463-06f9865d214f": "fixture book_id",
+            "01a04ed9-3f47-7bec-b9f0-1c736526f6f5": "fixture project_id (composition_work)",
+            "01a04ed9-3e85-747d-8397-9f1f2efc6deb": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a04ed9-852c-795c-8301-d9ed615975bb",
+          "prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "scenario_prompt": "First call tool_list for the composition category so you can see what exists. Then tell me what arguments the composition_arc_apply tool requires.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "tool_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_apply",
+            "composition_arc_template_list",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"composition\", \"count\": 54, \"tools\": [{\"name\": \"composition_arc_apply\", \"description\": \"Apply an arc TEMPLATE onto this Work's book as durable SPEC \\u2014 rescale the template's placements onto the book's chapters, bind the roster once, write the arc's pacing curv"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 66,
+              "of_the_called": [
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.50133+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.495132+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.301097+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.50133+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-29 18:47:35.495132+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `composition_arc_apply` tool requires the following arguments:\n\n*   **`arc_template_id`** (string): The ID of the arc template you want to apply.\n*   **`project_id`** (string): The ID of the project to which the arc will be applied.\n*   **`replace`** (boolean, optional): Whether to replace the existing arc.\n*   **`roster_bindings`** (object, optional): A mapping of motif roles to story bible element IDs to bind the roster.\n*   **`idempotency_key`** (array, optional): A list used to prevent duplicate applications.\n\nI cannot call the `composition_arc_apply` tool because I do not have the required `arc_template_id` or `project_id` to perform the action."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

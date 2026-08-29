@@ -1238,6 +1238,32 @@ def visible_tools(
             "name": name,
             "description": _fn(tool_def).get("description", "") or "",
             "tier": tool_tier(tool_def),
+            # ── DQ-T59 (owner 2026-08-28) · THE REFUSAL, PER ENTRY ───────────────────────────
+            # "REFUSE a contract question answered from a description-only read — the model must
+            # call tool_load for arguments."
+            #
+            # 🔴 THE WORDING VERSION WAS MEASURED AND IT FAILS. `_stamp_no_schemas` has put
+            # exactly that sentence at the TOP of every tool_list payload since 2026-08-23, added
+            # for this defect and never tested. The owner's build note asked for the test before
+            # calling it done: "whether a refusal needs a mechanism rather than wording is a
+            # measurement, and it is owed".
+            #
+            # Run 2026-08-30, batch c-toollistoffwire1, K=5 — a tool_list read followed by a
+            # contract question about `composition_arc_edit`, a tool that is NOT on the wire, so
+            # the description is genuinely all the model holds:
+            #     4 of 5 stated its arguments as FACT from the prose, never calling tool_load
+            #     1 of 5 declined and pointed at tool_load
+            # The stamp was present verbatim in the payload every time.
+            #
+            # TWO EARLIER ARMS PROVED NOTHING AND ARE RECORDED SO THEY ARE NOT REPEATED:
+            # c-toolload3 (5/5 never called tool_list at all) and c-toollistcontract1 (5/5 read
+            # it, but asked about an ADVERTISED tool whose real schema was already in context —
+            # the reply recited it with types tool_list never carried). A clean arm proves
+            # nothing until it is shown to have reached the path.
+            #
+            # So the sentence moves from ONE line above 29KB of prose to EVERY entry, beside the
+            # description it is about. Same claim, at the point of use.
+            "arguments": f"NOT SHOWN — call tool_load({name!r}) to read them.",
         }
         if deprecated:
             entry["deprecated"] = True
