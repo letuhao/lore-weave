@@ -1303,11 +1303,18 @@ def report(results, scenarios, repeats):
                   + ", ".join(f"{n}x {p}" for p, n in _pops.most_common())
                   + " — each needs its own question, and a single rate over them cannot move")
         _false_done = claimed_done_while_carded(rs)
+        _false_denied = denied_a_write_that_landed(rs)
         if _false_done:
             print(f"    ^ CLAIMED DONE WHILE ITS OWN CARD WAS PENDING in "
                   f"{len(_false_done)}/{len(rs)} runs — the write is staged and unapproved and "
                   f"the author is told it happened, so they have no reason to approve it")
             print(f'      e.g. {(_false_done[0].get("text") or "").strip()[:120]!r}')
+        if _false_denied:
+            print(f"    ^ DENIED A WRITE ITS OWN TOOL RESULT CONFIRMS in "
+                  f"{len(_false_denied)}/{len(rs)} runs — the call returned ok, the store moved, "
+                  f"and the reply's CLOSING words tell the author it did not. Worse than the "
+                  f"inverse: they will do it again, and a non-idempotent op then writes twice")
+            print(f'      e.g. …{_false_denied[0]["tail"][-110:]!r}')
         _promised = promised_work_that_cannot_continue(rs)
         if _promised:
             print(f"    ^ PROMISED AN UPDATE THAT CANNOT ARRIVE in {len(_promised)}/{len(rs)} "
@@ -1531,6 +1538,91 @@ _CLAIMED_DONE = re.compile(
 _QUALIFIES_AS_STAGED = re.compile(
     r"\b(await|pending|approve|approval|confirm|for you to|once you|ready for|prepared"
     r"|proposed|staged|review)\b", re.I)
+
+
+#: Deterministic sentences the SERVER appends. They are not the model speaking, and two of them
+#: legitimately contain the words a denial uses.
+_SERVER_APPENDED_LINES = (
+    "their effects stand",                                    # the turn-ceiling close (DQ-T56)
+    "Nothing has been saved yet; confirm the card above",     # the suspend line (DQ-T54)
+)
+
+#: Phrases in which a turn tells the author the work did NOT happen. Anchored on the negation,
+#: never on the verb — "restored" appears in both the true and the false report, and the whole
+#: difference is what is said around it.
+_DENIED_THE_WRITE = re.compile(
+    r"\b(?:has|have)\s+not\s+been\s+(?:restored|saved|created|updated|applied|changed)\b"
+    r"|\bremains?\s+(?:archived|unchanged|deleted)\b"
+    r"|\bnot\s+made\s+any\s+changes\b"
+    r"|\bdid\s+not\s+(?:successfully\s+)?(?:execute|complete|save|apply)\b"
+    r"|\bcannot\s+perform\s+this\s+action\b"
+    r"|\bpreventing\s+the\s+(?:restoration|update|change)\b"
+    r"|\bplease\s+(?:go\s+to|use)\s+the\s+\*{0,2}Studio\s*UI\b",
+    re.I,
+)
+
+
+def denied_a_write_that_landed(runs: list[dict]) -> list[dict]:
+    """Runs whose OWN tool result says the write succeeded and whose reply says it did not.
+
+    D-A-TURN-DENIES-THE-WRITE-ITS-OWN-TOOL-RESULT-CONFIRMS — the exact inverse of
+    `claimed_done_while_carded` above, and the worse one for a write. A turn that CLAIMS work it
+    did not do leaves the author believing something false about their book; a turn that DENIES
+    work it DID do sends them to do it again, and for a non-idempotent operation that is a second
+    row.
+
+    🔴 READ THE TAIL, NOT THE WHOLE REPLY, and that distinction is why this function exists. A
+    turn spans several passes — the model narrates, a card is raised, it is approved, the tool
+    runs, the model narrates again — and the recorded `text` glues every pass together. Read
+    whole, EVERY run in the founding batch looks like it retracts, and that is exactly the
+    mistake the row was filed with: it claimed 5 of 5 when the tails showed 3. The author is left
+    with the END of the reply, so that is what is judged.
+
+    THE MECHANISM, established from those tails: the model claims success PREMATURELY, in the
+    pass that mints the card and before anything has executed ("I've restored the rule" is the
+    first thing every run says). It then notices it spoke too soon and apologises — and the
+    apology lands correctly on some runs and OVERSHOOTS into denying the now-completed write on
+    others. The retraction is a correction of the model's own premature claim, never a report of
+    a failed call.
+
+    Measured: 3 of 5 on c-canonrestore3, 2 of 5 on c-denywrite1 — both n=5, so the rate is not
+    established, only the existence.
+    """
+    out = []
+    for r in runs:
+        landed = False
+        for c in r.get("tool_calls", []):
+            if c.get("type") != "TOOL_CALL_RESULT":
+                continue
+            try:
+                res = json.loads(c.get("content") or "{}")
+            except Exception:
+                continue
+            if isinstance(res, dict) and res.get("ok") is True:
+                landed = True
+        if not landed:
+            continue
+        text = (r.get("text") or "").strip()
+        # The TAIL is what the author is left with. 400 chars covers the closing paragraph
+        # without reaching back into the premature claim the turn is correcting.
+        tail = text[-400:]
+        if not tail or not _DENIED_THE_WRITE.search(tail):
+            continue
+        # 🔴 A SERVER LINE IS NOT A MODEL DENIAL, and the first version of this counted five of
+        # them. The turn-ceiling message (DQ-T56) says "the turn did not complete … Any tool
+        # calls already made in this turn ran, and THEIR EFFECTS STAND" — which is both true and
+        # the opposite of a denial, and it matched on "did not complete". Every deterministic
+        # line the platform appends is excluded by a phrase only it uses; a detector that counts
+        # the platform's own honest sentences as the defect measures itself.
+        if any(marker in tail for marker in _SERVER_APPENDED_LINES):
+            continue
+        out.append({
+            "rep": r.get("rep"),
+            "session_id": r.get("session_id"),
+            "denial": _DENIED_THE_WRITE.search(tail).group(0),
+            "tail": tail[-200:],
+        })
+    return out
 
 
 def claimed_done_while_carded(runs: list[dict]) -> list[dict]:
