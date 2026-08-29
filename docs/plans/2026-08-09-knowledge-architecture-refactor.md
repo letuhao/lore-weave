@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 40 of 42 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 41 of 43 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (33/34) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (34/35) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ag 2026-08-30 — **one fact in 48,611 sits six orders of magnitude off-axis: present in every head read, unreachable by every windowed one**
+
+  ```
+  valid_from_ordinal < 1 000 000       48 610 facts     the convention
+  valid_from_ordinal >= 1 000 000           1 fact      six orders of magnitude out
+  books carrying BOTH scales                1
+  [glossary-ordinal-axis] OK — OUTLIERS: 1 known off-axis fact, ceiling 1, may only fall
+  ```
+
+  🎯 **T48s, T48ad and T48ae all verified the `kg` half of a capability the KAL advertises for
+  TWO substrates** — `{"glossary": "ordinal_valid_time", "kg": "ordinal_valid_time"}`. Nothing
+  had ever asked the glossary half the same question. Six KAL routes take `as_of` on that side.
+
+  🔴 **AND I CHASED THE WRONG HYPOTHESIS FIRST, WHICH IS WHY THE MEASUREMENT MATTERED.** Probing
+  `entities/:id/facts` on the two-sided fixture gave 1 row unwindowed and **0 at every
+  position** — the EMPTY signature of a units mismatch, exactly what I shipped in T48ad. The
+  single fact carried `valid_from_ordinal: 12000000`, while `state`'s facts carried
+  `valid_from_ordinal: 3`. Two glossary routes, one book, ordinals six orders apart. I had a
+  clean story: *the KAL's `as_of` means an ordinal on glossary and a chapter on the graph.*
+
+  **It was wrong, and counting the store killed it:**
+
+  ```
+  chapter-scale 48 610   ·   stride-scale 1   ·   mixed books 1
+  ```
+
+  The axis is chapter-scale by overwhelming convention. `composition-service`'s KAL client says
+  so in its own docstring — *"`as_of` is REQUIRED and is the chapter's `sort_order`"* — and
+  `state` echoes the value back unchanged. **There is no unit inconsistency in the KAL.** There
+  is one row on the wrong axis, and it happened to be the only fact on the entity I probed. Two
+  routes and two rows are an anecdote; the `GROUP BY` is the measurement — the same correction
+  T48af needed one cycle earlier, and I made the same mistake again.
+
+  ⚖️ **A ROW LIKE THAT IS WORSE THAN A MISSING ONE.** Bounded by `as_of <= N`, a fact at
+  12 000 000 needs a caller asking for chapter twelve million. So it is simultaneously **there**
+  — a head read, a count, an export — and **unreachable** by every as-of read a real position can
+  make, and neither answer is wrong on its own terms. That is this project's recurring shape: a
+  mechanism that exists and reaches nothing.
+
+  📐 **A RATCHET, not a repair, and deliberately so.** The outlier lives in a store this run is
+  not authorised to write (rule 6), and one bad row is a data question rather than a code one.
+  The gate takes a CENSUS rather than a connection — its sibling `graph-store-migrated-gate`
+  gives the reason, that a gate needing live credentials cannot run in CI, which is where this
+  has to run. The number may only fall; a producer that starts writing `chapter × STRIDE` into
+  the glossary moves it up and reds the commit that does it.
+
+  🔬 **Validated on a case NOT derived from iso (rule 3):** a store that has MIGRATED wholesale
+  reads `INVERTED`, not "47 999 bad rows", and that check runs BEFORE the ceiling — otherwise a
+  deliberate axis change would send the next reader hunting for corrupt rows. `CONSISTENT` is
+  reachable at ceiling 0, so the ratchet can actually finish rather than being permanently amber.
+
+  🧪 **TWO BITES.**
+
+  ```
+  T48ag-1 (data)  a SECOND off-axis row appears
+                  FAIL — REGRESSED: 2 fact(s) against a ceiling of 1              exit 1
+  T48ag-2 (code)  line 84, `if stride > ceiling:` -> `if False:`
+                  OK — OUTLIERS: 2 … at or under the ceiling of 1                 exit 0
+  ```
+
+  The second output contradicts itself on its own line, which is the tell: two rows reported as
+  *at or under* a ceiling of one. Offline the same bite reds 1 case at exit 1. Restored.
+
+  **QC (a) gates:** `glossary-ordinal-axis-gate --selftest` **12/12** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` OK; `plan-final-verification` PASS — by direct exit
+  code.
+  **QC (b) live smoke:** N/A — no service seam was crossed and no image changed; this cycle adds
+  a gate and reads a store. The live half is the census below.
+  **QC (c) real data:** iso's whole `entity_facts` table — **48 610 chapter-scale, 1 stride-scale,
+  1 book carrying both** — plus the two KAL reads that surfaced it (`facts` returning 0 at every
+  real position, `state` returning 9/20/21).
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48af 2026-08-30 — **a 4xx that is not a 404 failed nothing, and the acceptance book was never the only fixture: 78 books are in BOTH stores**
 

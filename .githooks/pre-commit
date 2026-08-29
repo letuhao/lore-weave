@@ -114,6 +114,11 @@ command -v python >/dev/null 2>&1 || PY=python3
 # EMPTY_DECLARED and BOTH_EMPTY never collapse -- a fresh deployment is legitimately empty and
 # a gate that called that MIGRATED would go green one deployment before the failure.
 "$PY" "$ROOT/scripts/graph-store-migrated-gate.py" --selftest
+# THE SSOT SIDE OF THE SAME AXIS. T48s cost two fixes for a chapter used where the axis is
+# chapter x STRIDE; this asks it of the glossary store. Measured on iso: 48610 chapter-scale
+# facts, ONE at stride scale -- present in a head read and unreachable by every as-of read a
+# real position can make. A ratchet on that number, census-driven so CI runs it offline.
+"$PY" "$ROOT/scripts/glossary-ordinal-axis-gate.py" --selftest
 # T54i: the KAL exposes 14 read routes and nothing swept them. `knowledge-graph-backend-live-
 # smoke` proves ONE engine on data it writes itself; this asks which of the ROUTES answer, with
 # the list DERIVED from the controller so a route added tomorrow is swept tomorrow. The live
