@@ -24185,10 +24185,15 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   NEW  scripts/architecture-live-proof.py   8-case --selftest · wired
   1 BACKEND  every declared deployment on `age`          PASS
   2 STORE    the declared store HOLDS the corpus         PASS  MIGRATED, 289 project(s)
-  3 SURFACE  every KAL read route answers                SKIP  no entity on this stack
+  3 SURFACE  every KAL read route answers                PASS  DATA=3, no route errored
   4 PORT     class (d) discharged by §10.1's 2nd path    PASS
-                                    verdict PROVEN — ran 3, skipped 1, NAMED
+                          verdict PROVEN — ran 4, skipped 0, failed 0
   ```
+
+  🎯 **THE GOAL'S SENTENCE NOW HAS A COMMAND, AND IT PASSES ON ALL FOUR LEGS.** Every number
+  above is from one invocation against the running iso stack — the declared backend, the
+  declared store's census against the other store's, the KAL's fourteen derived routes, and
+  §10.1's discharge ratchet.
 
   🎯 **Each leg existed; the conjunction did not.** The goal's sentence was true only as a claim
   a reader assembled across a 25 000-line journal — which is the shape T48k found in
@@ -24215,6 +24220,28 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   The first draft printed `PROVEN, ran 4` — a stronger-looking verdict than the honest one below
   it, produced by a leg that ran an offline selftest and a leg that measured a third of its
   surface.
+
+  🔬 **THE FIRST FULL RUN FAILED, AND RULE 13 SAID DIAGNOSE IT.** Leg 3 came back
+  `total_relations: 0` for an entity T54i had measured at **81**, which reads exactly like a
+  regression on the default backend. Traced end to end rather than assumed:
+
+  ```
+  the store        81 RELATES_TO on that entity in `g_shared`, valid_from_ordinal intact
+  the service      opened `g_shared` (log), NEO4J_URI set, backend=age
+  the project row  passes every _PROJECT_SQL predicate (not archived/derivative/assistant)
+  the adapter      MATCH (e:Entity) WHERE e.glossary_entity_id = $id     <- THE ANSWER
+  ```
+
+  **I passed the KG entity id; the parameter means the GLOSSARY id** — the route's own `Query`
+  description says so. 180 entities in that project carry one, and the top by degree has
+  exactly the 81 edges T54i reported. **No regression: my input was wrong**, and the honest
+  record of a divergence includes the ones that resolve against the instrument.
+
+  ⚠️ **Worth keeping anyway: a wrong-namespace id returns an EMPTY 200.** `neighborhood`
+  answers `{"edges":[],"total_relations":0}` for an id from the other namespace — indistinguishable
+  from "this entity has no neighbours". That is the same reading-hazard class as this plan's
+  grant-404 and empty-200 lore, and it is what made a wrong argument look like a broken backend
+  for four probes.
 
   📐 **The honest verdict names what it did not do.** `skipped: ["3 SURFACE …"]` is in the output
   because this stack's glossary holds no entity for that book — measured, not assumed
