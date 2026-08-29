@@ -183,3 +183,32 @@ def test_the_turn_ceiling_wrapper_does_NOT_prefetch():
             f"_bounded_turn_stream now uses {forbidden!r} — that is a prefetch shape, and it "
             "breaks the ordering argument this row's narrowing rests on"
         )
+
+
+def test_every_terminal_write_reports_how_many_passes_it_carried():
+    """2026-08-30 — the THIRD number the gap has never had.
+
+    A gap today gives two figures: what the log printed, and what the column ended up holding.
+    Those cannot separate "a write carried too few entries" from "the last write that carried any
+    ran too early". `adv=` on the terminal-persist line makes the sequence of writes for one
+    msg_id reconstruct itself from the log alone.
+
+    Pinned because it is a DIAGNOSTIC and diagnostics are exactly what gets tidied away: it earns
+    its place only on the ~1-in-15 session that reproduces, so nothing else will miss it if it
+    disappears.
+    """
+    i = SRC.index("terminal-persist: saved")
+    line = SRC[i:i + 400]
+    assert "adv=%s" in line, (
+        "the terminal-persist log no longer reports how many per-pass entries the write carried"
+    )
+    assert "seg=%s" in line, "the terminal-persist log no longer reports the segment"
+    assert "_adv_n" in SRC and "_adv_seg" in SRC
+
+
+def test_the_count_is_taken_from_what_is_WRITTEN_not_from_the_recorder():
+    """🔴 THE WHOLE POINT. Reading the live recorder here would print what the recorder holds at
+    log time, which is the number already known to be right — the open question is what the WRITE
+    carried. It must be measured off the `advertised_tools` argument."""
+    i = SRC.index("_adv_n = len(")
+    assert SRC[i:i + 80].startswith("_adv_n = len(advertised_tools)"), SRC[i:i + 80]

@@ -10412,11 +10412,37 @@ async def _persist_terminal_assistant(
                         "last_message_at = now(), updated_at = now() WHERE session_id = $1",
                         session_id,
                     )
+        # ── D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN ────────────
+        # `adv=` is the number of per-pass entries THIS WRITE carried, and `seg=` the segment it
+        # carried them under. Both are here because the row is down to one question and the store
+        # cannot answer it after the fact.
+        #
+        # WHAT IS ALREADY SETTLED: the missing pass REACHED THE RECORDER. The "agent-surface
+        # advertised" line — the gap's only witness — sits BELOW the unconditional advertised
+        # yield, and an async generator resumes past a yield only when its consumer asks for the
+        # next item, so the consumer's `record_pass` had already run. `_bounded_turn_stream` does
+        # not prefetch, and its ceiling trip loses the LOG, never the record. So the loss is on
+        # the WRITE side, and every hypothesis of the shape "the chunk never got there" is dead.
+        #
+        # WHAT THIS LINE ADDS: the third number. Today a gap gives two — what the log printed and
+        # what the column holds — and those cannot separate "a write carried too few" from "the
+        # last write that carried any ran too early". With `adv=` on every write, the sequence of
+        # writes for one msg_id reconstructs itself from the log alone.
+        #
+        # 🔴 IT IS NOT THE FIX AND THE ROW DOES NOT COUNT IT AS ONE. The cause is still unknown;
+        # this only means the next occurrence — about 1 session in 15 — arrives diagnosable
+        # instead of costing another cycle of re-derivation.
+        _adv_n = len(advertised_tools) if isinstance(advertised_tools, list) else None
+        _adv_seg = (
+            advertised_tools[0].get("segment")
+            if isinstance(advertised_tools, list) and advertised_tools
+            and isinstance(advertised_tools[0], dict) else None
+        )
         logger.info(
             "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars, "
-            "outcome=%s, runtime=%s)",
+            "outcome=%s, runtime=%s, adv=%s, seg=%s)",
             finish_reason, session_id, msg_id, len(content), _outcome,
-            instrument.current_runtime_variant(),
+            instrument.current_runtime_variant(), _adv_n, _adv_seg,
         )
         return True
     except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
