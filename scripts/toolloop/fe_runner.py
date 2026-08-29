@@ -1764,6 +1764,32 @@ def preflight_seed_asserts(scenarios) -> list[str]:
     return problems
 
 
+def missing_sibling_arms(scenarios: list[dict]) -> list[tuple[str, str]]:
+    """[(arm, missing_sibling)] for every split arm whose partner is not in this run.
+
+    DQ-T50, owner 2026-08-28: "ALLOW THE SPLIT — one arm that NAMES the tool and tests the safety
+    prediction, one that tests SELECTION — with BOTH arms reported. The both-arms condition is
+    THE WHOLE BAR … naming the tool must never be used to quietly retire the selection question.
+    A split that reports only the named arm converts 'the model never picks this' into silence."
+
+    🔴 THAT CONDITION HAS TO BE ENFORCED, NOT REMEMBERED. The named arm is the pleasant one — it
+    is the arm where the tool gets called and the falsifier finally evaluates — so it is exactly
+    the arm someone re-runs alone when they want a green result. Running it by itself turns a
+    measured 0/5 selection rate into no measurement at all, which is the failure the owner
+    described, and nothing in a scenario file stops it.
+
+    So an arm declares its partner in `_sibling_arm`, and running one without the other is
+    REFUSED before any provider call is made. Cheap, symmetric (either arm alone fails), and it
+    cannot be satisfied by intending to run the sibling later.
+    """
+    present = {s.get("id") for s in scenarios}
+    return [
+        (s["id"], s["_sibling_arm"])
+        for s in scenarios
+        if s.get("_sibling_arm") and s["_sibling_arm"] not in present
+    ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scenarios")
@@ -1788,6 +1814,15 @@ def main():
     globals()["TURN_TIMEOUT"] = a.turn_timeout
     globals()["APPROVAL_MODE"] = a.approvals
     globals()["KEEP_FIXTURES"] = a.keep_fixtures
+    orphans = missing_sibling_arms(scenarios)
+    if orphans:
+        print("REFUSING to run — a SPLIT scenario is being run without its sibling arm. DQ-T50 "
+              "allows a split only if BOTH arms are reported; running the named arm alone "
+              "converts 'the model never picks this' into silence:", file=sys.stderr)
+        for arm, sib in orphans:
+            print(f"  {arm}  needs  {sib}", file=sys.stderr)
+        return 2
+
     bad = preflight_seed_asserts(scenarios)
     if bad:
         print("REFUSING to run — a seed assertion is not valid SQL against its own database. "

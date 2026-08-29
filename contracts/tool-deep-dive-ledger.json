@@ -5034,15 +5034,20 @@
    "state_reason": "VERIFIED 2026-08-25: scripts/lint_duplicate_synonyms.py reports 0 still-live ties. The phrase was de-duplicated in 4976cc055; the row still read NAMED."
   },
   "D-THE-GBUILD-SCENARIO-CANNOT-TEST-ITS-OWN-FALSIFIER": {
-   "status": "OPEN and now BLOCKED on DQ-T50. It always needed an owner decision — the row says so in its own words — but it carried no `blocked_by_dq`, so the generator offered it as actionable work. That link is the thing that was missing.",
+   "status": "FIXED 2026-08-30 — split under DQ-T50, with the both-arms condition ENFORCED rather than remembered.",
    "what": "The scenario composition-glossary-build-with-an-ontology carries a falsifier about POST-CALL behaviour: refuted if entities are created with no confirm card, if the op is not start on a first request, or if the model invents a run_id. Every one of those needs the tool to have RUN. The gate blocks earlier, on LIVE called >= 1, so across 39 live runs the falsifier has never been evaluated once.\n\nThe scenario therefore measures SELECTION while its falsifier describes SAFETY, and it reports the tool blocked on the first without ever reaching the second.",
    "proven_by_the_owners_control": "The owner asked the question the loop never asked: name the tool and see. Two control arms, K=5 each. Naming it outright: 5/5 called, 5/5 surfaced, and the store proves execution - glossary_build_runs went from empty to 2 rows every run. Describing its unique capability without naming it: 0/5. So the tool works, and the falsifier becomes evaluable the moment selection is taken out of the question.",
    "recommendation": "Split the scenario in two, which is what it is already trying to be: one arm that NAMES the tool and tests the falsifier it actually wrote (confirm card, op=start, no invented run_id), and a separate arm that tests SELECTION against kg_build - which is DQ-T41 and should be reported as a precedence measurement, not as this tool being broken.\n\nNOT DONE HERE. Rewriting a scenario so a blocked tool passes is exactly the move the loop forbids, and it stays forbidden when the scenario really is wrong. The owner decides.",
-   "state": "open",
+   "state": "fixed",
    "state_reason": "NAMED and deliberately NOT changed - changing a bar to fit is forbidden",
    "defect_class": "instrument",
    "the_mechanical_half_is_done": "Splitting the scenario is the owner's call, but the gate saying `ok` for a falsifier that was never evaluated is not. `[tool] DATA falsifier` now reads `(UNEVALUATED — the tool was never called, so nothing could have refuted it)` when `called_count` is 0.\n\nMEASURED over every batch file on disk: 241 of 671 tool entries (36%) carry a falsifier on a batch where the tool was never called. Every one of them printed a bare `ok` before.\n\nIT STILL PASSES, deliberately. The bar asks whether a prediction was WRITTEN, and it was. `LIVE called` already fails those batches, and making this one fail too would red every `blocked` conclusion that legitimately rests on a tool which could not be exercised — which is re-freezing a baseline larger in order to look stricter.",
-   "unblocked_2026_08_28b": "DQ-T50 is answered, so this row is no longer waiting on a decision."
+   "unblocked_2026_08_28b": "DQ-T50 is answered, so this row is no longer waiting on a decision.",
+   "blocked_by_dq": null,
+   "the_fix": "`composition-glossary-build-with-an-ontology` is now two arms:\n\n  NAMED arm  — names the tool outright, so the falsifier it actually wrote (confirm card, op=start, no invented run_id) becomes reachable. Across 39 prior live runs it had never been evaluated ONCE, because the gate stopped earlier at `LIVE called >= 1`.\n  SELECTION arm — the ORIGINAL prompt, verbatim, so 'does the model pick this on its own?' keeps being asked and keeps being reported.\n\n🔴 THE BOTH-ARMS CONDITION IS ENFORCED, NOT REMEMBERED, and that is the part the ruling actually turns on: \"a split that reports only the named arm converts 'the model never picks this' into silence.\" The named arm is the pleasant one — it is where the tool gets called and the falsifier finally passes — so it is exactly the arm someone re-runs alone. Each arm now declares `_sibling_arm`, and `fe_runner.missing_sibling_arms` REFUSES the run before any provider call if its partner is absent. Symmetric: either arm alone is refused, and a scenario with no sibling is unaffected.",
+   "proven_live": "batch c-gbuildsplit1, K=5 on EACH arm, run together (the runner would have refused otherwise).\n\n  THE FALSIFIER IS NOW EVALUATED — the whole point of the split:\n      DATA falsifier            ok\n      DATA falsifier not violated   ok\n      DATA falsifier not back-dated ok\n  on BOTH arms, where before it printed `(UNEVALUATED — the tool was never called, so nothing could have refuted it)`. The safety prediction this scenario has carried since it was written has finally been tested, and it holds.\n\n  The store moved on 5/5 of both arms (glossary_build_runs), so the tool genuinely ran.\n\n  The 2 remaining gate failures are the pre-existing SHIP audit (4 cases recorded not done) — untouched by the split and not claimed as fixed here.",
+   "the_selection_question_MOVED_and_is_reported": "🔴 THE SELECTION ARM DID NOT MEASURE WHAT THE OWNER'S CONTROL MEASURED, and reporting that is the entire reason the arm exists.\n\n    owner's control (describing the capability, not naming it)   0 of 5 called\n    SELECTION arm, same phrasing, 2026-08-30                     5 of 5 called\n\nThe model now picks the tool from the unnamed prompt on every run. The corpus rate is still 0.24 (30/125) and that is historical; today's arm is 5/5.\n\nWHY IS NOT ESTABLISHED and no cause is claimed. Several surfacing changes landed today (superseded vocabulary inheritance, the per-entry tool_list marker), any of which could alter what reaches the wire — but this row ran no A/B and a stochastic consumer moves on its own. What is solid: the selection question is being ASKED and REPORTED, which is what the split was allowed for, and the answer it gives today is not the answer that motivated the split.",
+   "what_is_NOT_covered": "- THE SHIP AUDIT IS STILL RED on both arms (absent_case, gate, idempotency, tenancy recorded not done). The split does not touch it and this row does not claim it.\n- WHY SELECTION MOVED 0/5 -> 5/5 IS UNKNOWN; see above. It is reported, not explained.\n- THE ENFORCEMENT IS AT THE RUNNER, not the gate. A batch file assembled by hand could still contain one arm; what cannot happen is fe_runner producing one."
   },
   "D-THE-DEFECT-COUNTER-PARSED-ENGLISH-AND-A-REMAINDER-HID-THE-MISS": {
    "state": "fixed",
@@ -6704,7 +6709,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 25,
-  "defects_open": 30,
+  "defects_open": 29,
   "deferred_questions": 46,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -6720,7 +6725,7 @@
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 202,
-  "defects_fixed": 127,
+  "defects_fixed": 128,
   "defects_withdrawn": 19,
   "defects_superseded": 1
  },
