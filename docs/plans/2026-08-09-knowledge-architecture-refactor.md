@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 25 of 27 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 26 of 28 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (5/6) · `T48` (19/20) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (19/20) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10250,6 +10250,78 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
+  ---
+  ### ✅ T33h 2026-08-30 — **the scorer printed `precision 1.0` over labels made by `random.choice`, and its guard accepted the sheet**
+
+  ```
+  dry run of the SCORING path on a throwaway copy   20 placeholder labels
+  labelled_by: HARNESS-SMOKE-not-a-person-see-below  -> ACCEPTED
+  verdict SCORED · precision 1.0 · recall 0.125
+  ```
+
+  🎯 **Why run it at all: if `--score` breaks on the PO's filled sheet, that is a wasted round
+  trip.** The sheet has been complete since T33g and the scoring path had never been exercised
+  end to end — only its pure `score()` function, offline, in the selftest. So a throwaway copy
+  was filled with arbitrary labels in the scratchpad, explicitly not the deliverable and
+  explicitly not a T33 result.
+
+  🔴 **The path works. The GUARD does not do what it says.** `labeller_ok` is a DENYLIST —
+  `claude|assistant|gpt|llm|auto|tbd|todo|\\bme\\b` — so a signature containing none of those
+  passes, and `HARNESS-SMOKE-not-a-person-see-below` sailed through. Its refusal text claims
+  enforcement it cannot deliver:
+
+  ```
+  "The ground truth must come from someone other than the thing being graded"
+  ```
+
+  **No script can verify that a human typed a label.** A denylist can make the failure
+  deliberate; it cannot make it impossible. Stating otherwise is the shape of an exemption
+  whose reason nothing checks.
+
+  ⚠️ **And the consequence is not theoretical — it is the number the run printed.**
+  `precision 1.0` over `random.choice` labels, with nothing in the output saying the labels
+  were arbitrary. A reader skimming a `SCORED` verdict would take it for a measurement of the
+  extractor. **That is the failure this whole sheet exists to prevent**, arrived at from the
+  instrument's side rather than the detector's.
+
+  ⚖️ **TWO CHANGES, and the second carries the weight.**
+
+  ```
+  1  the denylist widens  — harness · smoke · placeholder · synthetic · sample · dummy ·
+     fixture · n/a · xxx · \btest\b · a row of dashes
+  2  the OUTPUT now says what the signature is worth, on every accepted run:
+       labelled by: <name>  — ASSERTED, NOT VERIFIED. No script can prove a person typed
+       these labels; the check below is a denylist that stops the obvious case. Every
+       number here is only as good as that signature.
+  ```
+
+  The caveat rides beside every figure, so a `precision 1.0` can never again be read as proof
+  of independent labelling. **Widening a denylist is an arms race; saying what it cannot do is
+  a fact.**
+
+  🧪 **BITES.**
+
+  ```
+  T33h-1  narrow the denylist back
+            the HARNESS sheet is ACCEPTED and scored again
+  T33h-2  drop the ASSERTED caveat
+            the output prints `labelled by: NeneScarlet` with no provenance qualifier
+  ```
+
+  📐 **The control matters as much as the cases:** `Sam Testerton` is still a person. The list
+  uses `\\btest\\b`, not a bare substring, because a guard that rejects real names is one that
+  gets bypassed rather than fixed.
+
+  **QC (a) gates:** `t33-causal-labelling-sheet --selftest` **21/21** (4 new denylist cases +
+  the real-name control); four plan gates green by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam. The scoring path itself was exercised on a
+  throwaway copy, which is the closest thing this row has to a smoke.
+  **QC (c) real data:** the throwaway is a copy of the REAL sheet — 20 real pairs, the real
+  manifest, the extractor's 2 real predictions — with only the labels synthetic.
+
+  ⛔ **The real sheet is untouched and still unsigned.** Its 20 `LABEL:` fields are blank, and
+  nothing in this cycle wrote one. What changed is that the harness has now been proven to run,
+  and its output no longer overstates what its signature check means.
   ---
   ### ✅ T33g 2026-08-30 — **the extractor RAN, and its own output carried a contradiction: 10 pairs asserted BOTH `causes` and `precedes`**
 
