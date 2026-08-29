@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T48 §6.4 — the re-run, once T25/T33/QC-5 close. Four rows open.**
+**RESUME: QC-5 §18 — the PO call the conditional now points at: default the judge OFF.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**64 of 69 rows done · 5 open · 70 of 107 evidence blocks closed inside them.**
+**64 of 69 rows done · 5 open · 70 of 108 evidence blocks closed inside them.**
 
-**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/61) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/62) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11763,6 +11763,82 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### 🔻 QC-5 C45 2026-08-24 — **C31's precision verifier was validated on the 14 cases that motivated it. Held out, it drops 0 of 5.**
+
+  ```
+  NEW  scripts/qc5-verifier-heldout.py    8-case --selftest · 1 bite · wired
+  critic 019eb620 (7B)   verifier 51ea9fd7 (26B, the PO's target tier)  DISTINCT and resolved
+  4 untouched control drafts · raw 5 · attributed 5 · verifier dropped 0   -> HELD-OUT-MISS
+  ```
+
+  🎯 **C44's control arm flagging 4/4 was a divergence, and rule 13 says diagnose it.** I did,
+  and the chain has three links, each measured rather than assumed:
+
+  ```
+  1  is a verifier configured?      YES — model_roles.critic_verifier is set on this book
+  2  is it a DIFFERENT model?       YES — 51ea9fd7 (26B) vs the critic's 019eb620 (7B)
+  3  did it RUN?                    YES — violations_unverified is stamped at 0 with 1 kept,
+                                    and the route resolves the role (C34 fixed that very gap)
+  ```
+
+  So the 26B verifier ran, on a distinct model, and **kept** the false positive. That is not
+  what C31 reports.
+
+  ⚖️ **THE DIVERGENCE RESOLVES AGAINST C31, and the reason is in its own sentence.** Its evidence
+  is *"dropping 2/2 clean and **14/14 historical false positives**"* — the 14 that motivated
+  building the pass. Rule 3 asks for a case the detector was NOT derived from, and this repo has
+  already named the failure: `detector-fitted-to-its-motivating-examples-is-green-by-construction`.
+  **In-sample 14/14; held-out 0/5.**
+
+  🔬 **THE HELD-OUT SET NEEDS NO ADJUDICATION, and that is the whole design.** The control arm is
+  the flow's *unmodified* draft. R1 says the canon antagonist IS the betrayer and no one else is;
+  the untouched draft attributes the trap to exactly that character. **So the control is
+  canon-conforming with respect to R1 by construction**, and every surviving R1 attribution on it
+  is a false positive by the experiment's design — not by my reading of Vietnamese prose. One
+  verbatim, glossed: the flagged span is *"He was no longer the cousin who kept himself humbly in
+  his brother's shadow"*, and the `why` merely restates R1. The verifier's own prompt says
+  **"Restating the rule is not a contradiction."** It kept it anyway.
+
+  📊 **And that is not one case: `restates_rule` is TRUE on 2 of the 5 survivors**, counted
+  mechanically (the `why` quotes a rule token back instead of naming a contradiction) rather
+  than by reading them. The verifier is missing the class it was written to catch.
+
+  🧪 **BITE V1 — and it manufactures the OPPOSITE conclusion.**
+
+  ```
+  V1  line 67: drop the `verifier_ref == critic_ref` guard
+        FAIL  a verifier that IS the critic is not a second opinion
+                -> HELD-OUT-HOLDS, dropped 1, surviving 0,
+                   "the verifier dropped every false positive ... so C31's result generalises"
+        FAIL  ...and that beats a PERFECT-looking drop rate
+                -> HELD-OUT-HOLDS, dropped 10, surviving 0
+  ```
+
+  A model auditing **itself** would have reported C31 as generalising. C31 measured self-audit at
+  **0/3**, so that verdict would have been false in the most consequential direction available —
+  and it is exactly the shape that reads as configured while behaving as absent.
+
+  📐 **THIS IS NOT A NEW PO QUESTION; IT IS THE PO's OWN CONDITIONAL FIRING.** C31 records the
+  decision verbatim: *"**Spend on precision first**; if precision cannot be reached, default the
+  judge OFF behind an explicit user-controlled setting on the FE."* Precision was spent on and
+  measured — in-sample 14/14, held-out 0/5. The second branch is what the measurement points at.
+
+  ⛔ **What is BUILT here and what is deliberately NOT.** The user-controlled setting exists and
+  an author can reach it (C32), tiered as a per-book Work setting with a run-param override
+  (rule 4). **The shipped default is left alone**: `critic_policy.critic_enabled` documents its
+  own TRUE as *"deliberately: flipping the shipped default is a product decision, not a
+  consequence of adding the control"*, and n=5 on one book is thin evidence for a fleet-wide
+  flip. What ships instead is the MEASUREMENT, wired — so "precision was reached" can never again
+  be asserted from the set the detector was built on.
+
+  **QC (a) gates:** `qc5-verifier-heldout --selftest` **8/8** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` 114; four plan gates green.
+  **QC (b) live smoke vs the RUNNING image:** every row is an HTTP response from
+  `lw-iso-composition-service-1` on 28217, through the shipped `/critique` route, judged by the
+  book's own critic and audited by the book's own verifier.
+  **QC (c) real data:** 4 flow-produced drafts of the acceptance book, unmodified. Dev untouched;
+  nothing written anywhere — this run only reads and posts.
   ---
   ### ✅ QC-5 C44 2026-08-24 — **the seventh candidate: the PO asked whether the RULES are violable, and the measurement says that is not the cause either**
 

@@ -2032,6 +2032,51 @@ adapter neither refuses nor half-implements, it is simply doing the work in the 
 **Re-open trigger, unchanged and now measurable:** one project's browse window reaching 5 000
 events. The cap makes that loud rather than silent, which is why acceptance is safe.
 
+## 18 · C31's precision result does not generalise — the PO's own conditional has fired (C45, 2026-08-24)
+
+**Cited by plan row `QC-5`.**
+
+C31 is the PO's precision spend and its evidence was *"a narrow passage-aware SECOND pass keeps
+a planted violation 4/4 while dropping 2/2 clean and **14/14 historical false positives** — on a
+26B verifier."* **Those 14 are the false positives that motivated building it.** Rule 3 asks for
+a case the detector was not derived from; this repo already names the failure —
+`detector-fitted-to-its-motivating-examples-is-green-by-construction`.
+
+**Measured on a held-out set, live, through the shipped route against the running image:**
+
+```
+critic 019eb620 (7B)   verifier 51ea9fd7 (26B, the PO's target tier) — DISTINCT, and resolved
+4 untouched control drafts · raw 5 · attributed 5 · verifier dropped 0
+                                            HELD-OUT-MISS
+```
+
+**No adjudication is needed and that is the design.** The control arm is the flow's *unmodified*
+draft. R1 says the canon antagonist IS the betrayer and no one else is, and the untouched draft
+attributes the trap to exactly that character — so the control is canon-conforming with respect
+to R1 **by construction**, and every surviving R1 attribution on it is a false positive by the
+experiment's design rather than by anyone's reading. One example, verbatim: the flagged span is
+*"He was no longer the cousin who kept himself humbly in his brother's shadow"* and the reason
+merely restates R1. The verifier's own prompt says *"Restating the rule is not a contradiction"*
+— it kept it anyway.
+
+**DECIDED — the finding, and it is not a new PO question.** C31's decision was conditional in
+the PO's own words: *"**Spend on precision first**; if precision cannot be reached, default the
+judge OFF behind an explicit user-controlled setting on the FE."* Precision was spent on,
+measured in-sample at 14/14 and **held-out at 0/5**. The conditional's second branch is what the
+measurement points at.
+
+**What is BUILT and what is the PO's.** The user-controlled setting exists and is reachable
+(C32), tiered as a per-book Work setting with a run-param override (rule 4). What is not taken
+here is the **shipped default**: `critic_policy.critic_enabled` documents its own TRUE as
+*"deliberately: flipping the shipped default is a product decision, not a consequence of adding
+the control"*, and n=5 on one book is thin evidence for a fleet-wide flip. So the measurement is
+recorded and WIRED — `scripts/qc5-verifier-heldout.py`, selftested and bitten — so that
+"precision was reached" can never again be asserted from the set the detector was built on.
+
+**Re-open/registration:** re-run `qc5-verifier-heldout --run` against any candidate verifier. The
+verdict is `HELD-OUT-HOLDS` only when a distinct verifier drops every false positive on drafts it
+was not derived from.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

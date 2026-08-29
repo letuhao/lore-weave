@@ -152,6 +152,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # control 0/2 -- a perfect positive manufactured from an experiment that did not run.
 # Plus the guard that refuses dev by port number.
 "$PY" "$ROOT/scripts/qc5-arm1a-rule-isolation.py" --selftest
+# The precision verifier, measured on cases it was NOT derived from. Only the selftest
+# runs here. What it protects are the two vacuity verdicts: a book with NO verifier,
+# and a verifier that resolves to the CRITIC. Without the second, a model auditing
+# itself reports "the verifier dropped every false positive, so C31 generalises" --
+# the opposite conclusion, manufactured. C31 measured self-audit at 0/3.
+"$PY" "$ROOT/scripts/qc5-verifier-heldout.py" --selftest
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call graph_repos with no Cypher of its own, pass that gate, and still break on an engine
