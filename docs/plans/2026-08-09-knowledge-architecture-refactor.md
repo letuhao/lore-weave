@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 39 of 41 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 40 of 42 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (32/33) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (33/34) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,79 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48af 2026-08-30 — **a 4xx that is not a 404 failed nothing, and the acceptance book was never the only fixture: 78 books are in BOTH stores**
+
+  ```
+  acceptance book 3a801fd7…   DATA=4   glossary 0/10   (needs --cold-downstream glossary)
+  SHARED book     019f9f2d…   DATA=12  glossary DATA=8 · knowledge DATA=4   no declaration
+  ```
+
+  🎯 **T48aa declared glossary cold because the acceptance book has no glossary rows. That is
+  true, and it was never the whole truth.** Measured on iso: **373 books have a knowledge
+  project, 512 have glossary entities, and 78 are in both.** A two-sided fixture existed the
+  whole time.
+
+  ⚠️ **AND MY FIRST FOUR SAMPLES SAID THE OPPOSITE.** The four glossary-richest books had no
+  knowledge project, and I was one step from recording *"the two stores hold disjoint book
+  sets"* — a clean, wrong, memorable finding. The `comm -12` over the full id lists is what
+  stopped it. **Four samples are an anecdote; the intersection is a measurement.**
+
+  📐 **Swept against `019f9f2d-…` (47 AGE entities, 48 glossary entities), the surface is
+  two-sided**: `DATA=12`, glossary answering on 8 routes and knowledge on 4, at `--min-data 8`
+  and with **no `--cold-downstream` at all**. The acceptance book still needs its declaration —
+  that is a property of that fixture, not of the code, and both arms are run above.
+
+  🔴 **THE DEFECT THE NEW FIXTURE EXPOSED: `HTTP-422` was a neutral reading.**
+  `entities/:entityId/canonical-translation` answered
+
+  ```
+  422 {"code":"GLOSS_INVALID_BODY","message":"lang query param is required"}
+  ```
+
+  because the sweep never sent `lang`. `verdict_for` returned a bare `HTTP-422`, and only `ERROR`
+  (5xx or transport) fails an aggregate — so **the run reported PASS having measured 15 of 16
+  routes while claiming 16.** Invisible on the acceptance book, where that route 404s like the
+  rest of the glossary half.
+
+  ⚖️ **So a non-404 4xx is now `BAD-REQUEST` and fails, and the distinction is the point.** A
+  **404** stays its own reading: a cold fixture legitimately lacks a book or entity. A **422**
+  never is — it means the sweep omitted a required parameter or the contract moved, and either
+  way *that route was not measured*. A **501** stays `NO-ROUTE`: the KAL refusing by name is a
+  correct answer (T55b). Three 4xx-adjacent statuses, three different meanings, and only one of
+  them used to be distinguishable.
+
+  🔬 **Third recipe error of mine this session, and the pattern is now explicit**: `timeline`'s
+  `limit: 200` against a ceiling of 50, `neighborhood`'s ordinal axis, and now a missing `lang`.
+  Each made a route answer 4xx, and each was previously indistinguishable from the system being
+  at fault. **That is exactly why the reading had to become a failure** — a smoke that cannot
+  tell "I called it wrongly" from "it is fine" will keep reporting coverage it does not have.
+
+  🧪 **BITE T48af-1 — line 221, `verdict_for` returns a bare status again, and `lang` removed.**
+
+  ```
+  HTTP-422  422  GET  entities/:entityId/canonical-translation  {"code":"GLOSS_INVALID_BODY"…}
+  [kal-smoke] DATA=11  EMPTY=2  HTTP-422=1  NO-ROUTE=2
+  [kal-smoke] PASS — 11 route(s) carried rows, no route errored              exit 0
+  ```
+
+  A route silently unmeasured, and a pass. Offline the same bite reds **2** cases at exit 1.
+  Restored; selftest exit 0.
+
+  **QC (a) gates:** `kal-read-surface-live-smoke --selftest` **35/35** (5 new status readings);
+  `kal-surface-census-gate` selftest and live, `bitemporal-window-live-smoke`,
+  `architecture-live-proof`, `graph-store-migrated-gate` selftests, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** four sweeps against the running iso KAL — the shared book before and
+  after the `lang` fix, the bite, and the acceptance book with its declaration. No image
+  rebuild; no service code changed this cycle.
+  **QC (c) real data:** the store census that found the overlap — **373 KG books, 512 glossary
+  books, 78 shared** — and book `019f9f2d-f9f1-7037-ba78-8ccc3e19c956` (project
+  `019f9f41-78a0-7ac1-a88c-9213748484a1`, entity `019fc429-6712-7784-a0e9-47f579f843fa`), which
+  is the fixture a future run should prefer when it wants both halves live.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ae 2026-08-30 — **the window sweep now covers all five graph-backed temporal routes, and its first run found the units bug T48ad had just shipped**
 

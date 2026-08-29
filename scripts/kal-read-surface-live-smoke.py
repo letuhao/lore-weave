@@ -100,6 +100,8 @@ DATA, EMPTY, NOT_FOUND, ERROR = "DATA", "EMPTY", "NOT-FOUND", "ERROR"
 #: for the gateway telling the truth — and the previous behaviour, forwarding the
 #: framework's 404, was the thing that scored GREEN.
 NO_ROUTE = "NO-ROUTE"
+#: A 4xx that is not 404: the sweep called the route wrongly, so it measured nothing.
+BAD_REQUEST = "BAD-REQUEST"
 
 
 def derive_routes(controller_path: str) -> list[tuple[str, str, str, str]]:
@@ -209,7 +211,14 @@ def verdict_for(status: int, rows: int) -> str:
         return NOT_FOUND
     if 200 <= status < 300:
         return DATA if rows else EMPTY
-    return f"HTTP-{status}"
+    # T48af — any OTHER 4xx is a BAD REQUEST from this sweep, and it must fail.
+    #
+    # 404 above is legitimate on a cold fixture: the book or entity may genuinely not exist.
+    # A 422 never is — it means the sweep omitted a required parameter (`canonical-translation`
+    # needs `lang`) or the contract moved. Both mean the route was NOT measured, and this
+    # returned a neutral `HTTP-422` that no aggregate treated as a failure, so the run passed
+    # having measured 15 of 16 routes while reporting 16.
+    return BAD_REQUEST if 400 <= status < 500 else f"HTTP-{status}"
 
 
 def _call(url: str, verb: str, body: dict | None, headers: dict) -> tuple[int, object]:
@@ -244,8 +253,18 @@ def _selftest() -> int:
         ("...and NO-ROUTE is NOT ERROR, so a truthful refusal does not redden the sweep",
          verdict_for(501, 0) != ERROR, True),
         ("a transport failure is ERROR", verdict_for(0, 0), ERROR),
-        ("a 400 keeps its own status rather than becoming EMPTY",
-         verdict_for(400, 0), "HTTP-400"),
+        ("THE T48af READING: a 400 is a BAD-REQUEST — the sweep called the route wrongly, "
+         "so that route was not measured at all",
+         verdict_for(400, 0), BAD_REQUEST),
+        ("...and so is the 422 `canonical-translation` answered without its `lang` param, "
+         "which used to be a neutral reading that failed nothing",
+         verdict_for(422, 0), BAD_REQUEST),
+        ("...but a 404 STAYS distinct: a cold fixture legitimately lacks a book or entity",
+         verdict_for(404, 0), NOT_FOUND),
+        ("...and a 501 stays NO-ROUTE, so a truthful refusal is still not a failure",
+         verdict_for(501, 0), NO_ROUTE),
+        ("a 3xx keeps its own status rather than being swept into either bucket",
+         verdict_for(302, 0), "HTTP-302"),
     ]
     counts = [
         ("a bare list counts its length", rows_in([1, 2, 3]), 3),
@@ -382,6 +401,11 @@ def main(argv: list[str]) -> int:
         "glossary-semantic": {"query": "a", "max_entities": 5},
     }
     query = {"roster": "?limit=5", "cast": "?limit=5", "search": "?q=a&limit=5",
+             # T48af — REQUIRED by the downstream: without it the route answers
+             # `422 GLOSS_INVALID_BODY: lang query param is required`, and a 422 used to be a
+             # neutral reading that failed nothing. A sweep calling a route wrongly measures
+             # that route not at all.
+             "entities/:entityId/canonical-translation": "?lang=en",
              "state": "?as_of=10", "entities/:entityId/neighborhood": "?hops=1&cap=10",
              "entities/:entityId/facts": "?limit=5",
              "entities/:entityId/attr-values": "?attr=title&limit=5"}
@@ -422,6 +446,11 @@ def main(argv: list[str]) -> int:
                   + ("   (declared COLD)" if name in cold else ""))
     if tally.get(ERROR):
         print(f"[kal-smoke] FAIL — {tally[ERROR]} route(s) ERRORED")
+        return 1
+    if tally.get(BAD_REQUEST):
+        print(f"[kal-smoke] FAIL — {tally[BAD_REQUEST]} route(s) answered a 4xx that is NOT a "
+              f"404. The sweep called them wrongly (a missing required parameter) or the "
+              f"contract moved; either way those routes were not measured.")
         return 1
     sided = one_sided(per_downstream, cold)
     if sided:
