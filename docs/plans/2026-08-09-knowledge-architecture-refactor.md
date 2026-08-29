@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: §9.1b — PO call: dev's container predates the dual-write; the grant needs it.**
+**RESUME: T17 §1.3 — close the row on its FLOOR; the ceiling is a permanent tail.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 104 of 151 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 105 of 152 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (36/46) · `T25` (18/25) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T17` (36/46) · `T25` (19/26) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -7432,6 +7432,90 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### ✅ T25z 2026-08-24 — **T25o deleted a vector index as "no reader left"; the index's own counter says 4090 reads, two days later**
+
+  ```
+  dev  passage_embeddings_1024   VECTOR   readCount 4090   lastRead 2026-08-23T17:05:40Z
+       DDL deleted 2026-08-22 (T25o) — "dev and iso both read them from pgvector now"
+  dev  KNOWLEDGE_VECTOR_READ_PRIMARY   (unset) -> compose default `neo4j`
+  dev  passage_vectors_1024  0     vs    :Passage with embedding_1024  1051
+  ```
+
+  🔴 **A LATENT BREAKAGE ON THE DECLARED DEPLOYMENT, ARMED FOR TWO DAYS AND INVISIBLE.** The
+  index still exists on dev only as **residue** in a database created before the deletion.
+  Nothing recreates it — `neo4j_schema.cypher` is the only thing that did, and
+  `ensure_passage_vector_index` is called by the two benchmarks alone (T25n). The next Neo4j
+  rebuild and dev passage search becomes `ProcedureCallFailed`, which is the **500 §9.1
+  predicted** and the reason step 3 was a PO call at all.
+
+  🎯 **The deletion's premise was about CONFIGURATION and nobody had read the configuration.**
+  Measured today: dev declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it runs
+  `${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}` (`docker-compose.yml:1251`) and serves passages from
+  `Neo4jVectorStore`. **A claim is not a predicate**, and this one was false on the half of the
+  fleet that matters.
+
+  ⚖️ **T25u ALREADY HAD THE RIGHT METHOD, one row earlier.** It deleted `event_embeddings_1024`
+  on `readCount 0, lastRead NULL`, with `entity_embeddings_1024` at 753 reads as the control
+  that made the zero meaningful. **The same probe, run against passages, refutes T25o** — and
+  it is why only `_1024` comes back:
+
+  ```
+  passage_embeddings_1024   reads 4090  <- RESTORED
+  passage_embeddings_{384,1536,2560,3072}   reads 0 · lastRead NULL  <- stay deleted (T25u's rule)
+  ```
+
+  📐 **THE EXIT IS NOW A COUPLING, NOT A CLAIM — §9.2's rule applied to the passage scope.**
+  §9.2 settled the ENTITY DDL this way (*"the condition is mechanical and already written down"*)
+  and the passage half never got the same treatment. `port-adoption-gate` now prints it every run:
+
+  ```
+  passage read-primary declarations 2/2 non-`postgres` — the passage vector DDL may be
+  deleted only when this reaches 0. It is a COUPLING (§9.2), not a schedule:
+  [('infra/.env.example', 'neo4j'), ('infra/docker-compose.yml', 'neo4j')]
+  ```
+
+  ⚙️ **The ceiling went UP in the commit that introduced it, and that is the honest direction.**
+  It was 1 — the compose default. Writing `KNOWLEDGE_VECTOR_READ_PRIMARY` into
+  `infra/.env.example` with its TIER (rule 4) made a second declaration visible. **T54e is the
+  same shape**: *"the key was ABSENT from `infra/.env.example` entirely, which is how a stack
+  could run an engine nobody had chosen."* A setting nobody declared is not a setting nobody
+  uses.
+
+  🧪 **BITES.**
+
+  ```
+  Z1  ceiling 2 -> 0
+        FAIL — 2 deployment declaration(s) read passages from a store other than postgres
+               [('infra/.env.example','neo4j'), ('infra/docker-compose.yml','neo4j')]
+  Z2  drop the `${VAR:-default}` alternative from the scan regex
+        census 2 -> 1 — the deployment that declares NOTHING becomes invisible,
+        which is precisely the blindness that let T25o's claim stand
+  ```
+
+  ⚠️ **`pg_stat_user_tables.n_live_tup` TOLD ME A POPULATED TABLE WAS EMPTY.** It reported
+  `passage_vectors_1024 = 0` on iso; the real count is **552**. I nearly recorded iso as
+  silently-empty and reverted a working cutover. **That is the third instrument this session to
+  report a working system as empty** — T54i's `rows_in` missing the `relations` envelope, my
+  `keys()` sample missing `event_order`, and now a planner estimate that has not seen an ANALYZE.
+  All three fail toward *"nothing works"*, which reads as diligence.
+
+  🔬 **WHAT IS TRUE OF ISO, and it is why the PO's choice was right.** iso is already the proven
+  end state — `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres`, dual-write ARMED, **552** passage rows in
+  its secondary against 673 embedded `:Passage`. The sequence works; what was missing was never
+  the code.
+
+  ⛔ **What this does NOT do: cut dev over.** The PO chose to leave dev and the sibling `infra`
+  stack alone (2026-08-24). This makes that choice SAFE rather than merely respected — before
+  today, leaving dev alone silently included leaving it one rebuild away from a 500.
+
+  **QC (a) gates:** `port-adoption-gate` PASS with the new ceiling moved in this commit (rule 5);
+  four plan gates green; `gate-wiring-gate` 114.
+  **QC (b) live smoke:** N/A — nothing deployed. The change is a DDL file, a tracked example, and
+  a gate predicate.
+  **QC (c) real data:** every number is a live read of dev on 7688 and iso on 27688/25556 —
+  `SHOW INDEXES` readCounts, row counts by `count(*)` not by `n_live_tup`, and the running
+  containers' own env. **Dev was read and never written** (rule 6).
   ---
   ### 🔻 T25y 2026-08-24 — **the GRANT is unachievable as written, and the reason is one metrics probe: dev's container predates the dual-write**
 

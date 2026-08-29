@@ -1192,6 +1192,21 @@ _BACKEND_DECL_GLOBS = ("infra/*.env", "infra/.env", "infra/.env.*", "infra/*.yml
 
 MAX_NON_AGE_BACKEND_DECLARATIONS = 0
 
+#: T25z — the PASSAGE vector DDL's exit condition, made mechanical the way §9.2 made the
+#: ENTITY one. T25o deleted `passage_embeddings_*` on the claim that "dev and iso both read
+#: them from pgvector now, so this DDL had no reader left". Measured 2026-08-24, two days
+#: later: dev's `passage_embeddings_1024` showed readCount **4090**, lastRead 08-23. The
+#: claim was about configuration nobody had checked, and a claim is not a predicate.
+#:
+#: This is a CEILING that must fall to zero before the DDL may go again. It is **2**, and it
+#: went UP in the commit that introduced it, which is the honest direction: the
+#: `${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}` compose default was always a declaration, and
+#: T25z added the second by writing the key into `infra/.env.example` with its TIER. A key
+#: absent from the example is how a stack runs on a setting nobody chose (T54e, same shape).
+#: Both fall to `postgres` only once each deployment's secondary is POPULATED — an empty one
+#: fails silently (§9.1 option 2).
+MAX_NON_POSTGRES_PASSAGE_READ_DECLARATIONS = 2
+
 
 def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
     """`(where, value)` for every declaration that is NOT `age`.
@@ -1218,6 +1233,39 @@ def scan_backend_declarations(sources=None) -> list[tuple[str, str]]:
                 r":-)?([A-Za-z0-9_]+)", text):
             value = m.group(1).strip().lower()
             if value != "age":
+                bad.append((where, value))
+    return bad
+
+
+def scan_passage_read_declarations(sources=None) -> list[tuple[str, str]]:
+    """`(where, value)` for every passage read-primary declaration that is NOT `postgres`.
+
+    Same rule as `scan_backend_declarations`, and for the same reason: an interpolation
+    `${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}` counts as its DEFAULT, because that is what a
+    deployment setting nothing receives. Dev sets nothing, which is exactly how it ended up
+    serving passages from an index whose DDL had been deleted as unread.
+
+    BITE Z2 removes the `${...:-default}` alternative and the census falls 2 -> 1: the
+    deployment that declares NOTHING becomes invisible, which is the whole failure.
+    """
+    import glob as _glob
+
+    if sources is None:
+        sources = {}
+        for pat in _BACKEND_DECL_GLOBS:
+            for path in _glob.glob(os.path.join(ROOT, pat)):
+                try:
+                    sources[os.path.relpath(path, ROOT).replace(os.sep, "/")] = open(
+                        path, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+    bad: list[tuple[str, str]] = []
+    for where, text in sorted(sources.items()):
+        for m in re.finditer(
+                r"KNOWLEDGE_VECTOR_READ_PRIMARY\s*[:=]\s*[\"']?"
+                r"(?:\$\{KNOWLEDGE_VECTOR_READ_PRIMARY:-)?([A-Za-z0-9_]+)", text):
+            value = m.group(1).strip().lower()
+            if value != "postgres":
                 bad.append((where, value))
     return bad
 
@@ -2052,6 +2100,16 @@ def main() -> int:
         print("  ProcedureCallFailed. Either keep the declaration and keep the DDL, or move")
         print("  the deployment to `age`.")
         return 1
+    non_pg = scan_passage_read_declarations()
+    if len(non_pg) > MAX_NON_POSTGRES_PASSAGE_READ_DECLARATIONS:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(non_pg)} deployment declaration(s) "
+              f"read passages from a store other than postgres (ceiling "
+              f"{MAX_NON_POSTGRES_PASSAGE_READ_DECLARATIONS}): {non_pg}")
+        return 1
+    print(f"[port-adoption-gate] passage read-primary declarations {len(non_pg)}/"
+          f"{MAX_NON_POSTGRES_PASSAGE_READ_DECLARATIONS} non-`postgres` — T25z: the passage "
+          f"vector DDL may be deleted only when this reaches 0. It is a COUPLING (§9.2), not "
+          f"a schedule: {non_pg if non_pg else 'no deployment reads passages from neo4j'}")
     print(f"[port-adoption-gate] backend declarations {len(non_age)}/"
           f"{MAX_NON_AGE_BACKEND_DECLARATIONS} non-`age` — §9.2's DDL-exit condition holds for "
           f"every DECLARED deployment; `neo4j` stays SELECTABLE for the T43 harness and the "

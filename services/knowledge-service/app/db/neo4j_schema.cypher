@@ -306,21 +306,39 @@ FOR (p:Passage) ON (p.user_id, p.project_id);
 CREATE INDEX passage_user_source IF NOT EXISTS
 FOR (p:Passage) ON (p.user_id, p.source_type, p.source_id);
 
-// ── PASSAGE VECTOR INDEXES — DELETED 2026-08-22 (plan T25 ③ step 3) ──────────────
+// ── PASSAGE VECTOR INDEX — RESTORED 2026-08-24 (T25z). The deletion's premise was FALSE ──
 //
-// `passage_embeddings_{384,1024,1536,2560,3072}` lived here and were applied at every
-// service start. §3.1 moved passage vectors to Postgres and §3.3 cut the PASSAGE scope
-// over; dev and iso both read them from pgvector now, so this DDL had no reader left.
+// ~~DELETED 2026-08-22 (T25 ③ step 3) because "dev and iso both read them from pgvector now,
+// so this DDL had no reader left."~~ **The index's own read counter refutes that**, measured
+// on the dev graph 2026-08-24 — the day after, and two days after the deletion:
 //
-// ⚠️ ENTITY and EVENT vector indexes below STAY, and that is not an oversight. §3.3 keeps
-// entity reads on Neo4j until `D-T25B-PG-ANCHOR-SCORE` has an answer — `PgVectorStore`
-// omits `anchor_score` by design and entity reads RANK by it.
+//   passage_embeddings_1024   VECTOR   readCount 4090   lastRead 2026-08-23T17:05:40Z
 //
-// The two BENCHMARKS still need a passage index: they measure the Neo4j backend on purpose
-// and are `port-adoption-gate`'s vector-bypass floor of 2. They create it themselves now —
-// `neo4j_repos.vector_indexes.ensure_passage_vector_index` (T25n), same name, same options.
-// That function is the ONLY definition of these index names in the tree; if you are looking
-// for the DDL, it is there.
+// Dev declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it runs the compose default `neo4j`
+// (docker-compose.yml:1251) and serves passage search from `Neo4jVectorStore`. Its Postgres
+// secondary holds **0** passage rows against **1051** embedded `:Passage` in the graph. The
+// index survived only as RESIDUE in an existing database: nothing recreates it, so the next
+// Neo4j rebuild would have made dev passage search a `ProcedureCallFailed` 500 — precisely
+// the breakage §9.1 predicted and the reason step 3 was a PO call in the first place.
+//
+// ⚙️ **THE EXIT IS A COUPLING, NOT A SCHEDULE — §9.2's rule, applied to the passage scope.**
+// This DDL goes when no declared deployment reads passages from `neo4j`, and that condition
+// is now CHECKED rather than asserted: `port-adoption-gate` prints
+// `passage read-primary declarations N non-postgres`. Today N is 1 (the compose default), so
+// the index stays for a measured reason.
+//
+// 📐 Only `_1024` is restored, and that is the same probe used the right way. T25u deleted
+// `event_embeddings_1024` on `readCount 0, lastRead NULL` — a sound method. The other four
+// passage dimensions read exactly that on both dev and iso, so they STAY deleted; 1024 is
+// the one with 4090 reads.
+CREATE VECTOR INDEX passage_embeddings_1024 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_1024)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1024,
+    `vector.similarity_function`: 'cosine'
+  }
+};
 
 // ─────────────────────────────────────────────────────────────────
 // KG-ML M6 (D12 / V6) — CJK full-text index over :Passage text.
