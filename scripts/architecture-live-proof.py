@@ -118,6 +118,13 @@ def main(argv: list[str]) -> int:
     #: The KG project, which is NOT the book id. Required by the SURFACE leg since T48x put the
     #: `projects/:projectId` controller in the sweep's scope — see the leg's comment.
     ap.add_argument("--project-id", default="")
+    #: Downstreams this FIXTURE is known to lack data for. On iso, glossary-service
+    #: holds 7380 entities across 512 books and ZERO rows for the acceptance book, so
+    #: its 10 KAL routes answer nothing while all 4 graph routes carry data. Declaring
+    #: it keeps the leg honest instead of letting a global --min-data floor be
+    #: satisfied by one half of the surface. A ratchet: if glossary starts answering,
+    #: the sweep reports the stale declaration.
+    ap.add_argument("--cold-downstream", default="")
     ap.add_argument("--user-id")
     ap.add_argument("--internal-token")
     # REQUIRED for leg 3: without it the entity-dependent routes cannot carry
@@ -170,7 +177,7 @@ def main(argv: list[str]) -> int:
         ([py, "scripts/kal-read-surface-live-smoke.py", "--base-url", args.base_url,
           "--book-id", args.book_id, "--user-id", args.user_id, "--project-id", args.project_id,
           "--internal-token", args.internal_token, "--entity-id", args.entity_id,
-          "--min-data", str(args.min_data)]
+          "--min-data", str(args.min_data), "--cold-downstream", args.cold_downstream]
          if (args.book_id and args.user_id and args.internal_token and args.entity_id
              and args.project_id)
          else None))

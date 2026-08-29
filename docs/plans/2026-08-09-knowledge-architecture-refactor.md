@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 34 of 36 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 35 of 37 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (27/28) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (28/29) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48aa 2026-08-30 — **`EMPTY=8 NOT-FOUND=2` had been RECORDED for six cycles and never DIAGNOSED — glossary-service was 0 for 10 and the floor could not see it**
+
+  ```
+  before  DATA=4  EMPTY=8  NO-ROUTE=2  NOT-FOUND=2      PASS at --min-data 4
+  after     glossary   EMPTY=7  NO-ROUTE=1  NOT-FOUND=2   <- 0 of 10
+            knowledge  DATA=4  EMPTY=1  NO-ROUTE=1
+          undeclared -> FAIL, and the proof's SURFACE leg fails with it
+  ```
+
+  🎯 **Rule 13 is what named this row.** The sweep had been printing `EMPTY=8 NOT-FOUND=2` since
+  T48t and passing every time. A divergence recorded is not a divergence diagnosed — so I
+  diagnosed it **from the workload**:
+
+  ```
+  iso glossary DB   7380 entities across 512 books        -- populated
+                    0 rows for book 3a801fd7-9eb3-…       -- THIS book is absent
+  ```
+
+  **The book the entire live proof runs on exists in the KG and not in glossary-service at all.**
+  Every one of the 10 glossary-backed routes therefore answers nothing — 7 EMPTY, 2
+  `GLOSS_NOT_FOUND`, 1 NO-ROUTE — while all 4 graph-backed routes carry data.
+
+  🔴 **AND `--min-data` IS A GLOBAL FLOOR, so it cannot see a one-sided surface.** `4 >= 4`
+  passed on a run where one half of the KAL was completely dark. A floor satisfiable entirely by
+  one downstream while another is 0-for-10 floors one half of the surface and reports the whole
+  — the same shape as `--min-legs` over skipped legs (T48t) and `MIGRATED` over an empty census
+  (T48z). Third instance this session, so the tally is now **per downstream, always printed**.
+
+  ⚖️ **`--cold-downstream` is a RATCHET, not an excuse.** A fixture may legitimately lack a book,
+  so a run may declare a downstream cold — and the declaration is checked in **both** directions:
+
+  ```
+  0 rows + not declared   -> FAIL "answered NOTHING on 10 route(s)"
+  0 rows + declared cold  -> pass, printed as "(declared COLD)"
+  ROWS   + declared cold  -> FAIL "the declaration is stale"
+  ```
+
+  That third arm is what stops it becoming a magic word: a downstream that comes back to life
+  cannot quietly stay excused. It is a **run param** (rule 4) — the fixture varies per run, so
+  it belongs neither in a deploy ceiling nor in per-book settings.
+
+  🧪 **BITE T48aa-1 — line 169, `one_sided()` returns `[]`.** Live, undeclared:
+
+  ```
+  [kal-smoke] DATA=4  EMPTY=8  NO-ROUTE=2  NOT-FOUND=2
+  [kal-smoke]   glossary   EMPTY=7  NO-ROUTE=1  NOT-FOUND=2
+  [kal-smoke]   knowledge  DATA=4  EMPTY=1  NO-ROUTE=1
+  [kal-smoke] PASS — 4 route(s) carried rows, no route errored          exit 0
+  ```
+
+  **The exact state that passed for six cycles**, now with the breakdown printed beneath it so
+  the pass is visibly one-sided. Offline the same bite reds **3** cases at exit 1. Restored.
+
+  📐 **The proof's SURFACE leg moves with it (rule 5).** With `--cold-downstream glossary`:
+  `PROVEN`, 5 legs ran, exit 0. Without it: `FAIL 3 SURFACE … glossary answered NOTHING on 10
+  route(s)`, exit 1. The leg can no longer be green over a dark downstream that nobody declared.
+
+  ⚠️ **One replacement silently no-opped and I nearly shipped it.** The per-downstream print was
+  written through a heredoc; `\\n` collapsed, the `str.replace` matched nothing, and the run
+  looked fine because the breakdown is additive. Caught by `grep -c "declared COLD)"` returning
+  **0** after the edit claimed success. Fourth heredoc escape-collapse this session — the cure
+  remains `Write`/`Edit` or `chr(10)`, never a heredoc for text containing escapes.
+
+  **QC (a) gates:** `kal-read-surface-live-smoke --selftest` **31/31** (6 new `one_sided` cases);
+  `architecture-live-proof`, `kal-surface-census-gate`, `graph-store-migrated-gate`,
+  `graph-tenancy-coupling-gate`, `kal-auth-boundary-live-smoke` selftests all 0; census live OK;
+  `gate-wiring-gate` OK; `plan-final-verification` PASS — every one by direct exit code.
+  **QC (b) live smoke:** four live sweeps and two five-leg proof runs against the running iso
+  stack, both arms above. No image rebuild — no service code changed this cycle.
+  **QC (c) real data:** the diagnosis itself — iso's glossary DB (7380 entities / 512 books / **0
+  for the swept book**) against AGE's 648 projects / 5683 entities.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48z 2026-08-30 — **the STORE leg passed with `MIGRATED: … all 0 project(s)` — three different worlds producing the same three words**
 

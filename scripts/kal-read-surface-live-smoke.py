@@ -78,6 +78,9 @@ CONTROLLERS = [CONTROLLER, PROJECT_CONTROLLER]
 #:                        it keeps "the surface works" from quietly meaning "the projection
 #:                        works". Measured on iso, the live ratio inverts: every route that
 #:                        carried rows was graph-backed and all 10 glossary routes were empty.
+#:                        DIAGNOSED (T48aa, rule 13): iso's glossary DB holds 7380 entities
+#:                        across 512 books and ZERO rows for the acceptance book, so glossary
+#:                        cannot answer for it. Declare it with `--cold-downstream glossary`.
 #:
 #: `scripts/kal-surface-census-gate.py` holds every one of these true against the source.
 SCOPE = {"controllers_swept": ["kal-read.controller.ts", "kal-project-read.controller.ts"], "kal_controllers_total": 3, "routes_swept": 16, "kal_routes_total": 29, "graph_backed_swept": 6, "user_facing_unswept": 0}
@@ -87,6 +90,10 @@ SCOPE = {"controllers_swept": ["kal-read.controller.ts", "kal-project-read.contr
 ROW_KEYS = ("items", "entities", "edges", "nodes", "results", "facts", "events", "passages",
             "cast", "roster", "hits", "timeline", "neighbors", "relations")
 
+#: Which service a route federates to, read from its body. Same expression the census gate
+#: uses — the two must agree about what "graph-backed" means or the numbers drift apart.
+_DOWNSTREAM = re.compile(r"\b(glossary|knowledge|book|composition|learning|translation)\.\w+\(")
+
 DATA, EMPTY, NOT_FOUND, ERROR = "DATA", "EMPTY", "NOT-FOUND", "ERROR"
 #: 501 is a CORRECT answer, not a failure: the KAL now refuses by name when its
 #: downstream has no such route (T55b). Counting it as ERROR would make the sweep red
@@ -95,17 +102,26 @@ DATA, EMPTY, NOT_FOUND, ERROR = "DATA", "EMPTY", "NOT-FOUND", "ERROR"
 NO_ROUTE = "NO-ROUTE"
 
 
-def derive_routes(controller_path: str) -> list[tuple[str, str, str]]:
+def derive_routes(controller_path: str) -> list[tuple[str, str, str, str]]:
     """Every `@Get('…')` / `@Post('…')` on a KAL read controller, in declaration order.
 
-    Returns the controller's `@Controller('…')` PREFIX alongside each route. The two read
-    controllers sit on different prefixes — `v1/kal/books/:bookId` and
-    `v1/kal/projects/:projectId` — and hardcoding the first is what kept the second unswept.
+    Returns `(verb, path, PREFIX, DOWNSTREAM)`. The prefix is the controller's own
+    `@Controller('…')` — the two read controllers sit on `v1/kal/books/:bookId` and
+    `v1/kal/projects/:projectId`, and hardcoding the first is what kept the second unswept
+    (T48x/T48y). The downstream is read from the route's BODY, so the sweep can report per
+    service rather than only in total — a global `--min-data` floor is satisfiable entirely by
+    one downstream while another is 0-for-10, which is what iso was doing.
     """
     src = open(controller_path, encoding="utf-8").read()
     prefix = re.search(r"@Controller\('([^']*)'\)", src)
-    return [(m.group(1).upper(), m.group(2), prefix.group(1) if prefix else "")
-            for m in re.finditer(r"@(Get|Post)\('([^']*)'\)", src)]
+    hits = list(re.finditer(r"@(Get|Post)\('([^']*)'\)", src))
+    out = []
+    for i, m in enumerate(hits):
+        end = hits[i + 1].start() if i + 1 < len(hits) else len(src)
+        downs = sorted(set(_DOWNSTREAM.findall(src[m.end(): end])))
+        out.append((m.group(1).upper(), m.group(2), prefix.group(1) if prefix else "",
+                    downs[0] if downs else ""))
+    return out
 
 
 def route_url(base_url: str, prefix: str, tmpl: str, *, entity: str, book_id: str,
@@ -122,7 +138,7 @@ def route_url(base_url: str, prefix: str, tmpl: str, *, entity: str, book_id: st
     return f"{base_url.rstrip('/')}/{base}/{tmpl.replace(':entityId', entity)}{query}"
 
 
-def unfillable(routes: list[tuple[str, str, str]], book_id: str, project_id: str) -> list[str]:
+def unfillable(routes: list[tuple[str, ...]], book_id: str, project_id: str) -> list[str]:
     """Which `:placeholder` a run has no value for. Pure, so the selftest can drive it.
 
     T48y: `route_url` used to fall back to the BOOK id for `:projectId`, and
@@ -132,8 +148,40 @@ def unfillable(routes: list[tuple[str, str, str]], book_id: str, project_id: str
     the dangerous kind. So a run that cannot address a route refuses to pretend it swept it.
     """
     have = {":bookId": book_id, ":projectId": project_id}
-    return sorted({ph for _v, _t, prefix in routes for ph, val in have.items()
-                   if ph in prefix and not val})
+    return sorted({ph for r in routes for ph, val in have.items()
+                   if ph in r[2] and not val})
+
+
+def one_sided(per_downstream: dict[str, dict[str, int]], cold: set[str]) -> list[str]:
+    """Which downstream answered NOTHING, and which declared-cold one answered after all.
+
+    T48z-adjacent, found by DIAGNOSING what the sweep had merely been recording for six cycles
+    (rule 13). On iso the sweep reads `DATA=4 EMPTY=8 NO-ROUTE=2 NOT-FOUND=2` and PASSES at
+    `--min-data 4` — and all four DATA routes are graph-backed while **glossary-service is
+    0 for 10**. Diagnosed from the workload, not by analogy: iso's glossary DB holds 7380
+    entities across 512 books and **zero rows for the swept book**, so the book the whole live
+    proof runs on exists in the KG and not in glossary at all.
+
+    A GLOBAL floor cannot see that. `--min-data N` is satisfiable entirely by one downstream
+    while another is 0-for-N, so it floors one half of the surface and reports the whole.
+
+    `cold` is the run's declaration that a downstream is expected to answer nothing. It is a
+    RATCHET, not an excuse: a declared-cold downstream that DOES answer is also reported, so a
+    stale declaration cannot quietly hide a downstream coming back to life.
+    """
+    problems = []
+    for name, tally in sorted(per_downstream.items()):
+        if not name:
+            continue
+        got = tally.get(DATA, 0)
+        total = sum(tally.values())
+        if got == 0 and name not in cold:
+            problems.append(f"{name} answered NOTHING on {total} route(s) and was not declared "
+                            f"cold — a global --min-data floor cannot see a one-sided surface")
+        if got > 0 and name in cold:
+            problems.append(f"{name} was declared COLD and carried rows on {got} of {total} "
+                            f"route(s) — the declaration is stale")
+    return problems
 
 
 def rows_in(payload: object) -> int:
@@ -230,15 +278,37 @@ def _selftest() -> int:
     print(f"  {'PASS' if ok else 'FAIL'}  each route carries its OWN prefix: {prefixes}")
     # ...and that the prefix is actually USED. BITE T48x-1: addressed under the wrong prefix
     # both project routes 404, which reads as NOT-FOUND and still PASSES.
+    # THE ONE-SIDED CHECK. iso's shape: every DATA route graph-backed, glossary 0-for-10.
+    iso = {"knowledge": {DATA: 4, NO_ROUTE: 1, EMPTY: 1},
+           "glossary": {EMPTY: 7, NOT_FOUND: 2, NO_ROUTE: 1}}
+    both = {"knowledge": {DATA: 4}, "glossary": {DATA: 3, EMPTY: 7}}
+    for label, tallies, cold_, want in [
+        ("THE FINDING: a downstream that answered NOTHING is reported, whatever the total",
+         iso, set(), 1),
+        ("...declared COLD, it is accepted — a fixture may legitimately lack a book",
+         iso, {"glossary"}, 0),
+        ("THE RATCHET: a declared-COLD downstream that DOES answer is reported too, so a "
+         "stale declaration cannot hide a downstream coming back to life",
+         both, {"glossary"}, 1),
+        ("both downstreams answering, nothing declared, is clean", both, set(), 0),
+        ("a downstream with only ERRORs still counts as answering nothing",
+         {"glossary": {ERROR: 3}}, set(), 1),
+        ("routes with no derived downstream are not invented into a complaint",
+         {"": {EMPTY: 5}}, set(), 0),
+    ]:
+        got = len(one_sided(tallies, cold_))
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}: expected {want}, got {got}")
     for label, routes_, bid, pid, want in [
         ("a run with both ids can address everything",
-         [("GET", "roster", "v1/kal/books/:bookId")], "B", "P", []),
+         [("GET", "roster", "v1/kal/books/:bookId", "glossary")], "B", "P", []),
         ("THE REFUSAL: a project route with no --project-id is unfillable, never book-id'd",
-         [("POST", "fact-for-check", "v1/kal/projects/:projectId")], "B", "", [":projectId"]),
+         [("POST", "fact-for-check", "v1/kal/projects/:projectId", "knowledge")], "B", "", [":projectId"]),
         ("...and a book route is unaffected by a missing project id",
-         [("GET", "roster", "v1/kal/books/:bookId")], "B", "", []),
+         [("GET", "roster", "v1/kal/books/:bookId", "glossary")], "B", "", []),
         ("both missing are both named",
-         [("GET", "a", "v1/kal/books/:bookId"), ("POST", "b", "v1/kal/projects/:projectId")],
+         [("GET", "a", "v1/kal/books/:bookId", ""), ("POST", "b", "v1/kal/projects/:projectId", "")],
          "", "", [":bookId", ":projectId"]),
     ]:
         got = unfillable(routes_, bid, pid)
@@ -279,6 +349,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--entity-id", default="", help="a GLOSSARY entity id with neighbours")
     ap.add_argument("--controller", default=",".join(CONTROLLERS),
                     help="comma-separated; both user-facing read controllers")
+    ap.add_argument("--cold-downstream", default="",
+                    help="comma-separated downstreams EXPECTED to answer nothing on this "
+                         "fixture. A ratchet, not an excuse: a declared-cold downstream that "
+                         "DOES answer is reported too.")
     ap.add_argument("--project-id", default="",
                     help="for the `projects/:projectId` controller; the KG project, "
                          "which is NOT the book id")
@@ -324,20 +398,35 @@ def main(argv: list[str]) -> int:
     print(f"[kal-smoke] {len(routes)} route(s) derived from "
           f"{', '.join(os.path.basename(p) for p in paths)}")
     tally: dict[str, int] = {}
-    for verb, tmpl, prefix in routes:
+    cold = {c.strip() for c in args.cold_downstream.split(",") if c.strip()}
+    per_downstream: dict[str, dict[str, int]] = {}
+    for verb, tmpl, prefix, down in routes:
         url = route_url(args.base_url, prefix, tmpl, entity=entity, book_id=args.book_id,
                         project_id=args.project_id, query=query.get(tmpl, ""))
         status, payload = _call(url, verb, bodies.get(tmpl) if verb == "POST" else None, headers)
         rows = rows_in(payload) if 200 <= status < 300 else 0
         got = verdict_for(status, rows)
         tally[got] = tally.get(got, 0) + 1
+        per_downstream.setdefault(down, {})[got] = per_downstream.setdefault(
+            down, {}).get(got, 0) + 1
         note = f"{rows} row(s)" if got == DATA else (
             str(payload)[:70] if got in (ERROR, NOT_FOUND) or got.startswith("HTTP") else "")
         print(f"  {got:<9} {status:>3}  {verb:<4} {tmpl:<42} {note}")
 
     print("\n[kal-smoke] " + "  ".join(f"{k}={v}" for k, v in sorted(tally.items())))
+    # PER DOWNSTREAM, always — the total is what hid a 0-for-10 half for six cycles.
+    for name, t in sorted(per_downstream.items()):
+        if name:
+            print(f"[kal-smoke]   {name:<10} "
+                  + "  ".join(f"{k}={v}" for k, v in sorted(t.items()))
+                  + ("   (declared COLD)" if name in cold else ""))
     if tally.get(ERROR):
         print(f"[kal-smoke] FAIL — {tally[ERROR]} route(s) ERRORED")
+        return 1
+    sided = one_sided(per_downstream, cold)
+    if sided:
+        for problem in sided:
+            print(f"[kal-smoke] FAIL — {problem}")
         return 1
     if not _passes_floor(tally, args.min_data):
         print(f"[kal-smoke] FAIL — only {tally.get(DATA, 0)} route(s) carried rows, floor is "
