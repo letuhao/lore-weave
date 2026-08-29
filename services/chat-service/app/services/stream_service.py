@@ -4503,6 +4503,10 @@ async def _stream_with_tools(
             # Offer tools unless the provider rejected them (D8) or this
             # is the forced-final pass (D7 — must answer in text).
             offered_tools = tools_supported and not last_iter
+            # D-ONE-PASS-RECORDED-TWICE-WHEN-THE-SURFACE-FILTERS-TO-EMPTY — per PASS, reset
+            # here beside `offered_tools` because the two are read together below and a flag
+            # that outlives its pass would suppress the NEXT pass's record instead.
+            _adv_emitted = False
             if offered_tools:
                 # RAID C2 (DR-C2) — ask-mode filtering happens HERE, at the single
                 # per-pass advertise chokepoint: discovery filters inside
@@ -4813,6 +4817,7 @@ async def _stream_with_tools(
                 if not advertised:
                     # A tool-free pass has no schema_tokens chunk to follow, so it emits here.
                     yield {"advertised": _adv_ev_pending}
+                    _adv_emitted = True
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
@@ -4843,6 +4848,7 @@ async def _stream_with_tools(
                     # pass emits one, which is the whole point: the once-per-turn `schema_tokens`
                     # above cannot see a surface that CHANGES between passes.
                     yield {"advertised": _adv_ev_pending}
+                    _adv_emitted = True
                     # W6 — advertised-surface snapshot at the SAME chokepoint:
                     # split the advertised names core/frontend/activated, group
                     # by owning MCP server, and reuse the W1 token measurement
@@ -4900,7 +4906,26 @@ async def _stream_with_tools(
             # surface CHANGED most sharply. The pass count then under-reports, and a tool present on
             # pass 1 and absent on a tool-free pass 2 reads as "still offered", which is the
             # opposite of the truth and the same failure mode as a scalar column.
-            if not offered_tools:
+            # 🔴 `not _adv_emitted` — D-ONE-PASS-RECORDED-TWICE-WHEN-THE-SURFACE-FILTERS-TO-EMPTY.
+            # `offered_tools` is not a constant across this block: the `else` twenty lines above
+            # sets it False when ask-mode filtered every tool out. On that path the pass has
+            # ALREADY emitted its chunk at `if not advertised:` — so this line fired a SECOND one
+            # for the same pass, and `advertised_tools` recorded two entries, with two different
+            # `pass` numbers, for one model call.
+            #
+            # The damage is to the DENOMINATOR every surfacing measurement in this loop divides
+            # by: "advertised in N of M passes" reads M from this column, and M was one too many
+            # whenever it happened. It also silently masks the opposite defect — a turn that DROPS
+            # a pass (D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN) compares
+            # this column against a log line that only prints for TOOL-BEARING passes, so a
+            # spurious empty entry can cover a real loss.
+            #
+            # MEASURED 2026-08-28 over the live store: at most 1 adjacent empty-name pair in 5,759
+            # messages carrying the column — and that one pair may simply be two genuine tool-free
+            # passes, so 1 is an upper bound, not a count. The path is real by construction and
+            # very rare in practice; this is a correctness guard, not a fix for an observed
+            # measurement error.
+            if not offered_tools and not _adv_emitted:
                 yield {"advertised": {
                     "names": [],
                     "tool_choice": None,
