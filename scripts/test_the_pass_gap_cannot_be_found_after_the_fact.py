@@ -88,3 +88,98 @@ def test_wire_log_absence_is_None_and_never_zero():
         "wire_log_pass_count no longer has an explicit None return — if it now falls through "
         "to 0, an unreadable log reports every pass as dropped"
     )
+
+
+# ── 2026-08-28 · THE SEARCH SPACE HALVED, BY STRUCTURE RATHER THAN BY A RUN ────────────────
+#
+# The row carried this as its standing lead: "`advertised_tools=_advertised.advertised_json()`
+# is read at the PERSIST sites, so a pass that runs after the last persist on that path would
+# not be in the column. NOT VERIFIED — it is where to look, not what happened."
+#
+# It is now verified in the OTHER direction, which is the useful one: the missing pass reached
+# the recorder. It is not a recording failure at all, so every hypothesis of the shape "the
+# chunk never got there" is dead and only the PERSIST remains.
+#
+# THE ARGUMENT IS STRUCTURAL, so it costs no live runs at 1-in-15:
+#
+#   1. In `_stream_with_tools`, under `if advertised:`, the pass's chunk is yielded
+#      UNCONDITIONALLY (`yield {"advertised": _adv_ev_pending}`), and the
+#      "agent-surface advertised (session=...)" log line sits BELOW it, inside
+#      `if surface_tracker is not None:`. There is no branch that reaches the log without
+#      first executing that yield.
+#   2. An async generator resumes past a `yield` only when its consumer asks for the NEXT
+#      item. So the generator cannot reach the log line until the consumer's loop body for
+#      that chunk has finished — and that body is where `record_pass` runs.
+#   3. The only thing between them is `_bounded_turn_stream`, which does NOT prefetch: it
+#      awaits `iterator.__anext__()` one item at a time under `wait_for`. A ceiling trip
+#      `aclose()`s the inner generator, which raises GeneratorExit AT the yield — losing the
+#      LOG line, never the recorded pass. That is the opposite direction from the defect.
+#
+# Therefore EVERY "agent-surface advertised" line the log printed is proof that `record_pass`
+# ran for that pass. The store held 4 where the log printed 5, so the fifth WAS recorded and
+# was then lost at write time.
+#
+# These guards pin the three structural facts the argument rests on. If any of them changes,
+# the argument stops holding and this row's search space must be reopened — which is the whole
+# reason they are asserted rather than written down in prose.
+
+SRC = (ROOT / "services" / "chat-service" / "app" / "services"
+       / "stream_service.py").read_text(encoding="utf-8")
+
+
+def _advertised_branch() -> str:
+    """The `if advertised:` block of the tool loop — from the branch to its dedent."""
+    i = SRC.index("                if advertised:\n")
+    tail = SRC[i:]
+    lines = tail.splitlines(keepends=True)
+    out = [lines[0]]
+    for ln in lines[1:]:
+        if ln.strip() and (len(ln) - len(ln.lstrip())) <= 16:
+            break
+        out.append(ln)
+    return "".join(out)
+
+
+def test_the_pass_chunk_is_yielded_BEFORE_the_log_line_that_witnesses_it():
+    """Step 1. The log is downstream of the yield, so a logged pass was a delivered pass."""
+    block = _advertised_branch()
+    y = block.index('yield {"advertised": _adv_ev_pending}')
+    g = block.index("agent-surface advertised (session=%s)")
+    assert y < g, (
+        "the 'agent-surface advertised' log no longer sits BELOW the advertised yield — a "
+        "logged pass is no longer proof the consumer received it, and this row's 2026-08-28 "
+        "narrowing (the loss is in the PERSIST, not the recording) no longer holds"
+    )
+
+
+def test_the_yield_is_unconditional_within_that_branch():
+    """Step 1, the half that makes it an argument rather than a coincidence: no guard sits
+    between `if advertised:` and the yield, so the log cannot be reached by a path that
+    skipped it."""
+    block = _advertised_branch()
+    head = block[: block.index('yield {"advertised": _adv_ev_pending}')]
+    # The schema_tokens sub-block is allowed to intervene (it yields, it does not branch AROUND
+    # the advertised yield); what must not appear is a conditional wrapping the yield itself.
+    yield_line = [ln for ln in block.splitlines()
+                  if 'yield {"advertised": _adv_ev_pending}' in ln][0]
+    assert len(yield_line) - len(yield_line.lstrip()) == 20, (
+        f"the advertised yield is no longer at the branch's own indent ({yield_line!r}) — it "
+        "has been moved under a condition, so a pass can now be logged without being recorded"
+    )
+    assert "schema_tokens_reported" in head  # the one legitimate intervening block
+
+
+def test_the_turn_ceiling_wrapper_does_NOT_prefetch():
+    """Step 3. A prefetching wrapper would let the inner generator run ahead of the consumer,
+    and the log line would stop proving delivery."""
+    i = SRC.index("async def _bounded_turn_stream(")
+    body = SRC[i:i + 4000]
+    assert "await asyncio.wait_for(iterator.__anext__(), remaining)" in body, (
+        "_bounded_turn_stream no longer pulls one item at a time under wait_for; if it now "
+        "buffers or reads ahead, a logged pass is no longer proof the consumer processed it"
+    )
+    for forbidden in ("create_task", "Queue(", "gather("):
+        assert forbidden not in body, (
+            f"_bounded_turn_stream now uses {forbidden!r} — that is a prefetch shape, and it "
+            "breaks the ordering argument this row's narrowing rests on"
+        )
