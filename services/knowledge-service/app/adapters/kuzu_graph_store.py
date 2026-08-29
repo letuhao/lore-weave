@@ -202,15 +202,28 @@ class KuzuGraphStore:
 
     async def neighborhood(
         self, *, user_id: str, glossary_entity_id: str, project_id: str | None = None,
-        rel_cap: int = 50,
+        rel_cap: int = 50, as_of: int | None = None,
     ) -> EntityDetail | None:
         """One entity plus its capped one-hop neighbourhood.
+
+        ⛔ **`as_of` RAISES here rather than being ignored (rule 9 / §1.4).** T48s added the
+        story window to this operation because the read was leaking spoilers; this adapter is
+        declared EVALUATION-ONLY (`port-adoption-gate`: `neo4j` and `kuzu` stay selectable for
+        the T43 harness and the benchmarks), and silently returning the HEAD for a caller that
+        asked to be held at a story position is precisely the failure the parameter was added
+        to stop. An adapter that cannot honour an operation refuses by name.
 
         `rel_cap` is contract, not tuning: this feeds a context block, and an uncapped
         neighbourhood on a hub entity is how a prompt budget disappears. The TOTAL is counted
         separately from the capped page, so `relations_truncated` is a fact rather than
         `len(page) == cap` — which is wrong exactly when the count equals the cap.
         """
+        if as_of is not None:
+            raise NotImplementedError(
+                "KuzuGraphStore.neighborhood does not implement the `as_of` story window "
+                "(§1.4: an adapter refuses rather than half-implements). This adapter is "
+                "evaluation-only; use the AGE or Neo4j store for a windowed read."
+            )
         params: dict[str, Any] = {"u": user_id, "g": glossary_entity_id}
         scope = ""
         if project_id is not None:

@@ -35,6 +35,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 from app.db.pool import get_knowledge_pool
 from app.kal.temporal import TemporalCapability, kg_as_of_or_drop, temporal_capability
 from app.middleware.internal_auth import require_internal_token
@@ -98,6 +99,28 @@ class NeighborhoodResponse(BaseModel):
     temporal_capability: TemporalCapability
 
 
+
+def _ordinal(chapter: int | None) -> int | None:
+    """A CHAPTER number onto the reading axis — `chapter × EVENT_ORDER_CHAPTER_STRIDE`.
+
+    🔴 **The half of T48s that a green conformance suite could not catch.** The port's window
+    was added and every adapter honoured it, and the live endpoint then returned ZERO edges at
+    every position — because the route passed `as_of_chapter=1` straight through while the
+    stored `valid_from_ordinal` values are `1_000_000, 2_000_000, …`. `valid_from_ordinal <= 1`
+    excludes everything.
+
+    An empty answer is the SAFE direction, which is exactly why it is dangerous: it looks like
+    "this reader may see nothing yet" rather than "the units are wrong", and this repo has the
+    failure written down already — *the reading axis is `sort_order × 1e6`; a raw chapter
+    number gives an empty snapshot that looks like missing data*.
+
+    `internal_timeline` has always done this (`before_order = chapter_order × STRIDE`). This
+    route accepted the same unit in its parameter name — `as_of_chapter` — and never converted,
+    because until now it never used the value at all.
+    """
+    return None if chapter is None else chapter * EVENT_ORDER_CHAPTER_STRIDE
+
+
 @router.get("/{book_id}/kg/neighborhood", response_model=NeighborhoodResponse)
 async def get_kg_neighborhood(
     book_id: UUID,
@@ -156,6 +179,12 @@ async def get_kg_neighborhood(
             glossary_entity_id=entity_id,
             project_id=str(row["project_id"]),
             rel_cap=capped,
+            # T48s — this value was COMPUTED and DISCARDED. `effective_as_of` existed on
+            # line 126, was checked for None on 127, and reached nothing: the port had no
+            # parameter for it. Meanwhile the response advertised
+            # `temporal_capability.kg = "ordinal_valid_time"`, so the endpoint claimed a
+            # spoiler window it did not apply.
+            as_of=_ordinal(effective_as_of),
         )
     if detail is None:
         logger.debug("kg/neighborhood: no KG node for glossary entity %s", entity_id)

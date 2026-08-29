@@ -99,12 +99,13 @@ class Neo4jGraphStore:
         glossary_entity_id: str,
         project_id: str | None = None,
         rel_cap: int = 50,
+        as_of: int | None = None,
     ) -> EntityDetail | None:
         started = time.perf_counter()
         detail = await get_neighborhood_by_glossary_id(
             self._session,
             user_id=user_id, glossary_entity_id=glossary_entity_id,
-            project_id=project_id, rel_cap=rel_cap,
+            project_id=project_id, rel_cap=rel_cap, as_of=as_of,
         )
         logger.debug(
             "graph neighborhood: backend=neo4j cap=%d found=%s elapsed_ms=%d",

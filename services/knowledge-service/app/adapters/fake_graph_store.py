@@ -171,6 +171,7 @@ class FakeGraphStore:
         glossary_entity_id: str,
         project_id: str | None = None,
         rel_cap: int = 50,
+        as_of: int | None = None,
     ) -> EntityDetail | None:
         anchor = next(
             (e for e in self._entities.values()
@@ -180,10 +181,22 @@ class FakeGraphStore:
         )
         if anchor is None:
             return None
+        # T48s — the STORY window, in the double as well as the stores. A fake that ignored
+        # `as_of` would make every conformance rule agree with the leak: the real adapters
+        # would be judged against a double that has the same hole. Half-open, positionless
+        # EXCLUDED, exactly as the port defines it.
+        def _covers(r) -> bool:
+            if as_of is None:
+                return True
+            if r.valid_from_ordinal is None:
+                return False
+            return r.valid_from_ordinal <= as_of and (
+                r.valid_to_ordinal is None or as_of < r.valid_to_ordinal)
+
         edges = [
             r for r in self._relations
             if r.user_id == user_id and (r.subject_id == anchor.id or r.object_id == anchor.id)
-            and r.valid_until is None
+            and r.valid_until is None and _covers(r)
         ]
         # The cap is applied, not ignored: it is what stops a hub entity's neighbourhood
         # eating a prompt budget, and a fake that returned everything would let an

@@ -437,6 +437,7 @@ class AgeGraphStore:
         glossary_entity_id: str,
         project_id: str | None = None,
         rel_cap: int = 50,
+        as_of: int | None = None,
     ) -> EntityDetail | None:
         """One entity plus its capped one-hop neighbourhood.
 
@@ -463,10 +464,23 @@ class AgeGraphStore:
         # `r.valid_until IS NULL` alone. Delegating dropped every low-confidence edge and
         # every edge to an archived peer from this adapter's answer only — a silent
         # under-report, not an error, and invisible to a suite that never called it.
+        # T48s — the STORY window. `valid_until IS NULL` is the transaction-time head and
+        # says nothing about reading position; without the clause below this read returned
+        # chapter-10 edges to a caller held at chapter 1. Same half-open convention as
+        # `relations_for`, positionless edge EXCLUDED, written once here per engine.
+        if as_of is None:
+            window = ""
+        else:
+            window = (
+                f"AND r.valid_from_ordinal IS NOT NULL "
+                f"AND r.valid_from_ordinal <= {_lit(as_of)} "
+                f"AND (r.valid_to_ordinal IS NULL OR {_lit(as_of)} < r.valid_to_ordinal) "
+            )
         erows = await self._run(
             f"MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity) "
             f"WHERE (subj.id = {_lit(entity.id)} OR obj.id = {_lit(entity.id)}) "
             f"AND r.user_id = {_lit(user_id)} AND r.valid_until IS NULL "
+            f"{window}"
             f"RETURN r, subj, obj ORDER BY r.confidence DESC, r.created_at DESC",
             columns="r agtype, subj agtype, obj agtype",
         )

@@ -920,6 +920,12 @@ _EVENT_WRITE_REFUSERS: set[str] = set()
 
 
 
+#: Adapters that REFUSE the `neighborhood(as_of=...)` window instead of
+#: half-honouring it. Evaluation-only stores (port-adoption-gate declares them so)
+#: may refuse; the DEFAULT backend may not.
+_WINDOW_REFUSERS = {"kuzu"}
+
+
 def _which(store) -> str:
     """Which adapter this parameterisation is, by CLASS — not by a marker attribute the
     fixture would have to remember to set."""
@@ -2009,3 +2015,51 @@ async def test_gap_candidates_REFUSE_a_negative_floor_and_a_nonpositive_limit(st
         await store.find_gap_candidates(user_id=u, project_id=p, min_mentions=-1)
     with pytest.raises(ValueError):
         await store.find_gap_candidates(user_id=u, project_id=p, limit=0)
+
+
+@pytest.mark.asyncio
+async def test_neighborhood_HONOURS_the_story_window_it_advertises(store):
+    """T48s — the read leaked spoilers, live, on the default backend.
+
+    `/internal/books/{id}/kg/neighborhood` accepts `as_of_chapter`, computes
+    `effective_as_of`, and reports `temporal_capability.kg = "ordinal_valid_time"`. It then
+    called this operation WITHOUT the value, because the operation had no parameter for it.
+    Measured on lw-iso: at `as_of=1` the endpoint returned edges established at chapter 10.
+
+    The rule mirrors `relations_for`'s window deliberately — one convention, asserted twice,
+    because `neighborhood` was SPLIT from `relations_for` to fix a confidence/archived-peer
+    filter and lost this on the way across. A rule on only one of them would let the split
+    happen again.
+    """
+    u, p, _ = _ids()
+    gid = f"gl-{uuid.uuid4().hex[:12]}"
+
+    # Rule 9 / §1.4: an adapter that cannot honour the window REFUSES BY NAME rather than
+    # returning the HEAD. Kuzu is evaluation-only, and silently answering the head for a
+    # caller who asked to be held at a position is the exact failure this rule exists for —
+    # so the refusal is asserted, not skipped.
+    if _which(store) in _WINDOW_REFUSERS:
+        with pytest.raises(NotImplementedError, match="as_of"):
+            await store.neighborhood(user_id=u, glossary_entity_id=gid, as_of=1)
+        return
+
+    a = await _anchored(store, u, p, gid)
+    b = await _anchored(store, u, p, f"gl-{uuid.uuid4().hex[:12]}", name="Later Peer")
+    await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="betrays",
+        confidence=0.9, valid_from_ordinal=10)
+
+    head = await store.neighborhood(user_id=u, glossary_entity_id=gid)
+    assert head is not None and len(head.relations) == 1, "the HEAD read must see the edge"
+
+    early = await store.neighborhood(user_id=u, glossary_entity_id=gid, as_of=9)
+    assert early is not None, "a windowed read must still return the ENTITY"
+    assert early.relations == [], (
+        "an edge established at 10 was returned to a reader held at 9 — this is the spoiler "
+        "leak T48s found on the live stack")
+
+    at = await store.neighborhood(user_id=u, glossary_entity_id=gid, as_of=10)
+    assert len(at.relations) == 1, "the lower bound is INCLUSIVE, as it is for relations_for"
+
+    later = await store.neighborhood(user_id=u, glossary_entity_id=gid, as_of=999)
+    assert len(later.relations) == 1, "a position after the edge must still see it"

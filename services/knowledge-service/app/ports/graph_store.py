@@ -109,11 +109,34 @@ class GraphStore(Protocol):
         glossary_entity_id: str,
         project_id: str | None = None,
         rel_cap: int = 50,
+        as_of: int | None = None,
     ) -> EntityDetail | None:
         """One entity plus its capped one-hop neighbourhood.
 
         `rel_cap` is part of the contract, not a tuning knob: this feeds a context block,
         and an uncapped neighbourhood on a hub entity is how a prompt budget disappears.
+
+        🔴 **`as_of` ADDED 2026-08-30 (T48s), because it was MISSING and the read was leaking
+        spoilers.** `/internal/books/{id}/kg/neighborhood` accepts `as_of_chapter`, computes
+        `effective_as_of = kg_as_of_or_drop(...)`, reports
+        `temporal_capability.kg = "ordinal_valid_time"` — and then called this operation
+        WITHOUT the value, because the operation had nowhere to put it. Measured on the live
+        stack: at `as_of=1` (ordinal 1 000 000) the endpoint returned edges with
+        `valid_from_ordinal` up to **10 000 000**. A reader held at chapter 1 was shown
+        relationships that do not exist until chapter 10.
+
+        How it went missing is worth keeping. `neighborhood` was SPLIT from `relations_for`
+        deliberately — that delegate applied `confidence >= 0.8` and excluded archived peers,
+        which silently dropped edges from this answer. The replacement query filters
+        `valid_until IS NULL` alone, i.e. the HEAD, and the `as_of` that `relations_for`
+        already carried did not come across. **A correct fix to one filter removed another.**
+
+        The window is `relations_for`'s, not a second one: `as_of=None` reads the HEAD, and
+        `as_of=N` keeps only edges whose half-open story interval covers N —
+        `valid_from_ordinal <= N < valid_to_ordinal` — with a POSITIONLESS edge EXCLUDED,
+        because it cannot be placed on the axis and including it would mix untimed legacy
+        data into an answer whose whole value is that it is timed. One concept, one
+        definition; two would drift the first time either moved.
         """
         ...
 

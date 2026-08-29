@@ -2652,6 +2652,15 @@ OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
 WHERE (subj = e OR obj = e)
   AND r.user_id = $user_id
   AND r.valid_until IS NULL
+  // T48s — the STORY window. `valid_until IS NULL` is TRANSACTION time and says nothing
+  // about reading position; without the lines below this read handed a caller at chapter 1
+  // the edges of chapter 10. Half-open, and a POSITIONLESS edge is EXCLUDED: it cannot be
+  // placed on the axis. Same convention as `relations_for` — one definition, asserted by
+  // the conformance rule against every adapter so the split cannot drop it again.
+  AND ($as_of IS NULL OR (
+        r.valid_from_ordinal IS NOT NULL
+        AND r.valid_from_ordinal <= $as_of
+        AND (r.valid_to_ordinal IS NULL OR $as_of < r.valid_to_ordinal)))
 WITH e, r, subj, obj
 ORDER BY r.confidence DESC, r.created_at DESC
 WITH e,
@@ -2669,6 +2678,7 @@ async def get_neighborhood_by_glossary_id(
     glossary_entity_id: str,
     project_id: str | None = None,
     rel_cap: int = ENTITIES_DETAIL_REL_CAP,
+    as_of: int | None = None,
 ) -> EntityDetail | None:
     """C5 (D4-03) — entity + 1-hop active RELATES_TO edges, keyed by the
     glossary FK rather than the canonical id.
@@ -2699,6 +2709,7 @@ async def get_neighborhood_by_glossary_id(
         project_id=project_id,
         glossary_entity_id=glossary_entity_id,
         rel_cap=rel_cap,
+        as_of=as_of,
     )
     # NOT `result.single()`: without a project scope the FK can now legitimately match
     # one node per project. Take the first (deterministically ordered) and say so.

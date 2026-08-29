@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 26 of 28 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 27 of 29 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (19/20) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (20/21) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48s 2026-08-30 — **the spoiler window was COMPUTED AND DISCARDED: a reader at chapter 1 was served chapter 10's relationships**
+
+  ```
+  BEFORE  as_of=1  -> 50 edges, max valid_from_ordinal 10 000 000
+  AFTER   as_of=1  -> 25 edges, max valid_from_ordinal  1 000 000
+          as_of=3  -> 33 / 2 000 000   ·  as_of=6 -> 41 / 6 000 000  ·  as_of=10 -> 50 / 10 000 000
+  conformance  4/4 adapters: age · neo4j · fake honour it, kuzu REFUSES BY NAME
+  ```
+
+  🎯 **Found by asking the goal's own proof what it does NOT cover.** Its four legs are backend,
+  store, surface and port — none of them the BI-TEMPORAL SPINE, which is what this architecture
+  is *for*. Probing that gap on the live stack found the read that claims the capability and
+  does not apply it.
+
+  🔴 **THE MECHANISM EXISTED AT EVERY LAYER AND CONNECTED TO NOTHING.**
+
+  ```
+  the route      accepts `as_of_chapter`, computes `effective_as_of = kg_as_of_or_drop(...)`
+  the response   reports `temporal_capability.kg = "ordinal_valid_time"`
+  the call       neighborhood(user_id, glossary_entity_id, project_id, rel_cap)   <- no as_of
+  the port       `async def neighborhood(...)` had NO as_of parameter at all
+  ```
+
+  `effective_as_of` appeared on exactly two lines: computed on 126, `None`-checked on 127 for a
+  debug log. **It reached nothing.** The endpoint advertised a spoiler window it did not have.
+
+  ⚖️ **How it went missing is the part worth keeping.** `neighborhood` was SPLIT from
+  `relations_for` deliberately — that delegate applied `confidence >= 0.8` and excluded archived
+  peers, silently dropping edges from this answer, and the adapter's own comment records the
+  fix. The replacement query filters `valid_until IS NULL` alone — the TRANSACTION-time head —
+  and the `as_of` `relations_for` already carried did not come across. **A correct fix to one
+  filter removed another**, and nothing asserted the second.
+
+  🔬 **DIAGNOSED, NOT RECORDED (rule 13).** Three probes, each isolating one seam:
+
+  ```
+  KAL vs service      the same leak straight off knowledge-service:28216 -> not the gateway
+  the edges           at as_of=1 the response carried ordinals 1e6 … 1e7 -> the window is absent,
+                      not merely coarse
+  the port signature  no parameter to put it in -> the route could not have passed it
+  ```
+
+  🧪 **AND THE FIX WAS WRONG TWICE BEFORE IT WAS RIGHT — both caught by measurement.**
+
+  ```
+  1  I patched the WRONG Cypher. `s.replace(old, …, 1)` matched an earlier constant with the
+     same WHERE shape, so the window landed in `_GET_ENTITY_WITH_RELATIONS_CYPHER` — whose
+     callers never bind `$as_of`. The conformance suite's neo4j arm went red and named it.
+     Reverted by line number; re-applied by line number.
+  2  Every adapter then honoured the window and the LIVE endpoint returned ZERO edges at every
+     position. The route passed `as_of_chapter=1` while the axis is `chapter × 1_000_000`, so
+     `valid_from_ordinal <= 1` excluded everything. An empty answer is the SAFE direction,
+     which is exactly why it is dangerous: it reads as "nothing yet", not "wrong units" — and
+     this repo already had the note (`the reading axis is sort_order × 1e6`).
+  ```
+
+  📐 **The conformance rule is the point, and it is asserted on BOTH operations.** A rule on
+  `neighborhood` alone would let the split happen again in the other direction. Kuzu, declared
+  evaluation-only, **RAISES** rather than returning the head — rule 9 / §1.4 — and the rule
+  asserts the refusal rather than skipping it, because silently answering the head for a caller
+  who asked to be held at a position is the exact failure being fixed.
+
+  ```
+  BITE T48s-1  AGE stops applying the window
+                 FAIL [age] only — "an edge established at 10 was returned to a reader
+                 held at 9 — this is the spoiler leak T48s found on the live stack"
+  ```
+
+  **QC (a) gates:** knowledge unit **4445 passed**; integration **1047 passed** with the AGE +
+  Neo4j stores up; `port-adoption-gate` PASS (`port parameters 4/97`), `graph-port-gate`,
+  `knowledge-access-gate`, four plan gates green — all by direct exit code.
+  **QC (b) live smoke vs a REBUILT image:** `iso.sh build knowledge-service` twice, and every
+  number in the table above is an HTTP response from that container through the KAL.
+  **QC (c) real data:** the acceptance corpus's own 紂王 neighbourhood — 81 real edges spanning
+  ten chapters, which is why the leak was visible at all.
+
+  ⚠️ **The port-parameter ratchet did NOT protect this**, and says so itself: *"a parameter
+  counts as exercised when the suite writes `name=` anywhere. That is coarse."* `as_of=` already
+  appeared for `relations_for`, so `neighborhood`'s new one was credited as conformed on the
+  commit that added it. The real guard is the rule above.
   ---
   ### ✅ T48r 2026-08-30 — **C31 added an LLM call site with a flat `400` and left a ratchet unmoved; the sweep red was OURS**
 
