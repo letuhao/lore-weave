@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""kal-surface-census-gate — the live sweep covers ONE of the KAL's three controllers.
+"""kal-surface-census-gate — hold the live sweep to a DECLARED scope, whole-KAL derived.
 
 `kal-read-surface-live-smoke` prints `14 route(s) derived from kal-read.controller.ts`. Every
 word of that is true, and read quickly it says the KAL's read surface is swept. Derived
@@ -8,31 +8,36 @@ word of that is true, and read quickly it says the KAL's read surface is swept. 
     controller                      routes  guard                sweep
     kal-read.controller.ts             14    KalAuthGuard         SWEPT
     kal-write.controller.ts            13    InternalTokenGuard   not swept
-    kal-project-read.controller.ts      2    KalAuthGuard         not swept
+    kal-project-read.controller.ts      2    KalAuthGuard         SWEPT (T48x)
     -------------------------------------------------------------------
-                                       29                        14 swept
+                                       29                        16 swept
 
-**Fifteen of the KAL's twenty-nine routes have no live sweep**, and the sentence that made that
+**Fifteen of the KAL's twenty-nine routes had no live sweep**, and the sentence that made that
 invisible is a true one about a filename.
 
-THE GUARD SORTS THE GAP, AND ONLY ONE HALF OF IT IS DEFENSIBLE
-──────────────────────────────────────────────────────────────
+THE GUARD SORTS THE GAP, AND ONLY ONE HALF OF IT WAS DEFENSIBLE
+───────────────────────────────────────────────────────────────
 Thirteen of the fifteen are the write controller, and it carries `InternalTokenGuard`: **no user
 can reach it at all.** That is a principled boundary for a user-facing read sweep, and it is
-DERIVED from the decorator rather than argued. The other two are `kal-project-read`, which
-carries `KalAuthGuard` like the swept controller does — user-reachable reads, and **both of them
-reach knowledge-service**, so they are exactly the routes a graph refactor most wants swept.
-`user_facing_unswept` is that number, and it is a CEILING that may only fall.
+DERIVED from the decorator rather than argued. The other two were `kal-project-read`, which
+carries `KalAuthGuard` like the swept controller does — user-reachable reads that both reach
+knowledge-service, so exactly the routes a graph refactor most wants swept. **T48x closed
+them**, and `user_facing_unswept` is now **0**: a CEILING that may only fall.
 
 WHAT THE SWEPT HALF ACTUALLY PROVES ABOUT THE GRAPH
 ───────────────────────────────────────────────────
-Of the 14 swept routes, **10 federate to glossary-service** — the Postgres SSOT projection — and
-**4 reach knowledge-service** and therefore the graph store this refactor is about
-(`neighborhood`, `retrieve`, `wiki-neighborhood`, `timeline`). That split is correct design, not
-a defect: Postgres is the SSOT and the graph is for traversal. It does mean a green 14-route
-sweep is 4/14 evidence about the store under refactor, and `architecture-live-proof`'s SURFACE
-leg inherits that ratio. Every KAL WRITE forwards to glossary-service, which is the same design
-seen from the other side.
+Of the 16 swept routes, **10 federate to glossary-service** — the Postgres SSOT projection — and
+**6 reach knowledge-service** and therefore the graph store this refactor is about
+(`neighborhood`, `retrieve`, `wiki-neighborhood`, `timeline`, `fact-for-check`,
+`glossary-semantic`). That split is correct design, not a defect: Postgres is the SSOT and the
+graph is for traversal. It does mean a green 16-route sweep is 6/16 evidence about the store
+under refactor, and `architecture-live-proof`'s SURFACE leg inherits that ratio. Every KAL WRITE
+forwards to glossary-service, which is the same design seen from the other side.
+
+Measured live on iso, the ratio INVERTS: all four routes that carried rows were graph-backed and
+every one of the ten glossary routes was empty, because that stack holds KG data and no glossary
+projection. Which is why the census and the sweep report separate numbers — neither one alone
+says what the surface proves.
 
 So this gate does two things a sweep cannot do for itself:
 

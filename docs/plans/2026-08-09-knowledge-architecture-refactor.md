@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 31 of 33 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 32 of 34 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (24/25) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (25/26) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,77 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48x 2026-08-30 — **the gap T48w declared is closed, and the fix's own failure mode passed at exit 0 until an offline guard caught it**
+
+  ```
+  sweep  14 routes, one controller   ->  16 routes, BOTH user-facing controllers
+  census user_facing_unswept 2 -> 0 · graph_backed_swept 4 -> 6 · same commit as the code
+  live   DATA=4  EMPTY=8  NO-ROUTE=2  NOT-FOUND=2      PASS
+         fact-for-check 200, 1 row   ·   glossary-semantic 200, 0 rows
+  ```
+
+  🎯 **T48w declared this gap rather than closing it, and said so.** That was the honest half of
+  a cycle, not the whole of one. The two `kal-project-read` routes carry `KalAuthGuard` exactly as
+  the swept controller does and both reach knowledge-service, so they were the routes a graph
+  refactor least wanted unswept.
+
+  🔬 **They went unswept for a MECHANICAL reason, not a judgement.** The sweep built every URL as
+  `/v1/kal/books/{book}/…` — a hardcoded prefix — while theirs is `/v1/kal/projects/{project}/…`.
+  The prefix now comes from each controller's own `@Controller('…')`, derived like the routes
+  themselves.
+
+  🔴 **AND THE FIX'S FAILURE MODE IS INVISIBLE, WHICH IS THE PART WORTH KEEPING.** BITE T48x-1 put
+  the hardcoded prefix back, live:
+
+  ```
+  16 route(s) derived from kal-read.controller.ts, kal-project-read.controller.ts
+    NOT-FOUND 404  POST fact-for-check      {"message":"Cannot POST /v1/kal/books/3a801fd7…"}
+    NOT-FOUND 404  POST glossary-semantic   {"message":"Cannot POST /v1/kal/books/3a801fd7…"}
+  [kal-smoke] PASS — 3 route(s) carried rows, no route errored        exit 0
+  ```
+
+  **A sweep claiming sixteen routes while two of them were never addressed, and passing.** 404
+  reads as NOT-FOUND — *the book or entity does not exist* — which is a legitimate verdict for a
+  cold stack, so nothing distinguishes "swept and absent" from "never reached". Adding a
+  controller to a list without deriving its prefix buys broader-looking coverage and no evidence.
+
+  📐 **So the URL construction was extracted into a pure `route_url()` and asserted OFFLINE**, and
+  the same bite now reds in the selftest:
+
+  ```
+  FAIL  THE BITE, caught offline: a projects route addresses /projects/, never /books/:
+        http://h/v1/kal/books/B/fact-for-check                                  exit 1
+  ```
+
+  A live sweep cannot catch this about itself — that is exactly why it belongs in `--selftest`,
+  where CI sees it and a hand-run does not have to.
+
+  ⚖️ **`glossary-semantic` answered 200 with no rows, and that is CORRECT here — measured, not
+  assumed.** Every per-dimension vector table on iso holds zero:
+
+  ```
+  entity_vectors_{384,1024,1536,2560,3072}   0 rows
+  passage_vectors_{384,1024,1536,2560,3072}  0 rows
+  ```
+
+  A semantic search over no embeddings returns nothing. Reporting that as EMPTY rather than
+  explaining it away is the sweep's own rule — an empty 200 is never a pass — and the `--min-data`
+  floor (raised to 4) is what stops the run leaning on it.
+
+  🧾 **The ratchet moved in the commit that did the work (rule 5).** `user_facing_unswept` 2 → 0
+  and `graph_backed_swept` 4 → 6, both re-derived from source by the census gate rather than
+  re-typed. The 13 write routes stay out by `InternalTokenGuard` — no user reaches them — which
+  the gate reads off the decorator.
+
+  **QC (a) gates:** `kal-read-surface-live-smoke --selftest` **21/21** (3 new URL assertions);
+  `kal-surface-census-gate --selftest` 18/18 and its live check `DECLARED`; `gate-wiring-gate` OK.
+  **QC (b) live smoke:** the 16-route sweep against the running iso KAL at `--min-data 4`, PASS,
+  plus the bite and restore runs above. No service image was rebuilt — no service code changed.
+  **QC (c) real data:** the acceptance book and its KG project `019fefde-…`, the same corpus the
+  rest of the proof uses.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels.
   ---
   ### ✅ T48w 2026-08-30 — **"14 route(s) derived from kal-read.controller.ts" is true, and the KAL has 29 across three controllers**
 

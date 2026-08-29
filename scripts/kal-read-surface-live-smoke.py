@@ -52,30 +52,35 @@ import urllib.request
 #: Where the routes come from. Repo-relative so the sweep and the gate read the same file.
 CONTROLLER = os.path.join(
     "services", "knowledge-gateway", "src", "kal", "kal-read.controller.ts")
+#: BOTH user-facing read controllers. `kal-project-read` carries `KalAuthGuard` exactly as this
+#: one does, and both its routes reach knowledge-service — it went unswept only because the URL
+#: prefix was hardcoded to `books/:bookId`. `kal-write` stays out by its guard, not by omission:
+#: `InternalTokenGuard` means no user can reach it (see SCOPE below).
+PROJECT_CONTROLLER = os.path.join(
+    "services", "knowledge-gateway", "src", "kal", "kal-project-read.controller.ts")
+CONTROLLERS = [CONTROLLER, PROJECT_CONTROLLER]
 
-#: WHAT THIS SWEEP DOES NOT COVER, as a number rather than an omission.
+#: WHAT THIS SWEEP COVERS, as numbers rather than a filename.
 #:
-#: "14 route(s) derived from kal-read.controller.ts" is true and reads as the KAL's read
-#: surface. The KAL has **29 routes across three controllers**: 13 more in
-#: `kal-write.controller.ts` and 2 in `kal-project-read.controller.ts`, neither swept. The
-#: write controller is a defensible omission — a live sweep does not POST `entities/:id/purge`
-#: at a running stack — but a defensible gap and a declared one differ, and only the declared
-#: one survives a fourth controller being added.
+#: T48w found this sweep reporting `14 route(s) derived from kal-read.controller.ts` — true, and
+#: it reads as the KAL's read surface. The KAL has **29 routes across three controllers**, and
+#: the 2 in `kal-project-read` were user-facing reads that both reach knowledge-service. They
+#: went unswept for a mechanical reason: the URL prefix was hardcoded to `books/:bookId` and
+#: theirs is `projects/:projectId`. Both are swept now, and the prefix is DERIVED per controller.
 #:
-#: The two numbers that matter:
-#:
-#:   graph_backed_swept   4 of the 14 swept routes reach knowledge-service and therefore the
-#:                        graph (`neighborhood`, `retrieve`, `wiki-neighborhood`, `timeline`).
-#:                        The other 10 federate to glossary-service, the Postgres SSOT
-#:                        projection. Correct design — and it means a green 14-route sweep is
-#:                        4/14 evidence about the store under refactor.
-#:   user_facing_unswept  2. The 13 write routes carry `InternalTokenGuard`, so no user reaches
-#:                        them and a user-facing read sweep may exclude them BY DERIVATION.
-#:                        `kal-project-read` carries `KalAuthGuard` like this controller does,
-#:                        and both its routes reach knowledge-service. A CEILING, only falls.
+#:   user_facing_unswept  **0.** The 13 write routes carry `InternalTokenGuard`, so no user
+#:                        reaches them and a user-facing read sweep excludes them BY DERIVATION
+#:                        from the decorator, not by an argument. A CEILING: it may only fall.
+#:   graph_backed_swept   6 of the 16 swept routes reach knowledge-service and therefore the
+#:                        graph (`neighborhood`, `retrieve`, `wiki-neighborhood`, `timeline`,
+#:                        `fact-for-check`, `glossary-semantic`). The other 10 federate to
+#:                        glossary-service, the Postgres SSOT projection. Correct design — and
+#:                        it keeps "the surface works" from quietly meaning "the projection
+#:                        works". Measured on iso, the live ratio inverts: every route that
+#:                        carried rows was graph-backed and all 10 glossary routes were empty.
 #:
 #: `scripts/kal-surface-census-gate.py` holds every one of these true against the source.
-SCOPE = {"controllers_swept": ["kal-read.controller.ts"], "kal_controllers_total": 3, "routes_swept": 14, "kal_routes_total": 29, "graph_backed_swept": 4, "user_facing_unswept": 2}
+SCOPE = {"controllers_swept": ["kal-read.controller.ts", "kal-project-read.controller.ts"], "kal_controllers_total": 3, "routes_swept": 16, "kal_routes_total": 29, "graph_backed_swept": 6, "user_facing_unswept": 0}
 
 #: Envelopes a KAL body may carry its rows in. `relations` is here because leaving it out made
 #: the instrument under-report — see the module docstring.
@@ -90,11 +95,32 @@ DATA, EMPTY, NOT_FOUND, ERROR = "DATA", "EMPTY", "NOT-FOUND", "ERROR"
 NO_ROUTE = "NO-ROUTE"
 
 
-def derive_routes(controller_path: str) -> list[tuple[str, str]]:
-    """Every `@Get('…')` / `@Post('…')` on the KAL read controller, in declaration order."""
+def derive_routes(controller_path: str) -> list[tuple[str, str, str]]:
+    """Every `@Get('…')` / `@Post('…')` on a KAL read controller, in declaration order.
+
+    Returns the controller's `@Controller('…')` PREFIX alongside each route. The two read
+    controllers sit on different prefixes — `v1/kal/books/:bookId` and
+    `v1/kal/projects/:projectId` — and hardcoding the first is what kept the second unswept.
+    """
     src = open(controller_path, encoding="utf-8").read()
-    return [(m.group(1).upper(), m.group(2))
+    prefix = re.search(r"@Controller\('([^']*)'\)", src)
+    return [(m.group(1).upper(), m.group(2), prefix.group(1) if prefix else "")
             for m in re.finditer(r"@(Get|Post)\('([^']*)'\)", src)]
+
+
+def route_url(base_url: str, prefix: str, tmpl: str, *, entity: str, book_id: str,
+              project_id: str, query: str = "") -> str:
+    """Build one route's URL from ITS controller's prefix. Pure, so the selftest can drive it.
+
+    Extracted because BITE T48x-1 showed the failure mode of getting this wrong is INVISIBLE:
+    address a `projects/:projectId` route under `books/:bookId` and it answers 404, which the
+    sweep reads as NOT-FOUND — "the book or entity does not exist" — and still reports PASS.
+    A sweep can then claim 16 routes while two of them were never reached. So the mapping from
+    prefix to URL is asserted offline rather than trusted.
+    """
+    base = (prefix.replace(":bookId", book_id)
+                  .replace(":projectId", project_id or book_id))
+    return f"{base_url.rstrip('/')}/{base}/{tmpl.replace(':entityId', entity)}{query}"
 
 
 def rows_in(payload: object) -> int:
@@ -178,11 +204,30 @@ def _selftest() -> int:
         failures += 0 if ok else 1
         print(f"  {'PASS' if ok else 'FAIL'}  {label}: expected {want}, got {got}")
 
-    routes = derive_routes(CONTROLLER) if os.path.exists(CONTROLLER) else []
-    ok = len(routes) >= 10
+    routes = [r for c in CONTROLLERS if os.path.exists(c) for r in derive_routes(c)]
+    ok = len(routes) >= 16
     failures += 0 if ok else 1
-    print(f"  {'PASS' if ok else 'FAIL'}  the controller still parses "
+    print(f"  {'PASS' if ok else 'FAIL'}  BOTH user-facing controllers still parse "
           f"({len(routes)} route(s) derived)")
+    # The prefix must come from the controller, or the project routes are addressed
+    # under `books/:bookId` and 404 as though they had been swept.
+    prefixes = sorted({r[2] for r in routes})
+    ok = prefixes == ["v1/kal/books/:bookId", "v1/kal/projects/:projectId"]
+    failures += 0 if ok else 1
+    print(f"  {'PASS' if ok else 'FAIL'}  each route carries its OWN prefix: {prefixes}")
+    # ...and that the prefix is actually USED. BITE T48x-1: addressed under the wrong prefix
+    # both project routes 404, which reads as NOT-FOUND and still PASSES.
+    for label, prefix, tmpl, want in [
+        ("a books route addresses /books/", "v1/kal/books/:bookId", "roster", "/v1/kal/books/B/"),
+        ("THE BITE, caught offline: a projects route addresses /projects/, never /books/",
+         "v1/kal/projects/:projectId", "fact-for-check", "/v1/kal/projects/P/"),
+        (":entityId is substituted, not left literal", "v1/kal/books/:bookId",
+         "entities/:entityId/facts", "/entities/E/facts"),
+    ]:
+        got = route_url("http://h", prefix, tmpl, entity="E", book_id="B", project_id="P")
+        ok = want in got
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}: {got}")
     # A floor that cannot fail is not a floor.
     ok = _passes_floor({DATA: 0}, 1) is False and _passes_floor({DATA: 3}, 3) is True
     failures += 0 if ok else 1
@@ -204,7 +249,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--user-id")
     ap.add_argument("--internal-token")
     ap.add_argument("--entity-id", default="", help="a GLOSSARY entity id with neighbours")
-    ap.add_argument("--controller", default=CONTROLLER)
+    ap.add_argument("--controller", default=",".join(CONTROLLERS),
+                    help="comma-separated; both user-facing read controllers")
+    ap.add_argument("--project-id", default="",
+                    help="for the `projects/:projectId` controller; the KG project, "
+                         "which is NOT the book id")
     ap.add_argument("--min-data", type=int, default=1,
                     help="routes that must carry rows; the control arm")
     args = ap.parse_args(argv)
@@ -224,19 +273,25 @@ def main(argv: list[str]) -> int:
         "wiki-neighborhood": {"user_id": args.user_id, "glossary_entity_id": entity,
                               "rel_cap": 10},
         "timeline": {"chapter_order": 10, "limit": 5},
+        # kal-project-read. Both reach knowledge-service; `at_order` is on the reading axis
+        # (chapter x 1_000_000), not a raw chapter number -- the units bug T48s paid for.
+        "fact-for-check": {"glossary_entity_ids": [entity], "at_order": 10_000_000,
+                           "relation_limit": 5, "event_limit": 5},
+        "glossary-semantic": {"query": "a", "max_entities": 5},
     }
     query = {"roster": "?limit=5", "cast": "?limit=5", "search": "?q=a&limit=5",
              "state": "?as_of=10", "entities/:entityId/neighborhood": "?hops=1&cap=10",
              "entities/:entityId/facts": "?limit=5",
              "entities/:entityId/attr-values": "?attr=title&limit=5"}
 
-    routes = derive_routes(args.controller)
-    print(f"[kal-smoke] {len(routes)} route(s) derived from {os.path.basename(args.controller)}")
+    paths = [p for p in args.controller.split(",") if p.strip()]
+    routes = [r for p in paths for r in derive_routes(p)]
+    print(f"[kal-smoke] {len(routes)} route(s) derived from "
+          f"{', '.join(os.path.basename(p) for p in paths)}")
     tally: dict[str, int] = {}
-    for verb, tmpl in routes:
-        path = tmpl.replace(":entityId", entity)
-        url = f"{args.base_url.rstrip('/')}/v1/kal/books/{args.book_id}/{path}" \
-              f"{query.get(tmpl, '')}"
+    for verb, tmpl, prefix in routes:
+        url = route_url(args.base_url, prefix, tmpl, entity=entity, book_id=args.book_id,
+                        project_id=args.project_id, query=query.get(tmpl, ""))
         status, payload = _call(url, verb, bodies.get(tmpl) if verb == "POST" else None, headers)
         rows = rows_in(payload) if 200 <= status < 300 else 0
         got = verdict_for(status, rows)
