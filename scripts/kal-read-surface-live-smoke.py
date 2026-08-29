@@ -53,6 +53,30 @@ import urllib.request
 CONTROLLER = os.path.join(
     "services", "knowledge-gateway", "src", "kal", "kal-read.controller.ts")
 
+#: WHAT THIS SWEEP DOES NOT COVER, as a number rather than an omission.
+#:
+#: "14 route(s) derived from kal-read.controller.ts" is true and reads as the KAL's read
+#: surface. The KAL has **29 routes across three controllers**: 13 more in
+#: `kal-write.controller.ts` and 2 in `kal-project-read.controller.ts`, neither swept. The
+#: write controller is a defensible omission — a live sweep does not POST `entities/:id/purge`
+#: at a running stack — but a defensible gap and a declared one differ, and only the declared
+#: one survives a fourth controller being added.
+#:
+#: The two numbers that matter:
+#:
+#:   graph_backed_swept   4 of the 14 swept routes reach knowledge-service and therefore the
+#:                        graph (`neighborhood`, `retrieve`, `wiki-neighborhood`, `timeline`).
+#:                        The other 10 federate to glossary-service, the Postgres SSOT
+#:                        projection. Correct design — and it means a green 14-route sweep is
+#:                        4/14 evidence about the store under refactor.
+#:   user_facing_unswept  2. The 13 write routes carry `InternalTokenGuard`, so no user reaches
+#:                        them and a user-facing read sweep may exclude them BY DERIVATION.
+#:                        `kal-project-read` carries `KalAuthGuard` like this controller does,
+#:                        and both its routes reach knowledge-service. A CEILING, only falls.
+#:
+#: `scripts/kal-surface-census-gate.py` holds every one of these true against the source.
+SCOPE = {"controllers_swept": ["kal-read.controller.ts"], "kal_controllers_total": 3, "routes_swept": 14, "kal_routes_total": 29, "graph_backed_swept": 4, "user_facing_unswept": 2}
+
 #: Envelopes a KAL body may carry its rows in. `relations` is here because leaving it out made
 #: the instrument under-report — see the module docstring.
 ROW_KEYS = ("items", "entities", "edges", "nodes", "results", "facts", "events", "passages",

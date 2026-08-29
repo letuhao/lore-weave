@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 30 of 32 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 31 of 33 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (23/24) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (24/25) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,76 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48w 2026-08-30 — **"14 route(s) derived from kal-read.controller.ts" is true, and the KAL has 29 across three controllers**
+
+  ```
+  NEW  scripts/kal-surface-census-gate.py    18-case --selftest · 1 bite · wired
+  kal-read.controller.ts          14  KalAuthGuard         SWEPT
+  kal-write.controller.ts         13  InternalTokenGuard   not swept
+  kal-project-read.controller.ts   2  KalAuthGuard         not swept
+  census DECLARED — 14 of 29 swept · 4 graph-backed · 2 user-facing unswept (ceiling)
+  ```
+
+  🎯 **The sweep's own sentence is what hid this.** It names a filename and a number, both
+  correct, and reads as *the KAL's read surface is covered*. **Fifteen of twenty-nine routes had
+  no live sweep**, and `architecture-live-proof`'s SURFACE leg is built on that sweep.
+
+  ⚖️ **The GUARD sorts the gap, and only one half of it is defensible.** Thirteen of the fifteen
+  are the write controller, carrying `InternalTokenGuard` — **no user can reach it at all**, so a
+  user-facing read sweep may exclude it. That exclusion is now DERIVED from the decorator rather
+  than argued. The other two are `kal-project-read`, which carries `KalAuthGuard` exactly like the
+  swept controller, and **both of its routes reach knowledge-service** — precisely the routes a
+  graph refactor most wants swept. `user_facing_unswept: 2` is a **CEILING that may only fall**;
+  this cycle declares it rather than closing it, and says so.
+
+  🔬 **AND MY FIRST TWO COUNTS WERE BOTH WRONG — the gate caught its own author.**
+
+  ```
+  "1 of 14 routes reaches the graph"     I had only scanned @Get bodies calling `.get(`.
+                                          Derived: 4 — neighborhood, retrieve,
+                                          wiki-neighborhood, timeline.
+  "11 write routes call nothing"          They forward through a private `this.forward(...)`.
+                                          Resolving ONE hop: all 13 reach glossary-service.
+  ```
+
+  Both numbers reached a docstring before the derivation contradicted them. The gate now reports
+  `graph_backed_swept`, so **"the surface works" can never quietly mean "the Postgres projection
+  works"**: 10 of the 14 swept routes federate to glossary-service, the SSOT projection, and every
+  KAL *write* forwards there too — the same design seen from both sides.
+
+  📐 **The live run inverts the ratio, which is the honest reading of it.**
+
+  ```
+  DATA=3  EMPTY=7  NO-ROUTE=2  NOT-FOUND=2      PASS — 3 route(s) carried rows
+  ```
+
+  All three routes that carried rows are graph-backed; **every one of the ten glossary routes
+  returned nothing** on iso, which holds KG data and no glossary projection. So the surface
+  evidence this stack actually produces is entirely graph evidence — the opposite of what the
+  route census alone would suggest, and a reason the two numbers are reported separately.
+
+  🧪 **BITE T48w-1 — on the real source, not the constant.** One `@Get` added to the unswept
+  `kal-project-read.controller.ts`:
+
+  ```
+  DRIFTED   kal_routes_total:     declared 29 · derived 30
+            user_facing_unswept:  declared  2 · derived  3
+  ```
+
+  Restored; `git diff` on the controller empty. **A route appearing in an unswept controller while
+  the declared number stays put is exactly how 15 of 29 went unnoticed**, and it is now the failure
+  the gate is named for.
+
+  **QC (a) gates:** `kal-surface-census-gate --selftest` **18/18** (new, wired, plus its live check
+  in `pre-commit`); `kal-read-surface-live-smoke --selftest` 18/18 with the new `SCOPE`;
+  `gate-wiring-gate` OK.
+  **QC (b) live smoke:** the full 14-route sweep re-run against the running iso KAL after the
+  change — `PASS, 3 route(s) carried rows, no route errored`, unchanged. No service image was
+  rebuilt because no service code changed this cycle.
+  **QC (c) real data:** the acceptance book on iso, the same one the rest of the proof uses.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels.
   ---
   ### ✅ T48v 2026-08-30 — **tenant isolation in the shared graph held for a reason NOTHING asserted, and the mutation that breaks it left all 1026 tests green**
 

@@ -188,6 +188,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # and still collapses every project fooled the substring version.
 "$PY" "$ROOT/scripts/graph-tenancy-coupling-gate.py" --selftest
 "$PY" "$ROOT/scripts/graph-tenancy-coupling-gate.py"
+# THE KAL SURFACE, WHOLE. The live sweep derives 14 routes from ONE controller and says
+# so truthfully; the KAL has 29 across three. This holds the sweep to a declared scope
+# -- including how many swept routes actually reach the GRAPH (4 of 14; the rest read
+# the Postgres projection) and how many user-reachable routes are unswept (2, a ceiling).
+"$PY" "$ROOT/scripts/kal-surface-census-gate.py" --selftest
+"$PY" "$ROOT/scripts/kal-surface-census-gate.py"
 # A Go `replace` whose target the image build cannot resolve. This gate ALREADY EXISTED
 # and CI already ran it via `gate-wiring-gate --run-all` -- it was green on 2026-08-30
 # while alert-recorder and canary-controller could not be built at all. The wiring was
