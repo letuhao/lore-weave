@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: QC-5 §2.1 — the only-R1 arm, before authoring any rule window.**
+**RESUME: T48 §6.4 — the re-run, once T25/T33/QC-5 close. Four rows open.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**64 of 69 rows done · 5 open · 69 of 106 evidence blocks closed inside them.**
+**64 of 69 rows done · 5 open · 70 of 107 evidence blocks closed inside them.**
 
-**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/61) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11763,6 +11763,105 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C44 2026-08-24 — **the seventh candidate: the PO asked whether the RULES are violable, and the measurement says that is not the cause either**
+
+  <!-- doc-language-gate: ok -- the rule TEXTS are the finding: the argument is about
+       their grammatical form (an exclusion vs a definition), so paraphrasing them
+       into English would delete the evidence. Glosses follow each line. -->
+
+  ```
+  NEW  scripts/qc5-arm1a-rule-isolation.py   11-case --selftest · 1 bite · wired
+  active rules  6 -> 1   (R1 only; every response reported active_rule_count=1)
+  planted flagged  3/4          control flagged  4/4
+  verdict  NOT-SEPARATED
+  ```
+
+  🎯 **THE QUESTION THE SIX-CAUSE SEARCH NEVER ASKED, and it was not mine.** §12 eliminated six
+  candidates — model tier, prompt wording, bi-temporal anchor, bible contents, rule windows,
+  narrative framing — and **every one is about the JUDGE**. The PO asked about the INPUT: *"is it
+  explicit describing what a canon is? If there is no explicit definition of what canon is, how
+  to evaluate it violated or not?"* Read from the book's own `canon_rule` rows, that is a real
+  hypothesis:
+
+  ```
+  R1  …chính Lâm Trạch là kẻ phản bội. KHÔNG AI KHÁC là kẻ phản bội.   an EXCLUSION
+  R2  Lâm Uyên là thành viên của Lâm gia.                              a positive fact
+  R3  Tô Thanh Dao là thành viên của Tô gia; … có hôn ước.             a positive fact
+  R4  Huyết Vô Thường là kẻ đối địch của Lâm Uyên.                     a positive fact
+  R5  Lâm Uyên điều khiển L-Field.                                     a capability
+  R6  Linh năng là hệ thống sức mạnh của thế giới này.                 a DEFINITION
+  ```
+
+  **Only R1 says what is not allowed.** Nothing a work of fiction can say contradicts *"spirit
+  energy is this world's power system"*, and the judge is asked *"is this violated?"* about it
+  anyway. C30 is consistent with the hypothesis: two of its four false verdicts **invent a clause
+  and hang it on a real rule id**, and the fabricated *"and no one can drain his spirit energy"*
+  was attached to **R5**, the five-word capability. `canon_rule.kind`, `from_order` and
+  `until_order` are NULL on all six with no reader in the critic path — the same family as C42.
+
+  🔴 **AND THE MEASUREMENT REFUTES IT.** Restricted to R1 alone — the one exclusive rule, the one
+  the plant targets — on 4 real drafts through the shipped route against the running image:
+
+  ```
+  planted  01a02d22  flagged=False  canon=4  rules=1
+  control  01a02d22  flagged=True   canon=3  rules=1
+  planted  01a02d22  flagged=True   canon=3  rules=1
+  control  01a02d22  flagged=True   canon=3  rules=1
+  planted  01a02d21  flagged=True   canon=4  rules=1
+  control  01a02d21  flagged=True   canon=3  rules=1
+  planted  01a02d20  flagged=True   canon=3  rules=1
+  control  01a02d20  flagged=True   canon=3  rules=1
+  ```
+
+  **The control flags MORE than the plant (4/4 against 3/4).** The unfalsifiable rules are not
+  the false-positive floor. **The floor is the judge's treatment of R1 itself** — which is
+  precisely what C30's verdicts #1 and #3 described, a span that OBEYS R1 flagged under R1. So
+  §12's conclusion is unchanged and the seventh candidate joins the other six.
+
+  📐 **What DOES move is the prose-judge deferral, and it gets its sharpest evidence yet.**
+  `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE` now rests on **4/4 false attributions on
+  canon-conforming prose with a single rule in play** — no rule-count confound, no competing
+  ids, nothing to blame but the judgement.
+
+  🔬 **THE NON-VACUITY CHECK IS THE LOAD-BEARING PART, and the bite proves it.** The restriction
+  is applied by deactivating rows, so a run where it silently failed would produce numbers that
+  look like an answer. Every response carries `active_rule_count`; if it is not 1 the verdict is
+  `UNAPPLIED` and **no rate is reported at all**.
+
+  ```
+  Q1  line 79: `wrong = [...]` -> `wrong = []`
+        FAIL  a response reporting 6 rules is UNAPPLIED, not a result
+                -> got SEPARATED, planted 2/2, control 0/2
+        FAIL  ...and UNAPPLIED beats a separation that LOOKS perfect
+                -> got SEPARATED, planted 1/1, control 0/1
+  ```
+
+  **Without the check the harness invents a perfect positive from an experiment that never ran.**
+  That is this repo's *"injecting a fake at the chokepoint cannot prove the chokepoint is wired"*,
+  in the one place where a false positive would have overturned a sealed decision.
+
+  ⚙️ **THE WRITE IS GUARDED BY PORT NUMBER, not by hostname.** The run deactivates canon rules,
+  so it refuses anything but `lw-iso` (25555) and names dev's 5555/5556 explicitly — *a hostname
+  is a string someone can get right while still pointing at dev*. Rules restored in a `finally`
+  and the restoration verified in the output: **active after: 6 (was 6)**.
+
+  ⚠️ **One self-inflicted stop worth keeping.** My first `_psql` passed `env={"PGPASSWORD",
+  "PATH"}`, which REPLACES the environment — Windows lost `SystemRoot` and psql failed with
+  *"could not translate host name localhost"*. A DNS error that reads like broken infrastructure
+  and is nothing of the kind. Copy the environment; never replace it.
+
+  **QC (a) gates:** `qc5-arm1a-rule-isolation --selftest` **11/11** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` 114; four plan gates green.
+  **QC (b) live smoke vs the RUNNING image:** every row above is an HTTP response from
+  `lw-iso-composition-service-1` on 28217, through the shipped `/critique` route, judged by the
+  book's own critic.
+  **QC (c) real data:** 4 flow-produced drafts of the acceptance book that name the canon
+  antagonist, planted arm differing from control by one string. Dev untouched.
+
+  ⛔ **This does not close QC-5 and does not reopen §12.** It eliminates a seventh candidate and
+  it was the PO's question, which is why it was worth 8 LLM calls: the alternative was authoring
+  rule windows against a hypothesis nobody had tested.
   ---
   ### 🔻 QC-5 C43 2026-08-24 — **my own "first movement" did not replicate, and that closes the diagnosis**
 

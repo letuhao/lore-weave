@@ -1,0 +1,75 @@
+{
+ "verdict": {
+  "verdict": "NOT-SEPARATED",
+  "planted_flagged": "3/4",
+  "control_flagged": "4/4",
+  "baseline_6_rules": "planted 8/8 · control 7/8 (C37, pre-verification)",
+  "reason": "restricting to the one exclusive rule did NOT separate the arms — §12 stands, and the rule corpus is not the cause"
+ },
+ "rows": [
+  {
+   "arm": "planted",
+   "job": "01a02d22",
+   "flagged": false,
+   "canon": 4,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "control",
+   "job": "01a02d22",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "planted",
+   "job": "01a02d22",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "control",
+   "job": "01a02d22",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "planted",
+   "job": "01a02d21",
+   "flagged": true,
+   "canon": 4,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "control",
+   "job": "01a02d21",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "planted",
+   "job": "01a02d20",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  },
+  {
+   "arm": "control",
+   "job": "01a02d20",
+   "flagged": true,
+   "canon": 3,
+   "rules": 1,
+   "error": null
+  }
+ ]
+}

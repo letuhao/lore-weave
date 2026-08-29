@@ -1718,6 +1718,30 @@ tracked identity would flag one and not the other. Neither model does.
 | the canon rules are un-windowed | the only one that moved a number: R1 is cited on 7 of 8 clean drafts, and removing it takes the clean arm 7/8 → 4/8 | C42 |
 | narrative-position framing | **did not replicate** — reported as movement off single runs, flat on re-measurement | C43 |
 
+✅ **A SEVENTH CANDIDATE, PROPOSED BY THE PO AND ELIMINATED BY MEASUREMENT (C44, 2026-08-24).**
+The six above are all about the JUDGE. The PO asked the question none of them asks — *"is the
+input data explicit about what a canon IS? If there is no explicit definition, how can it be
+evaluated as violated?"* — and reading the book's own `canon_rule` rows makes it a real
+hypothesis: **only R1 states an exclusion.** R2–R4 are positive membership facts, R5 is a
+five-word capability, and R6 (*"spirit energy is this world's power system"*) is a
+definition nothing narrative can contradict. C30's adjudication is consistent with it: two of
+the four false verdicts **invent a clause and hang it on a real rule id**, and the fabricated
+*"and no one can drain his spirit energy"* was attached to R5.
+
+**Tested directly rather than argued.** `scripts/qc5-arm1a-rule-isolation.py` deactivates every
+rule but R1 on `lw-iso`, re-runs both arms on 4 real drafts, and restores in a `finally`:
+
+```
+active rules 6 -> 1   (every response reported active_rule_count=1)
+planted flagged  3/4        control flagged  4/4
+```
+
+**The control flags MORE than the plant, on the single exclusive rule the plant targets.** The
+unfalsifiable rules are not the false-positive floor — the floor is the judge's treatment of R1
+itself, which is exactly what C30's verdicts #1 and #3 described. The hypothesis is refuted and
+§12's conclusion is unchanged; what moves is `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`,
+which now has its sharpest evidence yet: **4/4 on canon-conforming prose with one rule in play.**
+
 **DECIDED — 1a is not satisfiable with this critic family, and the row says so rather than
 carrying an open question.** Three real defects were found and fixed on the way (C40/C41/C42),
 each a bi-temporal mechanism with no reader, which is this refactor's own subject. None of them
