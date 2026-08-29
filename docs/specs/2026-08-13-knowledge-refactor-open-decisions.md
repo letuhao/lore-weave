@@ -1892,6 +1892,66 @@ over-claim reddened exactly those four while all three positive cases stayed gre
 **Retry/registration:** `kal-read-surface-live-smoke` reports `NO-ROUTE` for each, so the count
 is visible on every run. It falls to zero when someone builds them.
 
+## 16 · Gates ratchet; deferrals do not — DECIDED: a third gate (T48l, 2026-08-24)
+
+**Cited by plan row `T48`.**
+
+**Measured** by the run-state audit, on a plan whose own numbers were sound —
+`plan-verify` PASS (69 tasks, 63 done, 6 tracked, 0 untouched, every open row citing a
+decision), progress block matching the checkboxes, both existing deferral gates green.
+**Four deferrals were nonetheless advertising as OPEN under rows the plan has ticked `[x]`,
+and three of them are contradicted by a number their own gate prints on every single run:**
+
+| deferral | row | its premise | what the gate prints today |
+|---|---|---|---|
+| `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES` | T54 `[x]` | class (d) 34 must move before AGE can be the default | `class (d) 32/32 — port-adoption debt; NOT an engine blocker since T54c` |
+| `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` | T42d `[x]` | zero adopters, 71 binders, floor 11 | `53 bind graph_repos (ceiling 53); 21 import GraphStore (floor 21)` |
+| `D-T25-INDEX-RETIREMENT-BLOCKED-BY-TWO-LIVE-READERS` | T46 `[x]` | `vector bypass 4/4 — 2 LIVE reader(s) still block` | `vector bypass 2/2 (floor 2) — no LIVE reader left` |
+| `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` | T42a `[x]` | the upper bound is unconformable | §9.3 accepted it 6 days earlier; the heading still said OPEN |
+
+**The diagnosis, not the divergence (rule 13).** Every one of these installed a mechanism, and
+**every mechanism works** — `port-adoption-gate` has printed the discharging number on each of
+those commits. What does not exist is anything that CLOSES a deferral when its own cited number
+crosses. A gate ratchets by construction: its floor is in the file the code is in, so rule 5
+drags it along. A deferral is prose in a journal, and prose has no ratchet.
+
+**Why neither existing gate sees them.** `stale-deferral-gate` fires when a deferral's own
+`Retry when` says it is closed; none of these says that — they name CONDITIONS (*"when class (d)
+moves"*, *"when the floor rises"*, *"when the two live readers go"*) that came true elsewhere.
+`superseded-deferral-gate` needs a spec claiming to replace the id; none does. Both are green
+and both are right.
+
+**DECIDED — the check is STRUCTURAL, because the semantic one is not writable.** Comparing each
+deferral's cited metric against its gate's live reading is the check one would want, and it
+would be a keyword heuristic over prose in four shapes naming numbers four gates format four
+ways — which `stale-deferral-gate`'s own docstring already records as measured-unreliable. So
+`scripts/discharged-deferral-gate.py` asks a question with a yes/no answer:
+
+> a deferral heading that advertises OPEN must not sit inside a row marked `[x]`.
+
+A deferral is an **obligation**. The plan is a journal, so a row's span legitimately carries
+other rows' evidence — but an obligation filed under a finished row is unfindable, which is
+exactly how these four survived. Three honest fixes: strike it with the measurement that
+discharged it; mark it `ACCEPTED` **with the § that accepted it**; or move it under the open row
+it belongs to.
+
+**The escape hatch is itself falsifiable (rule 3).** A bare `ACCEPTED` would be a magic word
+that silences any finding, so it is honoured only alongside a `§` citation, and selftest case 7
+is the control that pins it — **BITE W** drops the citation requirement and reds exactly that
+case. **BITE V** drops the ticked-row guard and reds exactly the two controls (an open deferral
+under a `[~]` row, and under an untouched one) while every positive case stays green, which is
+the shape an over-reporting gate would pass.
+
+**Cost of leaving them open, since it is not hypothetical.** `D-AGE-DEFAULT-SPLITS…` made T17
+read as the critical path to this plan's goal for five days, and its TITLE is the false premise
+— T54c answered it by name two days after it was written. The plan already records what this
+class costs, about a different id: *"the mechanism that made a settled question read as open for
+eight days and stopped a run on a decision nobody owed."*
+
+**Retry/registration:** `discharged-deferral-gate` runs in `.githooks/pre-commit` and is
+discovered by `gate-wiring-gate` (113 → 114). Its count is zero today and goes non-zero the
+moment a row is ticked over an open obligation.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

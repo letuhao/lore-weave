@@ -131,6 +131,14 @@ command -v python >/dev/null 2>&1 || PY=python3
 # docs/specs/2026-08-21-deferral-supersession-ledger.md and enforces only what that records.
 "$PY" "$ROOT/scripts/superseded-deferral-gate.py" --selftest
 "$PY" "$ROOT/scripts/superseded-deferral-gate.py"
+# The THIRD way a settled question reads as live, and the one the other two cannot see: an
+# OPEN deferral filed under a row the plan has TICKED. Neither sibling fires on these --
+# their `Retry when` fields name CONDITIONS ("when class (d) moves", "when the floor rises")
+# that came true while the prose sat still, and no spec claims to supersede them. Found
+# 2026-08-24 by the run-state audit, four live, three contradicted by a number their own
+# gate prints on every run. Gates ratchet; deferrals do not, so this one closes the loop.
+"$PY" "$ROOT/scripts/discharged-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/discharged-deferral-gate.py"
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call graph_repos with no Cypher of its own, pass that gate, and still break on an engine

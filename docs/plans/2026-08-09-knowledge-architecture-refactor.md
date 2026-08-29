@@ -33,9 +33,9 @@ scope if full plan, not small slices, need full plan first before do anything el
 
 **Phases 0–5 are LANDED.** Phase 0 (`6ee50af00`) · Phase 1 (`cfbcea8b5`, `3fbf79afb`) ·
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
-Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
+Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: the run-state repair — 4 discharged deferrals still open on ticked rows.**
+**RESUME: T33 §4.3 — the causal labelling sheet: ~20 pairs, 2 chapters, the PO labels.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,11 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 102 of 149 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 103 of 149 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (36/46) · `T25` (18/25) · `T33` (3/4) · `QC-5` (32/60) · `T48` (12/13) · `T49` (1/1)
-
-> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+**OPEN:** `T17` (36/46) · `T25` (18/24) · `T33` (3/4) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11002,7 +11000,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   Neither blocker survives, so T36 is not blocked. What follows is the work, done.
 
-  ### ✅ HALF 1 — THE AXIS. The canon read is position-windowed. **DONE.**
+  ### ✅ T36 HALF 1 — THE AXIS. The canon read is position-windowed. **DONE.**
 
   **The docstring this task was built on was stale.** It claimed relations *"carry datetime
   validity (`valid_until`), a DIFFERENT axis from `event_order`, so they are NOT
@@ -11058,7 +11056,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   Tests were run against a **throwaway Neo4j** (`lw-t36-neo4j`, port 7999). The suite's own
   guard refuses the dev graph's ports; that guard was respected, not bypassed.
 
-  ### ✅ HALF 2 — THE CONSUMPTION. The guard now asks the role question. **DONE.**
+  ### ✅ T36 HALF 2 — THE CONSUMPTION. The guard now asks the role question. **DONE.**
 
   **The half nobody had located.** Half 1 made the relation payload *correct*; it did not make
   it *read*. The guard consumed only `entities` + `status` — `check_canon` → `gone_cast_in_draft`
@@ -11101,7 +11099,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   The second bite is the one that matters: it proves the spend default is *enforced by a test*,
   not merely written in a comment.
 
-  ### ✅ HALF 3 — THE AUTHORING PATH HAD NO STORY AXIS. **FIXED, and the data now exists.**
+  ### ✅ T36 HALF 3 — THE AUTHORING PATH HAD NO STORY AXIS. **FIXED, and the data now exists.**
 
   Chasing "make the data" found the third and last blindness, and it was code again.
 
@@ -13846,7 +13844,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | The per-rule verdict channel is what made this visible at all: the four dimension scores are identical across the two arms, so anything keyed on the score alone reads them as the same passage. §2.3's *"`violations[]` keyed by `rule_id` is the enforceable output"* is why the difference is inspectable. |
   | **To unblock** | A PO call, and it is a real one: either accept prose-judge false positives as the local-model ceiling the way §7.2 did for the role judge — knowing this one reaches authors — or spend on precision here. C21 is the baseline either way: a re-run that leaves the corrected arm clean while the planted arm still cites R1 correctly is the target. |
   | **Re-evidenced on the SHIPPED critic 2026-08-23 (C30)** | C26's n=4 was taken on the harness critic (`51ea9fd7…`) — the one `D-QC5-ACCEPTANCE-NOT-MEASURED-ON-THE-SHIPPED-CRITIC` says the acceptance should never have been scored on. Re-adjudicated on the book's critic (`019eb620…`), the one authors get: **4 attributed verdicts, 4 false, 0 sound** (C26 was 3 false, 1 sound). The shape is worse, not better: two of the four cite a **real** rule id and invent its CONTENT, so `map_rule_tokens` cannot drop them the way it drops an invented id. The decision is unchanged in kind and no longer rests on verdicts from a critic users do not get. |
-  | **DECIDED BY THE PO 2026-08-24 (C31)** | **Spend on precision first**; if precision cannot be reached, default the judge OFF behind an explicit user-controlled setting on the FE, consistent with the settings GUI that already exists — *"already have strong GUI setting for user, just allow they choice"* — and build that surface immediately if it is missing or inconsistent. C31 delivers the first half: the root cause is one prompt clause (`a why that describes THAT rule`), the obvious prompt rewrite FAILED (the model fills the contradiction template with the rule being obeyed), and a narrow passage-aware SECOND pass keeps a planted violation 4/4 while dropping 2/2 clean and 14/14 historical false positives — **on a 26B verifier**. The shipped 7B critic keeps 0/3, so it cannot audit itself. Remaining: an end-to-end re-run against a rebuilt image, and the PO call on whether an independent verifier model justifies a 7th `ModelRole` (a closed set shared across three model stores). |
+  | **DECIDED BY THE PO 2026-08-24 (C31)** | **Spend on precision first**; if precision cannot be reached, default the judge OFF behind an explicit user-controlled setting on the FE, consistent with the settings GUI that already exists — *"already have strong GUI setting for user, just allow they choice"* — and build that surface immediately if it is missing or inconsistent. C31 delivers the first half: the root cause is one prompt clause (`a why that describes THAT rule`), the obvious prompt rewrite FAILED (the model fills the contradiction template with the rule being obeyed), and a narrow passage-aware SECOND pass keeps a planted violation 4/4 while dropping 2/2 clean and 14/14 historical false positives — **on a 26B verifier**. The shipped 7B critic keeps 0/3, so it cannot audit itself. ~~Remaining: an end-to-end re-run against a rebuilt image, and the PO call on whether an independent verifier model justifies a 7th `ModelRole`.~~ **BOTH LANDED, corrected 2026-08-24 (T48l).** C33 shipped the seventh role — `CRITIC_VERIFIER`, named so it cannot collide with campaigns' own `verifier` — and C34–C36 ran it live against rebuilt images. This line survived as the last unstruck 'remaining' on a discharged decision, and it is what made me report a buildable leg on QC-5 that had been built two days earlier. |
   | **Retry when** | ⚠️ **INVESTIGATED 2026-08-21 (C26), per the PO's *investigate before deciding*.** Four attributed verdicts adjudicated by hand against the rule texts and quoted spans: **3 false, 1 sound**. The false ones share one shape — *the stated reason contradicts the span it cites or the rule it names* (a simile read as a factual claim; a non-sequitur; a span that obeys the rule it is flagged under). The sound one is the `flow_control` R5 verdict, which is what C25's clause 2 rests on — checked first, so C25 stands. **The decision is now informed and still owed:** accept this as the local ceiling knowing this judge is ON by default, or spend on precision. n=4 is small and self-selected (they are the verdicts already in evidence), which the PO should weigh. |
 
   ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**
@@ -18633,7 +18631,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `idx_entity_facts_book` already does — and the hot path never needs even that. At 35 MB
   partitioning is operational surface bought with nothing.
 
-  ### 🔴 THE PRICE NOBODY HAD WRITTEN DOWN
+  ### 🔴 T40 THE PRICE NOBODY HAD WRITTEN DOWN
 
   Postgres requires every UNIQUE constraint on a partitioned table to **contain the partition
   key**. `uq_entity_facts_natural` is
@@ -18842,7 +18840,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   disposable"* — **it was written for this job and never wired.** Fixed in the workflow, with
   `CONFORMANCE_REQUIRE_REAL=1` beside it so the control has teeth where it matters.
 
-  ### 🔻 DEFERRAL `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` — the upper bound is unconformable
+  ### 🔻 DEFERRAL `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` — T42a: **ACCEPTED FOREVER, spec §9.3**
+
+  Not discharged and never will be: the upper bound is STRUCTURALLY unassertable through the
+  port, a property of the contract rather than unfinished work. `port-adoption-gate` carries it
+  as a ceiling that cannot fall — `port parameters 4/96 unconformed (ceiling 4) — every one is
+  STRUCTURALLY unassertable and carries its reason (§9.3)`. It wore an OPEN marker for six days
+  after the § that accepted it landed, which is why `discharged-deferral-gate` demands the
+  citation and not the word.
 
   | | |
   |---|---|
@@ -19303,7 +19308,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   assert the extension loads.
   (blocks T42)
   ---
-  ### ✅ DONE 2026-08-12 — one image now holds graph + vectors, and the smoke proves it
+  ### ✅ T42b DONE 2026-08-12 — one image now holds graph + vectors, and the smoke proves it
 
   ```
   [pgk-smoke] server=PG18  pgvector=0.8.6  pgvectorscale=0.9.0
@@ -19373,7 +19378,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   bites any graph-per-project naming scheme derived from a short id.
   (blocks T42)
   ---
-  ### ✅ DONE 2026-08-12 — `app/db/age_bootstrap.py` + 10 tests against a real AGE
+  ### ✅ T42c DONE 2026-08-12 — `app/db/age_bootstrap.py` + 10 tests against a real AGE
 
   ```
   10 passed in 2.26s     (tests/integration/db/test_age_bootstrap.py, T42b image)
@@ -20072,7 +20077,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Sealed B1 — *"Ports (intra-service substitutability)"* — is therefore unguarded.**
   **Do:** a shrink-only gate on the import count, so port adoption can only improve.
   ---
-  ### ✅ DONE 2026-08-12 — `scripts/port-adoption-gate.py`, and it found something worse
+  ### ✅ T42d DONE 2026-08-12 — `scripts/port-adoption-gate.py`, and it found something worse
 
   ```
   [port-adoption-gate] 71 module(s) bind `neo4j_repos` directly (ceiling 71);
@@ -20147,7 +20152,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (b) live — N/A**: static analysis over the source tree, crosses no service seam.
   **QC (c) real data — N/A**: produces no data; the measurement *is* the output.
 
-  ### 🔻 DEFERRAL `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` — the port is unreachable
+  ### ~~DEFERRAL~~ `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` — T42d: **DISCHARGED by its own number**
+
+  Its Blocker reads *"Zero application modules import `GraphStore` … while 71 bind
+  `neo4j_repos`"*, and its own Mechanism row is the floor in `port-adoption-gate`. That gate
+  prints, today: `53 module(s) bind graph_repos directly (ceiling 53); 21 import GraphStore
+  (floor 21)`. Zero became 21, 71 became 53, and its `Retry when` — *"the migration reaches the
+  graph read/write sites"* — happened across A16–A32. The row it said it blocked has since
+  shipped. **The mechanism fired on every commit; nothing ever read it back.**
 
   | | |
   |---|---|
@@ -20172,7 +20184,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   leaving a reader to discover it. Making relations rebuildable would mean a SECOND SSOT, which
   is the thing this refactor exists to remove. An accepted design consequence is not owed work.
   ---
-  ### ✅ BUILT AND DRILLED — `app/jobs/graph_rebuild.py`
+  ### ✅ T41 BUILT AND DRILLED — `app/jobs/graph_rebuild.py`
 
   ⛔ **MY "depends on the engine" REASONING WAS WRONG, and the port is why.** I parked this on
   the grounds that *"if AGE wins, the graph IS Postgres and T41 changes shape"*. But the
@@ -20684,7 +20696,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   not extraction-derived relations. `D-T41-RELATIONS-NOT-REBUILDABLE` stays open under T41 as
   its own question.
   ---
-  ### 🎯 REBUILD DRILL RUN 2026-08-13 — on a REAL book, timed
+  ### 🎯 QC-7 REBUILD DRILL RUN 2026-08-13 — on a REAL book, timed
 
   The plan's DR claims rested on a path nobody had run against real data. Read a book's
   authored entities out of Postgres and re-projected them into an EMPTY graph through the
@@ -21984,7 +21996,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   is now a NUMBER rather than prose — `port-adoption-gate` pins the bypass at 4/4 (floor 2) and
   prints the two LIVE readers in its own output every run — and the residue has its own row.
 
-  ### 🔻 DEFERRAL `D-T25-INDEX-RETIREMENT-BLOCKED-BY-TWO-LIVE-READERS`
+  ### ~~DEFERRAL~~ `D-T25-INDEX-RETIREMENT-BLOCKED-BY-TWO-LIVE-READERS` — T46: **DISCHARGED on its own cited metric**
+
+  Its Evidence quotes `port-adoption-gate: vector bypass 4/4 — 2 LIVE reader(s) still block`.
+  That same gate prints, today: `vector bypass 2/2 (floor 2) — no LIVE reader left; the
+  remainder is the benchmark floor`. **The two live readers it is named after are gone.** What
+  its *To unblock (a)* still names — a dev passage write so the PG secondary is non-empty — is
+  not this row's; it is carried by spec §9.1 and GRANTED by the PO 2026-08-24. Filed under a
+  closed row it was unfindable from the row that owes it.
 
   | | |
   |---|---|
@@ -22647,7 +22666,15 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `graph_backend.py`, so the pin governs this checkout and not that process.
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §8.1, §8.2. Unfinished, not undecided.
   ---
-  ### 🔻 DEFERRAL `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES`
+  ### ~~DEFERRAL~~ `D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES` — T54: **DISCHARGED two days after it was written, and its TITLE is the false premise**
+
+  It says the AGE default must wait for class (d) to move. The very next cycle's heading is
+  *"the two-store split is closed: one backend, one store, in ONE function"*, and its text
+  answers this block by name: *"The row's own 'what must move' table said 34 modules had to
+  migrate to the port first; §10.1's second path means they do not. **One function, not 34
+  module migrations.**"* `port-adoption-gate` has printed the verdict on every run since:
+  `class (d) 32/32 — port-adoption debt; NOT an engine blocker`. Left open, it made the
+  migration row read as the critical path to the goal for five days.
 
   | | |
   |---|---|
@@ -23652,6 +23679,115 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48l 2026-08-24 — **four deferrals were advertising as OPEN on rows the plan had TICKED, and three were refuted by a number their own gate prints every run**
+
+  ```
+  NEW  scripts/discharged-deferral-gate.py    12-case --selftest · 2 bites · wired
+  gates discovered  113 -> 114        orphan evidence blocks  10 -> 0
+  the gate on the real plan  4 findings -> 0
+  ```
+
+  🎯 **The run state's NUMBERS were sound, which is what makes this worth a row.** `plan-verify`
+  PASS — *69 tasks, 63 done, 6 tracked, 0 untouched; 6 unfinished cite a decision, 0 do not* —
+  the progress block matching the checkboxes, and **both** existing deferral gates green. The
+  audit still found four live obligations filed where nobody would look:
+
+  ```
+  D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES   T54  [x]
+  D-T42D-GRAPHSTORE-HAS-NO-CALLERS                     T42d [x]
+  D-T25-INDEX-RETIREMENT-BLOCKED-BY-TWO-LIVE-READERS   T46  [x]
+  D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL                 T42a [x]
+  ```
+
+  ⚖️ **Three are refuted by `port-adoption-gate`, which has printed the refutation on every
+  commit since.** Not inferred — the deferral's own cited metric, beside today's reading:
+
+  ```
+  says  class (d) 34 must move first     today  class (d) 32/32 — NOT an engine blocker (T54c)
+  says  0 adopters · 71 binders · floor 11      53 bind graph_repos · 21 import GraphStore
+  says  vector bypass 4/4 — 2 LIVE readers      vector bypass 2/2 — no LIVE reader left
+  ```
+
+  🔴 **`D-AGE-DEFAULT-SPLITS-THE-GRAPH-UNTIL-CLASS-D-MOVES` has a FALSE PREMISE IN ITS TITLE**,
+  and `T54c` answered it by name **two days after it was written**: *"the two-store split is
+  closed: one backend, one store, in ONE function… §10.1's second path means they do not. **One
+  function, not 34 module migrations.**"* Left open, it made **T17 read as the critical path to
+  this plan's goal for five days.** The plan already priced this class, about a different id:
+  *"the mechanism that made a settled question read as open for eight days and stopped a run on
+  a decision nobody owed."*
+
+  📐 **THE DIAGNOSIS IS ONE SENTENCE: GATES RATCHET, DEFERRALS DO NOT.** Every one of these
+  installed a mechanism and **every mechanism works.** A gate's floor lives in the file the code
+  lives in, so rule 5 drags it along. A deferral is prose in a journal, and prose has no
+  ratchet — so the condition came true somewhere else and nothing carried the news back.
+
+  ⚠️ **Neither existing gate can see them, and both are RIGHT.** `stale-deferral-gate` fires when
+  a deferral's own `Retry when` says it is closed; none of these says that — they name
+  *conditions*. `superseded-deferral-gate` needs a spec claiming to replace the id; none does.
+  A third question was missing, not a third heuristic.
+
+  🔬 **STRUCTURAL, because the semantic check is not writable — and that is measured, not
+  preferred.** Comparing each cited metric to its gate's live reading means parsing prose in four
+  shapes naming numbers four gates format four ways. `stale-deferral-gate`'s own docstring
+  already records what that costs: *"a keyword heuristic tried during T46h flagged three, missed
+  the fourth, and would have swept in a block that genuinely disagrees with itself."* So the new
+  gate asks a question with a yes/no answer — **an OPEN deferral must not sit inside a `[x]`
+  row** — and offers three honest fixes: strike it with the measurement, mark it `ACCEPTED` with
+  the § that accepted it, or move it under the open row that owes it.
+
+  🧪 **BITES — and both red exactly the CONTROLS, which is the load-bearing half.**
+
+  ```
+  V  line 129: drop the `state.get(current) != "x"` guard
+       FAIL  the SAME block under an OPEN row is not reported   (got D-AGE-SPLITS)
+       FAIL  a row that is neither [x] nor [~] is not treated as closed  (got D-LATER)
+             every POSITIVE case stayed green — an over-reporting gate passes all of them
+  W  line 131: honour `ACCEPTED` without requiring a `§`
+       FAIL  bare ACCEPTED with NO section is still reported — else it is a magic word
+  ```
+
+  **The escape hatch had to be falsifiable too (rule 3).** A bare `ACCEPTED` would be a word
+  that silences any finding; it is honoured only beside a `§` citation, and BITE W is the proof
+  that requirement is load-bearing rather than decorative.
+
+  ⚠️ **MY FIRST DRAFT OF THE FIX RE-ATTRIBUTED THREE BLOCKS TO THE WRONG ROWS, and the generated
+  block caught me in the same commit.** I cited the discharging row inside each new heading —
+  `(T17 A24)`, `T54c`, `T43` — and `owner_of`'s rule is that *a heading which NAMES a row is a
+  declaration and outranks position*. `T17` went **36/46 → 36/47** on a row I had not touched.
+
+  ```
+  before   T17 (36/46) · T25 (18/25)
+  my fix   T17 (36/47) · T25 (18/25)     <- three headings handed to T17/T43
+  after    T17 (36/46) · T25 (18/24)     <- heading names its OWN row; detail moved one line down
+  ```
+
+  **T25's 25 → 24 is correct and is the mechanism working**: `SLICE_RE` requires a status emoji,
+  so striking a `🔻` retires it from the outstanding-block count. I had walked straight into the
+  defect this cycle exists to fix — writing prose that silently re-owned somebody else's
+  evidence — and the only reason it did not ship is that the count is DERIVED.
+
+  📌 **Rule 12 discharged while I was here: 10 evidence blocks named no row, now 0.** All ten
+  resolved correctly by position *today*, so nothing was miscredited — but a block inserted above
+  any of them would have silently re-attributed it, which is exactly how `T39` came to read
+  16/24 while owning 2. Also struck: *"Phases 6–9 have not started"* (eight rows in them are
+  `[x]`) and C31's *"Remaining: … a 7th `ModelRole`"* (C33 shipped `CRITIC_VERIFIER`; C34–C36 ran
+  it live) — the line that made me report a buildable leg on QC-5 that had been built two days
+  earlier.
+
+  **QC (a) gates:** `discharged-deferral-gate --selftest` **12/12** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` **114**, all wired or exempted;
+  `gate-teeth-gate` PASS, 75 CI-invoked gates, baseline unmoved; `superseded-deferral-gate`
+  8 → **7** still-open pairs as a consequence; four plan gates green; `plan-verify` PASS.
+  **QC (b) live smoke:** N/A — this cycle crosses no service seam. It touches `scripts/` and two
+  documents; no service code, no image, no route.
+  **QC (c) real data:** the gate's live run IS the data — **4 findings → 0** on the real plan,
+  and the three discharging readings above are `port-adoption-gate`'s output on this tree, not
+  quotations from the rows that were wrong.
+
+  ⛔ **What this does NOT do: close T48.** Its first criterion is *every task fully implemented*,
+  and five rows are open. What it removes is a different thing — the four obligations that made
+  the run state read as owing more than it does.
   ---
   ### ✅ T48k 2026-08-24 — **the verifier said "every gate is green" while running 6 of 113, and the full sweep is RED**
 
