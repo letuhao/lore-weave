@@ -9929,6 +9929,13 @@ async def stream_response(
                 # or without a replacement. The old text is preserved in
                 # drop_superseded_tools' docstring, labelled as history.
                 from app.services.tool_discovery import drop_superseded_tools
+                # D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS (DQ-T57) — this call
+                # also moves each dropped legacy tool's declared phrasing onto the live
+                # successor that replaced it. R1 answerability (and find_tools recall, and the
+                # declaration arm) read the catalog this returns, so without that transfer the
+                # words a user actually says leave the turn along with the dead tool. See
+                # drop_superseded_tools' own docstring for the measurement and for the
+                # promote-the-definition variant that was built, measured and reverted.
                 discovery_catalog, _superseded = drop_superseded_tools(
                     discovery_catalog, set(session_row.get("pinned_legacy_tools") or ())
                     if session_row else set(),

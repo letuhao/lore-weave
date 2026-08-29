@@ -452,6 +452,65 @@ INTENT_GATED_SETUP_TOOLS: frozenset[str] = frozenset({
 SETUP_INTENT_SKILL = "glossary_shaping"
 
 
+def _final_live_successor(name: str, by_name: dict[str, dict]) -> str | None:
+    """The first NON-legacy tool reached by following ``superseded_by`` from ``name``.
+
+    A chain, not a single hop, because the catalogue has them: ``composition_get_prose`` ->
+    ``book_get_chapter`` -> ``book_read``, where the middle tool is itself legacy and is being
+    dropped on the same pass. A one-hop resolve would hand the vocabulary to a tool that is
+    about to be deleted, which loses it just as completely as not moving it at all.
+
+    Returns None when the chain dead-ends: no ``superseded_by``, a name absent from this
+    catalogue, or a cycle. 31 legacy tools are in that position (measured 2026-08-28) and this
+    deliberately invents nothing for them.
+    """
+    seen = {name}
+    cur = tool_superseded_by(by_name.get(name) or {})
+    while cur and cur in by_name and cur not in seen:
+        if not is_legacy_tool(by_name[cur]):
+            return cur
+        seen.add(cur)
+        cur = tool_superseded_by(by_name[cur])
+    return None
+
+
+def _inherit_superseded_vocabulary(
+    kept: list[dict], by_name: dict[str, dict], dropped: list[str],
+) -> list[dict]:
+    """Move each dropped legacy tool's declared synonyms onto the live successor.
+
+    See ``drop_superseded_tools``' docstring for why this is here rather than in
+    ``answerable_tools``: R2's union runs over a catalogue this function has already stripped,
+    so the union is inert exactly where it was written to fire.
+
+    Non-mutating — a new dict is built for each affected tool. The catalogue is cached per-user
+    in ``knowledge_client`` and shared across turns, so editing a def in place would leak one
+    turn's inheritance into every later reader of the same cached object.
+    """
+    inherited: dict[str, list[str]] = {}
+    for legacy in dropped:
+        succ = _final_live_successor(legacy, by_name)
+        if not succ:
+            continue
+        for syn in (tool_meta(by_name[legacy]).get("synonyms") or []):
+            if isinstance(syn, str) and syn:
+                inherited.setdefault(succ, []).append(syn)
+    if not inherited:
+        return kept
+    out: list[dict] = []
+    for td in kept:
+        extra = inherited.get(tool_name(td))
+        if not extra:
+            out.append(td)
+            continue
+        fn = td.get("function") or {}
+        meta = dict(tool_meta(td))
+        have = list(meta.get("synonyms") or [])
+        meta["synonyms"] = have + [s for s in extra if s not in have]
+        out.append({**td, "function": {**fn, "_meta": meta}})
+    return out
+
+
 def drop_superseded_tools(
     catalog: list[dict],
     pinned: "set[str] | frozenset[str] | None" = None,
@@ -496,17 +555,75 @@ def drop_superseded_tools(
     existed with no consumer on the turn path, because nothing was filtering these out for it
     to re-admit.
 
+    🔴 DROPPING A DECLARATION MUST NOT DROP ITS VOCABULARY — D-THE-MODEL-ASKS-INSTEAD-OF-
+    RAISING-THE-CARD-IT-HAS, owner 2026-08-28 (DQ-T57: "promote the replacement onto the wire").
+
+    ``answerable_tools`` carries a rule it calls R2: *whatever phrasing reaches A must also be
+    able to reach the tool that REPLACED A*, because 59 of 62 superseded pairs orphan at least
+    one phrasing — the deprecated tool declares the words a user actually says and its successor
+    declares the unified ones. R2 implements that as a UNION over the catalog it is handed: if A
+    matched, add A's ``superseded_by``.
+
+    The 2026-08-25 widening above silently disabled it. R2's union needs A to be IN the catalog
+    it reads, and per-pass answerability reads ``discovery_catalog`` — i.e. THIS function's
+    output, with every legacy tool already removed. So the union had nothing left to union from,
+    at exactly the pairs it was written for.
+
+    MEASURED 2026-08-28 against the live 316-tool catalogue, prompt "Undo delete rule — I
+    archived a canon rule by mistake, please restore it.":
+
+        answerable over the FULL catalog       -> {composition_canon_rule_restore,
+                                                   composition_canon_rule_edit}   (R2 fired)
+        answerable over this function's OUTPUT -> {}                              (R2 inert)
+
+    and live at K=5 the model found the archived rule, then asked the author to restore it in
+    PROSE rather than raising the Tier-A confirm card — it had no card to raise. The successor
+    ``composition_canon_rule_edit`` does declare "restore canon rule", but the author wrote
+    "please restore it"; the phrasing that actually matched, "undo delete rule", belonged to the
+    tool this function had just deleted.
+
+    So the fix is here, in the function that DESTROYS the information: when a legacy tool is
+    dropped, its declared synonyms transfer to the live successor that replaced it (following a
+    chain of ``superseded_by`` hops to the first non-legacy tool). One chokepoint, and it repairs
+    every reader of the narrowed catalog at once — R1 answerability, ``find_tools`` recall, the
+    declaration arm, the reads-only mood check — rather than R1 alone.
+
+    Free on the wire: ``_meta`` is consumer-only and ``strip_tool_meta`` removes it before the
+    provider request, so an inherited synonym costs zero tokens.
+
+    🔴 THE ALTERNATIVE WAS BUILT FIRST, MEASURED, AND REVERTED. The first attempt PROMOTED the
+    replacement's definition into this function's output. It passed 20 unit tests and did nothing
+    live: the promotion lands in ``discovery_catalog``, which is only a CANDIDATE pool — domain
+    selection runs afterwards and withheld ``composition_canon_rule_edit`` at
+    ``domain_not_selected`` on the very run under test. It also could not fire for this instance
+    at all, because the replacement was already present in the pool (``replacement in kept_names``
+    -> skip), which is why the server's own withheld record still showed the un-promoted reason.
+    A mechanism that fires and cannot reach the wire is worse than none.
+
+    MEASURED cost/recall of what shipped, over 1,917 distinct real user messages from the live
+    corpus: mean 0.069 extra tools forced per turn (median 0, max 3), 115 turns of 1,917 (6.0%)
+    gain at least one, across 7 distinct successors — dominated by the two pairs R2's own comment
+    names, ``book_get``->``book_read`` and ``book_scene_list``->``book_list``. The rejected
+    unconditional-promotion variant was ~27 extra tools per turn.
+
+    DOES NOT COVER: 31 legacy tools name no resolvable successor (``book_create``,
+    ``book_chapter_publish``, ``composition_publish`` — whose chain ends at a legacy tool with no
+    ``superseded_by``); their vocabulary is genuinely lost when they are dropped, and nothing here
+    invents a destination for it. Nor does inheritance put the successor on the wire by itself —
+    it makes the successor ANSWERABLE, and R1's forcing at the advertise chokepoint is what
+    carries it there; a successor absent from the turn catalog entirely (intent-gated) still
+    cannot be reached.
+
     Returns ``(kept, dropped_names)`` so the caller can record the withholding rather than
-    narrow the surface silently.
+    narrow the surface silently. A promoted replacement is counted in ``kept``, not
+    ``dropped`` — it was never withheld.
     """
     pinned = set(pinned or ())
-    present = {tool_name(td) for td in catalog}
     _by_name = {tool_name(td): td for td in catalog}
     kept: list[dict] = []
     dropped: list[str] = []
     for td in catalog:
         name = tool_name(td)
-        replacement = tool_superseded_by(td)
         # 2026-08-25 — WIDENED TO EVERY LEGACY TOOL, on the owner's standing decision that a
         # legacy tool is a DEAD tool. The old rule dropped one only when its named
         # replacement happened to be on the same wire, which left 31 legacy tools with no
@@ -522,6 +639,9 @@ def drop_superseded_tools(
             dropped.append(name)
             continue
         kept.append(td)
+    # The vocabulary the drop would otherwise delete, moved to whoever inherited the capability.
+    # AFTER the drop loop, so a successor that is ITSELF being dropped is never a destination.
+    kept = _inherit_superseded_vocabulary(kept, _by_name, dropped)
     if dropped:
         # Registered, not silently narrowed — the same reason filter_intent_gated_setup_tools
         # registers its own drops: "the runtime chose not to offer this and here is why" must
@@ -529,14 +649,19 @@ def drop_superseded_tools(
         # call site so a future caller cannot forget it.
         from app.services.instrument import record_surface_withheld
         for _n in dropped:
-            record_surface_withheld(
-                _n, stage="superseded",
-                reason=(
+            _succ = _final_live_successor(_n, _by_name)
+            if _succ:
+                reason = (
+                    f"superseded by {_succ}, which now also answers to this tool's declared "
+                    "phrasing"
+                )
+            else:
+                reason = (
                     f"superseded by {tool_superseded_by(_by_name[_n])}"
                     if tool_superseded_by(_by_name[_n])
                     else "marked visibility=legacy with no replacement named"
-                ) + " — legacy tools are not advertised; pin it via pinned_legacy_tools to keep it",
-            )
+                ) + " — legacy tools are not advertised; pin it via pinned_legacy_tools to keep it"
+            record_surface_withheld(_n, stage="superseded", reason=reason)
     return kept, dropped
 
 

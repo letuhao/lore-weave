@@ -165,6 +165,144 @@ class TestTheCallSiteIsWired:
         assert '"pinned_legacy_tools, "' in SRC
 
 
+class TestTheDroppedToolsVocabularySurvivesTheDrop:
+    """D-THE-MODEL-ASKS-INSTEAD-OF-RAISING-THE-CARD-IT-HAS, owner 2026-08-28 (DQ-T57).
+
+    \U0001f534 THE INVARIANT: dropping a declaration must not drop its VOCABULARY.
+
+    ``answerable_tools``' R2 rule says *whatever phrasing reaches A must also be able to reach
+    the tool that REPLACED A* — 59 of 62 superseded pairs orphan at least one phrasing. R2
+    implements it as a union over the catalogue it is handed: if A matched, add A's
+    ``superseded_by``. The 2026-08-25 widening (drop EVERY legacy tool) silently disabled that,
+    because per-pass answerability reads ``discovery_catalog`` — this function's OUTPUT, with A
+    already removed. The union had nothing to union from, at exactly the pairs it was for.
+
+    MEASURED 2026-08-28 on the live 316-tool catalogue, prompt "Undo delete rule — I archived a
+    canon rule by mistake, please restore it.": answerable over the FULL catalog returned both
+    composition_canon_rule_restore and composition_canon_rule_edit; over this function's output
+    it returned NOTHING. Live at K=5 the model found the archived rule and asked the author to
+    restore it in prose — it had no confirm card to raise.
+
+    So the transfer happens HERE, in the function that destroys the information.
+    """
+
+    def _catalog(self):
+        return [
+            # The legacy tool declares the phrasing the author actually uses; its successor
+            # declares the unified vocabulary and does NOT repeat it. This is the real shape:
+            # composition_canon_rule_edit declares "restore canon rule", the author wrote
+            # "please restore it", and the phrase that matched — "undo delete rule" — belonged
+            # only to the tool being dropped.
+            _t("composition_canon_rule_restore", visibility="legacy",
+               superseded_by="composition_canon_rule_edit",
+               synonyms=["undo delete rule", "un-archive rule"]),
+            _t("composition_canon_rule_edit", tier="A",
+               synonyms=["edit canon rule", "manage canon rule"]),
+        ]
+
+    def _syn(self, kept, name):
+        for td in kept:
+            if td["function"]["name"] == name:
+                return list((td["function"].get("_meta") or {}).get("synonyms") or [])
+        raise AssertionError(f"{name} not in kept")
+
+    def test_the_successor_inherits_the_dropped_tools_phrasing(self):
+        kept, dropped = drop_superseded_tools(self._catalog())
+        assert "composition_canon_rule_restore" in dropped
+        syns = self._syn(kept, "composition_canon_rule_edit")
+        assert "undo delete rule" in syns, (
+            "the successor did not inherit the dropped tool's phrasing, so the words the "
+            "author actually says left the turn with the dead tool"
+        )
+
+    def test_the_request_that_failed_live_now_reaches_the_successor(self):
+        """The end-to-end property, asserted through the real matcher rather than by
+        inspecting synonym lists — this is the exact prompt measured at 0/5 live."""
+        from app.services.tool_surface import answerable_tools
+
+        prompt = ("Undo delete rule — I archived a canon rule by mistake, "
+                  "please restore it.")
+        before, _ = self._catalog(), None
+        assert not answerable_tools(prompt, [t for t in before if not t["function"]["_meta"]
+                                             .get("visibility") == "legacy"]), (
+            "control failed: the successor already answered this prompt without the fix, so "
+            "this test could not have caught the defect"
+        )
+        kept, _ = drop_superseded_tools(self._catalog())
+        assert "composition_canon_rule_edit" in answerable_tools(prompt, kept)
+
+    def test_the_successors_own_synonyms_are_kept(self):
+        """Inheritance is additive. A successor that loses its own declared vocabulary to make
+        room for a predecessor's has traded one orphaned phrasing for another."""
+        kept, _ = drop_superseded_tools(self._catalog())
+        syns = self._syn(kept, "composition_canon_rule_edit")
+        assert "edit canon rule" in syns and "manage canon rule" in syns
+
+    def test_a_chain_hands_the_vocabulary_to_the_first_LIVE_successor(self):
+        """composition_get_prose -> book_get_chapter -> book_read is real, and the middle tool
+        is itself legacy and dropped on the same pass. A one-hop resolve would hand the
+        vocabulary to a tool that is about to be deleted — losing it just as completely."""
+        catalog = [
+            _t("composition_get_prose", visibility="legacy",
+               superseded_by="book_get_chapter", synonyms=["show me the prose"]),
+            _t("book_get_chapter", visibility="legacy", superseded_by="book_read",
+               synonyms=["get chapter"]),
+            _t("book_read", tier="R", synonyms=["read book"]),
+        ]
+        kept, dropped = drop_superseded_tools(catalog)
+        assert set(dropped) == {"composition_get_prose", "book_get_chapter"}
+        syns = self._syn(kept, "book_read")
+        assert "show me the prose" in syns, "the chain's vocabulary stopped at a dropped tool"
+        assert "get chapter" in syns
+
+    def test_a_legacy_tool_with_no_resolvable_successor_loses_its_vocabulary_silently(self):
+        """The stated gap, pinned so it cannot be mistaken for a bug later: 31 legacy tools
+        name no successor. Nothing here invents a destination for them."""
+        catalog = [
+            _t("book_create", visibility="legacy", synonyms=["make a new book"]),
+            _t("book_read", tier="R", synonyms=["read book"]),
+        ]
+        kept, dropped = drop_superseded_tools(catalog)
+        assert dropped == ["book_create"]
+        assert "make a new book" not in self._syn(kept, "book_read")
+
+    def test_the_input_catalog_is_never_mutated(self):
+        """The federated catalogue is cached per-user in knowledge_client and shared across
+        turns; editing a def in place would leak one turn's inheritance into every later
+        reader of the same cached object."""
+        catalog = self._catalog()
+        before = [dict((td["function"].get("_meta") or {}).get("synonyms") and
+                       {"n": td["function"]["name"],
+                        "s": tuple((td["function"].get("_meta") or {}).get("synonyms") or ())}
+                       or {"n": td["function"]["name"], "s": ()})
+                  for td in catalog]
+        drop_superseded_tools(catalog)
+        after = [{"n": td["function"]["name"],
+                  "s": tuple((td["function"].get("_meta") or {}).get("synonyms") or ())}
+                 for td in catalog]
+        assert before == after, "drop_superseded_tools mutated the caller's catalog in place"
+
+    def test_a_pinned_legacy_tool_keeps_its_own_vocabulary_and_donates_none(self):
+        """A pinned tool is not dropped, so there is nothing to inherit — and the successor
+        must not quietly acquire the phrasing of a tool that is still on the wire itself."""
+        kept, dropped = drop_superseded_tools(
+            self._catalog(), {"composition_canon_rule_restore"},
+        )
+        assert dropped == []
+        assert "undo delete rule" in self._syn(kept, "composition_canon_rule_restore")
+        assert "undo delete rule" not in self._syn(kept, "composition_canon_rule_edit")
+
+    def test_the_withhold_reason_names_the_tool_that_took_over_the_phrasing(self):
+        from unittest.mock import patch
+
+        with patch("app.services.instrument.record_surface_withheld") as mock_record:
+            drop_superseded_tools(self._catalog())
+        reasons = [c.kwargs.get("reason", "") for c in mock_record.call_args_list]
+        assert any("composition_canon_rule_edit" in r and "phrasing" in r for r in reasons), (
+            f"no withhold reason says where the vocabulary went: {reasons}"
+        )
+
+
 class TestTheWithholdingIsRecorded:
     def test_the_helper_registers_each_drop(self):
         td = (pathlib.Path(__file__).resolve().parents[1]
