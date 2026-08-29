@@ -175,6 +175,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # backend, store, surface and port, and not the spine the architecture exists for.
 # Only the selftest runs here; --base-url needs a live stack.
 "$PY" "$ROOT/scripts/bitemporal-window-live-smoke.py" --selftest
+# The AUTH boundary. Every other live check reaches the KAL with X-Internal-Token, and
+# the guard's FIRST branch returns true for a valid internal token -- so the grant
+# check is never executed by any of them. The USER path, where the KAL is the
+# boundary because the BFF does no grant check, had no live proof at all.
+# Three arms, because a guard that refuses everything passes a refusal test.
+"$PY" "$ROOT/scripts/kal-auth-boundary-live-smoke.py" --selftest
 # A Go `replace` whose target the image build cannot resolve. This gate ALREADY EXISTED
 # and CI already ran it via `gate-wiring-gate --run-all` -- it was green on 2026-08-30
 # while alert-recorder and canary-controller could not be built at all. The wiring was

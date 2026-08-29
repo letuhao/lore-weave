@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 28 of 30 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 29 of 31 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (21/22) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (22/23) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,78 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48u 2026-08-30 — **every live check in this repo goes past the guard before it looks at a book**
+
+  ```
+  NEW  scripts/kal-auth-boundary-live-smoke.py    9-case --selftest · 1 LIVE bite · wired
+  live   SERVICE 200 · STRANGER 403 · ANON 401     ->  DISCRIMINATES
+  ```
+
+  🎯 **The coverage gap, stated exactly.** `KalAuthGuard`'s first branch is:
+
+  ```
+  // 1. SERVICE mode — a valid internal token; trust the forwarded X-User-Id.
+  if (cfg.internalToken && presented === cfg.internalToken) return true;
+  ```
+
+  `architecture-live-proof`'s five legs, `kal-read-surface-live-smoke`'s fourteen routes and
+  `bitemporal-window-live-smoke` all present that token. **Not one of them executes the grant
+  check.** The USER path — where the KAL *is* the security boundary, because its own docstring
+  says *"the BFF does NO grant check"* — had no live proof at all.
+
+  ⚖️ **THREE ARMS, because one proves nothing.** A guard that refuses everything passes a
+  refusal test; a guard that allows everything passes an allow test. Neither shows it
+  discriminates:
+
+  ```
+  SERVICE   valid internal token            -> 2xx   a trusted caller is let past
+  STRANGER  valid JWT, no grant on the book -> 403   refused on the GRANT
+  ANON      no credential                   -> 401   refused on AUTHENTICATION
+  ```
+
+  **401 and 403 differing is the load-bearing part.** A guard answering 403 to both looks
+  secure while rejecting on authentication alone — and the first valid token would walk through
+  the moment that check moved. `BLANKET-REFUSAL` is its own verdict for exactly that.
+
+  🔴 **AND MY FIRST TENANCY PROBE WAS MEANINGLESS — for a reason now built into the smoke.** I
+  sent two different `X-User-Id` values with an internal token and got the same 50 edges, which
+  reads as a leak. It is not: SERVICE mode trusts the header by design, and the route resolves
+  the tenant from `knowledge_projects` — *the book owner's tenant* — not from the caller.
+  Diagnosed rather than recorded (rule 13).
+
+  ⚠️ **Then the OWNER's own JWT returned 403, which reads as a worse defect and is not one
+  either.** The KAL sweep's `book_id` is a KG-only id with **no `books` row on iso**, so
+  `hasBookAccess` correctly answers no — to everyone. **A book the book-service does not know
+  refuses the owner, and that looks exactly like a working guard.** So the SERVICE arm is
+  REQUIRED and checked FIRST: if it cannot reach the data, the run is `UNSCORABLE` rather than
+  green. Two selftest cases pin that ordering.
+
+  🧪 **BITE T48u-1 — live, on the security boundary itself.**
+
+  ```
+  kal-auth.guard.ts:58   `if (!(await hasBookAccess(...)))`  ->  `if (false)`
+  rebuilt into the iso gateway
+    STRANGER (JWT, no grant)   http 200
+    verdict POROUS — "a JWT with NO grant on this book read it. The KAL is the security
+    boundary on the user path — the BFF does no grant check"
+  ```
+
+  Restored, rebuilt, `DISCRIMINATES` again, and `git diff` on the guard is empty.
+
+  📐 **Not added as a proof leg, deliberately.** `architecture-live-proof` is about the
+  ARCHITECTURE — backend, store, surface, port, spine. This is an access-control property of
+  one gateway, and folding it in would make a green architecture proof depend on a JWT secret
+  and a stranger's token being to hand. It is wired by its selftest and run explicitly, which
+  is the same treatment `kal-read-surface-live-smoke` gets.
+
+  **QC (a) gates:** `kal-auth-boundary-live-smoke --selftest` **9/9** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` OK; four plan gates green by direct exit code.
+  **QC (b) live smoke vs a REBUILT image:** two `iso.sh build knowledge-gateway` cycles — the
+  bite and the restore — with all three arms an HTTP response from that container.
+  **QC (c) real data:** the same book and entity the rest of the live proof uses.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels.
   ---
   ### ✅ T48t 2026-08-30 — **the leg whose ABSENCE hid T48s: the goal's proof now covers the spine the architecture exists for**
 
