@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 38 of 40 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 39 of 41 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (31/32) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (32/33) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,98 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ae 2026-08-30 — **the window sweep now covers all five graph-backed temporal routes, and its first run found the units bug T48ad had just shipped**
+
+  ```
+  HOLDS     entities/:entityId/neighborhood   rows=[25, 33, 41, 54]  head=81
+  HOLDS     wiki-neighborhood                 rows=[25, 33, 41, 54]  head=81
+  HOLDS     fact-for-check                    rows=[24, 39, 58, 78]  head=78
+  HOLDS     timeline                          rows=[0, 34, 50, 50]   head=50
+  NO-ROUTE  retrieve                          (T55b — refused by name)
+  [bitemporal] PASS — 5 route(s) swept, 0 not holding their position
+  ```
+
+  🎯 **T48ad fixed a second windowed route and left the detector covering only the first** — the
+  scope list did not move with the code (rule 5). Derived from the controllers: **11 of the 16
+  swept KAL routes accept a temporal parameter**, 5 of them graph-backed, and this smoke drove
+  ONE. I had checked `timeline` and `fact-for-check` **by hand** — and a hand-check is invisible
+  to CI, the same rule that makes a new gate carry a `--selftest`.
+
+  📐 **The route set is DERIVED, and an undrivable route is REPORTED.** `uncovered()` is the
+  ratchet: a temporal graph route with no recipe fails the sweep by name, because
+  `wiki-neighborhood` was uncovered for the whole of T48s's life and the leak survived precisely
+  because nothing said so out loud.
+
+  🔴 **AND THE FIRST RUN FOUND A DEFECT I SHIPPED ONE CYCLE EARLIER.** T48ad gave
+  `wiki-neighborhood` an `as_of` that was a bare ORDINAL. The KAL's `as_of` is a **CHAPTER** on
+  every route that takes one, and this route's caller — `build_context_brief` — passes
+  `chapter_sort_order`, a raw `sort_order`. Measured live:
+
+  ```
+  wiki-neighborhood  as_of=1,3,6,10  ->  0 relations at EVERY position
+  neighborhood       as_of=1,3       ->  25, 33 edges
+  ```
+
+  **A translator at chapter 3 would have received an empty neighbourhood.** Not a leak — the
+  opposite, and worse for it: empty is the SAFE-LOOKING direction, which is why T48s called it
+  the dangerous one, and `_ordinal`'s docstring on the sibling route exists to warn about exactly
+  this. Fixed by converting server-side with `EVENT_ORDER_CHAPTER_STRIDE`, mirroring the sibling,
+  and the KAL now forwards it under the unit-bearing name `as_of_chapter` so the two cannot drift
+  apart silently again. **The two routes now return identical numbers on identical inputs.**
+
+  ⚖️ **The KAL uses BOTH unit conventions, and the parameter NAME carries the unit** — recorded in
+  the recipe table rather than left to be rediscovered:
+
+  ```
+  as_of          a CHAPTER    neighborhood, wiki-neighborhood   converted server-side
+  at_order       an ORDINAL   fact-for-check                    already on the axis
+  chapter_order  a CHAPTER    timeline
+  ```
+
+  🔬 **The sweep produced BOTH readings of the units bug on its first run**, which is the
+  strongest evidence the three assertions are not redundant: `neighborhood` driven with ordinals
+  returned the head at every position and scored **LEAKS**; `wiki-neighborhood` driven with
+  chapters against an ordinal comparison returned nothing and scored **EMPTY**. Two opposite
+  symptoms, one cause, and a detector that checks only monotonicity would have passed both.
+
+  ⚠️ **Two recipe errors of mine, both diagnosed from the workload rather than assumed to be
+  route defects (rule 13).** `neighborhood`'s constant 54 was my ordinal axis, proven by
+  `as_of=1 -> 25 edges`. `timeline`'s ERROR was `limit: 200` against the endpoint's own ceiling —
+  `422 less_than_equal … le: 50`. A recipe that violates a contract measures nothing.
+
+  🧪 **BITE T48ae-1 — the ratchet.** `wiki-neighborhood`'s recipe key renamed at line 154:
+
+  ```
+  5 graph-backed temporal route(s) derived; 1 with no recipe
+  FAIL — UNCOVERED: ['wiki-neighborhood']. A temporal route this smoke cannot drive is how
+  `wiki-neighborhood` leaked for the whole of T48s's life.                          exit 1
+  ```
+
+  **BITE T48ae-2 — the units, live on a rebuilt image.** `internal_wiki.py:201`, stride dropped:
+
+  ```
+  EMPTY  wiki-neighborhood  rows=[0, 0, 0, 0]  head=81
+  FAIL — 5 route(s) swept, 1 not holding their position                             exit 1
+  ```
+
+  Exactly the state T48ad shipped, caught as EMPTY rather than passing — which is why `verdict()`
+  checks EMPTY *before* monotonicity. Both restored; the sweep returns PASS at exit 0.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **19/19** (10 new: coverage
+  derivation, the ratchet, the row counter); knowledge-service unit **4445 passed**;
+  translation-service **1174 passed**; `architecture-live-proof`, `kal-surface-census-gate`,
+  `graph-store-migrated-gate`, `kal-read-surface-live-smoke` selftests, `gate-wiring-gate`,
+  `knowledge-http-surface-gate`, `bitemporal-parity-gate`, `plan-final-verification` — all 0 by
+  direct exit code.
+  **QC (b) live smoke vs REBUILT images:** four `iso.sh build` cycles across knowledge-service and
+  knowledge-gateway — the units fix, the bite, the restore, and the confirmation. Every row in
+  every table above is an HTTP response from those containers.
+  **QC (c) real data:** the acceptance corpus's 紂王 neighbourhood — 81 edges over ten chapters —
+  plus the book's timeline and fact-for-check windows over the same corpus.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ad 2026-08-30 — **T48s again, on the SIBLING route: `wiki-neighborhood` advertised a spoiler window it did not have, and a translator saw chapter 10 while working on chapter 1**
 

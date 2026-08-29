@@ -393,7 +393,10 @@ export class KalReadController {
         // ordinal_valid_time` while accepting no temporal parameter at all, which is T48s's
         // sentence on the sibling route: an endpoint advertising a spoiler window it does not
         // have. Omitted => the transaction-time head, exactly as before.
-        ...(body?.as_of !== undefined ? { as_of: body.as_of } : {}),
+        // T48ae -- `as_of` is a CHAPTER here, exactly as on `entities/:id/neighborhood`, and
+        // the owning endpoint converts it onto the reading axis. Sent under its unit-bearing
+        // internal name so the two cannot drift apart silently again.
+        ...(body?.as_of !== undefined ? { as_of_chapter: body.as_of } : {}),
       },
       ctx,
     )) as Record<string, unknown>;

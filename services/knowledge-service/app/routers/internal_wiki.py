@@ -35,6 +35,7 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 from app.config import settings
 from app.db.neo4j import graph_session
 from app.adapters.graph_store_provider import get_graph_store
@@ -91,7 +92,7 @@ class WikiNeighborhoodRequest(BaseModel):
     #
     # None = the transaction-time head, which is what every pre-T48ad caller gets. The port has
     # honoured this since T48s and all four adapters are conformance-tested on it.
-    as_of: int | None = None
+    as_of_chapter: int | None = None
 
 
 class NeighborRelation(BaseModel):
@@ -188,7 +189,16 @@ async def get_wiki_neighborhood(
             glossary_entity_id=str(req.glossary_entity_id),
             project_id=project_id,
             rel_cap=req.rel_cap,
-            as_of=req.as_of,
+            # T48ae — CONVERT. The KAL's `as_of` is a CHAPTER on every route that takes
+            # one, and its caller here (`build_context_brief`) passes
+            # `chapter_sort_order`, a raw sort_order. T48ad shipped this as a bare
+            # ordinal, so `as_of=3` compared 3 against stored values of 3_000_000
+            # and returned ZERO relations at every position — measured live, and
+            # the exact units bug `_ordinal`'s docstring on the sibling route was
+            # written to warn about. Empty is the SAFE-LOOKING direction, which is
+            # why it is the dangerous one: it reads as 'nothing yet'.
+            as_of=(None if req.as_of_chapter is None
+                   else req.as_of_chapter * EVENT_ORDER_CHAPTER_STRIDE),
         )
 
     if detail is None:
