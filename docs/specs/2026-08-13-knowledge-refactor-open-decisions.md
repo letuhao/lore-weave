@@ -2132,6 +2132,58 @@ that stack alone.
    `port-adoption-gate` reports `passage read-primary declarations 0/0`.
 5. Re-run `architecture-live-proof --run` against the new dev; leg 2's censuses come from it.
 
+## 20 · A `MIGRATED` verdict over an EMPTY other-census — DECIDED: `SOLE_STORE`, and the STORE leg still passes (T48z, 2026-08-30)
+
+**Found by running the goal's own proof**, not by reading it. `architecture-live-proof`'s STORE
+leg passed on iso with:
+
+```
+PASS  2 STORE  the declared store holds the corpus  rc=0
+      [graph-store-migrated-gate] OK — MIGRATED: the declared store holds all 0 project(s)
+      the other store does
+```
+
+`graph-store-migrated-gate` returned `MIGRATED` because AGE's census covers every project in
+Neo4j's census, and Neo4j's census on iso is `{}`. **The set of projects compared was zero.**
+
+### Why this was not simply a bug in the verdict
+
+`(declared=full, other={})` is the *post-migration* shape: you migrate, then you empty the old
+store. The gate's own selftest encoded that on purpose. So `MIGRATED` there is defensible.
+
+What is **not** defensible is that the same three words are produced by three different worlds:
+
+| input | what actually happened |
+|---|---|
+| `other = {…5 projects…}`, all present in declared | a migration was verified |
+| `other = {}` | the old store was emptied — **or never existed** |
+| `other` census file absent | nobody looked |
+
+The third already had an honest name: `ONE_STORE`, INDETERMINATE, *"there is nothing to compare
+against"*. **An empty census carries exactly the same comparison evidence as an absent one**, and
+was the only one of the three that read as the success of a comparison.
+
+### Decision
+
+1. `other_has == ∅` now returns **`SOLE_STORE`**, INDETERMINATE, whose reason states that nothing
+   was compared and that this shape *"is the post-migration shape AND what a store that never had
+   a second one looks like — these are not distinguishable from censuses alone."*
+2. `MIGRATED` now reports its comparison size — *"a comparison over N project(s), not over none"*
+   — so the count is on the wire rather than inferable from a sentence.
+3. **The proof's STORE leg still PASSES on `SOLE_STORE`, deliberately.** The leg claims *the
+   declared store holds the corpus*, not *a migration was verified*. `SOLE_STORE` is only
+   reachable when the declared census is non-empty — an empty declared store is already
+   `EMPTY_DECLARED` or `BOTH_EMPTY`, both distinct readings — so the leg's actual claim is
+   entailed. What was wrong was the label, not the pass.
+
+A stricter leg was considered and rejected: making the STORE leg fail on INDETERMINATE would make
+the proof unprovable on a legitimate single-store deployment, which iso is (AGE 648 projects /
+5683 entities, Neo4j 0). That would trade a misleading green for a permanent red on a correct
+system.
+
+**Retry when:** a deployment runs two populated stores — then `MIGRATED` becomes reachable with a
+non-zero comparison size, and the distinction this section draws starts carrying real weight.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

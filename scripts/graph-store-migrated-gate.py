@@ -88,6 +88,20 @@ def verdict(declared: dict | None, other: dict | None) -> tuple[str, str]:
         return ("EMPTY_DECLARED",
                 f"the other store holds {len(other_has)} project(s) and the declared store "
                 f"holds NONE — every graph read would answer from an empty store (T54d)")
+    if not other_has:
+        # T48y measured this on iso: `MIGRATED — the declared store holds all 0 project(s) the
+        # other store does`, passing the proof's STORE leg. The verdict was defensible (an
+        # emptied old store IS the post-migration shape) and the CLAIM was not: it is
+        # word-for-word what a store nobody ever populated elsewhere produces, and what an
+        # empty census file produces. An ABSENT census already reads ONE_STORE — "nothing to
+        # compare against" — and `{}` carries exactly the same comparison evidence, so it must
+        # not read as the success of a comparison. Non-blocking, like ONE_STORE: a sole-store
+        # deployment is legitimate. NAMED, so nobody reads it as a verified migration.
+        return ("SOLE_STORE",
+                f"the other store holds NO projects, so NOTHING was compared. The declared "
+                f"store holds {len(declared_has)} project(s) — which is the post-migration "
+                f"shape AND what a store that never had a second one looks like. These are "
+                f"not distinguishable from censuses alone")
     missing = sorted(other_has - declared_has)
     if missing:
         shown = ", ".join(missing[:5]) + (f" …+{len(missing) - 5} more" if len(missing) > 5 else "")
@@ -95,14 +109,15 @@ def verdict(declared: dict | None, other: dict | None) -> tuple[str, str]:
                 f"{len(missing)} of {len(other_has)} project(s) are absent from the declared "
                 f"store: {shown}")
     return ("MIGRATED",
-            f"the declared store holds all {len(other_has)} project(s) the other store does")
+            f"the declared store holds all {len(other_has)} project(s) the other store does "
+            f"— a comparison over {len(other_has)} project(s), not over none")
 
 
 #: Which readings block. `BOTH_EMPTY`/`ONE_STORE`/`DISARMED` do not — they mean the comparison
 #: did not happen, and a gate that failed on "I could not look" would be turned off within a
 #: week. They are printed as INDETERMINATE so a run that proves nothing never reads as a pass.
 FAILING = {"EMPTY_DECLARED", "PARTIAL"}
-INDETERMINATE = {"BOTH_EMPTY", "ONE_STORE", "DISARMED"}
+INDETERMINATE = {"BOTH_EMPTY", "ONE_STORE", "DISARMED", "SOLE_STORE"}
 
 
 def _load(path: str | None) -> dict | None:
@@ -126,8 +141,11 @@ def _selftest() -> int:
     full = {"p1": 10, "p2": 5}
     cases = [
         ("dev as measured — declared AGE empty, Neo4j full", {}, full, "EMPTY_DECLARED"),
-        ("the INVERSE: the migration ran, so the declared store is the full one",
-         full, {}, "MIGRATED"),
+        ("an emptied other store is SOLE_STORE, not the success of a comparison",
+         full, {}, "SOLE_STORE"),
+        ("...and an all-ZERO census reads the same as an empty one — a different input shape "
+         "reaching the same absence of evidence",
+         full, {"p1": 0, "p2": 0}, "SOLE_STORE"),
         ("both stores hold the same projects", full, full, "MIGRATED"),
         ("half the projects moved", {"p1": 10}, full, "PARTIAL"),
         ("a project present but EMPTY in the declared store is not migrated",
@@ -152,6 +170,11 @@ def _selftest() -> int:
     checks = [
         ("EMPTY_DECLARED and BOTH_EMPTY are DISTINCT readings of a zero",
          verdict({}, full)[0] != verdict({}, {})[0]),
+        ("THE T48z PROPERTY: an ABSENT other census and an EMPTY one carry the same "
+         "comparison evidence, so NEITHER may read as the success of a comparison",
+         verdict(full, None)[0] in INDETERMINATE and verdict(full, {})[0] in INDETERMINATE),
+        ("...and MIGRATED now states how many projects it compared, never 'all 0'",
+         "not over none" in verdict(full, full)[1]),
         ("only EMPTY_DECLARED and PARTIAL block",
          FAILING == {"EMPTY_DECLARED", "PARTIAL"}
          and not (FAILING & INDETERMINATE)),

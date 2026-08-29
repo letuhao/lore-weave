@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 33 of 35 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 34 of 36 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (26/27) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (27/28) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,71 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48z 2026-08-30 — **the STORE leg passed with `MIGRATED: … all 0 project(s)` — three different worlds producing the same three words**
+
+  ```
+  before  PASS  2 STORE  rc=0  OK — MIGRATED: the declared store holds all 0 project(s)
+  after   PASS  2 STORE  rc=0  INDETERMINATE — SOLE_STORE: the other store holds NO projects,
+                               so NOTHING was compared. The declared store holds 648 project(s)
+  ```
+
+  🎯 **Found by RUNNING the goal's own proof for T48y, not by reading it.** The sentence is what
+  gave it away: a gate reporting it verified *all zero* of something had verified nothing.
+
+  ⚖️ **AND THE VERDICT WAS DEFENSIBLE, WHICH IS WHY IT SURVIVED.** `(declared=full, other={})` is
+  the post-migration shape — migrate, then empty the old store — and the gate's selftest encoded
+  that deliberately. The defect is that three different worlds produce the same three words:
+
+  ```
+  other = {…5 projects…}, all present   a migration was VERIFIED
+  other = {}                            the old store was emptied — OR never existed
+  other census file ABSENT              nobody looked        -> already ONE_STORE, INDETERMINATE
+  ```
+
+  **An empty census carries exactly the same comparison evidence as an absent one**, and it was
+  the only one of the three that read as the success of a comparison. `ONE_STORE`'s own reason —
+  *"there is nothing to compare against"* — was already word-for-word true of `{}`.
+
+  📐 **So `SOLE_STORE`, and `MIGRATED` now states its comparison size.** The new reason refuses to
+  let the reader pick a world: *"the post-migration shape AND what a store that never had a second
+  one looks like — these are not distinguishable from censuses alone."* `MIGRATED` gained
+  *"a comparison over N project(s), not over none"*, so the count is on the wire.
+
+  ⚖️ **THE LEG STILL PASSES, AND THAT IS THE DECISION, NOT AN OVERSIGHT** — §20. The leg claims
+  *the declared store holds the corpus*, not *a migration was verified*. `SOLE_STORE` is only
+  reachable when the declared census is non-empty (an empty one is already `EMPTY_DECLARED` or
+  `BOTH_EMPTY`, both distinct readings), so the leg's actual claim is entailed. **What was wrong
+  was the label, not the pass.** The stricter alternative — fail the leg on INDETERMINATE — was
+  rejected in writing: it trades a misleading green for a permanent red on a correct system, since
+  iso is a legitimate single-store deployment.
+
+  🧪 **BITE T48z-1 — line 91, `if not other_has:` → `if False:`.** On iso's real censuses:
+
+  ```
+  OK — MIGRATED: the declared store holds all 0 project(s) the other store does —
+       a comparison over 0 project(s), not over none                          exit 0
+  ```
+
+  Self-contradicting on its face, because the reason-string fix is independent and also needed.
+  Offline, the same bite reds **3 cases** at exit 1 — including the property that an absent and an
+  empty census must both stay out of the pass set. Restored; selftest exit 0.
+
+  🔬 **Validated on a case the change was NOT derived from (rule 3):** a census that is *present
+  with all-ZERO counts* — a different input shape reaching the same absence of evidence — also
+  reads `SOLE_STORE`. The branch was written against `{}` and holds for `{"p1": 0, "p2": 0}`.
+
+  **QC (a) gates:** `graph-store-migrated-gate --selftest` **16/16** (2 new cases + 2 new
+  properties); `architecture-live-proof --selftest` 8/8; `stale-deferral-gate` and
+  `superseded-deferral-gate` OK on the new §20 — all by direct exit code.
+  **QC (b) live smoke:** the five-leg proof re-run against iso, `exit 0`, STORE reporting
+  `SOLE_STORE` on the same censuses that produced `MIGRATED` an hour earlier. No image rebuild —
+  no service code changed.
+  **QC (c) real data:** iso's own censuses — **AGE 648 projects / 5683 entities, Neo4j 0** — which
+  is the measurement that made the vacuity visible in the first place.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; its sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48y 2026-08-30 — **T48x widened the sweep and the PROOF kept calling it the old way: the SURFACE leg passed on a route it never addressed**
 
