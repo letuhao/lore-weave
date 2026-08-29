@@ -99,6 +99,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # produce identical numbers. The live arms need a stack and local models; only the selftest
 # runs here.
 "$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --selftest
+# C48 — a TICKED QC-5 must still have the basis it closed on. The row did not close on
+# a passing 1a (spec 12 decided that unreachable); it closed because the attribution
+# channel is off, so the judge cannot reach an author. That basis lives in another
+# service, in another language — flip `canon_violations_enabled` back to True and
+# this reds, which is the tie the row had no way to assert before.
+"$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --closure
 # T54d/T54e: `KNOWLEDGE_GRAPH_BACKEND=age` while dev's AGE store held ZERO entities against
 # 8033 nodes in Neo4j, and every gate in the repo was green -- each was asking about WIRING and
 # this is a question about DATA. `soak-armed-gate` verifies dual-write arming and says so;

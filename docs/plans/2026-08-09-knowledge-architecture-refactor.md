@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: QC-5 — tick it (§12 + §18), then T33's score, then T48 → T49.**
+**RESUME: T48 §6.4 — the verification re-run; T33 waits on the PO's labels.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**65 of 69 rows done · 4 open · 54 of 83 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 19 of 21 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (4/5) · `QC-5` (35/62) · `T48` (14/15) · `T49` (1/1)
+**OPEN:** `T33` (4/5) · `T48` (14/15) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11708,7 +11708,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Proof it was the LIVE half that closed it** | QC-6b ran the row's sequence end to end — rename → re-kind → real chapter extraction naming the old form 8 times → 1 node, `e.id` unmoved, 595 groups largest 1. That is the assertion this deferral said *"has nothing to be true of"*; it now has. |
 
 
-- [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
+- [x] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test** — **CLOSED 2026-08-30 (C48, PO-authorised).** Not on a passing 1a: §12 decided 1a is not satisfiable by the critic family available, with SEVEN candidate causes eliminated by measurement. 1b and clause 2 pass. What justifies the tick is that the failure can no longer reach an author — §18/C46 gated the attribution channel OFF after C45 measured the precision pass at 14/14 in-sample and **0/5 held out** — and that basis is now CHECKED, not asserted: `qc5-acceptance-gate --closure`
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
   ### 🔻 QC-5 C30 2026-08-23 — **adjudicated: 4 of 4 attributed violations are FALSE. 1b's failure is the CRITIC, not the drafter.**
@@ -11763,6 +11763,81 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   this class of error is visible at all.
 
   ---
+  ---
+  ### ✅ QC-5 C48 2026-08-30 — **the row CLOSES, and not on a passing 1a — so the tick is tied to the thing that actually protects an author**
+
+  ```
+  qc5-acceptance-gate --closure
+    QC-5 ticked=True · channel_default_on=False · heldout_holds=False · 1a_decided=True
+    CLOSURE CLOSURE-OK
+  selftest 8 new closure cases · 18 total · BITE C48-1 reds it from ANOTHER SERVICE
+  ```
+
+  🎯 **QC-5 does not close on its acceptance measurement, and saying so plainly is the point.**
+  `score()` returns **UNSCORABLE** for clause 1a and always will: §12 eliminated **seven**
+  candidate causes by measurement — model tier, prompt wording, bi-temporal anchor, bible
+  contents, rule windows, narrative framing, and the PO's own rule-corpus hypothesis (C44) —
+  and decided 1a is not satisfiable by the critic family available. 1b and clause 2 pass.
+
+  C17 wrote the row's real exit long before this: *"the MEASUREMENT and the ROW are different
+  claims; what closes the row is those deferrals, not another run."* All four of the deferrals
+  it named are now closed, and the last two closed this week — the prose judge (C46) and the
+  image-build bug the PO refused to defer (C47).
+
+  ⚖️ **What justifies the tick is that the failure can no longer REACH an author.** C45 measured
+  the precision pass at **14/14 in-sample against 0/5 held out**; C46 gated the attribution
+  channel OFF by default. **That basis was asserted in prose and checked by nothing** — and it
+  lives in another service, in another language, in a different directory from the row that
+  depends on it. A later commit could flip `canon_violations_enabled` back to `True` and QC-5
+  would still read `[x]`, with its justification silently gone.
+
+  🔬 **So the tick is now a PREDICATE over three files**, derived rather than asserted: the plan
+  checkbox, `critic_policy`'s parsed default, and §12's decision text.
+
+  ```
+  ticked + channel OFF + 1a decided            -> CLOSURE-OK
+  ticked + channel ON  + no held-out pass      -> CLOSURE-UNPROTECTED
+  ticked + 1a neither passing NOR decided      -> CLOSURE-UNDECIDED
+  ticked + channel ON  + HELD-OUT-HOLDS        -> CLOSURE-OK   (the channel is earned back)
+  ```
+
+  **Re-enabling stays a measurement, not an opinion.** `qc5-verifier-heldout` returns
+  `HELD-OUT-HOLDS` only when a distinct verifier drops every false positive on drafts it was
+  not derived from — the one thing C31's 14/14 could not show, because those fourteen were the
+  cases that motivated building it.
+
+  🧪 **BITE C48-1 — and it crosses a service boundary, which is the whole demonstration.**
+
+  ```
+  critic_policy.py:164   `return False if val is None` -> `True`
+    CLOSURE CLOSURE-UNPROTECTED — "the row closed because the judge could not reach an
+    author; it can now. Either turn the channel back off, or record the HELD-OUT-HOLDS
+    run that earns it."                                                     exit 1
+  ```
+
+  One line of Python in `composition-service` reds a gate that reads a checkbox in a plan.
+  That is the tie the row had no way to assert before, and it is the difference between a
+  closure that is true and a closure that was true once.
+
+  📐 **The parser reads the DEFAULT, never a comment about it** — `channel_default_on` matches
+  the `return` line, and an ABSENT switch reads as ON, because that is the pre-C46 behaviour
+  and the safe reading of a missing guard is never "safe".
+
+  ⚠️ **Heredoc escape collapse, third time this session**, on a patch to this very file: `\\n`
+  in an anchor string became a real newline and the match silently failed, so an edit I
+  believed had landed had not. Caught because `--closure` came back *"unrecognized arguments"*.
+  It is in my own notes as a known hazard and I reached for the shell three times anyway;
+  the cure is a written file, not more care.
+
+  **QC (a) gates:** `qc5-acceptance-gate --selftest` **18/18** (8 new) and `--closure`
+  CLOSURE-OK, both wired into `.githooks/pre-commit`; `plan-qc-evidence-gate` 8 closed QC rows;
+  four plan gates green; `gate-wiring-gate` 114.
+  **QC (b) live smoke:** N/A — this cycle adds a derived predicate over files already in the
+  tree. The behaviour it protects was live-proven in C46 against a rebuilt image.
+  **QC (c) real data:** the `--closure` line above is the real tree — the real checkbox, the
+  real policy default, the real spec text.
+
+  📌 **66 of 69 rows. T48 and T49 remain, and T33 waits on the PO's labels.**
   ---
   ### ✅ QC-5 C47 2026-08-30 — **the PO refused the deferral, and two services had never been buildable — while the gate for it was GREEN**
 

@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import os
 import sys
 
 PASS, FAIL, UNSCORABLE = "PASS", "FAIL", "UNSCORABLE"
@@ -190,6 +192,65 @@ def _clause_2(runs: list[dict], a_verdict: str) -> tuple[str, str]:
     )
 
 
+CLOSURE_OK, CLOSURE_UNPROTECTED, CLOSURE_UNDECIDED = (
+    "CLOSURE-OK", "CLOSURE-UNPROTECTED", "CLOSURE-UNDECIDED")
+
+
+def closure_verdict(qc5_closed: bool, channel_default_on: bool, heldout_holds: bool,
+                    decided_in_spec: bool) -> tuple[str, str]:
+    """May QC-5 be TICKED, given what protects an author today?
+
+    🔴 **The row and the measurement say different things, and both are true.** `score()`
+    returns UNSCORABLE for clause 1a and always will: §12 eliminated seven candidate causes
+    and decided 1a is not satisfiable by any locally available critic family. So QC-5 does
+    NOT close on a passing acceptance run — C17 said as much (*"the MEASUREMENT and the ROW
+    are different claims; what closes the row is those deferrals"*).
+
+    What justifies ticking it is that the failure can no longer reach an author: C46 gated
+    the attribution channel OFF by default after C45 measured the precision pass at 14/14
+    in-sample and **0/5 held out**. That protection is the closure's whole basis, and nothing
+    tied the two together — so a later commit could flip `canon_violations_enabled` back to
+    True and QC-5 would still read `[x]`, with its justification silently gone.
+
+    This is that tie. A ticked QC-5 requires EITHER the channel off, OR a verifier that has
+    passed `qc5-verifier-heldout` on drafts it was not derived from. Turning the channel on
+    without that evidence does not fail the acceptance MEASUREMENT — it invalidates the
+    ROW's closure, which is a different and quieter kind of wrong.
+    """
+    if not qc5_closed:
+        return CLOSURE_OK, "QC-5 is open; nothing to justify yet"
+    if not decided_in_spec:
+        return CLOSURE_UNDECIDED, (
+            "QC-5 is ticked but the spec does not record 1a as decided. A closed acceptance "
+            "row whose headline clause is neither passing nor decided is the shape "
+            "`plan-row-honesty-gate` exists to catch, one level up")
+    if channel_default_on and not heldout_holds:
+        return CLOSURE_UNPROTECTED, (
+            "QC-5 is ticked AND the attribution channel is on by default AND no verifier has "
+            "passed a held-out measurement. The row closed because the judge could not reach "
+            "an author; it can now. Either turn the channel back off, or record the "
+            "`HELD-OUT-HOLDS` run that earns it")
+    return CLOSURE_OK, (
+        "QC-5 is ticked and its basis holds: 1a decided in the spec, and the attribution "
+        "channel is off by default (or a verifier has passed held out)")
+
+
+def channel_default_on(policy_src: str) -> bool:
+    """Does `canon_violations_enabled` default to TRUE? Parsed, not assumed.
+
+    The default lives in one `return` and this reads that line rather than trusting a
+    comment — a comment describing a default is the thing that goes stale first.
+    """
+    import re as _re
+    m = _re.search(r"def canon_violations_enabled\b.*?\n(.*?)(?=\ndef |\Z)",
+                   policy_src, _re.S)
+    if not m:
+        return True          # absent switch == the pre-C46 behaviour: always emitting
+    body = m.group(1)
+    m2 = _re.search(r"return\s+(False|True)\s+if\s+val\s+is\s+None", body)
+    return m2.group(1) == "True" if m2 else True
+
+
 def score(runs: list[dict]) -> tuple[str, list[tuple[str, str, str]]]:
     planted = [r for r in runs if r.get("arm") == "planted"]
     pcontrol = [r for r in runs if r.get("arm") == "planted_control"]
@@ -231,6 +292,8 @@ def _control(canon=5, attributed=0, raw=3):
 
 
 def selftest() -> int:
+    _POLICY_OFF = 'def canon_violations_enabled(a, b):\n    return False if val is None else bool(val)\n'
+    _POLICY_ON = 'def canon_violations_enabled(a, b):\n    return True if val is None else bool(val)\n'
     print("qc5-acceptance-gate - selftest (offline)")
     bad = 0
 
@@ -327,19 +390,81 @@ def selftest() -> int:
         f"with/without a planted arm"
     )
 
+    # ── C48: the ROW's closure BASIS, a different claim from the measurement ─────────
+    # `score()` returns UNSCORABLE for 1a and always will (§12). What justifies TICKING
+    # the row is that the failure can no longer reach an author, and nothing tied those
+    # together until now — a later commit could flip the channel back on and QC-5 would
+    # still read [x] with its justification silently gone.
+    for label, got, want in [
+        ("an OPEN QC-5 needs no closure basis",
+         closure_verdict(False, True, False, False)[0], CLOSURE_OK),
+        ("ticked + channel OFF + decided is exactly the state C46 created",
+         closure_verdict(True, False, False, True)[0], CLOSURE_OK),
+        ("THE GUARD: ticked + channel ON + no held-out pass is UNPROTECTED",
+         closure_verdict(True, True, False, True)[0], CLOSURE_UNPROTECTED),
+        ("...but a held-out PASS earns the channel back",
+         closure_verdict(True, True, True, True)[0], CLOSURE_OK),
+        ("ticked with 1a neither passing NOR decided is UNDECIDED",
+         closure_verdict(True, False, False, False)[0], CLOSURE_UNDECIDED),
+        ("the policy parser reads a FALSE default as off",
+         channel_default_on(_POLICY_OFF), False),
+        ("...and a TRUE default as on", channel_default_on(_POLICY_ON), True),
+        ("an ABSENT switch reads as ON — the pre-C46 behaviour, never as safe",
+         channel_default_on("def something_else(): pass"), True),
+    ]:
+        ok = got == want
+        bad += not ok
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}: expected {want}, got {got}")
+
     print("\n  all checks passed" if not bad else f"\n  {bad} check(s) FAILED")
     return 1 if bad else 0
+
+
+def _live_closure() -> int:
+    """The closure predicate over the REAL tree: plan checkbox, policy default, spec decision.
+
+    Derived from three files rather than asserted in prose, because the claim it protects is
+    exactly the kind that goes stale silently: QC-5 is ticked on a basis (the channel is off)
+    that lives in a different service, in a different language, in a different directory.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _read(*parts):
+        path = os.path.join(root, *parts)
+        if not os.path.exists(path):
+            return ""
+        return open(path, encoding="utf-8", errors="replace").read()
+
+    ptxt = _read("docs", "plans", "2026-08-09-knowledge-architecture-refactor.md")
+    stxt = _read("docs", "specs", "2026-08-13-knowledge-refactor-open-decisions.md")
+    ctxt = _read("services", "composition-service", "app", "engine", "critic_policy.py")
+    htxt = _read("docs", "measurements", "2026-08-24-qc5-verifier-heldout.json")
+
+    closed = bool(re.search(r"^- \[x\] \*\*QC-5\*\*", ptxt, re.M))
+    decided = "not satisfiable by the critic family available" in stxt
+    on = channel_default_on(ctxt)
+    heldout = '"verdict": "HELD-OUT-HOLDS"' in htxt
+
+    verdict, why = closure_verdict(closed, on, heldout, decided)
+    print(f"[qc5-acceptance] QC-5 ticked={closed} · channel_default_on={on} · "
+          f"heldout_holds={heldout} · 1a_decided={decided}")
+    print(f"[qc5-acceptance] CLOSURE {verdict} — {why}")
+    return 0 if verdict == CLOSURE_OK else 1
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--file", help="JSON list of run records")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--closure", action="store_true",
+                    help="check a TICKED QC-5 still has the basis it closed on")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    if a.closure:
+        return _live_closure()
     if not a.file:
-        ap.error("one of --file or --selftest is required")
+        ap.error("one of --file, --closure or --selftest is required")
     runs = json.load(open(a.file, encoding="utf-8"))
     overall, rows = score(runs)
     for name, verdict, why in rows:
