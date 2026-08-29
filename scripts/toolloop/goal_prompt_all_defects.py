@@ -55,8 +55,8 @@ is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the 
 LIVE run through the real chat path. Then `state: fixed` with evidence on the row.
 
 THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports no open defect, or says every \
-one left is DQ-blocked. NOTHING ELSE ENDS IT. One defect fixed is ONE CYCLE, never the run: the \
-moment a row reaches `fixed`, open the next one IN THE SAME TURN.
+one left is DQ-blocked, AND `gate.py audit` is clean. NOTHING ELSE ENDS IT. One defect fixed is \
+ONE CYCLE, never the run: the moment a row reaches `fixed`, open the next one IN THE SAME TURN.
 
 THE OWNER'S DECISIONS ARE THE WORK. Each ruling sits under `answer_*` on its DQ row. READ IT \
 BEFORE BUILDING and build it AS WORDED. If it cannot be built, the question goes BACK CORRECTED \
@@ -87,8 +87,7 @@ suite SERIALLY. A failed attempt is RECORDED, not quietly retried. Every fix sta
 NOT cover.
 
 CHECK YOUR OWN INSTRUMENT BEFORE REPORTING ITS ANSWER. A census returning a shocking number is \
-usually measuring itself — a key-name scan called 82 rows unproven where 7 was true, a slice \
-reading past its branch failed on code it never named.
+usually measuring itself — a key-name scan called 82 rows unproven where 7 was true.
 
 ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; if a bar is wrong, leave it \
 RED and say so. A baseline may only SHRINK. Never split a defect to inflate the count. Never \

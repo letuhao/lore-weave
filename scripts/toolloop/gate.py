@@ -756,6 +756,70 @@ _STATUS_LEAD_CONTRADICTS = {
 }
 
 
+def stale_dq_blocks(ledger: dict) -> dict:
+    """{defect: (dq, its_state)} for every OPEN row blocked on a question that is NO LONGER OPEN.
+
+    🔴 THE HALF `dangling_dq_links` DOES NOT ASK. That check catches a row pointing at a question
+    nobody registered; this one catches a row pointing at a question that WAS registered and has
+    since been answered or withdrawn. Both leave the row mis-filed, but in opposite directions:
+    a dangling link makes a row unblockable forever, a stale block makes an ACTIONABLE row look
+    like it is waiting on the owner — so the queue hides work that is ready, and `--check` can
+    report "everything left is blocked" while real work sits behind a closed question.
+
+    That is the stop condition failing silently, which is the one failure this whole instrument
+    exists to prevent. Measured clean on 2026-08-30 (0 stale blocks across 14 blocked rows), and
+    checked from now on so it stays that way rather than being re-derived by hand each time.
+
+    Scoped to OPEN rows on purpose: a FIXED row may legitimately keep the `blocked_by_dq` it
+    carried while it was open, as part of its history.
+    """
+    dqs = ledger.get("deferred_questions") or {}
+    out = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict) or row.get("state") != "open":
+            continue
+        ref = row.get(DQ_FIELD)
+        if not ref or ref not in dqs:
+            continue  # unregistered is dangling_dq_links' question, not this one
+        st = (dqs[ref] or {}).get("state")
+        if st != "open":
+            out[name] = (ref, st)
+    return out
+
+
+#: A cited evidence file, matched as a WHOLE path with no internal separator in the filename.
+#: Deliberately strict: a row legitimately writes shorthand for a set of files
+#: ("…/c-motiflink10/11/15/16/17/18.json"), which is prose about six batches and not a path, and
+#: a looser pattern reports it as one missing file every single run — an instrument crying wolf
+#: is one people learn to skip.
+_EVIDENCE_PATH = re.compile(r"docs/eval/toolloop/[\w.\-]+/[\w.\-]+\.json")
+
+
+def missing_evidence_paths(ledger: dict) -> dict:
+    """{defect: [path, ...]} for every row citing an evidence file that is not on disk.
+
+    🔴 A ROW WHOSE EVIDENCE CANNOT BE OPENED CANNOT BE RE-CHECKED, and this loop's standing rule
+    is that a ledger claim is a lead rather than a fact. Found 2026-08-30 by hand:
+    D-FIXTURE-NAME-IS-THE-MOST-PLAUSIBLE-LOOKING-ID cites a batch from nine days BEFORE the
+    measurement it is offered as evidence for — and that batch never calls the tool the row names
+    and records the model doing the right thing 5/5. The claim may still be true; nobody can tell.
+
+    This catches the ABSENT file, which is the cheap half. It cannot catch a path that exists but
+    does not contain the instance the row describes — that one needs a reader, and it is why the
+    finding above took a person rather than a check.
+    """
+    out: dict[str, list[str]] = {}
+    for name, row in (ledger.get("defects") or {}).items():
+        if not isinstance(row, dict):
+            continue
+        blob = "\n".join(str(v) for v in row.values())
+        gone = sorted({m for m in _EVIDENCE_PATH.findall(blob)
+                       if not (ROOT / m).exists()})
+        if gone:
+            out[name] = gone
+    return out
+
+
 def status_state_drift(ledger: dict) -> dict:
     """{defect: what_is_wrong} for every row whose `status` prose contradicts its `state`.
 
@@ -872,8 +936,10 @@ def cmd_audit(a) -> int:
     dq_states = dq_state_drift(ledger)
     dangling = dangling_dq_links(ledger)
     status_drift = status_state_drift(ledger)
+    stale_blocks = stale_dq_blocks(ledger)
+    missing_ev = missing_evidence_paths(ledger)
     if (not orphans and not drift and not aliases and not dq_states and not dangling
-            and not status_drift):
+            and not status_drift and not stale_blocks and not missing_ev):
         print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows), "
               "`progress` agrees with them, and every DQ block is readable by the generator")
         return 0
@@ -894,6 +960,18 @@ def cmd_audit(a) -> int:
             LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10),
                               encoding="utf-8")
             print(f"  -> rewrote {len(drift)} field(s) from the rows. Re-run `audit` to confirm.")
+    if stale_blocks:
+        print(f"REFUSED — {len(stale_blocks)} OPEN row(s) are blocked on a question that is no "
+              "longer open. The queue is hiding work that is READY, and `--check` can report "
+              "'everything left is blocked' while these sit behind a closed decision:")
+        for n, (dq, st) in sorted(stale_blocks.items()):
+            print(f"  {n:52} {dq} is {st!r}")
+    if missing_ev:
+        print(f"REFUSED — {len(missing_ev)} row(s) cite an evidence file that is not on disk. "
+              "A claim nobody can re-open is a claim nobody can check:")
+        for n, paths in sorted(missing_ev.items()):
+            for path in paths:
+                print(f"  {n:52} {path}")
     if aliases:
         print(f"REFUSED — {len(aliases)} defect row(s) mark a DQ block under a name the "
               f"generator cannot read. It reads `{DQ_FIELD}` and nothing else, so these rows are "
