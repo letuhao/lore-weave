@@ -129,6 +129,7 @@ def _format_entity(
 
 async def _fetch_all_neighborhoods(
     user_id: str, entities: list[ContextEntity], concurrency: int, book_id: str,
+    as_of: int | None = None,
 ) -> list[WikiNeighborhood]:
     """Fetch every entity's neighbourhood in parallel (bounded). Once per chapter.
 
@@ -145,7 +146,8 @@ async def _fetch_all_neighborhoods(
         async with sem:
             try:
                 return await asyncio.wait_for(
-                    fetch_wiki_neighborhood(user_id, e.entity_id, book_id=book_id),
+                    fetch_wiki_neighborhood(user_id, e.entity_id, book_id=book_id,
+                                            as_of=as_of),
                     _FETCH_TIMEOUT_S,
                 )
             except Exception as exc:  # noqa: BLE001 — best-effort; cancel still propagates
@@ -224,7 +226,13 @@ async def build_context_brief(
 
     # T55/i — thread the book through: the KAL scopes the read on it, and this frame
     # had it all along.
-    neighborhoods = await _fetch_all_neighborhoods(user_id, entities, concurrency, book_id)
+    # T48ad — `as_of` is threaded HERE, not merely held. It was already a parameter of
+    # this function and already used for the canonical snapshot; the neighbourhood fetch
+    # two frames down never received it, so the brief mixed a chapter-scoped snapshot
+    # with latest-head relations. Same shape as T55/i's `book_id`, which this same frame
+    # also merely dropped.
+    neighborhoods = await _fetch_all_neighborhoods(user_id, entities, concurrency,
+                                                  book_id, as_of)
 
     # X5: as-of-N canonical state, only when the caller opted in (content_hash present).
     # The KAL client's Null gate additionally no-ops this when the feature is off.

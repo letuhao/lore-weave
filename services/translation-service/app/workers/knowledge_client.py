@@ -107,6 +107,7 @@ async def fetch_wiki_neighborhood(
     rel_cap: int = _DEFAULT_REL_CAP,
     *,
     book_id: str,
+    as_of: int | None = None,
 ) -> WikiNeighborhood:
     """Fetch an entity's 1-hop relation neighbourhood THROUGH THE KAL.
 
@@ -145,6 +146,13 @@ async def fetch_wiki_neighborhood(
                 json={
                     "glossary_entity_id": glossary_entity_id,
                     "rel_cap": rel_cap,
+                    # T48ad — the story window. `build_context_brief` already takes
+                    # `as_of` ("the story state at chapter N, not the latest head
+                    # (spoiler-free, §6B)") and threaded it into the canonical snapshot
+                    # ONLY, so the same brief carried a chapter-scoped snapshot beside
+                    # an unbounded neighbourhood. Omitted => the head, so a caller with
+                    # no position is byte-identical to before.
+                    **({"as_of": as_of} if as_of is not None else {}),
                 },
                 headers={"X-User-Id": user_id},
             )

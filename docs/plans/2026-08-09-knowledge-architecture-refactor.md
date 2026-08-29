@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 37 of 39 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 38 of 40 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (30/31) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (31/32) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,90 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ad 2026-08-30 — **T48s again, on the SIBLING route: `wiki-neighborhood` advertised a spoiler window it did not have, and a translator saw chapter 10 while working on chapter 1**
+
+  ```
+  BEFORE  wiki-neighborhood   81 relations · no `as_of` accepted · no ordinals on the wire
+                              temporal_capability {"glossary":"ordinal_valid_time",
+                                                   "kg":"ordinal_valid_time"}
+          neighborhood        as_of=1 -> 25 edges, SAME entity
+  AFTER   head 81 (unchanged) · as_of 1e6/3e6/6e6/1e7 -> 25 / 33 / 41 / 54
+  ```
+
+  🎯 **Found by asking rule 3 of the T48s fix itself.** `bitemporal-window-live-smoke` validates
+  the window on `neighborhood` — **the route it was derived from**. Held out: the three other
+  graph-backed KAL routes. `fact-for-check` honours `at_order` (relations 24/32/41/50, events
+  0/7/17/24 — measured). `timeline` moves with `chapter_order` (0/34/50/50). **`wiki-neighborhood`
+  took no temporal parameter at all** — and returned `temporal_capability.kg =
+  "ordinal_valid_time"` anyway. That is T48s's sentence, verbatim, on a route T48s never touched.
+
+  🔴 **AND THE CONSUMER IS A TRANSLATOR, WHICH IS WHY IT MATTERS.** Diagnosed from the workload
+  (rule 13), not by analogy: the caller is translation-service's `build_context_brief`, and its
+  own signature is
+
+  ```
+  async def build_context_brief(book_id, user_id, chapter_text, *, as_of: int | None = None, …)
+      """… the story state at chapter N, not the latest head (spoiler-free, §6B)"""
+  ```
+
+  **`as_of` was already a parameter of that function**, already threaded into the canonical
+  snapshot — and never into `_fetch_all_neighborhoods` two frames down. So one brief carried a
+  chapter-scoped snapshot **beside a latest-head neighbourhood**, and a model translating chapter
+  1 was handed relationships established in chapter 10. The controller's own comment records this
+  exact mechanism for `book_id` (*"`build_context_brief(book_id, …)` two frames up HAS it and
+  simply did not thread it through"*). **The same frame dropped the second value the same way.**
+
+  📐 **Four files, and the adapter work was already done.** `internal_wiki.py` calls the very port
+  method T48s fixed, so the window only had to be accepted and passed: the port has honoured
+  `as_of` since T48s and all four adapters are conformance-tested on it. `None` stays the
+  transaction-time head, so every pre-T48ad caller is byte-identical.
+
+  🧪 **TWO BITES — one live on rebuilt images, one visible to CI.**
+
+  ```
+  T48ad-1  internal_wiki.py:191   as_of=req.as_of -> as_of=None,  rebuilt into the iso image
+           as_of=1e6 -> 81 · as_of=6e6 -> 81 · as_of=1e7 -> 81
+           the endpoint ACCEPTS the window, advertises the capability, applies neither
+
+  T48ad-2  knowledge_context.py:235   the brief holds `as_of` and drops it again
+           FAILED test_build_brief_threads_as_of_to_the_neighbourhood_fetch
+           1 failed, 48 passed
+  ```
+
+  The first is the live defect reproduced through two rebuilt containers; the second is the one
+  CI can see, because **a hand-bite is invisible to CI**.
+
+  ⚠️ **THE DOUBLES HAD TO MOVE WITH THE CONTRACT, and that is the test half worth keeping.**
+  `_patch`'s existing double already carried the lesson for `book_id` — *"ASSERT the book, do not
+  merely accept it… a double that swallowed the kwarg would keep passing while
+  `build_context_brief` dropped it again, which is precisely how it came to be dropped in the
+  first place."* Five more doubles took `*, book_id` and would have raised `TypeError` into a
+  best-effort `except Exception`, degrading to an EMPTY neighbourhood — **three tests went red
+  showing entities but no relations**, which is how a swallowed kwarg looks from the outside. All
+  six now accept `as_of`, and the shared double RECORDS it so the new test asserts the VALUE
+  rather than that the kwarg was tolerated.
+
+  ⚠️ **Two mechanical traps, both caught by checking rather than trusting.** Three of the four
+  source files are **CRLF**, so `str.replace` on `\n`-joined literals silently no-opped and the
+  script reported success — the trap the cycle contract names, and the reason every edit here is
+  by LINE NUMBER. And `git stash` (used to check whether three failures pre-dated my change — they
+  did not; 31 passed before) rewrote those files to LF, which is why a later line-indexed read
+  raised `IndexError` instead of quietly editing the wrong line.
+
+  **QC (a) gates:** knowledge-service unit **4445 passed**; translation-service **1174 passed**
+  (4 new: 2 threading, 2 client-contract); `test_internal_wiki` 10 passed;
+  `bitemporal-window-live-smoke`, `architecture-live-proof`, `kal-surface-census-gate`,
+  `graph-store-migrated-gate` selftests, `gate-wiring-gate`, `knowledge-http-surface-gate`,
+  `port-adoption-gate`, `bitemporal-parity-gate` — all 0 by direct exit code.
+  **QC (b) live smoke vs REBUILT images:** three `iso.sh build` cycles across
+  **knowledge-service + knowledge-gateway** — the fix, the bite, and the restore. Every number in
+  the table above is an HTTP response from those containers through the KAL.
+  **QC (c) real data:** the acceptance corpus's 紂王 neighbourhood — the same 81 real edges over
+  ten chapters that made T48s visible, which is why the sibling leak was measurable at all.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ac 2026-08-30 — **the proof's TEMPORAL leg showed `}` as its evidence, and two legs asserting different things printed the same sentence**
 

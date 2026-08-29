@@ -378,7 +378,7 @@ export class KalReadController {
   @HttpCode(200)
   async wikiNeighborhood(
     @Param('bookId') bookId: string,
-    @Body() body: { glossary_entity_id: string; rel_cap?: number },
+    @Body() body: { glossary_entity_id: string; rel_cap?: number; as_of?: number },
     @Req() req: InboundReq,
   ) {
     const ctx = ctxFromReq(req);
@@ -389,6 +389,11 @@ export class KalReadController {
         glossary_entity_id: body?.glossary_entity_id,
         book_id: bookId,
         ...(body?.rel_cap !== undefined ? { rel_cap: body.rel_cap } : {}),
+        // T48ad -- the story window. This route ADVERTISED `temporal_capability.kg =
+        // ordinal_valid_time` while accepting no temporal parameter at all, which is T48s's
+        // sentence on the sibling route: an endpoint advertising a spoiler window it does not
+        // have. Omitted => the transaction-time head, exactly as before.
+        ...(body?.as_of !== undefined ? { as_of: body.as_of } : {}),
       },
       ctx,
     )) as Record<string, unknown>;

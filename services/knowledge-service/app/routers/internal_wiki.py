@@ -80,6 +80,18 @@ class WikiNeighborhoodRequest(BaseModel):
     # Cap on the relation payload. Mirrors ENTITIES_DETAIL_REL_CAP; a
     # caller that wants fewer (a compact wiki body) can lower it.
     rel_cap: int = Field(default=200, ge=1, le=200)
+    # T48ad — the STORY window, on the reading axis (`chapter x EVENT_ORDER_CHAPTER_STRIDE`).
+    #
+    # This endpoint answers `build_context_brief` in translation-service, which is building a
+    # brief for ONE chapter and already takes `as_of` for exactly that reason ("the story state
+    # at chapter N, not the latest head (spoiler-free, §6B)"). It threaded that into the
+    # canonical snapshot and NOT into this call, so the same brief carried a chapter-scoped
+    # snapshot beside an unbounded neighbourhood: measured on iso, 81 relations spanning ten
+    # chapters returned while the sibling `neighborhood` route held the same entity at 25.
+    #
+    # None = the transaction-time head, which is what every pre-T48ad caller gets. The port has
+    # honoured this since T48s and all four adapters are conformance-tested on it.
+    as_of: int | None = None
 
 
 class NeighborRelation(BaseModel):
@@ -176,6 +188,7 @@ async def get_wiki_neighborhood(
             glossary_entity_id=str(req.glossary_entity_id),
             project_id=project_id,
             rel_cap=req.rel_cap,
+            as_of=req.as_of,
         )
 
     if detail is None:

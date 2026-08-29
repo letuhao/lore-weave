@@ -231,3 +231,31 @@ async def test_fetch_timeline_ignores_non_dict_events(monkeypatch):
     _patch_client(monkeypatch, resp=_FakeResp(200, {"found": True, "events": ["bad", 3, None]}))
     brief = await fetch_timeline("b1", 5)
     assert brief.found and brief.events == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_sends_as_of_when_given(monkeypatch):
+    """T48ad — the STORY WINDOW reaches the wire.
+
+    The route ADVERTISED `temporal_capability.kg = ordinal_valid_time` while accepting no
+    temporal parameter at all, so it returned latest-head relations to a caller translating
+    chapter 1: measured live at 81 relations spanning ten chapters, against 25 from the
+    sibling `neighborhood` route on the same entity and position."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
+    monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))
+    await fetch_wiki_neighborhood("u1", "e1", rel_cap=50, book_id="b1", as_of=3_000_000)
+    assert _FakeClient.last_call["json"] == {
+        "glossary_entity_id": "e1", "rel_cap": 50, "as_of": 3_000_000}
+
+
+@pytest.mark.asyncio
+async def test_fetch_omits_as_of_when_none(monkeypatch):
+    """No position => the body is byte-identical to pre-T48ad, so the head is what a caller
+    without a position keeps getting. Asserting the ABSENCE is the half that would otherwise
+    rot back in — the same reason `user_id`'s absence is asserted above."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
+    monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))
+    await fetch_wiki_neighborhood("u1", "e1", rel_cap=50, book_id="b1")
+    assert "as_of" not in _FakeClient.last_call["json"]
