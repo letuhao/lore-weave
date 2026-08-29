@@ -139,14 +139,14 @@ Commit and push every cycle. Keep the four plan gates green (verify, row-honesty
 #: What the PO authorised on 2026-08-21, verbatim enough to act on. This block exists because a
 #: goal prompt whose STOP list re-blocks work that was just approved sends a whole session back
 #: to the same four questions — which is exactly what fifteen consecutive stop-hook firings were.
-GRANTS = """GRANTS (PO 2026-08-24) — authorised; rule 6 and the STOP list do not bar these:
-· T25 (3) DEV CUTOVER: backfill-passages per project on dev (WRITES :Passage, spends embed
-  tokens) → READ_PRIMARY=postgres → delete the passage DDL. Measure search before AND after;
-  an empty secondary fails SILENTLY (§9.1).
-· T33 CORPUS: ~20 event pairs, 2 chapters, small on purpose. The PO labels the ground truth;
-  you build the sheet, never the labels you then grade.
-· QC-5 1a: re-run with ONLY R1 active before authoring any window (§2.1 carries why).
-· NOT granted: the sibling `infra` stack."""
+GRANTS = """GRANTS (PO 2026-08-30) — authorised; rule 6 and the STOP list do not bar these:
+· QC-5: TICK IT. §12 decided 1a is not satisfiable (7 candidates eliminated by measurement);
+  §18/C46 gated the attribution channel. No further acceptance run is owed.
+· T33: run the causal extractor over the sheet's 2 chapters on lw-iso or a THROWAWAY (LLM
+  spend + graph writes THERE), then --score. The PO labels; you never write a label.
+· T48/T49: run the final verification, update SESSION_HANDOFF, archive the plan.
+· NOT granted: the sibling `infra` stack. It is RETIRED at merge-to-main (§19's five steps),
+  not worked around now."""
 
 STOP_BLOCK = """STOP — these five, nothing else:
 · a stop condition fires: {stops}
@@ -261,7 +261,7 @@ def build(plan: str) -> str:
             lines.append(f"{name} {spec}  " + " → ".join(live))
     lines += [
         "",
-        "T17 is never the head (§1.3): class (d) is port debt, NOT an engine blocker (T54c).",
+        "Only T33 waits on a person (the labels). Everything else is yours to close, in order.",
         "",
         CYCLE,
         "",
@@ -371,7 +371,11 @@ def selftest() -> int:
     # 08-24 audit did) silently widened this slice to the whole document, and rule 12 names
     # `T35d`, so the check went red against correct code. The delimiter is now the part of
     # the line that is structural rather than editorial.
-    queue = out.split("QUEUE (")[1].split("T17 is")[0]
+    # Split on the BLANK LINE that ends the queue block, not on whatever prose follows
+    # it. The delimiter has now broken twice — first "T17 is NOT" when the sentence was
+    # reworded, then "T17 is" when T17 closed and the line was replaced entirely. A note
+    # under the queue is editorial and will keep changing; the empty line is structural.
+    queue = out.split("QUEUE (")[1].split(chr(10) + chr(10))[0]
     # ① A ticked row must LEAVE the queue. This is the whole reason the prompt is generated:
     # a hand-kept queue naming a finished row is what sent ten batches at T17.
     check("a ticked row drops out of the queue", "T35" not in queue, queue.strip())
