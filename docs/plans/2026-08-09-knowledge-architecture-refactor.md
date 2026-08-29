@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 36 of 38 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 37 of 39 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (29/30) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (30/31) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ac 2026-08-30 — **the proof's TEMPORAL leg showed `}` as its evidence, and two legs asserting different things printed the same sentence**
+
+  ```
+  before  PASS  1 BACKEND   rc=0  [port-adoption-gate] PASS — exactly at the ceiling
+          PASS  4 PORT      rc=0  [port-adoption-gate] PASS — exactly at the ceiling
+          PASS  5 TEMPORAL  rc=0  }
+  after   PASS  1 BACKEND   rc=0  backend declarations 0/0 non-`age` — §9.2's DDL-exit condition
+          PASS  4 PORT      rc=0  class (d) UNDISCHARGED 0/0 — §10.1's SECOND path as a number
+          PASS  5 TEMPORAL  rc=0  "verdict": "HOLDS",
+  ```
+
+  🎯 **`leg()` printed the LAST non-empty line of output.** For the TEMPORAL leg, whose smoke
+  prints an indented JSON block, that is a closing brace — **a proof line showing `}` shows
+  nothing.** And legs 1 and 4 run the same gate while asserting different substrings of its
+  output (`backend declarations 0/` vs `class (d) UNDISCHARGED 0/`), so both printed one shared
+  summary sentence and a reader could not tell which assertion either had made.
+
+  📐 **A leg now shows the line its NEEDLE matched — the thing actually verified** — falling back
+  to the last line with real content, skipping the punctuation-only tail a pretty-printed JSON
+  leaves behind. **And leg 5 gained a needle**, `"verdict": "HOLDS"`: the smoke exits 0 only on
+  HOLDS today, but a leg should assert the verdict it is named for rather than inherit it from a
+  convention that could change.
+
+  ⚠️ **Scope, stated plainly: this changes what the proof SHOWS, not what it passes.** The bite
+  below leaves the run `PROVEN` at exit 0, because an evidence line is display. It is worth a row
+  anyway — a proof a reader cannot audit is the same defect as one that over-claims, and every
+  finding this session came from reading these lines.
+
+  🔴 **AND I SHIPPED THE T48s SHAPE INTO THIS FILE WHILE FIXING IT.** The `str.replace` that was
+  meant to call `evidence_line` from `leg()` went through a heredoc, its `"\\n"` collapsed, the
+  replacement matched nothing and reported success. The result:
+
+  ```
+  evidence_line   defined, docstring'd, 6 selftest cases PASSING
+  leg()           still printing tail[0]
+  ```
+
+  **A function that exists, is tested, and reaches nothing** — exactly what T48s found in the
+  spoiler window, authored by me, in the cycle written to improve the proof's honesty. Caught by
+  running the proof and seeing `}` unchanged, because the selftest could not: it drives the pure
+  function directly, which is precisely the gap a green selftest cannot see. Fifth heredoc
+  escape-collapse this session; the cure remains `Edit`/`Write` or `chr(10)`.
+
+  🧪 **BITE T48ac-1 — line 86, `evidence_line()` returns the last line again.**
+
+  ```
+  PASS  1 BACKEND   rc=0  [port-adoption-gate] PASS — exactly at the ceiling; it can only fall
+  PASS  4 PORT      rc=0  [port-adoption-gate] PASS — exactly at the ceiling; it can only fall
+  PASS  5 TEMPORAL  rc=0  }
+  [proof] PROVEN                                                                  exit 0
+  ```
+
+  Both symptoms return together. Offline the same bite reds **4** cases at exit 1 — including the
+  two-legs-one-gate pair, which is the half a live run cannot show without a second gate to
+  compare against. Restored; selftest exit 0.
+
+  **QC (a) gates:** `architecture-live-proof --selftest` **14/14** (6 new `evidence_line` cases);
+  `graph-store-migrated-gate`, `kal-read-surface-live-smoke`, `kal-surface-census-gate`,
+  `bitemporal-window-live-smoke` selftests all 0; `gate-wiring-gate` OK;
+  `plan-final-verification` PASS — every one by direct exit code.
+  **QC (b) live smoke:** three five-leg proof runs against the running iso stack — before, after,
+  and the bite — all `PROVEN`, 5 legs, exit 0. No image rebuild; no service code changed.
+  **QC (c) real data:** iso's AGE census (648 projects / 5683 entities) and the acceptance book,
+  the same inputs every leg above consumed.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ab 2026-08-30 — **`PASS 2 STORE the declared store holds the corpus` — on two EMPTY censuses, and the proof read PROVEN**
 

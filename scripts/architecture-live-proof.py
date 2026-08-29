@@ -67,6 +67,33 @@ def verdict(legs: list[dict], min_legs: int) -> dict:
                        f"a subset is the defect it exists to catch")}
 
 
+def evidence_line(out: str, needle: str | None) -> str:
+    """The line a leg should SHOW as its evidence. Pure, so the selftest can drive it.
+
+    T48ac. This was `the last non-empty line`, and for the TEMPORAL leg — whose smoke prints an
+    indented JSON block — that is a closing brace:
+
+        PASS  5 TEMPORAL a windowed read HOLDS its story position  rc=0  }
+
+    A proof line that shows `}` shows nothing. Worse, legs 1 and 4 run the SAME gate and assert
+    DIFFERENT substrings of its output, so both printed one identical summary sentence and a
+    reader could not tell which assertion each had made.
+
+    So: when a leg matched a needle, show the line the needle matched — the thing actually
+    verified. Otherwise show the last line with real content, skipping the punctuation-only
+    lines that a pretty-printed JSON tail leaves behind.
+    """
+    lines = [l.strip() for l in out.strip().split(chr(10)) if l.strip()]
+    if needle:
+        for line in lines:
+            if needle in line:
+                return line
+    for line in reversed(lines):
+        if line.strip("{}[](),\"' "):
+            return line
+    return lines[-1] if lines else ""
+
+
 def _run(cmd: list[str], timeout: int = 900) -> tuple[int, str]:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -100,6 +127,34 @@ def _selftest() -> int:
     ]
     failures = 0
     print("architecture-live-proof - selftest (offline)")
+    # T48ac — the evidence line. Driven offline because the shapes that break it (a JSON tail,
+    # two legs sharing one gate) are exactly what a live run produced.
+    json_tail = chr(10).join(['[bitemporal] {', ' "verdict": "HOLDS",',
+                              ' "rows": [25, 33],', '}'])
+    shared = chr(10).join(['[port-adoption-gate] backend declarations 0/0 — every deployment',
+                           '[port-adoption-gate] class (d) UNDISCHARGED 0/0 — the real risk',
+                           '[port-adoption-gate] PASS — exactly at the ceiling'])
+    for label, out_, needle_, want in [
+        ("THE `}` CASE: a JSON tail must not become the evidence line",
+         json_tail, None, '"rows": [25, 33],'),
+        ("...and with a needle it shows the VERDICT it matched",
+         json_tail, '"verdict": "HOLDS"', '"verdict": "HOLDS",'),
+        ("TWO LEGS, ONE GATE: each shows the assertion IT made, not the shared summary",
+         shared, "backend declarations 0/",
+         "[port-adoption-gate] backend declarations 0/0 — every deployment"),
+        ("...and the other leg shows its own",
+         shared, "class (d) UNDISCHARGED 0/",
+         "[port-adoption-gate] class (d) UNDISCHARGED 0/0 — the real risk"),
+        ("a needle that did NOT match falls back rather than printing nothing",
+         shared, "absent-needle", "[port-adoption-gate] PASS — exactly at the ceiling"),
+        ("empty output is empty, not an exception", "", None, ""),
+    ]:
+        got = evidence_line(out_, needle_)
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}: {got!r}")
+
+
     for label, got, pred in cases:
         ok = bool(pred(got))
         failures += 0 if ok else 1
@@ -154,8 +209,8 @@ def main(argv: list[str]) -> int:
         rc, out = _run(cmd)
         ok = rc == 0 and (needle is None or needle in out)
         legs.append({"name": name, "status": PASS if ok else FAIL, "rc": rc})
-        tail = [l for l in out.strip().split("\n") if l.strip()][-1:] or [""]
-        print(f"  {'PASS' if ok else 'FAIL':<5} {name}  rc={rc}  {tail[0][:110]}")
+        print(f"  {'PASS' if ok else 'FAIL':<5} {name}  rc={rc}  "
+              f"{evidence_line(out, needle)[:110]}")
 
     print("[arch-proof] the GOAL's four legs, run together\n")
     leg("1 BACKEND  every declared deployment is on `age`",
@@ -191,12 +246,14 @@ def main(argv: list[str]) -> int:
     # the surface and the port; none of them the bi-temporal spine, which is what this
     # architecture is for. A spoiler window can be advertised, computed and discarded, and
     # every one of the other legs stays green.
+    # A NEEDLE, not just an exit code: the smoke exits 0 only on HOLDS today, but the leg
+    # should assert the verdict it is named for rather than inherit it from a convention.
     leg("5 TEMPORAL a windowed read HOLDS its story position",
         ([py, "scripts/bitemporal-window-live-smoke.py", "--base-url", args.base_url,
           "--book-id", args.book_id, "--user-id", args.user_id,
           "--internal-token", args.internal_token, "--entity-id", args.entity_id]
          if (args.book_id and args.user_id and args.internal_token and args.entity_id)
-         else None))
+         else None), '"verdict": "HOLDS"')
     leg("4 PORT     class (d) discharged by one of §10.1's two paths",
         [py, "scripts/port-adoption-gate.py"], "class (d) UNDISCHARGED 0/")
 
