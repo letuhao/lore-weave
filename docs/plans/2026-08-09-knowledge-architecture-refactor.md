@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 35 of 37 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 36 of 38 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (28/29) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (29/30) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,75 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ab 2026-08-30 — **`PASS 2 STORE the declared store holds the corpus` — on two EMPTY censuses, and the proof read PROVEN**
+
+  ```
+  before  --declared-census {}  --other-census {}
+          PASS  2 STORE  the declared store holds the corpus  rc=0
+                INDETERMINATE — BOTH_EMPTY: neither store holds any project
+          [proof] PROVEN                                                   exit 0
+  after   FAIL  2 STORE  rc=1  the caller asserted the declared store HOLDS the corpus,
+                and its census is empty or absent                          exit 1
+          real iso censuses -> all 5 legs PASS, PROVEN                     exit 0
+  ```
+
+  🎯 **Found by asking which legs carry a needle.** `leg()` checks `rc == 0 and needle in out`,
+  and only legs 1 and 4 pass one — so legs 2, 3 and 5 accept an exit code alone. For 3 and 5 that
+  is sound: those smokes exit non-zero on every bad verdict. **Leg 2 is not.**
+
+  🔴 **`graph-store-migrated-gate` deliberately exits 0 on "I could not look".** `BOTH_EMPTY`,
+  `ONE_STORE` and `DISARMED` are INDETERMINATE and non-blocking, with a stated reason: *a gate
+  that reddened on a fresh deployment would be switched off within a week.* **Correct for a
+  repo-wide gate, wrong for a leg whose NAME is the claim.** The gate said *"neither store holds
+  any project"* and the proof printed *"PASS — the declared store holds the corpus"* directly
+  beneath it.
+
+  ⚠️ **AND THIS IS NOT HYPOTHETICAL — I nearly produced it myself, this session.** The census
+  producer pipes `docker exec … psql`, and my first attempt hit:
+
+  ```
+  psql: FATAL:  database "loreweave_knowledge" does not exist
+  ```
+
+  That error goes to **stderr**; stdout yields nothing and the producer emits `{}`. A wrong
+  database name, a stopped container, a renamed DB — each one hands the proof a silently empty
+  census that certifies a full store. The failure mode of the *instrument* lands exactly on the
+  verdict that reads as success.
+
+  📐 **So `--require-corpus`, and it is about the DECLARED store alone.** The two INDETERMINATEs
+  part here, which is the precise line: `SOLE_STORE` satisfies it — open-decisions §20, the
+  declared store is populated and only the *comparison* is absent — while `BOTH_EMPTY` does not.
+  A run param (rule 4): the census varies per run, so it belongs neither in a deploy ceiling nor
+  in per-book settings. The gate keeps its own non-blocking behaviour for every other caller.
+
+  🔬 **Validated on cases it was NOT written against (rule 3).** The flag was written for `{}`;
+  the selftest also pins an **absent** census (`None`) and one whose **every count is zero** —
+  three input shapes reaching the same absence of evidence, all refused.
+
+  🧪 **BITE T48ab-1 — line 141, `declared_holds_corpus()` returns `True`.**
+
+  ```
+  PASS  2 STORE  the declared store holds the corpus  rc=0
+        INDETERMINATE — BOTH_EMPTY: neither store holds any project
+  [proof] PROVEN                                                           exit 0
+  ```
+
+  **The exact sentence pair this row exists to make impossible.** Offline the same bite reds
+  **4** cases at exit 1. Restored; selftest exit 0.
+
+  **QC (a) gates:** `graph-store-migrated-gate --selftest` **21/21** (5 new criterion cases);
+  `architecture-live-proof`, `kal-read-surface-live-smoke`, `kal-surface-census-gate` selftests
+  all 0; census live OK; `gate-wiring-gate` OK; `plan-final-verification` PASS — every one by
+  direct exit code.
+  **QC (b) live smoke:** three five-leg proof runs against the running iso stack — empty
+  censuses (FAIL, exit 1), real censuses (PROVEN, exit 0), and the bite (PROVEN on empty, exit
+  0). No image rebuild; no service code changed.
+  **QC (c) real data:** iso's AGE census — 648 projects / 5683 entities — as the arm that must
+  still pass, against the `{}` arm that must not.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48aa 2026-08-30 — **`EMPTY=8 NOT-FOUND=2` had been RECORDED for six cycles and never DIAGNOSED — glossary-service was 0 for 10 and the floor could not see it**
 

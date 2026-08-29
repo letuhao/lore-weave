@@ -120,6 +120,27 @@ FAILING = {"EMPTY_DECLARED", "PARTIAL"}
 INDETERMINATE = {"BOTH_EMPTY", "ONE_STORE", "DISARMED", "SOLE_STORE"}
 
 
+def declared_holds_corpus(declared: dict | None) -> bool:
+    """Does the DECLARED store actually hold anything? Pure, so the selftest can drive it.
+
+    T48ab. `architecture-live-proof`'s STORE leg is named *"the declared store holds the
+    corpus"* and had no needle, so it accepted this gate's exit code. This gate is repo-wide and
+    deliberately does NOT fail on "I could not look" — `BOTH_EMPTY`, `ONE_STORE` and `DISARMED`
+    are INDETERMINATE and exit 0, because a gate that reddened on a fresh deployment would be
+    switched off within a week. Correct for the gate; **wrong for that leg**: two empty censuses
+    produced `PASS 2 STORE the declared store holds the corpus` and the whole proof read PROVEN.
+
+    That is not hypothetical. The census producer pipes `docker exec psql`, and a wrong database
+    name prints an error to stderr and yields `{}` on stdout — a silently empty census that
+    proves the store is full.
+
+    So a caller whose CLAIM is the corpus can demand it with `--require-corpus`, and the demand
+    is about the DECLARED store alone: `SOLE_STORE` satisfies it (open-decisions §20 — the
+    declared store is non-empty, only the comparison is absent), `BOTH_EMPTY` does not.
+    """
+    return bool(declared) and any(n > PRESENT for n in declared.values())
+
+
 def _load(path: str | None) -> dict | None:
     if not path:
         return None
@@ -170,6 +191,18 @@ def _selftest() -> int:
     checks = [
         ("EMPTY_DECLARED and BOTH_EMPTY are DISTINCT readings of a zero",
          verdict({}, full)[0] != verdict({}, {})[0]),
+        ("THE T48ab CRITERION: a populated declared store holds the corpus",
+         declared_holds_corpus(full)),
+        ("...an EMPTY census does not — and that is what a failed producer emits",
+         not declared_holds_corpus({})),
+        ("...nor an ABSENT one — a case the flag was NOT written against",
+         not declared_holds_corpus(None)),
+        ("...nor one whose every count is ZERO, a third input shape reaching the same absence",
+         not declared_holds_corpus({"p1": 0, "p2": 0})),
+        ("SOLE_STORE satisfies it (§20: the declared store IS populated, only the "
+         "comparison is missing) while BOTH_EMPTY does not — the two INDETERMINATEs part here",
+         declared_holds_corpus(full) and not declared_holds_corpus({})
+         and verdict(full, {})[0] == "SOLE_STORE" and verdict({}, {})[0] == "BOTH_EMPTY"),
         ("THE T48z PROPERTY: an ABSENT other census and an EMPTY one carry the same "
          "comparison evidence, so NEITHER may read as the success of a comparison",
          verdict(full, None)[0] in INDETERMINATE and verdict(full, {})[0] in INDETERMINATE),
@@ -201,12 +234,22 @@ def main(argv: list[str]) -> int:
                     help="the backend the deployment DECLARES (for the message only)")
     ap.add_argument("--declared-census", help="JSON: project_id -> node count, declared store")
     ap.add_argument("--other-census", help="JSON: project_id -> node count, the other store")
+    ap.add_argument("--require-corpus", action="store_true",
+                    help="fail unless the DECLARED census is non-empty. For a caller whose claim "
+                         "is that the store holds the corpus; see declared_holds_corpus().")
     args = ap.parse_args(argv)
 
     if args.selftest:
         return _selftest()
 
-    got, why = verdict(_load(args.declared_census), _load(args.other_census))
+    declared = _load(args.declared_census)
+    got, why = verdict(declared, _load(args.other_census))
+    if args.require_corpus and not declared_holds_corpus(declared):
+        print(f"[graph-store-migrated-gate] FAIL — {got}: the caller asserted the declared "
+              f"store HOLDS the corpus, and its census is empty or absent. An empty census is "
+              f"also what a failed producer emits (a wrong database name prints to stderr and "
+              f"yields `{{}}`), so this cannot be allowed to read as a full store.")
+        return 1
     if got in FAILING:
         print(f"[graph-store-migrated-gate] FAIL — {got}: {why}")
         print(f"  the deployment declares `{args.declared}`. Flipping the variable moves every "

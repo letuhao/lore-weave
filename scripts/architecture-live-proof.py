@@ -166,7 +166,13 @@ def main(argv: list[str]) -> int:
     # a selftest.
     leg("2 STORE    the declared store holds the corpus",
         ([py, "scripts/graph-store-migrated-gate.py", "--declared", "age",
-          "--declared-census", args.declared_census, "--other-census", args.other_census]
+          "--declared-census", args.declared_census, "--other-census", args.other_census,
+          # T48ab — this leg's NAME is the claim, so it must demand it. The gate is repo-wide
+          # and rightly does not fail on "I could not look": BOTH_EMPTY exits 0. With no needle
+          # on this leg, two empty censuses produced `PASS 2 STORE the declared store holds the
+          # corpus` and the proof read PROVEN. An empty census is also exactly what a failed
+          # producer emits.
+          "--require-corpus"]
          if (args.declared_census and args.other_census) else None))
     # T48y — `--project-id` is REQUIRED here, not optional. The sweep covers both user-facing
     # controllers since T48x, and one of them is prefixed `v1/kal/projects/:projectId`. Called
