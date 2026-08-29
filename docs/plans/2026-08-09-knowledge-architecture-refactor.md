@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**64 of 69 rows done · 5 open · 70 of 108 evidence blocks closed inside them.**
+**64 of 69 rows done · 5 open · 71 of 109 evidence blocks closed inside them.**
 
-**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/62) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (33/62) · `T48` (14/15) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24178,6 +24178,59 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48m 2026-08-24 — **the GOAL says "a live run proves it" and no single command ran that proof — now one does, and it SKIPS a leg rather than claiming it**
+
+  ```
+  NEW  scripts/architecture-live-proof.py   8-case --selftest · wired
+  1 BACKEND  every declared deployment on `age`          PASS
+  2 STORE    the declared store HOLDS the corpus         PASS  MIGRATED, 289 project(s)
+  3 SURFACE  every KAL read route answers                SKIP  no entity on this stack
+  4 PORT     class (d) discharged by §10.1's 2nd path    PASS
+                                    verdict PROVEN — ran 3, skipped 1, NAMED
+  ```
+
+  🎯 **Each leg existed; the conjunction did not.** The goal's sentence was true only as a claim
+  a reader assembled across a 25 000-line journal — which is the shape T48k found in
+  `plan-final-verification`: *a sentence wider than its check*. Now one command runs the legs and
+  returns one verdict, and **its PASS line says how many legs it ran** rather than "everything".
+
+  🔬 **THE FLOOR IS THE POINT: a run where every leg SKIPPED returns no failures.** `--min-legs`
+  is checked BEFORE the failure count, so `0 failures over 0 legs` cannot read as a proof — the
+  vacuous pass this repo has paid for as a grant-404 and as an empty-200. Selftest case 4 pins
+  the ordering; case 5 pins that a SKIP is never a PASS.
+
+  ⚠️ **MY FIRST VERSION COMMITTED THE EXACT DEFECT IT WAS WRITTEN TO PREVENT, TWICE.**
+
+  ```
+  1  leg 2 ran `graph-store-migrated-gate --selftest` — an OFFLINE check — under a name
+     claiming "the declared store holds the corpus". It now needs two real censuses or
+     it SKIPs. Run live: AGE 648 projects / 5683 entities vs Neo4j 289 / 603 -> MIGRATED.
+  2  leg 3 PASSED on 1 route of 14 because I passed no --entity-id, so every
+     entity-dependent route returned empty and the floor of 1 was met by the rest.
+     It now SKIPs without one.
+  ```
+
+  **Both are the same error as T48k and I made them inside the composer written to avoid it.**
+  The first draft printed `PROVEN, ran 4` — a stronger-looking verdict than the honest one below
+  it, produced by a leg that ran an offline selftest and a leg that measured a third of its
+  surface.
+
+  📐 **The honest verdict names what it did not do.** `skipped: ["3 SURFACE …"]` is in the output
+  because this stack's glossary holds no entity for that book — measured, not assumed
+  (`glossary_entities` for `3a801fd7…` returns zero rows). A proof that silently drops a leg is
+  how a surface stops being covered without anyone deciding to stop covering it.
+
+  **QC (a) gates:** `architecture-live-proof --selftest` **8/8** (new, wired into
+  `.githooks/pre-commit`); `gate-wiring-gate` 114; four plan gates green.
+  **QC (b) live smoke:** the run above IS the smoke — legs 1/2/4 against this tree and the iso
+  stack's own stores, leg 2 against `lw-iso` AGE (25556) and Neo4j (27688).
+  **QC (c) real data:** the two censuses are live reads — 648 projects / 5683 entities in the
+  declared AGE store against 289 / 603 in Neo4j.
+
+  ⛔ **This does not close T48.** Its first criterion is *every task fully implemented* and four
+  rows are open. What it removes is the gap between the goal's sentence and any command that
+  could check it.
   ---
   ### ✅ T48l 2026-08-24 — **four deferrals were advertising as OPEN on rows the plan had TICKED, and three were refuted by a number their own gate prints every run**
 

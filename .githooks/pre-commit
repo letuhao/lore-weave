@@ -158,6 +158,11 @@ command -v python >/dev/null 2>&1 || PY=python3
 # itself reports "the verifier dropped every false positive, so C31 generalises" --
 # the opposite conclusion, manufactured. C31 measured self-audit at 0/3.
 "$PY" "$ROOT/scripts/qc5-verifier-heldout.py" --selftest
+# The GOAL's own sentence as one command. Only the selftest runs here (--run needs a
+# live stack and two censuses). What it protects is the FLOOR: a run where every leg
+# SKIPped returns no failures, and "no leg failed" over zero legs is the vacuous pass
+# this repo keeps paying for. The floor is checked BEFORE the failure count.
+"$PY" "$ROOT/scripts/architecture-live-proof.py" --selftest
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call graph_repos with no Cypher of its own, pass that gate, and still break on an engine
