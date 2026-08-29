@@ -2,16 +2,19 @@
  "_what": "How often the model actually PICKS each tool, across every batch on disk.",
  "_derived_by": "python scripts/toolloop/selection_rate.py",
  "min_runs": 5,
- "lottery_below": 0.5,
- "measured": 68,
- "lottery_count": 20,
+ "lottery_below": 0.4507197283469411,
+ "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. No tool measured lies in [0.400, 0.500), so every value from 0.41 to 0.49 classifies identically — the derivation is robust and retires no row.",
+ "measured": 74,
+ "lottery_count": 22,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
   "composition_build_cast_and_graph",
+  "composition_canon_rule_restore",
   "composition_derivative_edit",
   "composition_generate",
   "composition_motif_adopt",
+  "composition_motif_bind_edit",
   "composition_scene_link_edit",
   "glossary_book_sync_apply",
   "glossary_create_chapter_link",
@@ -83,6 +86,11 @@
    "runs": 125,
    "rate": 0.24
   },
+  "composition_canon_rule_restore": {
+   "calls": 0,
+   "runs": 30,
+   "rate": 0.0
+  },
   "composition_conformance_run": {
    "calls": 4,
    "runs": 5,
@@ -104,14 +112,19 @@
    "rate": 0.267
   },
   "composition_entity_override_edit": {
-   "calls": 52,
-   "runs": 77,
-   "rate": 0.675
+   "calls": 54,
+   "runs": 90,
+   "rate": 0.6
   },
   "composition_generate": {
    "calls": 0,
    "runs": 34,
    "rate": 0.0
+  },
+  "composition_library_translate": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
   },
   "composition_motif_adopt": {
    "calls": 4,
@@ -120,8 +133,8 @@
   },
   "composition_motif_bind_edit": {
    "calls": 15,
-   "runs": 29,
-   "rate": 0.517
+   "runs": 39,
+   "rate": 0.385
   },
   "composition_motif_link_edit": {
    "calls": 47,
@@ -138,10 +151,15 @@
    "runs": 5,
    "rate": 0.2
   },
+  "composition_structure_template_edit": {
+   "calls": 10,
+   "runs": 15,
+   "rate": 0.667
+  },
   "glossary_book_sync_apply": {
-   "calls": 0,
-   "runs": 20,
-   "rate": 0.0
+   "calls": 5,
+   "runs": 45,
+   "rate": 0.111
   },
   "glossary_create_chapter_link": {
    "calls": 4,
@@ -164,14 +182,14 @@
    "rate": 1.0
   },
   "glossary_extract_entities_from_doc": {
-   "calls": 0,
-   "runs": 10,
-   "rate": 0.0
+   "calls": 5,
+   "runs": 15,
+   "rate": 0.333
   },
   "glossary_ontology_delete": {
    "calls": 5,
-   "runs": 5,
-   "rate": 1.0
+   "runs": 10,
+   "rate": 0.5
   },
   "glossary_propose_batch": {
    "calls": 5,
@@ -183,14 +201,19 @@
    "runs": 5,
    "rate": 0.8
   },
+  "glossary_search": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
   "jobs_cancel": {
    "calls": 7,
    "runs": 35,
    "rate": 0.2
   },
   "jobs_get": {
-   "calls": 5,
-   "runs": 5,
+   "calls": 10,
+   "runs": 10,
    "rate": 1.0
   },
   "jobs_pause": {
@@ -258,10 +281,15 @@
    "runs": 5,
    "rate": 1.0
   },
+  "plan_validate": {
+   "calls": 14,
+   "runs": 15,
+   "rate": 0.933
+  },
   "propose_edit": {
-   "calls": 5,
-   "runs": 20,
-   "rate": 0.25
+   "calls": 11,
+   "runs": 30,
+   "rate": 0.367
   },
   "registry_get_workflow": {
    "calls": 5,
@@ -309,8 +337,8 @@
    "rate": 0.3
   },
   "tool_load": {
-   "calls": 20,
-   "runs": 40,
+   "calls": 30,
+   "runs": 60,
    "rate": 0.5
   },
   "translation_job_control": {
@@ -331,6 +359,11 @@
   "translation_update_settings": {
    "calls": 10,
    "runs": 10,
+   "rate": 1.0
+  },
+  "workflow_list": {
+   "calls": 5,
+   "runs": 5,
    "rate": 1.0
   },
   "world_delete": {

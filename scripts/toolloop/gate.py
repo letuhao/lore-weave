@@ -187,16 +187,45 @@ class Gate:
         # owner; changing it here would redefine `proven` for every stochastic tool in the
         # denominator by side effect. The rate is STATED so a reader knows which sentence they
         # are being handed.
+        # ── DQ-T51, answered by the owner 2026-08-28 ────────────────────────────────────────
+        # "STATE A RATE BAR. A tool chosen in >= N of M runs counts as reachable; below that the
+        # row is a SELECTION defect, not an unproven tool." The owner declined letting a direct
+        # probe satisfy LIVE — the real chat path stays the bar.
+        #
+        # The bar is DERIVED (selection_rate._reachable_bar): p = 1-(1-0.95)**(1/5) = 0.4507, the
+        # rate at which a K=5 batch has 95% chance of containing a call. At or above it, `called
+        # 0/5` is evidence about the TOOL. Below it the zero is mostly a lost draw, so calling
+        # the tool unproven measures the draw and not the tool.
+        #
+        # WHAT CHANGED HERE: below the bar this stops being a LIVE failure and becomes a NAMED
+        # SELECTION finding. It is NOT a pass — the verdict still says the tool was not called
+        # and still refuses to conclude `proven` — but it no longer reads as "this tool is
+        # broken" when what is broken is that the model rarely picks it.
         _rate = selection_rate.rate_for(t["tool"])
-        _rate_note = ""
-        if _rate and _rate["rate"] < selection_rate.LOTTERY_BELOW:
-            _rate_note = (f" [selection rate {_rate['rate']:.2f} across the corpus — "
-                          f"{_rate['calls']}/{_rate['runs']}; this verdict rests on a draw the "
-                          "model loses more often than it wins]")
-        self._check(
-            called >= 1, f"[{t['tool']}] LIVE called ({called}/{len(runs)}){_rate_note}",
-            "the tool under test was never invoked on any run — the model answered by another "
-            "route, so nothing here is evidence about THIS tool")
+        _below_bar = bool(_rate) and _rate["rate"] < selection_rate.LOTTERY_BELOW
+        if called >= 1 or not _below_bar:
+            _rate_note = ""
+            if _below_bar:
+                _rate_note = (f" [selection rate {_rate['rate']:.2f} across the corpus — "
+                              f"{_rate['calls']}/{_rate['runs']}; this verdict rests on a draw "
+                              "the model loses more often than it wins]")
+            self._check(
+                called >= 1, f"[{t['tool']}] LIVE called ({called}/{len(runs)}){_rate_note}",
+                "the tool under test was never invoked on any run — the model answered by "
+                "another route, so nothing here is evidence about THIS tool")
+        else:
+            # 🔴 NOT A PASS AND NOT A LIVE FAILURE — a different sentence. `_check` would have to
+            # be one or the other, so this is recorded as its own bar, and `conclude` cannot read
+            # it as green: a SELECTION verdict never yields `proven`.
+            self._check(
+                False,
+                f"[{t['tool']}] SELECTION below the reachability bar "
+                f"({_rate['calls']}/{_rate['runs']} = {_rate['rate']:.2f} < "
+                f"{selection_rate.LOTTERY_BELOW:.2f})",
+                "the model picks this tool too rarely for a K=5 batch to be a fair test — at "
+                "this rate a zero is a lost draw, not a finding about the tool. This is a "
+                "SELECTION defect (why is it not chosen?), NOT an unproven tool, and re-running "
+                "until a call appears would be sampling for a verdict (DQ-T51).")
 
     def data(self, t: dict) -> None:
         """The store bar, checked on EVERY run rather than on one aggregate pair.

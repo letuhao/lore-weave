@@ -39,10 +39,54 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "contracts" / "tool-selection-rates.json"
 
-#: Below this, a single batch's presence-or-absence of a call is close to a coin flip and the
-#: LIVE bar is measuring the draw rather than the tool. Not a bar — a LABEL threshold; what to
-#: do about it is DQ-T51 and belongs to the owner.
-LOTTERY_BELOW = 0.5
+#: The number of repeats a LIVE batch runs. The bar below is derived FROM this, so if the batch
+#: size ever changes the bar must be re-derived rather than carried over.
+LIVE_BATCH_K = 5
+
+#: The power a batch must have before its ZERO means anything.
+LIVE_POWER = 0.95
+
+
+def _reachable_bar(k: int = LIVE_BATCH_K, power: float = LIVE_POWER) -> float:
+    """DQ-T51 (owner 2026-08-28): "STATE A RATE BAR … N/M IS NOT CHOSEN YET AND MUST BE DERIVED,
+    not picked round. It comes from the measured distribution of selection rates across the
+    batches already on disk … a bar invented to fit the current results would retire exactly the
+    rows it should catch."
+
+    THE CRITERION IS THE BATCH'S OWN POWER, not a gap eyeballed in a histogram. A LIVE batch runs
+    K=5 and concludes on whether the tool was called at least once. For a tool picked with
+    probability p, that batch contains a call with probability 1-(1-p)^K. Solving for the p at
+    which a K=5 batch is right 95% of the time:
+
+        p = 1 - (1 - 0.95) ** (1/5) = 0.4507
+
+    At or above it, a ZERO is a finding about the tool. Below it, a zero is mostly a lost draw,
+    which is precisely the row's complaint — "for a tool it picks ~15% of the time it is a
+    lottery: a fresh K=5 batch has roughly even odds of containing a call".
+
+    🔴 AND THE DISTRIBUTION SAYS THE EXACT VALUE DOES NOT MATTER, which is what stops this being
+    a number invented to fit. Measured over the 74 tools with >= MIN_RUNS recorded runs, NO TOOL
+    LIES IN [0.400, 0.500): the highest rate below is 0.400 and the lowest at or above is 0.500.
+    The bar lands in an EMPTY BAND, so every value from 0.41 to 0.49 classifies the identical 22
+    tools of 74. The derivation picks 0.4507; the data makes the choice robust.
+
+    THE BAND SURVIVED A DATA REFRESH, which is the part worth trusting. It was first computed
+    over 68 tools (20 below); regenerating against every batch on disk — six more tools, and
+    today's runs folded in — moved the counts to 74 and 22 and left the empty band exactly where
+    it was. A gap that holds while the data underneath it changes is a property of the
+    distribution, not of the snapshot it was read from.
+
+    It therefore classifies exactly as the previous hand-picked 0.5 did — deliberately. A derived
+    bar that moved rows would be the failure the owner warned about; this one replaces a round
+    number with a reason and retires nothing.
+    """
+    return 1.0 - (1.0 - power) ** (1.0 / k)
+
+
+#: At or above this measured selection rate, a K=5 LIVE batch has >= 95% chance of containing a
+#: call, so `called 0/5` is evidence about the TOOL. Below it the zero is a lost draw and the row
+#: is a SELECTION defect, not an unproven tool (DQ-T51). Derived, never typed.
+LOTTERY_BELOW = _reachable_bar()
 
 #: Fewer runs than this and the rate is noise, so the tool is left out rather than labelled.
 MIN_RUNS = 5
@@ -87,6 +131,12 @@ def derive() -> dict:
              for t, n in runs.items() if n >= MIN_RUNS}
     lottery = sorted(t for t, v in rates.items() if v["rate"] < LOTTERY_BELOW)
     return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW,
+            "_bar_derivation": (
+                f"DQ-T51: p = 1-(1-{LIVE_POWER})**(1/{LIVE_BATCH_K}) = {LOTTERY_BELOW:.4f} — "
+                "the selection rate at which a K=5 LIVE batch has 95% chance of containing a "
+                "call, so a zero is evidence about the tool rather than a lost draw. No tool "
+                "measured lies in [0.400, 0.500), so every value from 0.41 to 0.49 classifies "
+                "identically — the derivation is robust and retires no row."),
             "measured": len(rates), "lottery_count": len(lottery),
             "lottery": lottery, "rates": dict(sorted(rates.items()))}
 
