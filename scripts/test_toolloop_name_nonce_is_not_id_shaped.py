@@ -25,6 +25,7 @@ belongs in anything a person would read as a NAME.
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import sys
@@ -110,6 +111,28 @@ GRANDFATHERED_HEX_NAMES = {
     "scenarios-batch27.json",
 }
 
+#: VERBATIM RE-RUN ARMS of a grandfathered file: {extract -> the file it was lifted from}.
+#:
+#: 🔴 TWO CORRECT RULES COLLIDE HERE. The nonce rule says a NEW scenario must not put a hex
+#: nonce in a display name. The re-measurement rule says an arm that exists to be compared with
+#: an older batch must be byte-faithful to it — scenarios-c-bindarc1.json says so in its own
+#: note: "extracted VERBATIM ... Nothing in the scenario is changed: same prompt, same seed,
+#: same falsifier." Editing the name to obey the nonce rule would silently destroy the only
+#: thing the file is for, and the comparison would go on being quoted as if it still held.
+#:
+#: So the exemption is granted to the EXTRACT because its SOURCE already has it — and it is
+#: granted only for as long as the extract really is an extract. The test below re-reads both
+#: files and compares the fields that decide a run. Edit the copy and the exemption evaporates,
+#: which is the same shape as the override rule in the measured-turn gate: an escape hatch that
+#: verifies its own justification is not an escape hatch.
+VERBATIM_EXTRACTS = {
+    "scenarios-c-bindarc1.json": ("scenarios-batch26.json", "composition-motif-bind-edit"),
+}
+
+#: The fields that decide what a run DOES. Two files agreeing on these are the same experiment;
+#: `_note` and `prompt_source` are commentary and may differ.
+_VERBATIM_FIELDS = ("prompt", "seed", "tool_under_test", "expect_tool", "tier", "intent")
+
 
 class TestScenariosDoNotPutAHexNonceInAName:
     """The rule this was written for, applied to every scenario file in the loop."""
@@ -120,7 +143,7 @@ class TestScenariosDoNotPutAHexNonceInAName:
         return {f.name for f in SCENARIOS if pat.search(f.read_text(encoding="utf-8"))}
 
     def test_no_new_scenario_suffixes_a_display_name_with_run_id(self):
-        new = self._offenders() - GRANDFATHERED_HEX_NAMES
+        new = self._offenders() - GRANDFATHERED_HEX_NAMES - set(VERBATIM_EXTRACTS)
         assert not new, (
             "these scenarios put the HEX nonce in a display name, which the model reads as an "
             f"identifier — use {{run_word}}: {sorted(new)}")
@@ -130,6 +153,37 @@ class TestScenariosDoNotPutAHexNonceInAName:
         assert not stale, (
             "these files no longer put a hex nonce in a name — drop them from "
             f"GRANDFATHERED_HEX_NAMES so the list cannot rot upward: {sorted(stale)}")
+
+    def test_a_verbatim_extract_is_STILL_verbatim(self):
+        """🔴 THE EXEMPTION VERIFIES ITSELF, or it is just a place to hide an offender.
+
+        An extract keeps the nonce exemption only because it is a faithful copy of a file that
+        already had one. The moment someone edits the copy — reasonably, to fix the very nonce
+        this rule is about — it stops being the experiment it claims to re-run, and it loses the
+        exemption here rather than keeping it silently."""
+        assert VERBATIM_EXTRACTS, "the extract list is empty — the exemption has been undone"
+        for extract, (source, sid) in sorted(VERBATIM_EXTRACTS.items()):
+            assert source in GRANDFATHERED_HEX_NAMES, (
+                f"{extract} claims to extract {source}, which is NOT grandfathered — the "
+                "exemption has nothing to inherit")
+            a = self._scenario(extract, sid)
+            b = self._scenario(source, sid)
+            assert a is not None, f"{extract} has no scenario {sid!r}"
+            assert b is not None, f"{source} has no scenario {sid!r}"
+            differing = [f for f in _VERBATIM_FIELDS if a.get(f) != b.get(f)]
+            assert not differing, (
+                f"{extract}::{sid} is no longer verbatim against {source} — it differs on "
+                f"{differing}. It cannot claim {source}'s nonce exemption, and any comparison "
+                "drawn between the two batches is no longer like-for-like.")
+
+    @staticmethod
+    def _scenario(filename, sid):
+        for f in SCENARIOS:
+            if f.name != filename:
+                continue
+            d = json.loads(f.read_text(encoding="utf-8"))
+            return next((s for s in d.get("scenarios", []) if s.get("id") == sid), None)
+        return None
 
     def test_prompts_do_not_carry_the_hex_nonce(self):
         offenders = [f.name for f in SCENARIOS

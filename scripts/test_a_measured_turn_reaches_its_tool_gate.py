@@ -271,10 +271,30 @@ def unreachable_scenarios() -> set[str]:
     return out
 
 
-def _scenario_baseline() -> set[str]:
+def _scenario_contract() -> dict:
     if not SCENARIO_BASELINE.exists():
-        return set()
-    return set(json.loads(SCENARIO_BASELINE.read_text(encoding="utf-8"))["scenarios"])
+        return {"scenarios": [], "by_design": {}, "overridden_by_live_evidence": {}}
+    return json.loads(SCENARIO_BASELINE.read_text(encoding="utf-8"))
+
+
+def _scenario_baseline() -> set[str]:
+    """Everything the GATE tolerates — three categories with three different rules.
+
+    🔴 SPLIT 2026-08-30, and the split was overdue rather than occasioned. This was one flat
+    shrink-only list, and five of its twenty-five entries were already "Yes, go ahead and do it."
+    confirmation turns. A confirmation carries no tool vocabulary AND MUST NOT — so those entries
+    could never leave the list, while `test_a_scenario_that_became_reachable_leaves_the_baseline`
+    stood ready to demand their removal the moment they did, which would have been a regression
+    dressed as progress.
+
+      scenarios   DECLARATION DEBT — shrink-only; becoming reachable is progress
+      by_design   the measured turn MUST NOT reach its tool; becoming reachable is a REGRESSION
+      overridden  the gate was WRONG here, and a live run on disk proves it
+    """
+    c = _scenario_contract()
+    return (set(c.get("scenarios") or [])
+            | set(c.get("by_design") or {})
+            | set(c.get("overridden_by_live_evidence") or {}))
 
 
 def test_the_per_scenario_scan_sees_more_than_the_per_tool_one():
@@ -302,5 +322,44 @@ def test_no_NEW_scenario_turn_fails_to_reach_its_own_tool():
 
 
 def test_a_scenario_that_became_reachable_leaves_the_baseline():
-    stale = sorted(_scenario_baseline() - unreachable_scenarios())
+    """Scoped to the DEBT list alone. Applying it to `by_design` would demand the removal of an
+    entry whose becoming reachable is the thing we most want to hear about."""
+    debt = set(_scenario_contract().get("scenarios") or [])
+    stale = sorted(debt - unreachable_scenarios())
     assert not stale, f"no longer unreachable, remove from {SCENARIO_BASELINE.name}: {stale}"
+
+
+def test_a_BY_DESIGN_turn_has_not_started_reaching_its_tool():
+    """🔴 THE INVERTED RULE, and the reason the split had to happen.
+
+    These measured turns are confirmations — "Yes, go ahead and do it." — and a confirmation that
+    could name its tool through `answerable_tools` would mean some tool had declared assent itself
+    as vocabulary. That is a bug in the declaration, and it would silently make every
+    confirmation-turn measurement in this loop mean something different."""
+    by_design = _scenario_contract().get("by_design") or {}
+    assert by_design, "the by-design category is empty — the split has been undone"
+    regressed = sorted(set(by_design) - unreachable_scenarios())
+    assert not regressed, (
+        "these turns are supposed to be UNABLE to name their tool, and now can — a tool has "
+        "declared confirmation vocabulary: " + ", ".join(regressed))
+
+
+def test_every_OVERRIDE_is_backed_by_a_run_that_called_the_tool():
+    """🔴 THE ESCAPE HATCH, HELD SHUT. An override says "the gate is wrong here", which is exactly
+    the sentence someone reaches for when the gate is right and inconvenient. So it is not taken on
+    trust: the cited raw batch is re-read and the calls RE-COUNTED from the wire records. An
+    override whose evidence stops supporting it fails, and one whose file is gone fails."""
+    overrides = _scenario_contract().get("overridden_by_live_evidence") or {}
+    assert overrides, "the override category is empty — the split has been undone"
+    for key, o in sorted(overrides.items()):
+        ev = ROOT / o["evidence"]
+        assert ev.exists(), f"{key}: evidence file is gone: {o['evidence']}"
+        d = json.loads(ev.read_text(encoding="utf-8"))
+        runs = d if isinstance(d, list) else d.get("runs", [])
+        called = sum(1 for r in runs
+                     if o["tool"] in {c.get("toolCallName") for c in r.get("tool_calls", [])
+                                      if c.get("type") == "TOOL_CALL_START"})
+        assert runs and called, (
+            f"{key}: the override claims {o['tool']} was called {o['called']}, but the cited "
+            f"batch shows {called} of {len(runs)} — the gate was NOT refuted here"
+        )
