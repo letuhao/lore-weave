@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T25 ③ §9.1 — the dev passage cutover; backfill, flip, delete the DDL.**
+**RESUME: §9.1b — PO call: dev's container predates the dual-write; the grant needs it.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 104 of 150 evidence blocks closed inside them.**
+**63 of 69 rows done · 6 open · 104 of 151 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (36/46) · `T25` (18/24) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T17` (36/46) · `T25` (18/25) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -7432,6 +7432,71 @@ vectors and validity intervals live in different stores.
   ---
   ---
   ---
+  ---
+  ### 🔻 T25y 2026-08-24 — **the GRANT is unachievable as written, and the reason is one metrics probe: dev's container predates the dual-write**
+
+  ```
+  dev Neo4j    :Passage 1051 · with embedding_1024  1051
+  dev secondary  loreweave_knowledge_vectors.passage_vectors_1024   0
+  soak-armed-gate --url http://localhost:8216/metrics   ->  DISARMED
+  ```
+
+  🎯 **§9.1's measurement is still exactly true**, re-taken today rather than quoted: 1051
+  embedded passages in the graph against **zero** rows in the Postgres secondary. That is the
+  state the PO's 2026-08-24 grant was written to end.
+
+  🔴 **But the grant's first step cannot do what it says.** `soak-armed-gate` reads dev's own
+  `/metrics` and answers:
+
+  ```
+  DISARMED — neither `knowledge_vector_dual_write_armed` nor the
+  `knowledge_vector_dual_write_total` family is exposed — this service PREDATES the
+  dual-write entirely. A soak is not running, and zero here is not a passing measurement.
+  ```
+
+  **The running image has no dual-write code at all.** So `backfill-passages` against it would
+  MERGE `:Passage` into the dev graph and spend embedding tokens to populate **nothing** in the
+  secondary. The count stays 0, and the next step — `READ_PRIMARY=postgres` — becomes §9.1's
+  **option 2**, which that section names precisely so it is refused deliberately rather than by
+  accident: *"passage search on dev silently returns nothing until something re-ingests, because
+  the secondary is empty rather than broken. This is the failure shape this plan has caught four
+  times."*
+
+  ⛔ **AND THE FIX COLLIDES WITH THE OTHER HALF OF THE SAME GRANT.** Arming dual-write means
+  recreating `infra-knowledge-service-1` from a current image — the old SOAK grant, verbatim
+  (`docker compose up -d knowledge-service` from `infra/`). Measured: **the dev stack IS the
+  sibling compose project.**
+
+  ```
+  infra-knowledge-service-1   0.0.0.0:8216->8092    <- "dev"
+  infra-postgres-1            0.0.0.0:5555->5432
+  infra-neo4j-1               0.0.0.0:7688->7687
+  infra-knowledge-pg-1        0.0.0.0:5556->5432
+  ```
+
+  The same GRANTS block authorises the dev cutover **and** says *"NOT granted: the sibling
+  `infra` stack"*, and the PO's standing instruction is to leave it alone. Those are not
+  reconcilable by me: one step of the granted sequence requires the action the same grant
+  withholds.
+
+  ⚠️ **Two things I got wrong on the way, both corrected by measuring:** the secondary is not in
+  `loreweave_knowledge` on 5555 — it is `loreweave_knowledge_vectors` on **5556** (`knowledge-pg`
+  is its own container) — and `docker exec … printenv` shows the service carries **no**
+  `KNOWLEDGE_VECTOR_READ_PRIMARY` at all, so it is running on T25k's code default (`neo4j`),
+  not on a configured choice.
+
+  📐 **STOPPING here is the run contract's fourth condition, not a preference** — *a PO decision
+  is owed that GRANTS does not cover*. Proceeding under either reading does harm: running the
+  backfill spends tokens and writes to a non-throwaway graph for **zero** secondary rows, and
+  restarting the sibling container is the action the PO withheld. Nothing else in the plan is
+  downstream of this (§9.1: *"Nothing else in the plan depends on the DDL being gone"*), so the
+  queue continues past it.
+
+  **QC (a) gates:** four plan gates green; `soak-armed-gate` is the instrument, used at its
+  documented `--url`.
+  **QC (b) live smoke:** N/A — nothing was built or deployed. This cycle is a measurement.
+  **QC (c) real data:** every number is a live read of the dev stack (rule 1) — Neo4j on 7688,
+  `knowledge-pg` on 5556, `/metrics` on 8216. **Dev was read and not written.**
   ---
   ### ✅ T25x 2026-08-23 — **24 pgvector tests had been SKIPPING, and three of them encoded the design QC-3 retired**
 

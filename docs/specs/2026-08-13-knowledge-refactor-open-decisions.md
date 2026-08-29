@@ -1352,6 +1352,37 @@ with its steps individually evidenced rather than being marked blocked.
 needing port operations, derived and ratcheted by `port-adoption-gate` since A14. None of that
 is downstream of the vector DDL.
 
+### 9.1b The 2026-08-24 grant cannot be executed as written — **PO DECISION OWED (T25y, 2026-08-24)**
+
+The PO granted the dev cutover: backfill → `READ_PRIMARY=postgres` → delete the passage DDL.
+**Step 1 cannot populate the secondary**, measured on dev's own `/metrics`:
+
+```
+soak-armed-gate  ->  DISARMED — neither `knowledge_vector_dual_write_armed` nor the
+                     `knowledge_vector_dual_write_total` family is exposed; this service
+                     PREDATES the dual-write entirely.
+dev Neo4j :Passage 1051 (all embedded)   dev passage_vectors_1024  0
+```
+
+A backfill against that container MERGEs `:Passage` and spends embedding tokens for **zero**
+secondary rows, which turns step 2 into this section's option 2 — the silent-empty failure it
+exists to refuse. Arming dual-write means recreating `infra-knowledge-service-1`, and the dev
+stack **is** the sibling `infra` compose project, which the same grant withholds.
+
+**The options, unchanged in kind from §9.1 but now with the blocker named:**
+
+1. **Extend the grant to the container.** Recreate `infra-knowledge-service-1` from a current
+   image (the old SOAK grant), confirm `soak-armed-gate` reads `ARMED_IDLE`/`SOAKING`, then
+   backfill, flip, delete the DDL. This is the only path that reaches the granted end state.
+2. **Withdraw the cutover.** T25 closes on ① ② ④ and steps 1/2/5 of ③, with step 3 recorded as
+   deliberately declined — the position the PO took on 2026-08-24 about the data itself.
+3. **Do the whole cutover on `lw-iso` instead** and leave dev untouched. Proves the sequence
+   end-to-end (T25l/T25m already did on iso) but does not move the DECLARED deployment, so
+   `graph-store-migrated-gate` keeps answering about dev.
+
+**What does NOT block on this:** §9.1's closing sentence still holds — *"Nothing else in the
+plan depends on the DDL being gone."*
+
 ## 10 · T17 class (d) — the shape of the remainder
 
 
