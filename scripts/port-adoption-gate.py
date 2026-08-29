@@ -1628,6 +1628,14 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: have.
 MIN_AGE_PROVEN_FUNCTIONS = 118
 
+#: T17 A33 — class (d) modules binding an ENGINE-TOUCHING repo function not yet proven on AGE.
+#: This is §10.1's second path expressed as a number, and it is **0**: of the 32 modules the
+#: first-path classifier still counts, 30 bind only AGE-proven functions and the other 2 bind
+#: pure helpers with no session at all. A RATCHET — any reading above zero is a module whose
+#: substitutability neither path covers, which is the only version of class (d) that was ever
+#: a risk.
+MAX_CLASS_D_UNDISCHARGED = 0
+
 _AGE_PROOF = os.path.join(
     SCAN_ROOT, "..", "tests", "integration", "db", "test_repo_layer_runs_on_age.py",
 )
@@ -1713,27 +1721,70 @@ def scan_age_proven() -> tuple[set[str], int]:
     # 7 pure helpers with no session at all — `fact_id`, `days_since_epoch`, `event_id`. A
     # coverage percentage over those is a percentage of the wrong thing, and it read 13% when
     # the honest figure was higher. 119, measured 2026-08-22 (T88).
-    total = 0
-    if os.path.isdir(_REPO_DIR):
-        for fname in sorted(os.listdir(_REPO_DIR)):
-            if not fname.endswith(".py") or fname == "__init__.py":
+    return proven, len(engine_touching_repo_functions())
+
+
+def engine_touching_repo_functions() -> set[str]:
+    """Public repo functions that take a `session`/`tx` — the ones that CAN fail on an engine.
+
+    Extracted 2026-08-24 (T17 A33) so `scan_age_proven`'s denominator and class (d)'s
+    discharge test are the same predicate rather than two copies that drift. The exclusion it
+    encodes is already load-bearing and already documented above: `days_since_epoch`,
+    `fact_id` and `event_id` are pure helpers living in `graph_repos`, and counting them made
+    coverage read 13% when the honest figure was far higher.
+    """
+    names: set[str] = set()
+    if not os.path.isdir(_REPO_DIR):
+        return names
+    for fname in sorted(os.listdir(_REPO_DIR)):
+        if not fname.endswith(".py") or fname == "__init__.py":
+            continue
+        if fname[:-3] in _DELETED_MODULES:
+            continue
+        try:
+            mod = ast.parse(open(os.path.join(_REPO_DIR, fname),
+                                 encoding="utf-8", errors="replace").read())
+        except (OSError, SyntaxError):
+            continue
+        for n in mod.body:
+            if not isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)):
                 continue
-            if fname[:-3] in _DELETED_MODULES:
+            if n.name.startswith("_"):
                 continue
-            try:
-                mod = ast.parse(open(os.path.join(_REPO_DIR, fname),
-                                     encoding="utf-8", errors="replace").read())
-            except (OSError, SyntaxError):
-                continue
-            for n in mod.body:
-                if not isinstance(n, (ast.AsyncFunctionDef, ast.FunctionDef)):
-                    continue
-                if n.name.startswith("_"):
-                    continue
-                args = [a.arg for a in n.args.args] + [a.arg for a in n.args.kwonlyargs]
-                if "session" in args or "tx" in args:
-                    total += 1
-    return proven, total
+            args = [a.arg for a in n.args.args] + [a.arg for a in n.args.kwonlyargs]
+            if "session" in args or "tx" in args:
+                names.add(n.name)
+    return names
+
+
+def scan_class_d_undischarged(cls, proven) -> dict[str, list[str]]:
+    """§10.1's SECOND PATH, made a number — the ratchet that section asked for and nobody built.
+
+    §10.1 decided: *"Class (d) reaches zero either by a module migrating to `GraphStore` **or**
+    by the repo layer it binds becoming engine-agnostic… the second path needs its own ratchet,
+    and building that ratchet is the next unit rather than another decision."* Until now
+    `class (d)` counted only the FIRST path, so it read 32 while the second path had already
+    discharged nearly all of them — and that number is what made T17 look like the critical
+    path to the goal.
+
+    A class (d) module is UNDISCHARGED only if it binds a repo function that both
+      (a) can fail on an engine — it takes a `session`/`tx`, and
+      (b) is not in the set proven on AGE.
+    Measured 2026-08-24: **30 of 32 discharged**, and the remaining two bind
+    `group_supersessions` (in-memory grouping of already-recalled facts) and `days_since_epoch`
+    (date arithmetic) — pure Python that cannot fail on any engine. So the real figure is 0.
+    """
+    leaves = {q.split(".")[-1] for q in proven}
+    touching = engine_touching_repo_functions()
+    out: dict[str, list[str]] = {}
+    for rel, (kind, ops, _types) in cls.items():
+        if not kind.startswith("(d)"):
+            continue
+        missing = sorted(o for o in ops
+                         if o.split(".")[-1] in touching and o.split(".")[-1] not in leaves)
+        if missing:
+            out[rel] = missing
+    return out
 
 
 
@@ -1994,6 +2045,17 @@ def main() -> int:
     print(f"[port-adoption-gate] class (d) {len(class_d)}/{MAX_CLASS_D} — modules needing "
           f"a port operation that does not exist (port-adoption debt; NOT an engine "
           f"blocker since T54c)")
+    undischarged = scan_class_d_undischarged(classes, scan_age_proven()[0])
+    if len(undischarged) > MAX_CLASS_D_UNDISCHARGED:
+        print(f"{chr(10)}[port-adoption-gate] FAIL — {len(undischarged)} class (d) module(s) "
+              f"bind an engine-touching repo function NOT proven on AGE (ceiling "
+              f"{MAX_CLASS_D_UNDISCHARGED}): {undischarged}")
+        return 1
+    print(f"[port-adoption-gate] class (d) UNDISCHARGED {len(undischarged)}/"
+          f"{MAX_CLASS_D_UNDISCHARGED} — §10.1's SECOND path as a number: a class (d) module "
+          f"is discharged when every engine-touching function it binds is proven on AGE. "
+          f"30 of 32 are; the other 2 bind pure helpers with no session. The 32 above is "
+          f"port-adoption debt, and THIS is the substitutability risk.")
     proven, total_fns = scan_age_proven()
     if len(proven) != MIN_AGE_PROVEN_FUNCTIONS:
         verb = "ROSE to" if len(proven) > MIN_AGE_PROVEN_FUNCTIONS else "fell to"

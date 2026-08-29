@@ -1983,6 +1983,31 @@ eight days and stopped a run on a decision nobody owed."*
 discovered by `gate-wiring-gate` (113 → 114). Its count is zero today and goes non-zero the
 moment a row is ticked over an open obligation.
 
+## 17 · `AgeGraphStore.events_page` counts in Python — **ACCEPTED, with a priced trigger (T17 A33, 2026-08-24)**
+
+**Cited by plan row `T17`.** Surfaced by `discharged-deferral-gate` when T17 was ticked — the
+gate built two cycles earlier refused the commit that would have left three obligations under a
+finished row, and this is the one of the three that was not already superseded by §1.3.
+
+**The limitation is real and correctly described.** `AgeGraphStore.events_page` filters, sorts
+and slices in Python over a bounded scan, because AGE has no single-statement shape returning
+both the page and the unpaged `total`, and two statements can disagree under concurrent writes.
+
+**DECIDED — accept it, and the acceptance is PRICED rather than asserted.** Its own re-open
+condition is *"a real corpus approaches 5 000 events in one browse window"*. Measured on dev
+2026-08-24, the largest project in the store holds **418** events — an order of magnitude below
+the cap, on the biggest corpus that exists. The bounded scan is not a latent outage; it is a
+shape that would become one at a scale nothing in this system is near.
+
+**Why not fix it now.** The two available fixes are a `WITH collect(e) AS all …` shape returning
+`size(all)` beside the slice, or two statements inside one transaction so the pair is at least
+mutually consistent. Both are real work on a read path that is correct at every corpus size that
+exists, and §1.4's standing rule is that an adapter refuses rather than half-implements — this
+adapter neither refuses nor half-implements, it is simply doing the work in the wrong layer.
+
+**Re-open trigger, unchanged and now measurable:** one project's browse window reaching 5 000
+events. The cap makes that loud rather than silent, which is why acceptance is safe.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — every task in them is `[~]`.~~ **STALE, corrected 2026-08-24 (T48l).** Eight rows in those phases are `[x]`: T44–T47, T54–T56 and QC-7. Only `T48`/`T49` remain there, and both wait on the other open rows rather than on work of their own. Kept struck rather than deleted: this sentence sat six lines above a generated block that contradicted it, which is the exact arrangement the block below was created to end.
 
-**RESUME: T17 §1.3 — close the row on its FLOOR; the ceiling is a permanent tail.**
+**RESUME: QC-5 §2.1 — the only-R1 arm, before authoring any rule window.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**63 of 69 rows done · 6 open · 105 of 152 evidence blocks closed inside them.**
+**64 of 69 rows done · 5 open · 69 of 106 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (36/46) · `T25` (19/26) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
+**OPEN:** `T25` (19/26) · `T33` (4/5) · `QC-5` (32/60) · `T48` (13/14) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -2119,8 +2119,90 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   the baseline · the docstring exclusion removed (prose reported as violation) · the adapter dirs
   stop counting as adapters.
 
-- [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
+- [x] **T17** — Migrate the 67 modules to the two shipped ports — **CLOSED 2026-08-24 (A33) on §1.3's criterion: class (a) 0/0, class (d) UNDISCHARGED 0/0. The ceiling is a permanent tail by design; the FLOOR is the measure — concrete binders
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
+  ---
+  ### ✅ T17 A33 2026-08-24 — **§10.1 asked for this ratchet and called it "the next unit"; building it takes class (d)'s real risk from 32 to 0, and T17 CLOSES**
+
+  ```
+  class (d)              32/32   modules needing a port operation   (port-adoption debt)
+  class (d) UNDISCHARGED  0/0    §10.1's SECOND path, as a number   (the substitutability risk)
+  class (a)               0/0    nothing movable without port growth remains
+  ```
+
+  🎯 **§10.1 wrote the criterion and then named the gap in its own last sentence:** *"Class (d)
+  reaches zero either by a module migrating to `GraphStore` **or** by the repo layer it binds
+  becoming engine-agnostic. `port-adoption-gate` already prints class (d) every run; **the second
+  path needs its own ratchet, and building that ratchet is the next unit rather than another
+  decision.**"* It was never built. So `class (d)` counted **path 1 only** — and read 32 while
+  path 2 had already discharged nearly all of them.
+
+  ⚖️ **The discharge test, and both halves are load-bearing.** A class (d) module is undischarged
+  only if it binds a repo function that **(a)** can fail on an engine — takes a `session`/`tx` —
+  **and (b)** is not in the set proven on AGE.
+
+  ```
+  30 of 32   every engine-touching function they bind is AGE-proven
+   2 of 32   routers/internal_admin.py     -> group_supersessions
+             routers/public/pending_facts.py -> days_since_epoch
+  ```
+
+  **Both residuals are PURE PYTHON.** `days_since_epoch(d: date) -> int` is date arithmetic;
+  `group_supersessions(facts: list[Fact])` groups already-recalled facts in memory. Neither takes
+  a session, neither emits Cypher, neither can fail on any engine. **The gate's own docstring had
+  already named `days_since_epoch` as one of the "7 pure helpers with no session at all"** it
+  excludes from the AGE denominator — the exclusion existed and was never applied to class (d).
+
+  🔬 **ONE HOME, because two copies of a predicate drift.** `engine_touching_repo_functions()` is
+  extracted from `scan_age_proven`'s denominator rather than re-derived, so the coverage figure
+  and the discharge test cannot disagree. AGE coverage still reads **118/119** across the
+  refactor, which is the check that it did not.
+
+  🧪 **BITES — each removes one half and the halves fail differently.**
+
+  ```
+  A33-1  drop the engine-touching filter
+           FAIL — 2 module(s): exactly `group_supersessions` and `days_since_epoch`
+  A33-2  drop the AGE-proven join
+           FAIL — 32 module(s), the full class (d) list
+  ```
+
+  A33-2 is the one that matters: it shows the join is **what discharges 30 modules**, not a
+  formality. A33-1 shows the pure-helper exclusion is doing real work rather than hiding a
+  finding — the two it surfaces are named, and both are inspectable in four lines of Python.
+
+  ⚠️ **AND MY FIRST JOIN WAS GREEN-BY-MISMATCH.** `scan_age_proven` keys its set as
+  `module.function`; `classify` yields bare leaf names. Comparing them matched **nothing**, so
+  the first measurement said *"30 of 32 undischarged"* — the opposite of the truth, and it looked
+  like a finding. Caught because 30-of-32 undischarged is incompatible with a gate reporting 99 %
+  AGE coverage on the same line, and two numbers that cannot both be true are a reason to check
+  the join rather than to publish the scarier one.
+
+  📌 **T17 CLOSES, and on the criterion §1.3 sealed rather than on the count its title names.**
+  *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct. Its floor
+  is the number that measures this work."* Everything §1.3 permits to move HAS moved — class (a)
+  is **0/0** — and everything §10.1 routes to the second path IS routed:
+
+  ```
+  GraphStore adopters        21   floor, a ratchet
+  port conformance        23/23   every method has a rule
+  Neo4j-only dialect        0/0   every PORTABLE construct gone from the repo layer
+  engine-named binders      0/0   the repo layer names no engine
+  AGE coverage          118/119   the 1 is find_entities_by_vector, a Neo4j-only capability
+                                  §3.1 moves to Postgres — not a gap in the proof
+  class (d) UNDISCHARGED    0/0
+  ```
+
+  The 32 that remain are **port-adoption debt on a substitutable layer**, which is what §1.3 said
+  the ceiling would always be. Leaving the row open to chase it is what made T17 hold the RESUME
+  pointer for ten batches and read as the critical path to this plan's goal for five more days.
+
+  **QC (a) gates:** `port-adoption-gate` PASS with a NEW ratchet at 0, bitten twice; four plan
+  gates green; `gate-wiring-gate` 114.
+  **QC (b) live smoke:** N/A — this cycle adds a derived measurement to a gate. No service seam,
+  no image, no route.
+  **QC (c) real data:** every figure is `port-adoption-gate`'s own output on this tree, and the
+  two residual functions were read out of `graph_repos/facts.py` rather than inferred from names.
   ---
   ### ✅ T17 A32 2026-08-24 — **`find_gap_candidates` reaches the port, and writing its conformance rule found the counter three adapters were not keeping**
 
@@ -3722,7 +3804,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite
   ```
 
-  ### 🔻 DEFERRAL `D-T17-SWEEP-IS-NOT-MECHANICAL`
+  ### ~~DEFERRAL~~ `D-T17-SWEEP-IS-NOT-MECHANICAL` — T17: **SUPERSEDED by §1.3, which names it.** That section opens *"Replaces `D-T17-SWEEP-IS-NOT-MECHANICAL`"* and re-scoped the sweep BY CLASS instead of by count. The heading stayed open for eleven days after the decision that retired it.
 
   | | |
   |---|---|
@@ -3863,7 +3945,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
                 methods A1–A3 added
   ```
 
-  ### 🔻 DEFERRAL `D-AGE-BROWSE-PAGES-IN-PYTHON`
+  ### 🔻 DEFERRAL `D-AGE-BROWSE-PAGES-IN-PYTHON` — T17: **ACCEPTED with a priced trigger, spec §17.** Real and correctly described; its own re-open condition is 5 000 events in one browse window, and dev's largest project holds **418**. Re-opens at the cap, which is loud rather than silent.
 
   | | |
   |---|---|
@@ -6984,7 +7066,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
                     6 baselined file(s) still carry Cypher (T17 shrinks that list)
   ```
 
-  ### 🔻 DEFERRAL `D-T17-BACKFILL-CYPHER` — the last 6 files, tracked to Phase 7
+  ### ~~DEFERRAL~~ `D-T17-BACKFILL-CYPHER` — T17: **DECIDED by §1.3c, which names it.** One-shot migration scripts are out of port scope forever — *"they run once, against a known engine, at a known version… the backfill Cypher `D-T17-BACKFILL-CYPHER` names is exactly this: it stays."* Not debt; a scope boundary.
 
   | | |
   |---|---|
