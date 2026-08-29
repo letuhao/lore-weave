@@ -139,13 +139,14 @@ Commit and push every cycle. Keep the four plan gates green (verify, row-honesty
 #: What the PO authorised on 2026-08-21, verbatim enough to act on. This block exists because a
 #: goal prompt whose STOP list re-blocks work that was just approved sends a whole session back
 #: to the same four questions — which is exactly what fifteen consecutive stop-hook firings were.
-GRANTS = """GRANTS (PO 2026-08-21) — authorised; rule 6 and the ⏸ rows do not bar these:
-· SOAK: `docker compose up -d knowledge-service` from infra/. Config is right (infra/.env:12);
-  the CONTAINER is stale. Arms dual-write. Verify with soak-armed-gate.
-· RECANON: `recanon_honorifics --apply` on the dev graph. Dry (1819/1/6) → apply → dry (0).
-· QC-3 SIGNED OFF: adopt halfvec_hnsw; MED-2 → migration ticket, MED-3 accept-and-document.
-· QC-5 CLAUSE 1 → 1a planted violation attributed (C14 3/3) + 1b re-drafts canon-consistent
-  (C15 9/9). Spec in §2.1, re-run."""
+GRANTS = """GRANTS (PO 2026-08-24) — authorised; rule 6 and the STOP list do not bar these:
+· T25 (3) DEV CUTOVER: backfill-passages per project on dev (WRITES :Passage, spends embed
+  tokens) → READ_PRIMARY=postgres → delete the passage DDL. Measure search before AND after;
+  an empty secondary fails SILENTLY (§9.1).
+· T33 CORPUS: ~20 event pairs, 2 chapters, small on purpose. The PO labels the ground truth;
+  you build the sheet, never the labels you then grade.
+· QC-5 1a: re-run with ONLY R1 active before authoring any window (§2.1 carries why).
+· NOT granted: the sibling `infra` stack."""
 
 STOP_BLOCK = """STOP — these five, nothing else:
 · a stop condition fires: {stops}
@@ -260,7 +261,7 @@ def build(plan: str) -> str:
             lines.append(f"{name} {spec}  " + " → ".join(live))
     lines += [
         "",
-        "T17 is NOT the head of the queue, ever again (§1.3). Its FLOOR is what matters.",
+        "T17 is never the head (§1.3): class (d) is port debt, NOT an engine blocker (T54c).",
         "",
         CYCLE,
         "",
@@ -366,7 +367,11 @@ def selftest() -> int:
     # Scoped to the QUEUE section, not the whole prompt: rule 12 names `T35d` as an example of
     # a well-formed heading, so a whole-document search reports a hit that means nothing. (The
     # first cut did exactly that and went red against correct code.)
-    queue = out.split("QUEUE (")[1].split("T17 is NOT")[0]
+    # Split on "T17 is", not the rest of that sentence: rewording the T17 note (as the
+    # 08-24 audit did) silently widened this slice to the whole document, and rule 12 names
+    # `T35d`, so the check went red against correct code. The delimiter is now the part of
+    # the line that is structural rather than editorial.
+    queue = out.split("QUEUE (")[1].split("T17 is")[0]
     # ① A ticked row must LEAVE the queue. This is the whole reason the prompt is generated:
     # a hand-kept queue naming a finished row is what sent ten batches at T17.
     check("a ticked row drops out of the queue", "T35" not in queue, queue.strip())
