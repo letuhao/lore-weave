@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 24 of 26 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 25 of 27 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (5/6) · `T48` (18/19) · `T49` (1/1)
+**OPEN:** `T33` (5/6) · `T48` (19/20) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24500,6 +24500,75 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48r 2026-08-30 — **C31 added an LLM call site with a flat `400` and left a ratchet unmoved; the sweep red was OURS**
+
+  ```
+  llm-budget-ssot-gate   FAIL "budgets not traceable to call_budget() grew to 2 (baseline 1)"
+                         -> PASS · 0 literal · NO_SIGNAL_BASELINE 14/14
+  sweep reds             9 -> 3
+  ```
+
+  🎯 **I had listed this one as "other people's files" and it is not.** The flagged site is
+  `critic.py:374` — the **verifier's own `submit_and_wait`**, added by C31, this plan's
+  precision pass. It shipped `"max_tokens": 400` as a flat literal, which took *budgets not
+  traceable to `call_budget()`* from 1 to 2, and nobody moved the ratchet. **Rule 5, on this
+  plan's own commit**, and T48n's lesson repeating one layer down: an attribution is a
+  measurement, not a reading, and I had made the reading twice.
+
+  ⚖️ **Its own key, not a reuse of `judge_prose`** — the reason `judge_plan_conflict` already
+  states beside it. `judge_prose` scores four dimensions and hunts violations across a whole
+  chapter, sized on `len(_DIMENSIONS) + len(active_rules)`. The verifier audits **one** flagged
+  span against **one** rule and answers `{contradicts, reason}`: a smaller output that does not
+  scale with the rule count. Same 400 tokens, now with a home, a `why`, and a kind.
+
+  🔬 **AND THE FIRST FIX WAS ONLY HALF, WHICH THE GATE SAID IMMEDIATELY.** Routing through the
+  SSOT cleared *"not traceable"* and tripped *"budget calls passing NO adaptive signal grew to
+  15"*. The tempting escape was `signal_inert=True` — and the gate refuses it by construction:
+
+  ```
+  only MIRROR may be inert; "marking composition's VERDICT row `judge_prose` inert left this
+  gate GREEN while the service's own unit test went red"
+  ```
+
+  So the honest answer was a **real** signal. `VERDICT` reads `language` — `call_budget` turns
+  it into a per-word rate — and this judge's `reason` is written in the book's language exactly
+  as the critic's is. It simply was not threaded: `verify_violations` never received the
+  profile. Now it does, from its only caller. **Without it the call sized on a rate written for
+  English**, which for a Vietnamese acceptance corpus is the wrong number quietly.
+
+  🧪 **TWO BITES, and they fail differently — which is how you know the fix has two halves.**
+
+  ```
+  T48r-1  drop `language=`        FAIL — no adaptive signal grew to 15 (baseline 14)
+  T48r-2  back to a flat `400`    FAIL — not traceable to call_budget() grew to 2 (baseline 1)
+  ```
+
+  📐 **`transitions-validation-lint` and `gate-number-visibility-gate` were cleared at T48q**,
+  so the sweep is **9 → 3**. What remains, by file rather than by claim:
+
+  ```
+  pagination-cap-lint       glossary-service — mirror_truth_handler.go            2
+  projection-coverage-lint  crates/ — 7 registered glossary events, no handler    7
+  guard-redability-gate     composition ×2 + knowledge wiki/prompt.py    3 of 22 guards
+  ```
+
+  **DECIDED — these three stay, and the reason is scope, not effort.** Each names a subsystem
+  this plan does not own: the glossary mirror's pagination, the Rust projection crate's event
+  coverage, and a guard-redability meta-check over prompt sanitisation. The PO's overrule at
+  C47 was about a **critical bug** — two services that could not be built at all — and that
+  distinction is the whole basis for taking one and not the others. They are attributed by file
+  so the next reader can check the claim rather than inherit it, which is exactly what §14 got
+  wrong and T48n corrected.
+
+  **QC (a) gates:** `llm-budget-ssot-gate` PASS (was red); composition `test_critic` +
+  `test_critic_verifier` + `test_critic_policy` **73 passed**; four plan gates green by direct
+  exit code.
+  **QC (b) live smoke:** N/A — a budget constant moved into the SSOT. The behaviour it sizes was
+  live-proven at C46 against a rebuilt image; the token count is unchanged at 400.
+  **QC (c) real data:** the gate's own output — 99 call sites scanned, 0 literal, 51 traced.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels.
   ---
   ### ✅ T48q 2026-08-30 — **a ratchet visible only on SUCCESS is invisible exactly when something is wrong**
 

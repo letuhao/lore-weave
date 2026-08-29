@@ -307,6 +307,7 @@ async def verify_violations(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str, passage: str,
     violations: list[dict[str, Any]], active_rules: list[dict[str, Any]],
     trace_id: str | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    language: str = "auto",
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Second, NARROW pass per attributed violation: does the passage make the rule FALSE?
 
@@ -376,7 +377,13 @@ async def verify_violations(
                 input={
                     "messages": [{"role": "system", "content": VERIFIER_SYSTEM},
                                  {"role": "user", "content": user}],
-                    "response_format": {"type": "text"}, "temperature": 0.0, "max_tokens": 400,
+                    "response_format": {"type": "text"}, "temperature": 0.0,
+                    # Through the SSOT, not a literal: `llm-budget-ssot-gate` counts a flat
+                    # number as a budget nothing can trace, and C31 added this site without
+                    # one. The value is unchanged (400) — what changes is that it now has a
+                    # home, a `why`, and a kind the seam can reason about.
+                    "max_tokens": max_tokens_for(
+                        "judge_prose_verify", language=language),
                     **no_thinking_fields(),
                 },
                 job_meta={"usage_purpose": "prose_critic_verify", "extractor": "verify_violations"},
@@ -536,6 +543,11 @@ async def judge_prose(
             model_ref=verifier_ref or model_ref,
             passage=passage, violations=crit["violations"], active_rules=active_rules,
             trace_id=trace_id, cancel_check=cancel_check,
+            # VERDICT budgets read `language` — it becomes a per-word rate — and this judge's
+            # `reason` is written in the book's language exactly as the critic's is. Passing it
+            # is the same signal `judge_prose` passes above, for the same reason; without it
+            # this site sizes on a default written for English.
+            language=profile.source_language,
         )
         crit["violations"] = verified
         # Counted and NAMED, for the reason every other drop on this envelope is: a verdict that
