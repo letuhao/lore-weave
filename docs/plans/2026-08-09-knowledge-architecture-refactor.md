@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 29 of 31 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 30 of 32 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (22/23) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (23/24) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,83 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48v 2026-08-30 — **tenant isolation in the shared graph held for a reason NOTHING asserted, and the mutation that breaks it left all 1026 tests green**
+
+  ```
+  NEW  scripts/graph-tenancy-coupling-gate.py   17-case --selftest · 2 bites · wired
+  NEW  4 tests in sdks/python/tests/test_extraction/test_canonical.py
+  live g_shared: 5683 entities · 10+ projects · 0 ids in >1 project · 33/33 endpoints one project
+  gate KEYED — the id carries the isolation; the query does not
+  ```
+
+  🎯 **The next thing the proof does not cover: what the store hands back.** T48u settled *who may
+  ask*. Nothing settled whether the answer stays inside one tenant. The service builds
+  `AgeGraphStore(pool, graph_name_for(None))` — **the SHARED graph** — deliberately, because Neo4j
+  holds every project in one database and scopes by properties. So isolation is a predicate.
+
+  🔴 **AND THE TRAVERSAL HAS NO PREDICATE.** `neighborhood` scopes the ANCHOR and then walks:
+
+  ```
+  MATCH (e:Entity)    WHERE ... e.project_id = '<pid>'          <- the anchor IS scoped
+  MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj.id = '<id>' OR obj.id = '<id>')                   <- no project, either end
+  ```
+
+  It stays inside a tenant for exactly one reason, three directories away:
+
+  ```
+  key = f"v{canonical_version}:{user_id}:{project_id or 'global'}:{kind}:{canonical}"
+  ```
+
+  **The project is in the hash.** Two files, no link, and the safety is entirely in the coupling.
+
+  🧪 **BITE T48v-2 IS THE FINDING, not a demonstration.** Keep the project's PRESENCE, lose its
+  IDENTITY — `{project_id and 'global' or 'global'}`:
+
+  ```
+  1026 passed, 9 skipped, 0 failed
+  entity_canonical_id('u','A','Kai','person') == entity_canonical_id('u','B','Kai','person')
+  ```
+
+  **A green suite and a cross-tenant collision, from one line.** `test_canonical.py` — the file
+  that owns this function — did not contain the word *project*. The SDK's only scoping assertion
+  lived incidentally in `test_entity_extractor.py` and compared **global vs a project**, never
+  **project A vs project B**. So it caught the crude removal (BITE T48v-1, 1 test red) and was
+  blind to the collapse that actually enables the read.
+
+  🔬 **MY OWN GATE WAS GREEN BY CONSTRUCTION FIRST, AND A HELD-OUT CASE CAUGHT IT.** v1 asked
+  whether the source line contained `{project_id`. It passed 15/15 — on mutations I derived from
+  the line it reads. Held out one I had not:
+
+  ```
+  {project_id and 'global' or 'global'}   ->  gate said KEYED, exit 0.  Ids collide.
+  ```
+
+  That is rule 3 turned on its author. The check now **CALLS the function** and compares two
+  projects' ids, so no phrasing can satisfy it without the behaviour. Both bites now red at exit 1.
+
+  ⚠️ **And I read `exit=0` off both of them at first** — `python gate.py | tail -1; echo $?`
+  reports *tail's* status. Third time this pattern has nearly published a false green; re-measured
+  with `out=$(...); rc=$?`.
+
+  📐 **The gate asserts the COUPLING, not either half**, and names which mechanism is holding:
+  `FILTERED` (the query scopes both endpoints) and `KEYED` (the id does) are both safe, `NOT-SHARED`
+  is moot under per-project graphs, and only **`UNPROTECTED`** — shared graph, unscoped query,
+  unscoped id — reds. A gate demanding both would red on a correct design that chose the other.
+  Endpoint parsing requires **both** `subj` and `obj`: an edge matches on either end, so one
+  predicate still admits a foreign peer.
+
+  **QC (a) gates:** `graph-tenancy-coupling-gate --selftest` **17/17** (new, wired, plus the live
+  check itself in `pre-commit`); SDK suite **1030 passed, 9 skipped** (was 1026 — the 4 new tests);
+  `gate-wiring-gate` OK.
+  **QC (b) live smoke:** N/A for a new service seam — nothing shipped in a service image this
+  cycle. The live half is the measurement below, taken against the running iso stack.
+  **QC (c) real data:** iso's `g_shared` — 5683 entities over 10+ projects, `0` ids appearing under
+  more than one, and every one of the 33 endpoints of a live 50-edge KAL read in a single project.
+  The census is what makes the claim non-vacuous: with one project there is nothing to leak.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels.
   ---
   ### ✅ T48u 2026-08-30 — **every live check in this repo goes past the guard before it looks at a book**
 
