@@ -118,9 +118,22 @@ def route_url(base_url: str, prefix: str, tmpl: str, *, entity: str, book_id: st
     A sweep can then claim 16 routes while two of them were never reached. So the mapping from
     prefix to URL is asserted offline rather than trusted.
     """
-    base = (prefix.replace(":bookId", book_id)
-                  .replace(":projectId", project_id or book_id))
+    base = prefix.replace(":bookId", book_id).replace(":projectId", project_id)
     return f"{base_url.rstrip('/')}/{base}/{tmpl.replace(':entityId', entity)}{query}"
+
+
+def unfillable(routes: list[tuple[str, str, str]], book_id: str, project_id: str) -> list[str]:
+    """Which `:placeholder` a run has no value for. Pure, so the selftest can drive it.
+
+    T48y: `route_url` used to fall back to the BOOK id for `:projectId`, and
+    `architecture-live-proof` calls this sweep with no `--project-id` at all. The downstream
+    answered `project not found`, the sweep read that as NOT-FOUND — a legitimate verdict for a
+    cold stack — and PASSED at exit 0. A wrong-typed id produces a PLAUSIBLE refusal, which is
+    the dangerous kind. So a run that cannot address a route refuses to pretend it swept it.
+    """
+    have = {":bookId": book_id, ":projectId": project_id}
+    return sorted({ph for _v, _t, prefix in routes for ph, val in have.items()
+                   if ph in prefix and not val})
 
 
 def rows_in(payload: object) -> int:
@@ -217,6 +230,21 @@ def _selftest() -> int:
     print(f"  {'PASS' if ok else 'FAIL'}  each route carries its OWN prefix: {prefixes}")
     # ...and that the prefix is actually USED. BITE T48x-1: addressed under the wrong prefix
     # both project routes 404, which reads as NOT-FOUND and still PASSES.
+    for label, routes_, bid, pid, want in [
+        ("a run with both ids can address everything",
+         [("GET", "roster", "v1/kal/books/:bookId")], "B", "P", []),
+        ("THE REFUSAL: a project route with no --project-id is unfillable, never book-id'd",
+         [("POST", "fact-for-check", "v1/kal/projects/:projectId")], "B", "", [":projectId"]),
+        ("...and a book route is unaffected by a missing project id",
+         [("GET", "roster", "v1/kal/books/:bookId")], "B", "", []),
+        ("both missing are both named",
+         [("GET", "a", "v1/kal/books/:bookId"), ("POST", "b", "v1/kal/projects/:projectId")],
+         "", "", [":bookId", ":projectId"]),
+    ]:
+        got = unfillable(routes_, bid, pid)
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL'}  {label}: expected {want}, got {got}")
     for label, prefix, tmpl, want in [
         ("a books route addresses /books/", "v1/kal/books/:bookId", "roster", "/v1/kal/books/B/"),
         ("THE BITE, caught offline: a projects route addresses /projects/, never /books/",
@@ -286,6 +314,13 @@ def main(argv: list[str]) -> int:
 
     paths = [p for p in args.controller.split(",") if p.strip()]
     routes = [r for p in paths for r in derive_routes(p)]
+    missing = unfillable(routes, args.book_id, args.project_id)
+    if missing:
+        print(f"[kal-smoke] REFUSED — {len(routes)} route(s) are in scope but this run has no "
+              f"value for {', '.join(missing)}. Substituting another id makes the route answer "
+              f"a plausible 404 that reads as NOT-FOUND and PASSES; a sweep that cannot address "
+              f"a route must not report it as swept.")
+        return 2
     print(f"[kal-smoke] {len(routes)} route(s) derived from "
           f"{', '.join(os.path.basename(p) for p in paths)}")
     tally: dict[str, int] = {}

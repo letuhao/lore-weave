@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 32 of 34 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 33 of 35 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (25/26) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (26/27) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,78 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48y 2026-08-30 — **T48x widened the sweep and the PROOF kept calling it the old way: the SURFACE leg passed on a route it never addressed**
+
+  ```
+  before  proof -> sweep, no --project-id
+          NOT-FOUND 404  POST fact-for-check  {"detail":"project not found"}   PASS exit 0
+  after   no --project-id  -> SKIP 3 SURFACE (inputs not supplied)   -> exit 1 at --min-legs 5
+          with --project-id -> PASS · 4 route(s) carried rows        -> PROVEN, 5 legs, exit 0
+  ```
+
+  🎯 **I created this one commit earlier, and rule 2 is what found it.** T48x put the
+  `v1/kal/projects/:projectId` controller in the sweep's scope. `architecture-live-proof` calls
+  the sweep with `--book-id` and no `--project-id`, and `route_url` fell back to
+  `project_id or book_id`. So the proof addressed a project route **with a book id**:
+
+  ```
+  {"statusCode":404,"message":"downstream 404: {\\"detail\\":\\"project not found\\"}"}
+  ```
+
+  The downstream answered truthfully. The sweep read 404 as `NOT-FOUND` — *the book or entity
+  does not exist*, a legitimate verdict on a cold stack — and reported **PASS at exit 0**. The
+  SURFACE leg of the goal's own proof was green over a route that was never reached.
+
+  ⚖️ **A WRONG-TYPED ID PRODUCES A PLAUSIBLE REFUSAL, WHICH IS THE DANGEROUS KIND.** There is no
+  status code that distinguishes *swept and absent* from *never addressed*; both are 404. So the
+  fix is not a better reading of the response — it is refusing to send the request:
+
+  ```
+  [kal-smoke] REFUSED — 16 route(s) are in scope but this run has no value for :projectId.
+  Substituting another id makes the route answer a plausible 404 that reads as NOT-FOUND and
+  PASSES; a sweep that cannot address a route must not report it as swept.
+  ```
+
+  `unfillable()` is pure and asserted offline, because **a live sweep cannot catch this about
+  itself** — every observable is a well-formed HTTP answer.
+
+  📐 **And the proof's leg now SKIPS rather than passes.** `--project-id` joined the SURFACE
+  leg's required inputs, so an absent one makes the leg `SKIP`, `--min-legs` counts the shrink,
+  and the run exits 1. That is the T48k rule applied to a leg I widened: **a leg that skips is
+  visible; a leg that passes on a route it never addressed is not.**
+
+  🧪 **BITE T48y-1 — line 135, `unfillable()` returns `[]`.** Live, as the proof called it:
+
+  ```
+  NOT-FOUND 404  POST fact-for-check  {"message":"Cannot POST /v1/kal/projects//fact-for-check"}
+  [kal-smoke] PASS — 3 route(s) carried rows, no route errored          exit 0
+  ```
+
+  An **empty project segment**, a 404, and a pass. The same bite offline:
+
+  ```
+  FAIL  THE REFUSAL: a project route with no --project-id is unfillable, never book-id'd
+  FAIL  both missing are both named                                      exit 1
+  ```
+
+  Restored; selftest exit 0.
+
+  ⚠️ **Measured while running the full proof, and taken next rather than left:** leg 2 passes as
+  `MIGRATED: the declared store holds all **0** project(s) the other store does`. Correct for iso,
+  where Neo4j is genuinely empty — and a `MIGRATED` verdict over an empty comparison set is not
+  evidence of a migration. That is the next row.
+
+  **QC (a) gates:** `kal-read-surface-live-smoke --selftest` **25/25** (4 new `unfillable` cases);
+  `architecture-live-proof --selftest` 8/8; `kal-surface-census-gate` selftest and live both OK;
+  `gate-wiring-gate`, `discharged-deferral-gate` OK — all by direct exit code, no pipe.
+  **QC (b) live smoke:** the five-leg proof against the running iso stack, both arms above. No
+  image rebuild — no service code changed this cycle.
+  **QC (c) real data:** censuses taken from iso for the STORE leg — **AGE 648 projects / 5683
+  entities**, Neo4j 0 — plus the acceptance book and its KG project for the rest.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels, whose sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48x 2026-08-30 — **the gap T48w declared is closed, and the fix's own failure mode passed at exit 0 until an offline guard caught it**
 

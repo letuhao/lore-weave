@@ -115,6 +115,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--base-url", default="http://localhost:23210")
     ap.add_argument("--book-id")
+    #: The KG project, which is NOT the book id. Required by the SURFACE leg since T48x put the
+    #: `projects/:projectId` controller in the sweep's scope — see the leg's comment.
+    ap.add_argument("--project-id", default="")
     ap.add_argument("--user-id")
     ap.add_argument("--internal-token")
     # REQUIRED for leg 3: without it the entity-dependent routes cannot carry
@@ -158,12 +161,18 @@ def main(argv: list[str]) -> int:
         ([py, "scripts/graph-store-migrated-gate.py", "--declared", "age",
           "--declared-census", args.declared_census, "--other-census", args.other_census]
          if (args.declared_census and args.other_census) else None))
+    # T48y — `--project-id` is REQUIRED here, not optional. The sweep covers both user-facing
+    # controllers since T48x, and one of them is prefixed `v1/kal/projects/:projectId`. Called
+    # without it, the sweep used to address that route with the BOOK id; the downstream answered
+    # `project not found`, the sweep read NOT-FOUND, and this leg PASSED. A leg that SKIPS is
+    # visible (`--min-legs` counts it); a leg that passes on a route it never addressed is not.
     leg("3 SURFACE  every KAL read route answers",
         ([py, "scripts/kal-read-surface-live-smoke.py", "--base-url", args.base_url,
-          "--book-id", args.book_id, "--user-id", args.user_id,
+          "--book-id", args.book_id, "--user-id", args.user_id, "--project-id", args.project_id,
           "--internal-token", args.internal_token, "--entity-id", args.entity_id,
           "--min-data", str(args.min_data)]
-         if (args.book_id and args.user_id and args.internal_token and args.entity_id)
+         if (args.book_id and args.user_id and args.internal_token and args.entity_id
+             and args.project_id)
          else None))
     # T48t — the leg whose ABSENCE hid T48s. The four above cover the backend, the store,
     # the surface and the port; none of them the bi-temporal spine, which is what this
