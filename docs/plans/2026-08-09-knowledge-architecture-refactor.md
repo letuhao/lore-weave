@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 47 of 49 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 48 of 50 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (40/41) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (41/42) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,65 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48an 2026-08-30 — **`COVERED_ELSEWHERE` named a check and nothing verified the check existed**
+
+  ```
+  before  ELSEWHERE entities/:entityId/canonical            (claim only)
+          ELSEWHERE entities/:entityId/canonical-translation (claim only)
+  after   the claim names FILE + the exact assertion text, and the sweep FAILS when either is gone
+          [bitemporal] PASS — 9 route(s) swept, 0 not holding their position
+  ```
+
+  🎯 **T48ak declared two routes covered somewhere else, and that declaration was prose.** It
+  said `TestFoldLoop` pins the degrade below the fold head (T48ah) and the agreement between the
+  two canonical surfaces (T48ai). **Nothing checked that those assertions were still there.**
+  This repo has already paid for that exact shape — a skip-defence citing a check that never
+  ran — and I reproduced it two cycles ago while writing the row about declaring gaps honestly.
+
+  📐 **So the claim now carries its own evidence**: `ELSEWHERE_PROOF` maps the file to the three
+  assertion strings that must exist in it, and the sweep refuses to report `ELSEWHERE` for any
+  route when a marker is missing. Two routes are excused from being driven on the strength of
+  that claim; the claim is now load-bearing rather than decorative.
+
+  🔬 **Validated on cases it was NOT written against (rule 3):** a marker that is absent is
+  reported by name, and a claim pointing at a **deleted file** reads `MISSING` rather than
+  vacuously satisfied — an unreadable file must never mean "nothing missing". A fourth case
+  pins that every route named in `COVERED_ELSEWHERE` is a real derived temporal route, so a
+  typo cannot silently excuse a route that does not exist.
+
+  🧪 **BITE T48an-1 — line 167, the cited assertion is REWORDED, not deleted.**
+
+  ```
+  t.Fatalf("the two canonical surfaces disagree at as_of=%d…")
+    ->  t.Fatalf("surfaces differ at as_of=%d…")
+
+  [bitemporal] FAIL — a COVERED_ELSEWHERE claim points at a check that is not there:
+    ['…fold_handler_test.go: the two canonical surfaces disagree']            exit 1
+  offline selftest: 1 FAILED                                                  exit 1
+  ```
+
+  **The Go test still passes under that bite** — it is only a message string — which is the
+  whole point: the check it is cited for is intact, and the CITATION is what broke. A claim
+  that only survives while nobody edits the wording is worth exactly as much as no claim, and
+  now the sweep says so. Restored; `git diff` on the cited file is empty.
+
+  ⚖️ **Why a marker string rather than "does the test exist":** the file existing proves
+  nothing, and the test name proves little — T48ai showed the two canonical surfaces can drift
+  while a suite named for them stays green. The assertion TEXT is the closest cheap proxy for
+  the assertion, and it is exactly what a careless edit removes.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **35/35** (4 new claim cases);
+  `architecture-live-proof`, `kal-surface-census-gate`, `glossary-ordinal-axis-gate` selftests,
+  `gate-wiring-gate`, `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** three sweeps against the running iso stack — before, the bite, and the
+  restore — plus the five-leg proof, `PROVEN`, exit 0. No image rebuild; no service code
+  changed, and the one service file touched is byte-identical after the bite.
+  **QC (c) real data:** N/A because this cycle produces no data. Its measurement is the citation
+  itself: three assertion markers, all present, and each one reported by name when removed.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48am 2026-08-30 — **the sweep I built last cycle passes on ZERO routes, and my own defensive check is what made it quiet**
 

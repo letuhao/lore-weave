@@ -228,6 +228,38 @@ COVERED_ELSEWHERE: dict[str, str] = {
         "AGREE at one position -- the drift T48ai found (T48ai)",
 }
 
+#: WHERE the claim above points, and the exact assertion text that must still be there.
+#:
+#: T48an. A declaration naming a check is worth nothing unless the check exists: this repo has
+#: already paid for a skip-defence that cited a check which never ran. `COVERED_ELSEWHERE` is
+#: exactly that shape -- prose asserting two routes are guarded somewhere else -- and until now
+#: nothing verified the somewhere else. Delete those `t.Fatalf`s and the sweep would go on
+#: reporting ELSEWHERE for two routes it does not drive and nothing else covers.
+ELSEWHERE_PROOF: dict[str, list[str]] = {
+    os.path.join("services", "glossary-service", "internal", "api", "fold_handler_test.go"): [
+        "is BELOW the fold head",                       # T48ah: the degrade
+        "served the HEAD fold while canonical",         # T48ai: the divergence
+        "the two canonical surfaces disagree",          # T48ai: the agreement
+    ],
+}
+
+
+def elsewhere_unproven(proof: dict[str, list[str]] | None = None) -> list[str]:
+    """Which claimed-elsewhere assertions are NOT actually present. Pure enough to selftest.
+
+    Returns `"<file>: <marker>"` for every marker missing, and `"<file>: MISSING"` when the
+    file itself is gone -- a claim pointing at a deleted file must not read as satisfied.
+    """
+    gaps: list[str] = []
+    for path, markers in (proof if proof is not None else ELSEWHERE_PROOF).items():
+        try:
+            src = io.open(path, encoding="utf-8").read()
+        except OSError:
+            gaps.append(f"{path}: MISSING")
+            continue
+        gaps += [f"{path}: {m}" for m in markers if m not in src]
+    return gaps
+
 _TEMPORAL_PARAM = re.compile(r"\b(as_of|at_order|chapter_order)\b")
 _ROUTE_DECL = re.compile(r"@(Get|Post)\('([^']*)'\)")
 _GRAPH_CALL = re.compile(r"\bknowledge\.\w+\(")
@@ -443,6 +475,23 @@ def _selftest() -> int:
         "@Post('plain')", "async c() { return knowledge.post('/p', {}); }",
     ])
     for label, got, want in [
+        ("THE ELSEWHERE CLAIM IS CHECKED: every marker it names is really in that file",
+         elsewhere_unproven(), []),
+        ("...a missing marker is reported, so deleting the assertion breaks the claim",
+         elsewhere_unproven({os.path.join("services", "glossary-service", "internal", "api",
+                                          "fold_handler_test.go"): ["no such assertion"]}),
+         [os.path.join("services", "glossary-service", "internal", "api",
+                       "fold_handler_test.go") + ": no such assertion"]),
+        ("...and a claim pointing at a DELETED file is MISSING, never satisfied — a case the "
+         "check was not written against",
+         elsewhere_unproven({"no/such/file.go": ["x"]}), ["no/such/file.go: MISSING"]),
+        ("...every route declared ELSEWHERE is a real temporal route, not a typo that "
+         "silently excuses nothing",
+         sorted(set(COVERED_ELSEWHERE) - set(temporal_graph_routes(
+             [io.open(os.path.join("services", "knowledge-gateway", "src", "kal", f),
+                      encoding="utf-8").read()
+              for f in ("kal-read.controller.ts", "kal-project-read.controller.ts")],
+             graph_only=False))), []),
         ("THE FLOOR is tied to reality: the real controllers derive at least the default",
          len(temporal_graph_routes([io.open(os.path.join(
              "services", "knowledge-gateway", "src", "kal", f), encoding="utf-8").read()
@@ -556,6 +605,12 @@ def main(argv: list[str]) -> int:
             print(f"[bitemporal] FAIL — only {len(routes)} temporal route(s) derived, floor is "
                   f"{args.min_routes}. A sweep over nothing proves the harness runs and "
                   f"nothing else; the derivation is broken, not the system.")
+            return 1
+        unproven = elsewhere_unproven()
+        if unproven:
+            print(f"[bitemporal] FAIL — a COVERED_ELSEWHERE claim points at a check that is not "
+                  f"there: {unproven}. Two routes are reported ELSEWHERE on the strength of "
+                  f"that claim and this sweep does not drive them.")
             return 1
         if gaps:
             print(f"[bitemporal] FAIL — UNCOVERED: {gaps}. A temporal route this smoke cannot "
