@@ -72,10 +72,30 @@ def test_a_tool_with_TOO_FEW_runs_is_not_labelled():
     assert "selection rate" not in _live_line("book_list")
 
 
+def _selection_line(tool: str, called: int = 0, runs: int = 5):
+    """The SELECTION verdict line, if the gate raised one."""
+    batch = {"batch": "t", "tools": [{"tool": tool, "called_count": called,
+                                      "runs": [{"via": "fe_runner"} for _ in range(runs)]}]}
+    g = gt.Gate(batch, EVID / "c-nowrite1.json")
+    g.run()
+    return next((ln for ln in g.fail if "SELECTION below the reachability bar" in ln), None)
+
+
 def test_the_bar_itself_is_UNCHANGED():
     """🔴 THE RESTRAINT IS THE POINT. Making the bar fail on a low rate would redefine `proven`
     for 19 already-concluded tools by side effect — which is the owner's decision, not a
-    consequence of stating a number."""
+    consequence of stating a number.
+
+    RE-ANCHORED 2026-08-30, and I nearly filed the change it caught as a regression of my own.
+    The second half used to assert that a zero-call batch produces "never invoked" — true when
+    written, and no longer true for a tool BELOW the reachability bar, because DQ-T51 was
+    answered: "below that the row is a SELECTION defect, not an unproven tool." The gate now
+    routes those zeros to a SELECTION verdict instead, which is the ruling working, not a defect.
+
+    What the old assertion was really protecting is untouched and is still asserted: a zero-call
+    batch MUST NOT PASS. So both sides of the ruling are pinned here rather than one —
+    below the bar it fails as SELECTION, above it as "never invoked" — because a rule with only
+    its convenient half guarded is how "below the bar" would quietly become "exempt"."""
     line, passed = _live("translation_job_control", called=1)
     assert "selection rate 0.02" in line, line
     assert passed, (
@@ -83,10 +103,22 @@ def test_the_bar_itself_is_UNCHANGED():
         "already-concluded tools by side effect, which is DQ-T51's decision and not a "
         "consequence of stating a number"
     )
+
+    # BELOW the bar: a zero is a lost draw, so it becomes a SELECTION defect — and still FAILS.
     line, passed = _live("translation_job_control", called=0)
-    assert not passed and "never invoked" in line, (
-        "a zero-call batch must still fail, rate or no rate"
-    )
+    assert not passed, "a zero-call batch must still fail, rate or no rate"
+    sel = _selection_line("translation_job_control")
+    assert sel and "0.02" in sel, (
+        "a below-bar zero no longer raises the SELECTION verdict DQ-T51 asked for — it has "
+        f"either become a silent pass or reverted to a plain LIVE failure: {sel!r}")
+
+    # ABOVE the bar: the zero IS evidence about the tool, and must still say so in those words.
+    line, passed = _live("composition_arc_apply", called=0)
+    assert not passed and "never invoked" in (line or ""), (
+        "an ABOVE-bar zero-call batch no longer reports 'never invoked' — the DQ-T51 SELECTION "
+        f"route has swallowed the case it was explicitly not meant to cover: {line!r}")
+    assert _selection_line("composition_arc_apply") is None, (
+        "a tool above the reachability bar is being excused as a SELECTION defect")
 
 
 def test_the_census_is_derived_and_discriminates():

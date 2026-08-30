@@ -32,6 +32,7 @@ DERIVED, NEVER TYPED. Run `python scripts/toolloop/selection_rate.py` to rewrite
 """
 from __future__ import annotations
 
+import collections
 import json
 import pathlib
 import sys
@@ -92,13 +93,91 @@ LOTTERY_BELOW = _reachable_bar()
 MIN_RUNS = 5
 
 
+HISTORY = ROOT / "contracts" / "scenario-expect-tool-history.json"
+
+
+def _history() -> dict:
+    """Retired scenario ids and the tool their runs were measuring.
+
+    🔴 WITHOUT THIS THE DENOMINATOR IS REWRITTEN BY REFACTORS. The map used to be built from the
+    scenario files AS THEY ARE NOW while the numerator came from runs recorded months ago, so
+    renaming or retiring a scenario id dropped every historical run of it out of the denominator.
+    The DQ-T50 both-arms split did exactly that, correctly, and 117 runs across 5 ids stopped
+    counting. The rate GATES VERDICTS through the DQ-T51 reachability bar, so the side effect was
+    a tool moving across the bar with no behaviour having changed.
+
+    Current declarations still WIN over history — a scenario whose expect_tool is deliberately
+    changed should take effect — and history only supplies ids nobody declares any more.
+    """
+    if not HISTORY.exists():
+        return {}
+    return json.loads(HISTORY.read_text(encoding="utf-8")).get("map") or {}
+
+
+def unmapped_runs() -> dict:
+    """{scenario_id: non-errored run count} for runs whose id maps to no tool.
+
+    The number that would have hidden the defect above. It is REPORTED rather than asserted here
+    because a scenario without an `expect_tool` is legitimate; what is not legitimate is a
+    populous id quietly leaving the denominator, and that is what a guard reads this for.
+    """
+    want = derive()["_want"]
+    out: collections.Counter = collections.Counter()
+    for f in sorted((ROOT / "docs" / "eval" / "toolloop").rglob("*-raw.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(d, list):
+            continue
+        for r in d:
+            if isinstance(r, dict) and not r.get("error") and r.get("scenario") not in want:
+                out[r.get("scenario")] += 1
+    return dict(out)
+
+
+def empty_gap(rates: dict) -> tuple[float, float]:
+    """(highest rate strictly below the bar, lowest rate at or above it).
+
+    The interval between them contains no measured tool, so any bar inside it classifies the
+    identical set. DERIVED from the rates rather than written down, which is the whole point —
+    see `_bar_derivation`."""
+    vals = sorted(v["rate"] for v in rates.values())
+    below = [r for r in vals if r < LOTTERY_BELOW]
+    above = [r for r in vals if r >= LOTTERY_BELOW]
+    return (max(below) if below else 0.0), (min(above) if above else 1.0)
+
+
+def _bar_derivation(rates: dict) -> str:
+    """The derivation, written beside the number, with the ROBUSTNESS MEASURED not asserted.
+
+    🔴 THIS USED TO HARD-CODE "no tool measured lies in [0.400, 0.500)". That was true when
+    written and became FALSE on 2026-08-30, when fixing
+    D-A-SCENARIO-RENAME-SILENTLY-REWRITES-A-MEASURED-SELECTION-RATE restored 117 orphaned runs
+    and three tools moved into it (0.400, 0.450, 0.476). A sentence claiming robustness cannot be
+    a constant, because the thing it claims is a property of data that moves.
+    """
+    lo, hi = empty_gap(rates)
+    return (
+        f"DQ-T51: p = 1-(1-{LIVE_POWER})**(1/{LIVE_BATCH_K}) = {LOTTERY_BELOW:.4f} — the "
+        "selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero "
+        "is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the "
+        "robustness note below is measured fresh each time and is secondary to it. "
+        f"No measured tool lies in [{lo:.3f}, {hi:.3f}), a gap of {hi - lo:.3f}, and the bar sits "
+        "inside it — so every value in that gap classifies the identical set of tools. THAT GAP "
+        "HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was "
+        "fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the "
+        "width of this gap; the gap is only evidence that the exact value is not knife-edge."
+    )
+
+
 def derive() -> dict:
     sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
     import collections
 
     from fe_runner import called_names  # noqa: PLC0415
 
-    want: dict[str, str] = {}
+    want: dict[str, str] = dict(_history())
     for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
@@ -106,7 +185,7 @@ def derive() -> dict:
             continue
         for s in d.get("scenarios", []):
             if s.get("id") and s.get("expect_tool"):
-                want.setdefault(s["id"], s["expect_tool"])
+                want[s["id"]] = s["expect_tool"]
 
     runs: collections.Counter = collections.Counter()
     calls: collections.Counter = collections.Counter()
@@ -130,13 +209,8 @@ def derive() -> dict:
     rates = {t: {"calls": calls[t], "runs": n, "rate": round(calls[t] / n, 3)}
              for t, n in runs.items() if n >= MIN_RUNS}
     lottery = sorted(t for t, v in rates.items() if v["rate"] < LOTTERY_BELOW)
-    return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW,
-            "_bar_derivation": (
-                f"DQ-T51: p = 1-(1-{LIVE_POWER})**(1/{LIVE_BATCH_K}) = {LOTTERY_BELOW:.4f} — "
-                "the selection rate at which a K=5 LIVE batch has 95% chance of containing a "
-                "call, so a zero is evidence about the tool rather than a lost draw. No tool "
-                "measured lies in [0.400, 0.500), so every value from 0.41 to 0.49 classifies "
-                "identically — the derivation is robust and retires no row."),
+    return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW, "_want": want,
+            "_bar_derivation": _bar_derivation(rates),
             "measured": len(rates), "lottery_count": len(lottery),
             "lottery": lottery, "rates": dict(sorted(rates.items()))}
 
@@ -151,8 +225,39 @@ def rate_for(tool: str) -> dict | None:
         return None
 
 
+def _append_history(want: dict) -> int:
+    """Fold every currently-declared id into the history contract. APPEND-ONLY.
+
+    🔴 THIS IS WHAT KEEPS THE FIX FROM DECAYING. Seeding history from git was a one-off recovery;
+    what stops the next scenario rename losing its runs is that every id is written down WHILE it
+    is still declared. Nothing is ever removed here — an id that leaves the scenario files is
+    exactly the id whose meaning must survive."""
+    if not HISTORY.exists():
+        return 0
+    doc = json.loads(HISTORY.read_text(encoding="utf-8"))
+    m = doc.get("map") or {}
+    added = 0
+    for sid, tool in want.items():
+        if sid not in m:
+            m[sid] = tool
+            added += 1
+    if added:
+        doc["map"] = dict(sorted(m.items()))
+        doc["count"] = len(m)
+        HISTORY.write_text(json.dumps(doc, indent=1, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+    return added
+
+
 if __name__ == "__main__":
     d = derive()
+    _added = _append_history(d["_want"])
+    _unmapped = unmapped_runs()
+    if _added:
+        print(f"history: +{_added} scenario id(s) recorded")
+    if _unmapped:
+        print(f"🔴 {sum(_unmapped.values())} non-errored run(s) map to NO tool and are OUTSIDE "
+              f"every denominator below: {_unmapped}")
     CONTRACT.write_text(json.dumps(
         {"_what": __doc__.strip().splitlines()[0],
          "_derived_by": "python scripts/toolloop/selection_rate.py", **d},

@@ -117,10 +117,47 @@ def test_the_corpus_no_longer_produces_a_FALSE_flag():
                 continue
             seen += 1
             if fr.read_intent_violations([r]):
+                if r.get("session_id") in _FIXTURE_RACE_SESSIONS:
+                    continue
                 flagged += 1
                 tables.update(r.get("store_diff") or {})
     assert seen >= 100, seen
     assert flagged == 0, dict(tables)
+
+
+#: Runs whose flag is REFUTED by the store's own timestamps, not excused by judgement.
+#:
+#: 🔴 ONE SESSION, NAMED, WITH THE ARITHMETIC THAT CLEARS IT — because "the harness was flaky"
+#: is exactly what someone says when a read tool really did write.
+#:
+#:   session 01a04fe3-bd8e-7d21-81f2-4555c920a8c7, composition-arc-get-v2 rep 4
+#:   flagged table   loreweave_composition.composition_work
+#:                   before rows=1 latest=2026-08-29 23:38:22.478817
+#:                   after  rows=1 latest=2026-08-29 23:38:37.437706
+#:
+#:   THE TURN'S FIRST MESSAGE           23:38:40.448765   (loreweave_chat)
+#:   THE ROW'S created_at == updated_at 23:38:37.437706   (loreweave_composition)
+#:
+#: The row was CREATED three seconds BEFORE the turn began, and a row whose updated_at equals its
+#: created_at was never updated. So nothing wrote during the measured window. Seven of the eight
+#: tables in the same run carry `after: None` — the after-snapshot largely failed — which is
+#: independently the shape D-FAILED-SNAPSHOT-COUNTED-AS-A-STORE-CHANGE exists to stop being read
+#: as a change.
+#:
+#: THE UNDERLYING DEFECT IS NOT THIS FLAG. The before-snapshot is taken straight after seeding,
+#: yet the book's composition_work row was REPLACED between that snapshot and the turn — so the
+#: baseline is not the state the turn actually starts from. Filed as
+#: D-THE-BEFORE-SNAPSHOT-IS-NOT-THE-STATE-THE-TURN-STARTS-FROM. This exception is deliberately a
+#: SESSION ID and not a scenario or a table, so it cannot quietly cover the next one.
+_FIXTURE_RACE_SESSIONS = {"01a04fe3-bd8e-7d21-81f2-4555c920a8c7"}
+
+
+def test_the_fixture_race_exception_stays_a_single_named_run():
+    """ANTI-CREEP. An exception list is a place to hide the next real finding; this one is
+    allowed exactly one entry, and growing it has to be a deliberate edit here."""
+    assert len(_FIXTURE_RACE_SESSIONS) == 1, (
+        "the fixture-race exception list has grown. Each entry must be cleared by the store's own "
+        "timestamps, and a SECOND one means the race is recurring and wants fixing, not listing")
 
 
 def test_the_row_records_the_mechanical_half_whatever_its_state():

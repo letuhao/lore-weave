@@ -62,32 +62,72 @@ class TestTheBarIsDerivedFromTheBatchesOwnPower:
 
 
 class TestTheChoiceIsRobustToWhereInTheGapItSits:
+    #: The gap when the bar was first derived. Kept so its NARROWING is visible rather than
+    #: quietly re-baselined — see the re-anchoring note on the first test below.
+    GAP_WHEN_DERIVED = (0.400, 0.500)
+
     def test_no_measured_tool_lies_in_the_band(self):
-        below = [r for r in RATES if r < 0.5]
-        above = [r for r in RATES if r >= 0.5]
-        assert below and above, "the distribution has collapsed to one side; re-derive the bar"
-        assert max(below) <= 0.400 + 1e-9
-        assert min(above) >= 0.500 - 1e-9
+        """🔴 RE-ANCHORED 2026-08-30, AND THE RE-ANCHORING IS THE FINDING.
+
+        This asserted the literal band [0.400, 0.500). That was true when written and became
+        FALSE the moment a denominator defect was fixed: restoring 117 orphaned runs
+        (D-A-SCENARIO-RENAME-SILENTLY-REWRITES-A-MEASURED-SELECTION-RATE) moved three tools into
+        it — 0.400, 0.450 and 0.476.
+
+        The tempting repair is to write the new numbers in. That would leave a constant claiming
+        a property of data that moves, which is what just failed. So the gap is DERIVED from the
+        rates and only its EMPTINESS is asserted; the width is reported, not required, because a
+        narrowing gap is information rather than a defect."""
+        assert RATES, "no rates at all — the contract is empty"
+        lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
+        assert lo < selection_rate.LOTTERY_BELOW <= hi, (
+            f"the bar {selection_rate.LOTTERY_BELOW:.4f} is not inside the empty gap "
+            f"[{lo:.3f}, {hi:.3f}) — the distribution has moved under it")
+        assert not [r for r in RATES if lo < r < hi], (
+            f"a tool now lies strictly inside the gap [{lo:.3f}, {hi:.3f}) that was just derived "
+            "as empty — empty_gap and the contract disagree")
+        assert hi - lo > 0.005, (
+            f"the empty gap around the bar has closed to {hi - lo:.4f}. The bar's exact value is "
+            "now nearly knife-edge, and DQ-T51's derivation should be re-stated to the owner "
+            "rather than carried on unremarked")
 
     def test_every_bar_across_the_band_classifies_identically(self):
-        counts = {b: sum(1 for r in RATES if r < b)
-                  for b in (0.41, 0.43, 0.45, 0.47, 0.49)}
+        """Sampled across the gap AS IT IS, not as it was. Any bar inside an empty gap must sort
+        the same tools, or the gap was not empty."""
+        lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
+        probes = [lo + (hi - lo) * f for f in (0.1, 0.3, 0.5, 0.7, 0.9)]
+        counts = {round(b, 4): sum(1 for r in RATES if r < b) for b in probes}
         assert len(set(counts.values())) == 1, (
-            f"the empty band has closed — the bar's exact value now changes the verdict: {counts}. "
+            f"the empty gap has closed — the bar's exact value now changes the verdict: {counts}. "
             "Re-derive it and re-state the derivation rather than keeping this number."
         )
 
+    def test_the_gap_has_NOT_silently_widened_back(self):
+        """ANTI-COMPLACENCY. If the gap ever returns to its original width, either the data moved
+        again or a denominator has been lost a second time — and the second is the failure mode
+        this whole area was just repaired for. Either way it deserves a look, not a shrug."""
+        lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
+        assert (lo, hi) != self.GAP_WHEN_DERIVED, (
+            "the empty gap is back to exactly [0.400, 0.500). That is the shape it had when 117 "
+            "runs were missing from the denominator — check unmapped_runs() before trusting it")
+
     def test_the_derived_bar_sits_inside_that_band(self):
-        below = [r for r in RATES if r < 0.5]
-        above = [r for r in RATES if r >= 0.5]
-        assert max(below) <= selection_rate.LOTTERY_BELOW < min(above)
+        lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
+        assert lo <= selection_rate.LOTTERY_BELOW < hi
 
     def test_the_derivation_travels_WITH_the_contract(self):
         """The owner asked for the derivation to be written down beside the bar. A number in a
         JSON file with the reasoning only in a Python docstring is half of that."""
         assert "_bar_derivation" in CONTRACT
         text = CONTRACT["_bar_derivation"]
-        assert "0.4507" in text and "95%" in text and "[0.400, 0.500)" in text
+        assert "0.4507" in text and "95%" in text
+        # The gap the text quotes must be the gap the data has NOW. It used to be the literal
+        # string "[0.400, 0.500)", which went stale silently while still reading as a
+        # justification — a derivation that stops being true is worse than none.
+        lo, hi = selection_rate.empty_gap(selection_rate.derive()["rates"])
+        assert f"[{lo:.3f}, {hi:.3f})" in text, (
+            f"the contract's derivation quotes a gap that is no longer the measured one "
+            f"([{lo:.3f}, {hi:.3f})) — re-run the deriver: {text}")
 
 
 class TestTheGateActuallyAppliesIt:
