@@ -57,16 +57,39 @@ non-zero and the graph acyclic*, measured live — and that bite never asked abo
 
 - **`T33`'s causal labelling sheet** —
   [`2026-08-24-t33-causal-labelling-sheet.md`](../measurements/2026-08-24-t33-causal-labelling-sheet.md).
-  20 event pairs, every `LABEL:` blank. Fill `labelled_by:` with a name and each `LABEL:` with
-  `causes` / `precedes` / `unknown`, then
+  **REBUILT 2026-08-30 (`t33k`), and the shape changed.** 32 pairs, every `LABEL:` blank.
+  Each pair is **A** and **B** in no particular order, and the label carries the DIRECTION:
+  `A causes B` / `B causes A` / `A precedes B` / `B precedes A` / `unknown`. Fill
+  `labelled_by:` with a name, then
   `python scripts/t33-causal-labelling-sheet.py --score <sheet>`.
   **`--score` REFUSES a sheet signed by an assistant** — a detector graded against labels its
   own author wrote is green by construction, so this one input cannot be automated away.
   A PLANTED arm exists (`--score-planted`, bound to its design by SHA-256) and is explicitly
   **not** a substitute: same agent wrote the prose and the ground truth.
+
+  🔴 *Why it changed:* the old sheet ordered pairs by `Event.event_order` and presented them
+  as `earlier`/`later`. That field is the extractor's EMISSION index and it COLLIDED across
+  jobs, so 8 of 20 pairs were backwards — and with only `causes/precedes/unknown` available
+  every one collapsed to `unknown`, the same answer as "unrelated". The sheet destroyed the
+  distinction it existed to measure. It also carried **2 of the system's 20 in-scope claims**;
+  it now carries all 20 plus 12 pairs the system stayed silent on, so precision and recall
+  are both answerable. Re-emit with:
+  `python scripts/t33-causal-labelling-sheet.py --emit --axis prose --project-id <p> --chapter-ids <c1> <c2> --pairs 32`
 - **`D-T33-CAUSAL-COVERAGE-UNMEASURED`** — ACCEPTED under §23, not discharged. *Does the
   causal pass work across the whole corpus, not just where it was pointed.* Nothing measured
   it; striking it would assert a measurement that does not exist.
+
+**Also open, and NOT a quality question — a known race left unclosed on purpose (2026-08-30):**
+
+- **`event_order` under CONCURRENT extraction of one chapter.** `pass2_writer` used to restart
+  its within-chapter index at 0 on every job, so a chapter extracted twice numbered its events
+  twice — measured on 封神演義 ch.1 as 7 duplicate values across 20 events, every collision
+  cross-job. Fixed at `b6c8fde13`: the index continues from the highest slot already used in
+  the chapter's band. **Two jobs running at the same time still both read that maximum and
+  both write above it.** Narrower and rarer than the deterministic bug, which fired on every
+  re-extraction, and closing it needs a reservation the graph does not offer. Stated in
+  `max_event_order_in_band`'s docstring so it is found by the next person to touch it.
+  Note the fix stops NEW collisions; it does not renumber the ones already in the store.
 
 🔻 **OWED AT MERGE-TO-MAIN (§19), and it is a list, not a gesture.** Kept here because the
 plan that carried it is archived:
