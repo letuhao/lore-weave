@@ -17,6 +17,7 @@ passed in). Pure `build_messages` / `parse_edges` are the test surface.
 from __future__ import annotations
 
 import json
+import re
 import logging
 from typing import Any
 
@@ -105,12 +106,35 @@ def _loads_lenient(content: str) -> Any:
     try:
         return json.loads(s)
     except (json.JSONDecodeError, ValueError):
-        i, j = s.find("["), s.rfind("]")
-        if 0 <= i < j:
-            try:
-                return json.loads(s[i:j + 1])
-            except (json.JSONDecodeError, ValueError):
-                return None
+        pass
+    i, j = s.find("["), s.rfind("]")
+    if 0 <= i < j:
+        s = s[i:j + 1]
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    # Last attempt: BARE IDENTIFIERS. The prompt asks for strict JSON, and a model may
+    # answer `[[E1, E2, causes], ...]` — correct content, unquoted tokens, invalid JSON.
+    #
+    # MEASURED on lw-iso 2026-08-30 (the T33 planted arm). That run reported
+    # `edges_written: 0` over 7 events on a corpus where causation was PLANTED and written
+    # explicitly. The detector had not failed: `llm_jobs` held finish_reason=stop and
+    #     [[E1, E2, unknown], [E2, E3, causes], [E2, E4, causes], ...]
+    # which this loader rejected, so two real causal edges were dropped in silence. A zero
+    # here cannot be told apart from "there is no causation in this text" — and that zero
+    # is the exact signature of T33's own stop condition, so a parse bug would have been
+    # read as a finding about the world.
+    #
+    # This CANNOT invent an edge. Every id must still be in `window_ids` and every relation
+    # must still be `causes`/`precedes`, so a token that is not a real E-label becomes a
+    # DROPPED triple rather than a fabricated one. It only recovers answers actually given.
+    quoted = re.sub(
+        r"\b(?!true|false|null)([A-Za-z_][A-Za-z0-9_]*)\b",
+        lambda m: chr(34) + m.group(1) + chr(34), s)
+    try:
+        return json.loads(quoted)
+    except (json.JSONDecodeError, ValueError):
         return None
 
 

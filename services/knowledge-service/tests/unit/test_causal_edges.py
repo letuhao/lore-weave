@@ -190,3 +190,87 @@ async def test_infer_causal_edges_ACTUALLY_RECONCILES_a_disagreeing_pair():
     assert len(pairs) == len(set(pairs)), f"one pair must carry ONE relation, got {out}"
     assert ("e7", "e8", "precedes") in out, f"the weaker claim must survive, got {out}"
     assert ("e7", "e8", "causes") not in out
+
+
+# ── T33 planted arm, 2026-08-30: a model answered correctly in INVALID JSON ────────────────
+#
+# The arm reported `edges_written: 0` over 7 events on a corpus where causation was PLANTED
+# and written explicitly ("because", "so", "which left"). The detector had not failed —
+# `llm_jobs` held finish_reason=stop and the content below. `_loads_lenient` rejected it, so
+# two real causal edges were dropped in silence.
+#
+# A zero here cannot be told apart from "there is no causation in this text", and that zero is
+# the exact signature of T33's own stop condition ("yields few or low-quality causal edges").
+# A parse bug would have been read as a finding about the world.
+
+# Verbatim from llm_jobs. Bare identifiers, no quotes — correct content, invalid JSON.
+MODEL_OUTPUT_UNQUOTED = (
+    "[[E1, E2, unknown], [E2, E3, causes], [E2, E4, causes], [E3, E6, unknown], "
+    "[E4, E3, precedes], [E4, E6, unknown], [E5, E6, unknown], [E6, E7, unknown]]"
+)
+SEVEN = {f"e{i}" for i in range(1, 8)}
+SEVEN_ORDER = {f"e{i}": i for i in range(1, 8)}
+SEVEN_TOKENS = {f"E{i}": f"e{i}" for i in range(1, 8)}
+
+
+def test_bare_identifiers_from_a_real_run_are_recovered():
+    got = parse_edges(
+        MODEL_OUTPUT_UNQUOTED,
+        order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    )
+    # E2->E3 and E2->E4 are the only `causes`; E4->E3 is backward and dropped; every
+    # `unknown` is dropped as it always was.
+    assert got == [("e2", "e3", "causes"), ("e2", "e4", "causes")]
+
+
+def test_the_quoted_form_of_the_same_answer_parses_identically():
+    # The leniency must not change the MEANING of a well-formed answer — only admit a
+    # malformed spelling of the same one.
+    quoted = MODEL_OUTPUT_UNQUOTED
+    for i in range(1, 8):
+        quoted = quoted.replace(f"E{i}", f'"E{i}"')
+    for rel in ("unknown", "causes", "precedes"):
+        quoted = quoted.replace(f" {rel}]", f' "{rel}"]')
+    assert parse_edges(
+        quoted, order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    ) == parse_edges(
+        MODEL_OUTPUT_UNQUOTED,
+        order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    )
+
+
+def test_leniency_cannot_invent_an_edge():
+    # THE SAFETY PROPERTY, and the reason this relaxation is acceptable at all. Bare tokens
+    # are admitted to the PARSER, not to the graph: an id outside the window and a relation
+    # outside {causes, precedes} are still dropped, so a hallucinated label becomes a dropped
+    # triple rather than a fabricated edge.
+    assert parse_edges(
+        "[[E1, E99, causes], [E1, E2, teleports], [ZZ, E2, causes]]",
+        order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    ) == []
+
+
+def test_unknown_is_still_dropped_when_unquoted():
+    # `unknown` is a first-class answer, not a parse failure — admitting bare identifiers
+    # must not quietly promote it into an edge.
+    assert parse_edges(
+        "[[E1, E2, unknown]]",
+        order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    ) == []
+
+
+def test_bare_identifiers_inside_a_code_fence_still_parse():
+    # The two lenient paths compose: a fenced block AND unquoted tokens.
+    fenced = "```json\n" + MODEL_OUTPUT_UNQUOTED + "\n```"
+    assert parse_edges(
+        fenced, order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    ) == [("e2", "e3", "causes"), ("e2", "e4", "causes")]
+
+
+def test_prose_around_the_list_is_still_rejected_rather_than_guessed():
+    # Bracket-slicing already handled a list embedded in prose; quoting bare words must not
+    # turn arbitrary prose into a parse. There is no list here at all.
+    assert parse_edges(
+        "I could not determine any causal relations.",
+        order_index=SEVEN_ORDER, window_ids=SEVEN, token_map=SEVEN_TOKENS,
+    ) == []
