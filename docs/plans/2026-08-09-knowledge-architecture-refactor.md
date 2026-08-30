@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 49 of 51 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 50 of 52 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (42/43) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (43/44) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,79 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ap 2026-08-30 — **the security boundary was the LAST control wired and never fed; T48u's exclusion is reversed**
+
+  ```
+  before  kal-auth-boundary-live-smoke appears ONCE in the repo: `--selftest` in pre-commit
+          and its fixture had ROTTED — the stranger JWT was gone from disk
+  after   leg 7 of architecture-live-proof
+          PASS  7 AUTH  the KAL's guard DISCRIMINATES, it does not merely answer
+                "verdict": "DISCRIMINATES"       SERVICE 200 · STRANGER 403 · ANON 401
+          "verdict": "PROVEN",  "ran": 7                                      exit 0
+  ```
+
+  🎯 **T48u kept this out of the proof deliberately and in writing** — *"folding it in would make
+  a green architecture proof depend on a JWT secret and a stranger's token being to hand."* The
+  reasoning was sound and **its premise expired**: two legs added since face the same constraint
+  and are handled by mechanism rather than exclusion. STORE needs two censuses, AXIS needs one,
+  AUTH needs a token; all three **SKIP and are reported**, and `--min-legs` makes the shrink
+  visible. Reversal recorded in open-decisions §21 rather than quietly done.
+
+  🔴 **AND THE EXCLUSION HAD ALREADY COST SOMETHING.** Applying T48ao's question to every
+  artifact this session produced found exactly one still unfed — this one. **The only live check
+  of the KAL's grant boundary ran when somebody remembered, and between T48u and now nobody
+  did.** The fixture proves it: the stranger JWT was no longer on disk.
+
+  ⚖️ **The rotted fixture is the best evidence the instrument is honest.** Run with the missing
+  token, both credential arms answered 401 and the smoke returned **`BLANKET-REFUSAL`, exit 1** —
+  *"the guard answers the same code with and without a credential, so nothing shows the GRANT
+  check ran."* It refused to call an unusable fixture a working guard, which is exactly the
+  verdict T48u built it to have. A freshly minted HS256 stranger then restored
+  `DISCRIMINATES` — 200 / 403 / 401.
+
+  📐 **On the "not architecture" argument, rejected on its own terms:** the KAL *is* the security
+  boundary on the user path — its own docstring records that the BFF does no grant check — so
+  whether that boundary discriminates is a property OF the architecture, not adjacent to it.
+
+  🧪 **TWO BITES, both on the leg's inputs rather than its code.**
+
+  ```
+  A  no --stranger-jwt        SKIP  7 AUTH … (inputs not supplied)
+                              "verdict": "TOO-FEW-LEGS",  "ran": 6            exit 1
+  B  --stranger-jwt not.a.jwt FAIL  7 AUTH …  rc=1
+                              "verdict": "NOT-PROVEN"                          exit 1
+  ```
+
+  A proves the leg is COUNTED — a silent skip would have left six legs reading `PROVEN`. B proves
+  a fixture that merely *looks* present does not pass, which is the failure mode that let this
+  one rot unnoticed.
+
+  ⚠️ **Stated plainly: leg 7's needle is redundant here.** The smoke exits non-zero on every
+  verdict except `DISCRIMINATES`, so `rc` alone would carry the leg. It is kept as defence in
+  depth and because the matched line makes a better evidence line than the JSON tail (T48ac) —
+  but unlike leg 6's, it is not load-bearing, and claiming otherwise would be the kind of
+  overstatement this journal exists to avoid.
+
+  🧾 **Three instances of one defect this session, now all closed:** `COVERED_ELSEWHERE` citing
+  an unverified check (T48an), the axis gate wired and never fed (T48ao), and the auth smoke
+  the same (here). **A control that exists and is never exercised is indistinguishable from one
+  that does not exist** — and each was written by me, in this session, while fixing that exact
+  shape elsewhere.
+
+  **QC (a) gates:** `architecture-live-proof`, `kal-auth-boundary-live-smoke`,
+  `bitemporal-window-live-smoke`, `glossary-ordinal-axis-gate`, `kal-surface-census-gate`
+  selftests; `gate-wiring-gate`, `stale-deferral-gate`, `superseded-deferral-gate` (on the new
+  §21), `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** four seven-leg proof runs against the running iso stack — the fed run,
+  both bites, and the restore — plus three direct auth-smoke runs. No image rebuild; no service
+  code changed.
+  **QC (c) real data:** the acceptance book and a freshly minted HS256 stranger identity
+  (`sub=01a0aaaa-…dead`, no grant on that book), answered live by the running gateway: 200 for
+  the service token, 403 for the stranger, 401 for no credential.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ao 2026-08-30 — **the axis gate was wired and NEVER FED: a gate that exists, is wired, and reaches nothing**
 

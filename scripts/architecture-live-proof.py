@@ -21,6 +21,8 @@ WHAT IT PROVES, AND WHY EACH LEG IS HERE
                   -> bitemporal-window-live-smoke --sweep (T48s/T48ae/T48ak)
     6 AXIS        the SSOT stores positions on ONE reading axis
                   -> glossary-ordinal-axis-gate (T48ag; unfed until T48ao)
+    7 AUTH        the KAL's guard DISCRIMINATES rather than merely answering
+                  -> kal-auth-boundary-live-smoke (T48u; unfed until T48ap)
 
 ⚠️ **A COMPOSER IS THE EASIEST PLACE TO LIE, so it does two things it would be simpler to skip.**
 
@@ -190,6 +192,8 @@ def main(argv: list[str]) -> int:
     # rows, and the leg passed on 1 route of 14 while claiming the surface answers.
     ap.add_argument("--entity-id", default="")
     ap.add_argument("--declared-census")
+    ap.add_argument("--stranger-jwt", default="",
+                    help="a VALID JWT with no grant on --book-id; leg 7 SKIPs without it")
     ap.add_argument("--axis-census",
                     help="JSON: {chapter_scale, stride_scale, mixed_books} for leg 6")
     ap.add_argument("--axis-ceiling", type=int, default=1,
@@ -287,6 +291,22 @@ def main(argv: list[str]) -> int:
         ([py, "scripts/glossary-ordinal-axis-gate.py", "--census", args.axis_census,
           "--ceiling", str(args.axis_ceiling)] if args.axis_census else None),
         "[glossary-ordinal-axis] OK")
+    # T48ao/T48ap — the SECURITY boundary. T48u built this smoke and deliberately kept it OUT
+    # of the proof: "folding it in would make a green architecture proof depend on a JWT secret
+    # and a stranger's token being to hand." That objection is answered by machinery that did
+    # not exist when it was written — a leg without its inputs SKIPs and is REPORTED, exactly
+    # as STORE and AXIS do, and `--min-legs` makes the shrink visible. The cost of leaving it
+    # out was the T48ao defect: the only live check of the KAL's grant boundary ran when
+    # somebody remembered, which for six days was never.
+    leg("7 AUTH     the KAL's guard DISCRIMINATES, it does not merely answer",
+        ([py, "scripts/kal-auth-boundary-live-smoke.py",
+          "--base-url", args.base_url, "--internal-token", args.internal_token,
+          "--user-id", args.user_id, "--stranger-jwt", args.stranger_jwt,
+          "--path", f"/v1/kal/books/{args.book_id}/entities/{args.entity_id}"
+                    f"/neighborhood?hops=1&cap=5"]
+         if (args.stranger_jwt and args.book_id and args.entity_id and args.user_id
+             and args.internal_token) else None),
+        '"verdict": "DISCRIMINATES"')
 
     v = verdict(legs, args.min_legs)
     print("\n[arch-proof] " + json.dumps(v, ensure_ascii=False, indent=1))

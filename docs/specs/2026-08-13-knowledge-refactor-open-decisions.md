@@ -2184,6 +2184,52 @@ system.
 **Retry when:** a deployment runs two populated stores — then `MIGRATED` becomes reachable with a
 non-zero comparison size, and the distinction this section draws starts carrying real weight.
 
+## 21 · The auth boundary IS a proof leg — T48u's exclusion REVERSED (T48ap, 2026-08-30)
+
+T48u built `kal-auth-boundary-live-smoke` and deliberately kept it out of
+`architecture-live-proof`, in writing:
+
+> *"Not added as a proof leg, deliberately. `architecture-live-proof` is about the ARCHITECTURE
+> — backend, store, surface, port, spine. This is an access-control property of one gateway, and
+> folding it in would make a green architecture proof depend on a JWT secret and a stranger's
+> token being to hand."*
+
+**The reasoning was sound and its premise expired.** At the time, a leg without its inputs was
+an unsolved problem — the proof would have needed a JWT to return anything at all. Since then
+two legs have been added that face exactly the same constraint and are handled by mechanism
+rather than by exclusion:
+
+| leg | needs | without it |
+|---|---|---|
+| 2 STORE | two censuses | `SKIP`, reported |
+| 6 AXIS | one census | `SKIP`, reported |
+| 7 AUTH | a stranger JWT | `SKIP`, reported |
+
+`--min-legs` then makes the shrink visible, and a caller who cannot supply the token gets a
+smaller proof that SAYS it is smaller — which is the behaviour T48u actually wanted.
+
+### What the exclusion cost
+
+T48ao measured it: `kal-auth-boundary-live-smoke` appeared **exactly once** in the whole
+repository, as `--selftest` in the pre-commit hook. **The only live check of the KAL's grant
+boundary ran when somebody remembered to run it**, and between T48u and T48ap nobody did. The
+fixture had even rotted — the stranger JWT was gone from disk, and the smoke correctly reported
+`BLANKET-REFUSAL` on the empty one rather than pretending.
+
+That is the same defect the same session found twice more: `glossary-ordinal-axis-gate` wired
+and never fed (T48ao), and `COVERED_ELSEWHERE` citing a check nothing verified (T48an). A
+control that exists and is never exercised is indistinguishable from one that does not exist.
+
+### Decision
+
+**Leg 7.** The auth smoke joins the proof, skipping when no stranger JWT is supplied. The
+argument that a security property is "not architecture" is rejected on its own terms: the KAL is
+the security boundary on the user path — its own docstring says the BFF does no grant check —
+so whether that boundary discriminates is a property OF the architecture, not adjacent to it.
+
+**Retry when:** never — this is a reversal, not a deferral. If a future run finds the leg
+skipping in CI because no token is minted there, the answer is to mint one, not to drop the leg.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
