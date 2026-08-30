@@ -70,7 +70,7 @@ NO_PROOF_BASELINE = 55   # T48ay: pagination-cap-lint gained --selftest (7 cases
 #: **A ratchet on the numerator cannot tell "fewer unproven gates" from "a smaller denominator."**
 #: So the denominator gets a floor too, and a shrinking census reds as the regression it is.
 #: Same control as `--min-legs` (T48t), `--min-data` (T48aa) and `--min-routes` (T48am).
-CI_SCOPE_FLOOR = 119
+CI_SCOPE_FLOOR = 120
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

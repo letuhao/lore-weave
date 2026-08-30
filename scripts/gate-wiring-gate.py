@@ -227,6 +227,10 @@ NEEDS_STACK: dict[str, str] = {
     # L2 — a RATCHET over live data, so it needs the graph rather than a checkout.
     "scripts/event-order-collision-gate.py": "counts colliding (project_id, event_order) "
         "pairs in g_shared against a frozen ceiling; needs the AGE store, not a tree scan",
+
+    # L1 — reports the causal pass's reach/yield/consistency over live data.
+    "scripts/causal-coverage-gate.py": "measures the causal pass over g_shared and asserts "
+        "every ordered edge is explained by its own window algorithm; needs the AGE store",
 }
 
 # Gates too SLOW to sit in a shared run. Skipped with the reason printed, exactly

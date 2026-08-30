@@ -2512,3 +2512,47 @@ the pairs against `MAX_COLLIDING_PAIRS = 51`: shrink-only, red on growth, becaus
 collision means the writer regressed. It needs the live graph, so it is registered
 `NEEDS_STACK` and prints `SKIP … needs a live stack` in `--run-all` rather than being
 invisible (L4).
+
+## 26 · `D-T33-CAUSAL-COVERAGE-UNMEASURED` is DISCHARGED — three numbers, never one (L1, 2026-08-30)
+
+**Cited by leftovers row `L1`; discharges the deferral §23 recorded as ACCEPTED.**
+
+§23 held it open because *"nothing in this run measured it"*. It is measured now, by
+`scripts/causal-coverage-gate.py`, and the shape of the answer is why it stayed unmeasured
+for so long: **the question is three questions, and §4.3's retracted `0.34 %` was one of them
+answered with another's denominator.**
+
+```
+REACH       : 3/82   = 3.66 %   of projects holding any event
+YIELD       : 131/1277 = 10.26 % of CANDIDATE PAIRS (one 12-event window, stride 6)
+CONSISTENCY : 0 of 131 edges lie outside every window
+```
+
+**REACH is an OPERATIONS fact, not a quality one.** The causal pass is triggered by
+`POST /internal/…/causal-edges`; a project without edges is one nobody ran it on. Reporting
+3.66 % as "coverage" would be §4.3's retracted number wearing a new hat — a ratio over
+residue, dividing by 79 projects the pass was never pointed at.
+
+**YIELD is the quality number, and its denominator is the DESIGN'S.** `infer_causal_edges`
+slides a 12-event window with stride 6 over `list_events_in_order`, and `parse_edges` keeps
+only pairs inside one window; a pair that never shared a window was never offered to the
+model. Over the pairs it actually considered, the pass labels **10.26 %**. Answering §23's
+words — *"does the pass produce useful causal edges across the whole corpus, not just where
+it was pointed"* — it produces them wherever it IS pointed, at roughly one pair in ten, and it
+has been pointed at three projects.
+
+**CONSISTENCY is the assertion with teeth.** `parse_edges` cannot emit an edge whose endpoints
+never share a window, so a non-zero means something else wrote ordered edges or the ordering
+moved underneath them. It is 0 of 131, and `MAX_UNEXPLAINED_EDGES = 0` reds on growth.
+
+⚠️ **Two caveats, in the tool's own output rather than here alone.** The candidate set is
+computed from the corpus NOW while the edges were emitted against the corpus THEN, so YIELD
+drifts as a project grows. And `event_order` may be NULL: `list_events_in_order` sorts
+`coalesce(event_order, INT64_MAX)` then title, so null-order events are in the window like any
+other — **excluding them was this script's first bug**, and it turned `0 unexplained` into
+`3`. Reproduced deliberately as a bite, because measuring the wrong denominator is precisely
+what this deferral is about.
+
+**What this does NOT say.** It is coverage, not accuracy. Whether the 10.26 % it labels are
+labelled CORRECTLY is the 32-pair sheet's question, still awaiting a signature under §23.
+Two different questions, and §4.3 exists because they were once answered with one number.

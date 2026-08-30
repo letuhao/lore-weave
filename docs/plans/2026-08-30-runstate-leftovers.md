@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L1 — causal coverage, accepted and never measured.
+RESUME: L7 — 4355 legacy per-project g_<hex> graphs on iso.
 
 ## Progress
 
-7 tasks — 5 done, 0 tracked, 2 untouched.
+7 tasks — 6 done, 0 tracked, 1 untouched.
 
 ---
 
@@ -77,7 +77,7 @@ RESUME: L1 — causal coverage, accepted and never measured.
   **BITE:** `--selftest` gains a case for the named-constant cap and one for the variable it
   must still reject; break the const resolution → the first reds.
 
-- [ ] **L1** — **`D-T33-CAUSAL-COVERAGE-UNMEASURED`: accepted, never measured.**
+- [x] **L1** — **`D-T33-CAUSAL-COVERAGE-UNMEASURED`: accepted, never measured.**
   *Does the causal pass work across the whole corpus, not just where it was pointed.* Nothing
   measured it. The 32-pair sheet answers accuracy on TWO chapters and says nothing about
   coverage.
@@ -427,4 +427,60 @@ exit 0**.
 no seam crossed.
 **QC (c) real data:** the whole tree, scanned: 24 findings, 0 outside the BASELINE; the
 step-3 simulation above run over the same walk.
+---
+
+### ✅ L1 2026-08-30 — **the question is three questions, and the retracted 0.34 % was one answered with another's denominator**
+
+```
+REACH       : 3/82     =  3.66 %  of projects holding any event
+YIELD       : 131/1277 = 10.26 %  of CANDIDATE PAIRS (one 12-event window, stride 6)
+CONSISTENCY : 0 of 131 edges lie outside every window
+```
+
+🎯 **Discharged, with a command anyone can re-run** — `scripts/causal-coverage-gate.py`. §23
+held the deferral open because *"nothing in this run measured it"*; §26 records the
+measurement and why it had to be three numbers.
+
+⚖️ **REACH is an OPERATIONS fact and calling it coverage would repeat §4.3.** The pass is
+triggered by an endpoint; a project without edges is one nobody ran it on. Dividing by the 79
+projects it was never pointed at is exactly the retracted `0.34 %`. **YIELD** is the quality
+number and its denominator is the design's own — `parse_edges` keeps a triple only when both
+ids share a window, so a pair that never shared one was never offered to the model. Answering
+§23's words: the pass produces edges wherever it IS pointed, at about one pair in ten.
+
+🔴 **MY FIRST DENOMINATOR WAS WRONG, AND THE ROW IS ABOUT EXACTLY THAT.** I filtered
+`WHERE e.event_order IS NOT NULL` and the report claimed **3 edges unexplained by any window**
+— which reads as a defect in the extractor. It was a defect in my measurement:
+`list_events_in_order` sorts `coalesce(event_order, INT64_MAX)` then title, so null-order
+events sit in the window like any other. With them restored, 0 of 131. The wrong denominator
+did not just shift a percentage; it invented an anomaly.
+
+📐 **The denominator cannot be omitted, structurally.** `ratio(name, num, den, den_name)`
+raises when the name is blank — there is no way to format a percentage in this file and leave
+out what it divided by, which is the shape §4.3 retracted. A zero denominator prints `n/a`
+rather than a `0 %` that reads like a finding.
+
+⚖️ **What it does NOT say:** coverage, not accuracy. Whether the 10.26 % are labelled
+CORRECTLY is the 32-pair sheet's question, still awaiting a signature under §23.
+
+🧪 **BITE — three, each on its own claim, by line number.**
+
+```
+1 a ratio may print without naming its denominator (69)  -> "no denominator NAME is refused" FAILs
+2 null-order events dropped from the denominator (124)   -> CONSISTENCY 0 -> 3, gate exit 1
+                                                            (reproduces my own first bug)
+3 window/stride drift 12,6 -> 8,4 (55)                   -> selftest FAILs; CONSISTENCY 0 -> 13
+```
+
+⚠️ **Rule 5 fired a second time.** Registering this gate moved `gate-teeth-gate`'s CI-invoked
+census 119 → 120, so `CI_SCOPE_FLOOR` is raised again in this commit — the same ratchet L2
+tripped, now doing its job on the next arrival rather than on an audit.
+
+**QC (a) gates:** `causal-coverage-gate --selftest` **8 cases, 3 negative**;
+`gate-wiring-gate` **135 discovered**, self-test exit 0; `--run-all` **104 GREEN, 0 RED,
+exit 0**; `gate-number-visibility-gate` exit 0.
+**QC (b) live smoke:** the gate itself is the live run — against `g_shared` on `lw-iso`, the
+three numbers above. No service code changed, so no image rebuild was owed.
+**QC (c) real data:** 82 projects with events, 131 ordered edges, 1277 candidate pairs, read
+off the store today.
 ---
