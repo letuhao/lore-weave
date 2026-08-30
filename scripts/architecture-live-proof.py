@@ -17,6 +17,10 @@ WHAT IT PROVES, AND WHY EACH LEG IS HERE
                   -> kal-read-surface-live-smoke (T54i/T55b)
     4 PORT        class (d) is discharged by one of §10.1's two paths
                   -> port-adoption-gate's `class (d) UNDISCHARGED` ratchet (A33)
+    5 TEMPORAL    every temporal route HOLDS its story position, both substrates
+                  -> bitemporal-window-live-smoke --sweep (T48s/T48ae/T48ak)
+    6 AXIS        the SSOT stores positions on ONE reading axis
+                  -> glossary-ordinal-axis-gate (T48ag; unfed until T48ao)
 
 ⚠️ **A COMPOSER IS THE EASIEST PLACE TO LIE, so it does two things it would be simpler to skip.**
 
@@ -186,6 +190,10 @@ def main(argv: list[str]) -> int:
     # rows, and the leg passed on 1 route of 14 while claiming the surface answers.
     ap.add_argument("--entity-id", default="")
     ap.add_argument("--declared-census")
+    ap.add_argument("--axis-census",
+                    help="JSON: {chapter_scale, stride_scale, mixed_books} for leg 6")
+    ap.add_argument("--axis-ceiling", type=int, default=1,
+                    help="known off-axis glossary facts; a RATCHET, it may only fall")
     ap.add_argument("--other-census")
     ap.add_argument("--min-legs", type=int, default=3)   # 5 legs exist; the floor
                                                         # is what must RUN
@@ -212,7 +220,11 @@ def main(argv: list[str]) -> int:
         print(f"  {'PASS' if ok else 'FAIL':<5} {name}  rc={rc}  "
               f"{evidence_line(out, needle)[:110]}")
 
-    print("[arch-proof] the GOAL's four legs, run together\n")
+    # The count is not typed here: this line said "four legs" while SIX ran. A composer that
+    # miscounts its own legs is T48k's defect in miniature — a sentence that does not match its
+    # check — and the leg list has grown three times since the line was written.
+    print(f"[arch-proof] the GOAL's legs, run together "
+          f"(floor {args.min_legs}; a leg that cannot run SKIPs and is reported)\n")
     leg("1 BACKEND  every declared deployment is on `age`",
         [py, "scripts/port-adoption-gate.py"], "backend declarations 0/")
     # ⚠️ This leg ran `--selftest` in its first draft — an OFFLINE check under a name that
@@ -262,6 +274,19 @@ def main(argv: list[str]) -> int:
          else None), "not holding their position")
     leg("4 PORT     class (d) discharged by one of §10.1's two paths",
         [py, "scripts/port-adoption-gate.py"], "class (d) UNDISCHARGED 0/")
+    # T48ao — the SSOT side of the reading axis. `glossary-ordinal-axis-gate` was wired as
+    # `--selftest` and NOTHING ever fed it a census, so its live arm never ran: a gate that
+    # exists, is wired, and reaches nothing. Its sibling `graph-store-migrated-gate` is fed by
+    # leg 2, which is the difference between the two.
+    #
+    # The needle is `OK` on purpose: that label covers CONSISTENT and OUTLIERS and excludes
+    # DISARMED, which the gate prints as INDETERMINATE and exits 0 on. A leg whose NAME is the
+    # claim must demand it -- T48ab, where "the declared store holds the corpus" passed on two
+    # empty censuses.
+    leg("6 AXIS     the SSOT stores positions on ONE reading axis",
+        ([py, "scripts/glossary-ordinal-axis-gate.py", "--census", args.axis_census,
+          "--ceiling", str(args.axis_ceiling)] if args.axis_census else None),
+        "[glossary-ordinal-axis] OK")
 
     v = verdict(legs, args.min_legs)
     print("\n[arch-proof] " + json.dumps(v, ensure_ascii=False, indent=1))

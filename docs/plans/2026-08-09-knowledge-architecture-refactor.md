@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 48 of 50 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 49 of 51 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (41/42) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (42/43) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,69 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ao 2026-08-30 — **the axis gate was wired and NEVER FED: a gate that exists, is wired, and reaches nothing**
+
+  ```
+  before  glossary-ordinal-axis-gate appears ONCE in the repo: `--selftest` in pre-commit
+  after   leg 6 of architecture-live-proof, fed a real census
+          "verdict": "PROVEN",  "ran": 6                                          exit 0
+          6 AXIS  the SSOT stores positions on ONE reading axis
+                  [glossary-ordinal-axis] OK — OUTLIERS: 1 known off-axis fact, ceiling 1
+  ```
+
+  🎯 **T48ag built the gate, wired it, and left its live arm unreachable.** Grepping the whole
+  repo finds exactly one invocation — `--selftest` — so the measurement that motivated it
+  (48 610 chapter-scale facts, 1 stride-scale, 1 mixed book) was taken **once, by hand, and never
+  again**. A producer that started writing `chapter × STRIDE` into glossary would never be
+  caught. Its sibling `graph-store-migrated-gate` has the identical census-driven design and is
+  fed by leg 2; that is the entire difference between them.
+
+  **This is T48s's shape in a gate I wrote to catch T48s's shape.**
+
+  📐 **So it is leg 6, and the needle is `OK` on purpose.** The gate is repo-wide and rightly
+  exits 0 on `DISARMED` — "I could not look" must not redden every commit. But a LEG whose name
+  is a claim has to demand it (T48ab, where *"the declared store holds the corpus"* passed on two
+  empty censuses). `OK` covers `CONSISTENT` and `OUTLIERS` and excludes `DISARMED`, which the
+  gate prints as `INDETERMINATE`.
+
+  🧾 **And the producer is now a command rather than a placeholder.** The gate's usage block said
+  `python -c "…" > census.json`. It could not be run. It is now the actual `psql` invocation,
+  and re-running it reproduced `{"chapter_scale":48610,"stride_scale":1,"mixed_books":1}`
+  byte-for-byte — a gate whose input nobody can produce is a gate nobody will feed.
+
+  🧪 **TWO BITES, and the pair is the point.**
+
+  ```
+  A (data)  an EMPTY store: {"chapter_scale":0,"stride_scale":0,"mixed_books":0}
+            gate  INDETERMINATE — DISARMED: no positioned facts at all        gate exit 0
+            leg   FAIL  6 AXIS  …  rc=0                                       proof exit 1
+            ^ the leg fails while the gate passes — the needle doing its job
+
+  B (code)  line 285, the needle removed
+            leg   PASS  6 AXIS  the SSOT stores positions on ONE reading axis
+            [proof] PROVEN                                                    proof exit 0
+            ^ "the SSOT stores positions on ONE reading axis" — on a store with NO positions
+  ```
+
+  Both restored; six legs `PROVEN`, `"ran": 6`.
+
+  ⚠️ **The header said "four legs" while six ran.** `print("[arch-proof] the GOAL's four legs…")`
+  had not moved as the list grew three times. That is T48k's own defect — a sentence that does
+  not match its check — sitting in the file written to prevent it. It now reports the floor it
+  was given rather than a number typed once.
+
+  **QC (a) gates:** `architecture-live-proof --selftest` 14/14; `bitemporal-window-live-smoke`,
+  `glossary-ordinal-axis-gate`, `kal-surface-census-gate` selftests, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** four six-leg proof runs against the running iso stack — the fed run,
+  both bites, and the restore. No image rebuild; no service code changed.
+  **QC (c) real data:** iso's whole `entity_facts` table, re-measured with the newly documented
+  command — **48 610 chapter-scale, 1 stride-scale, 1 book carrying both** — now an input to the
+  proof rather than a number in a docstring.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48an 2026-08-30 — **`COVERED_ELSEWHERE` named a check and nothing verified the check existed**
 

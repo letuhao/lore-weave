@@ -34,8 +34,25 @@ and reds this gate on the commit that does it.
 Like `graph-store-migrated-gate`, it takes a CENSUS rather than opening a connection — a gate
 that needed live credentials could not run offline in CI, which is where it has to run.
 
-    python -c "…" > census.json      # {"chapter_scale": N, "stride_scale": N, "mixed_books": N}
-    python scripts/glossary-ordinal-axis-gate.py --census census.json --ceiling 1
+PRODUCING THE CENSUS (the command, not a placeholder)
+────────────────────────────────────────────────────
+Until T48ao nothing ever fed this gate: it was wired as `--selftest` and its live arm never
+ran, so the measurement below was taken once, by hand, and never again. It is now leg 6 of
+`architecture-live-proof`, and this is the command that produces its input:
+
+    docker exec <postgres> psql -U loreweave -d loreweave_glossary -tAc "
+      SELECT json_build_object(
+        'chapter_scale', count(*) FILTER (WHERE valid_from_ordinal <  1000000
+                                            AND valid_from_ordinal IS NOT NULL),
+        'stride_scale',  count(*) FILTER (WHERE valid_from_ordinal >= 1000000),
+        'mixed_books', (SELECT count(*) FROM (
+            SELECT book_id FROM entity_facts WHERE valid_from_ordinal IS NOT NULL
+            GROUP BY book_id
+            HAVING count(*) FILTER (WHERE valid_from_ordinal <  1000000) > 0
+               AND count(*) FILTER (WHERE valid_from_ordinal >= 1000000) > 0) t))
+      FROM entity_facts;" > axis.json
+
+    python scripts/glossary-ordinal-axis-gate.py --census axis.json --ceiling 1
 
 Usage
     python scripts/glossary-ordinal-axis-gate.py --selftest
