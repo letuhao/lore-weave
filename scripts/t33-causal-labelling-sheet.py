@@ -205,6 +205,77 @@ def _selftest() -> int:
         ("a real name containing a denylisted SUBSTRING is still a person",
          {"ok": labeller_ok("Sam Testerton")}, lambda r: r["ok"]),
     ]
+    # ── T33i — the PLANTED arm's guards, driven end to end on real files ──────────────
+    # These call `_score_planted` itself rather than re-implementing its checks. The one
+    # that matters most is the last: adding a second arm must not widen the first, so a
+    # planted sheet fed to the HUMAN scorer has to keep being refused.
+    import contextlib
+    import io as _io
+    import tempfile as _tempfile
+
+    def _rc(fn, *a):
+        buf = _io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = fn(*a)
+        return code, buf.getvalue()
+
+    with _tempfile.TemporaryDirectory() as _td:
+        _design = os.path.join(_td, "DESIGN.md")
+        with open(_design, "w", encoding="utf-8") as fh:
+            fh.write("the design, v1\n")
+        _digest = design_digest(_design)
+
+        def _sheet(name, body):
+            path = os.path.join(_td, name)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(body)
+            return path
+
+        _manifest = ('```json\n{"causal_pass_ran": true, "system_predicted": '
+                     '{"P1": "causes", "P2": "unknown"}}\n```\n')
+        _labels = "#### PAIR P1\nLABEL: causes\n#### PAIR P2\nLABEL: unknown\n"
+
+        _good = _sheet("good.md", "labelled_by: \nplanted_by: A Designer\n"
+                       f"design_sha256: {_digest}\n" + _manifest + _labels)
+        _nodigest = _sheet("nodigest.md", "labelled_by: \nplanted_by: A Designer\n"
+                           + _manifest + _labels)
+        _noplanter = _sheet("noplanter.md", "labelled_by: \nplanted_by: \n"
+                            f"design_sha256: {_digest}\n" + _manifest + _labels)
+        _human = _sheet("human.md", "labelled_by: NeneScarlet\nplanted_by: A Designer\n"
+                        f"design_sha256: {_digest}\n" + _manifest + _labels)
+
+        _rc_good, _ = _rc(_score_planted, _good, _design)
+        _rc_nodig, _ = _rc(_score_planted, _nodigest, _design)
+        _rc_noplant, _ = _rc(_score_planted, _noplanter, _design)
+        _rc_human, _ = _rc(_score_planted, _human, _design)
+
+        # Drift: the design is edited AFTER the sheet was bound to it.
+        with open(_design, "w", encoding="utf-8") as fh:
+            fh.write("the design, v2 — quietly changed after the run\n")
+        _rc_drift, _drift_out = _rc(_score_planted, _good, _design)
+
+        # And the human scorer must still refuse the planted sheet.
+        _rc_via_human, _ = _rc(_score, _good)
+
+    cases += [
+        ("PLANTED: a bound sheet with a matching digest scores",
+         {"rc": _rc_good}, lambda r: r["rc"] == 0),
+        ("PLANTED: a sheet with no `design_sha256` is refused",
+         {"rc": _rc_nodig}, lambda r: r["rc"] == 2),
+        ("PLANTED: a blank `planted_by` is refused",
+         {"rc": _rc_noplant}, lambda r: r["rc"] == 2),
+        ("PLANTED: a sheet with a valid `labelled_by` is sent to --score instead",
+         {"rc": _rc_human}, lambda r: r["rc"] == 2),
+        # The load-bearing one. A self-authored ground truth fails by DRIFT, not by lying:
+        # reading the output and deciding that is what you meant. The digest is what makes
+        # the ordering checkable at all.
+        ("PLANTED: editing the design AFTER the sheet was bound to it is refused",
+         {"rc": _rc_drift, "said": "does not match" in _drift_out},
+         lambda r: r["rc"] == 2 and r["said"]),
+        # THE GUARD THAT MUST NOT MOVE: a second arm must not widen the first.
+        ("THE HUMAN ARM IS UNTOUCHED: a planted sheet through --score is still refused",
+         {"rc": _rc_via_human}, lambda r: r["rc"] == 2),
+    ]
     failures = 0
     print("t33-causal-labelling-sheet - selftest (offline)")
     for label, got_v, pred in cases:
@@ -461,11 +532,91 @@ def _score(path: str) -> int:
     return 0 if result["verdict"] == SCORED else 1
 
 
+PLANTED_BY_RE = re.compile(r"^planted_by:[ \t]*(.*)$", re.M)
+DESIGN_SHA_RE = re.compile(r"^design_sha256:[ \t]*([0-9a-fA-F]{64})\s*$", re.M)
+
+
+def design_digest(path: str) -> str:
+    """SHA-256 of the design file, read as bytes."""
+    import hashlib
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def _score_planted(sheet_path: str, design_path: str) -> int:
+    """Score the PLANTED arm — a corpus whose causal structure was designed in advance.
+
+    This is a SECOND arm, never a substitute for the human one. It exists because a detector
+    that cannot recover causation planted for it to find has little chance on genuine prose:
+    a pass here says much less than a failure here does.
+
+    Two things keep it from being green by construction, and neither is a promise:
+
+      * The sheet carries `planted_by:`, never `labelled_by:`. A planted sheet fed to
+        `--score` therefore still hits the assistant denylist and is refused. The human
+        arm is not widened by one byte to make room for this.
+      * The labels are bound to the design by SHA-256. The real risk with a self-authored
+        ground truth is not lying, it is DRIFT — reading the output and deciding that is
+        what you meant all along. A digest over the design file makes the ordering
+        checkable: edit the design after the run and this refuses.
+    """
+    with open(sheet_path, encoding="utf-8") as fh:
+        text = fh.read()
+    manifest = json.loads(text.split("```json", 1)[1].split("```", 1)[0])
+
+    by_human, labelled = parse_sheet(text)
+    if labeller_ok(by_human):
+        print("[t33-planted] REFUSED — this sheet carries a valid `labelled_by`, which makes "
+              "it a HUMAN sheet.")
+        print("  Score it with --score. Grading a human sheet as a planted arm would "
+              "understate it.")
+        return 2
+
+    m = PLANTED_BY_RE.search(text)
+    planted_by = (m.group(1).strip() if m else "")
+    if not planted_by:
+        print("[t33-planted] REFUSED — `planted_by:` is blank. A planted arm has to say "
+              "whose design it is.")
+        return 2
+
+    d = DESIGN_SHA_RE.search(text)
+    if not d:
+        print("[t33-planted] REFUSED — the sheet carries no `design_sha256:`. Without it the "
+              "ground truth is not bound to anything, and could have been written after the "
+              "results were known.")
+        return 2
+    actual = design_digest(design_path)
+    if d.group(1).lower() != actual:
+        print("[t33-planted] REFUSED — the design file does not match the digest this sheet "
+              "was built against.")
+        print(f"    sheet says:      {d.group(1).lower()}")
+        print(f"    {design_path}: {actual}")
+        print("  The ground truth changed after the sheet was emitted. Re-emit against the "
+              "design, or record a NEW design file — never edit one a result was scored on.")
+        return 2
+
+    result = score(dict(labelled), manifest.get("system_predicted", {}),
+                   pass_ran=bool(manifest.get("causal_pass_ran", True)))
+    print(f"[t33-planted] {sheet_path}")
+    print(f"[t33-planted] PLANTED ARM — designed by: {planted_by}")
+    print(f"[t33-planted] design {design_path} @ {actual[:16]}... (digest VERIFIED)")
+    print("[t33-planted] What this CAN establish: whether the causal pass recovers causation")
+    print("[t33-planted] deliberately planted for it. What it CANNOT: that the pass works on")
+    print("[t33-planted] prose written by someone else. The human arm stays owed either way.")
+    for k, v in result.items():
+        print(f"  {k:<32} {v}")
+    return 0 if result["verdict"] == SCORED else 1
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--emit", action="store_true")
     ap.add_argument("--score", metavar="SHEET")
+    ap.add_argument("--score-planted", metavar="SHEET",
+                    help="score the PLANTED arm; requires --design")
+    ap.add_argument("--design", metavar="DESIGN_MD",
+                    help="the design file the planted sheet is bound to by SHA-256")
     ap.add_argument("--project-id")
     ap.add_argument("--chapter-ids", nargs="*", default=[])
     ap.add_argument("--pairs", type=int, default=20)
@@ -483,6 +634,12 @@ def main(argv: list[str]) -> int:
 
     if args.selftest:
         return _selftest()
+    if args.score_planted:
+        if not args.design:
+            print("--score-planted requires --design <the design file it is bound to>",
+                  file=sys.stderr)
+            return 2
+        return _score_planted(args.score_planted, args.design)
     if args.score:
         return _score(args.score)
     if args.emit:

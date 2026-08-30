@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 59 of 61 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 60 of 62 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (52/53) · `T49` (1/1)
+**OPEN:** `T33` (7/8) · `T48` (52/53) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10643,6 +10643,86 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **QC (c) real data:** the row counts are `count(*)` on the real stack's `knowledge-pg` and a
   Neo4j `count()` on `infra-neo4j-1` — reads, rule 6.
 
+  ---
+  ### ✅ T33i 2026-08-30 — **the PO directed a PLANTED arm, and the ordering is what makes it evidence rather than a circle**
+
+  ```
+  the human arm    labelled_by: (blank)      REFUSED — unchanged, not widened by one byte
+  the planted arm  planted_by: + design_sha256:  bound to a design fixed BEFORE any run
+  design           docs/measurements/2026-08-30-t33-planted-corpus/DESIGN.md
+                   sha256 d90fede19babc29fbd40b3f84e0db06e1fcb9f011c0baa1f3cbfd651a7837b11
+  ```
+
+  🎯 **The PO's direction was to author my own book, where the causal structure is known by
+  construction.** T33 has been blocked on 20 human labels since 2026-08-24, and the scorer
+  refuses an assistant signature for a good reason that has not changed. **This does not touch
+  that refusal.** It adds a second arm, the same instrument QC-5 used for clause 1a (*"planted
+  arm — 5/5 flagged"*).
+
+  ⚖️ **What it can and cannot establish, stated before it is run rather than after.** The same
+  agent wrote the prose and the ground truth, so a **pass** here says only *"the pass recovers
+  causation that was planted for it"* — not that it works on prose written by someone else. A
+  **failure** is far stronger: a detector that cannot find causation planted for it to find has
+  little chance on genuine text. The human arm stays owed either way, and the scorer prints all
+  three sentences on every planted run so the result cannot be quoted without them.
+
+  📐 **The failure mode of a self-authored ground truth is DRIFT, not dishonesty** — reading the
+  extractor's output and quietly deciding that is what you meant. Two controls, and only the
+  second is mechanical:
+
+  ```
+  ordering   the design is authored and committed BEFORE the corpus is ingested
+  binding    the sheet carries sha256(DESIGN.md); --score-planted recomputes and refuses
+  ```
+
+  The digest is what makes the ordering *checkable* rather than merely claimed. Edit the design
+  after a result is known and the arm refuses, naming both digests.
+
+  🧾 **The design is written to be discriminating, which is the part that could have been
+  skipped.** 10 `causes`, 8 `precedes`, 8 `unknown` across 16 beats in two chapters. A detector
+  answering `causes` for everything scores well on recall and is useless; the `precedes` and
+  `unknown` rows are what catch it. And because adjacent beats in a well-written chapter are
+  causal more often than not, **six of the twelve gap-2 pairs are deliberately not `unknown`** —
+  a detector that merely says *"adjacent ⇒ causes, distant ⇒ unknown"* would otherwise score
+  respectably without reading anything.
+
+  📌 **The mapping rule is declared in advance, including what happens when it fails.** Beats map
+  to extracted events by reading order, beat *n* to the *n*-th by `event_order`. If a chapter
+  yields a different number of events than it has beats, **the chapter is reported as ambiguous
+  rather than silently re-aligned** — that is a finding about extraction granularity, and
+  re-aligning by hand is exactly how a ground truth gets fitted to a result.
+
+  🧪 **BITE T33i-1 — line 589, the digest comparison is disabled (`!= actual and False`).**
+
+  ```
+  FAIL  PLANTED: editing the design AFTER the sheet was bound to it is refused
+        -> {"rc": 0, "said": false}
+  1 FAILED                                                                             exit 1
+  ```
+
+  A design edited after the run **scores** instead of refusing. Restored: all checks passed.
+
+  ⚠️ **The scorer was spliced in twice; the first attempt shipped a syntax error.** Written
+  through a heredoc, `chr(92)+"n"` inside the refusal strings resolved to real newlines and
+  broke the literals. Fourth escape-collapse this session. Re-done with the file written
+  directly and spliced whole.
+
+  **QC (a) gates:** `t33-causal-labelling-sheet --selftest` — the six new PLANTED cases pass,
+  including **`THE HUMAN ARM IS UNTOUCHED: a planted sheet through --score is still refused`**,
+  which is the guard that must not move when a second arm is added. `plan-final-verification`,
+  `plan-row-honesty-gate`, `plan-progress-block --check`, `plan-acceptance --floor`,
+  `plan-qc-evidence-gate`, `gate-teeth-gate`, `doc-language-gate` — all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — nothing is ingested yet, and that is deliberate: this cycle
+  exists to fix the ground truth *before* an extractor exists to fit it to. The ingest and the
+  three LLM passes are the next cycle.
+  **QC (c) real data:** none yet, and saying so plainly. What this cycle produces is a corpus
+  and a design, not a measurement. The digest above is the only number, and it is the one the
+  next cycle's sheet must carry.
+
+  ⛔ **T33 stays `[~]`, and the planted arm does not change that.** The row's stop condition is
+  answered by a corpus with known ground truth; whether an arm authored by the graded agent
+  satisfies it is a PO call, not mine. What is now true is that the arm exists, its ordering is
+  enforced rather than promised, and running it cannot quietly become a circle.
   ---
   ### 📊 T33a 2026-08-21 — every open row's blocker re-checked; **four were stale, one pointed at a retracted phase**
 
