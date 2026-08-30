@@ -169,6 +169,87 @@ class TestTheCheckpointDoesNotMultiplyTheRecord:
         assert await _entries(conn) == first
 
 
+class TestAWriteNeverShrinksItsOwnSegment:
+    """D-THE-PERSISTED-PER-PASS-RECORDER-DROPS-A-PASS-ON-THE-SECOND-TURN.
+
+        THE INVARIANT. An entry recorded at (segment, pass) is never REMOVED by a later write
+        for the same segment. A write may add passes; it may never take one away.
+
+    🔴 THIS FILE HAD THIRTEEN CASES AND WAS EMPTY OF THIS ONE. It asserted that a rewrite of the
+    SAME state is idempotent (above) and that a DIFFERENT segment appends beside — but never that
+    a SHORTER write for the SAME segment leaves the longer record intact. The merge is a
+    segment-scoped WHOLESALE REPLACE: it drops every stored entry of the incoming segment and
+    appends the incoming array. So a shorter write silently truncates, and nothing said so.
+
+    THE SHAPE IS THE ROW'S FOUNDING INSTANCE, not an invented one. Session
+    01a03f44-1507-76d3-9012-7853c2befd40, still in the live store today:
+
+        seq 2  assistant  completed  9 entries  seg=fdf2bb6bec25  p=1..9
+        seq 3  user       abandoned_by_user
+        seq 5  assistant  completed  4 entries  seg=a1b98ae38254  p=1..4   <- the wire log said 5
+
+    Measured against real Postgres BEFORE the fix: writing p1..p5 then p1..p4 for one segment left
+    the column holding **four** entries, p1..p4 — the stored row, reproduced exactly.
+
+    🔴 WHAT THIS DOES NOT ESTABLISH, and the row says so too: that the live instance was CAUSED
+    this way. The container log that would decide has a 30-minute window and is long gone, so
+    "a shorter write landed after a longer one" and "the terminal write never carried the fifth"
+    remain indistinguishable for THAT session. What is settled is that the merge CAN destroy a
+    recorded pass, which is half the search space the row had left, and that it no longer does.
+    """
+
+    async def test_a_shorter_write_does_not_truncate_the_segment(self, conn):
+        """The founding instance's exact numbers: 5 recorded, then a 4-pass write."""
+        await _write(conn, _UPSERT, "a1b98ae38254", 5)
+        assert [e["pass"] for e in await _entries(conn)] == [1, 2, 3, 4, 5]
+        await _write(conn, _UPSERT, "a1b98ae38254", 4)
+        assert [e["pass"] for e in await _entries(conn)] == [1, 2, 3, 4, 5], (
+            "a 4-pass write erased pass 5 — the merge is replacing its segment wholesale again")
+
+    async def test_it_holds_for_withheld_too(self, conn):
+        """Both columns share one expression; a fix to one that missed the other would be the
+        pair-fixed-at-one-end failure this file already records elsewhere."""
+        await _write(conn, _UPSERT, "segW", 4)
+        await _write(conn, _UPSERT, "segW", 2)
+        assert len(await _entries(conn, "withheld_tools")) == 4
+
+    async def test_the_LATER_write_still_WINS_on_a_pass_it_carries(self, conn):
+        """Not-shrinking must not become not-updating. The incoming version of a pass replaces the
+        stored one — otherwise a corrected pass could never be corrected."""
+        await conn.execute(
+            _UPSERT, "m1",
+            json.dumps([{"segment": "segU", "pass": 1, "names": ["old"]}]),
+            json.dumps([]),
+        )
+        await conn.execute(
+            _UPSERT, "m1",
+            json.dumps([{"segment": "segU", "pass": 1, "names": ["new"]}]),
+            json.dumps([]),
+        )
+        got = await _entries(conn)
+        assert len(got) == 1 and got[0]["names"] == ["new"], got
+
+    async def test_the_surviving_pass_keeps_the_segment_in_pass_ORDER(self, conn):
+        """A pass rescued from truncation must land in its place, not at the end. `pass` is
+        asserted monotone within a segment elsewhere in this file, and a naive union would append
+        the survivor after the incoming array and break it."""
+        await _write(conn, _UPSERT, "segO", 5)
+        await _write(conn, _UPSERT, "segO", 2)
+        passes = [e["pass"] for e in await _entries(conn) if e["segment"] == "segO"]
+        assert passes == sorted(passes), passes
+
+    async def test_a_shorter_write_STILL_cannot_reach_another_segment(self, conn):
+        """ANTI-OVERREACH. The repair must not turn the segment-scoped merge back into a global
+        append — the erasure it replaced, and the duplication before that, are both one careless
+        edit away."""
+        await _write(conn, _UPSERT, "segX", 3)
+        await _write(conn, _UPSERT, "segY", 3)
+        await _write(conn, _UPSERT, "segY", 1)
+        got = await _entries(conn)
+        assert [e["pass"] for e in got if e["segment"] == "segX"] == [1, 2, 3]
+        assert [e["pass"] for e in got if e["segment"] == "segY"] == [1, 2, 3]
+
+
 class TestTheResumeStillCannotEraseTheTurnItResumes:
     """The half the concatenation got RIGHT, and which the fix must not give back.
 

@@ -1279,7 +1279,24 @@ def segment_merge_sql(column: str, *, incoming: str | None = None) -> str:
                                     WITH ORDINALITY AS _seg(e, ord)
                                WHERE e ->> 'segment'
                                      IS DISTINCT FROM {incoming} -> 0 ->> 'segment'
-                             ), '[]'::jsonb) || {incoming}
+                             ), '[]'::jsonb)
+                             || COALESCE((
+                               SELECT jsonb_agg(e ORDER BY (e ->> 'pass')::int)
+                               FROM (
+                                 SELECT i AS e
+                                 FROM jsonb_array_elements({incoming}) AS _in(i)
+                                 UNION ALL
+                                 SELECT s AS e
+                                 FROM jsonb_array_elements(chat_messages.{column}) AS _old(s)
+                                 WHERE s ->> 'segment'
+                                       IS NOT DISTINCT FROM {incoming} -> 0 ->> 'segment'
+                                   AND NOT EXISTS (
+                                     SELECT 1
+                                     FROM jsonb_array_elements({incoming}) AS _in2(i2)
+                                     WHERE i2 ->> 'pass' IS NOT DISTINCT FROM s ->> 'pass'
+                                   )
+                               ) AS _merged(e)
+                             ), '[]'::jsonb)
                       END"""
 
 
