@@ -80,6 +80,14 @@ BASELINE = ROOT / "contracts" / "undeclared-emitter-baseline.json"
 _RUNTIME_CONTEXT_IDS = ("book_id", "chapter_id", "project_id")
 
 
+#: {tool: (args,)} the SERVER fills, so no tool emits them and no emitter can be declared.
+#: One entry, added 2026-08-30 with its reason at the check below. This set may only grow by a
+#: decision with a reason recorded beside it.
+_SERVER_FILLED_REFS = {
+    "glossary_extract_entities_from_doc": ("source_ref",),
+}
+
+
 def _required_opaque_ids(spec: dict) -> list[str]:
     """The required arguments the MODEL must supply that are opaque ids.
 
@@ -99,6 +107,22 @@ def _required_opaque_ids(spec: dict) -> list[str]:
             continue
         if arg == "project_id" and meta.get("ambient_project"):
             continue
+        # 🔴 A SERVER-FILLED REFERENCE IS NOT AN OPAQUE ID, and it is exempt for the same reason
+        # the runtime-context ids above are: no tool emits it, so demanding an emitter would
+        # demand a supplier that must not exist.
+        #
+        # SURFACED 2026-08-30 by refreshing contracts/tool-catalog-cache.json, which had gone
+        # stale on 17 tools. `glossary_extract_entities_from_doc.source_ref` became REQUIRED under
+        # DQ-T55 (owner: the author's document is not the model's to write), and its only accepted
+        # value is the literal "last_user_message" — the server resolves it and fills
+        # `source_markdown` before dispatch. Declaring an emitter would put a nonexistent supplier
+        # on the wire for every extraction turn.
+        #
+        # NAMED, not inferred, and deliberately ONE entry: the gate's whole value is that it
+        # refuses to guess which ids are obtainable, so this set may only grow by a decision with
+        # a reason beside it — never because a flag was inconvenient.
+        if arg in _SERVER_FILLED_REFS.get(spec.get("name") or "", ()):
+            continue
         out.append(arg)
     return out
 
@@ -115,7 +139,7 @@ def _live_gaps() -> dict[str, list[str]]:
     emitters = _emitters()
     gaps: dict[str, list[str]] = {}
     for tool, spec in catalog.items():
-        missing = [a for a in _required_opaque_ids(spec)
+        missing = [a for a in _required_opaque_ids({**spec, "name": tool})
                    if not (emitters.get(tool) or {}).get(a)]
         if missing:
             gaps[tool] = missing

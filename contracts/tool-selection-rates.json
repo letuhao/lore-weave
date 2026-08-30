@@ -314,10 +314,11 @@
   "world-map-update-marker": "world_map_update_marker",
   "world-map-update-region": "world_map_update_region",
   "world-move-book": "world_move_book",
-  "world-update": "world_update"
+  "world-update": "world_update",
+  "the-authors-word-linter-reaches-the-linter": "plan_validate"
  },
  "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.450, 0.476), a gap of 0.026, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
- "measured": 77,
+ "measured": 79,
  "lottery_count": 22,
  "lottery": [
   "catalog_get_book",
@@ -370,8 +371,8 @@
    "rate": 1.0
   },
   "composition_arc_get": {
-   "calls": 16,
-   "runs": 16,
+   "calls": 21,
+   "runs": 21,
    "rate": 1.0
   },
   "composition_arc_import_analyze": {
@@ -400,9 +401,9 @@
    "rate": 1.0
   },
   "composition_build_cast_and_graph": {
-   "calls": 60,
-   "runs": 155,
-   "rate": 0.387
+   "calls": 70,
+   "runs": 165,
+   "rate": 0.424
   },
   "composition_canon_rule_restore": {
    "calls": 0,
@@ -430,9 +431,9 @@
    "rate": 0.45
   },
   "composition_entity_override_edit": {
-   "calls": 64,
-   "runs": 100,
-   "rate": 0.64
+   "calls": 72,
+   "runs": 108,
+   "rate": 0.667
   },
   "composition_generate": {
    "calls": 0,
@@ -536,8 +537,8 @@
   },
   "jobs_cancel": {
    "calls": 7,
-   "runs": 50,
-   "rate": 0.14
+   "runs": 75,
+   "rate": 0.093
   },
   "jobs_get": {
    "calls": 26,
@@ -546,8 +547,8 @@
   },
   "jobs_pause": {
    "calls": 8,
-   "runs": 49,
-   "rate": 0.163
+   "runs": 74,
+   "rate": 0.108
   },
   "kg_add_nodes": {
    "calls": 4,
@@ -610,9 +611,9 @@
    "rate": 1.0
   },
   "plan_validate": {
-   "calls": 14,
-   "runs": 15,
-   "rate": 0.933
+   "calls": 19,
+   "runs": 20,
+   "rate": 0.95
   },
   "propose_edit": {
    "calls": 11,
@@ -699,6 +700,11 @@
    "runs": 19,
    "rate": 0.895
   },
+  "world_get": {
+   "calls": 5,
+   "runs": 5,
+   "rate": 1.0
+  },
   "world_map_add_marker": {
    "calls": 32,
    "runs": 32,
@@ -710,8 +716,13 @@
    "rate": 1.0
   },
   "world_map_delete": {
-   "calls": 20,
-   "runs": 20,
+   "calls": 21,
+   "runs": 25,
+   "rate": 0.84
+  },
+  "world_map_list": {
+   "calls": 5,
+   "runs": 5,
    "rate": 1.0
   },
   "world_map_remove_region": {

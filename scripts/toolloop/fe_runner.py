@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as _dt
 import json
 import os
 import pathlib
@@ -597,8 +598,27 @@ async def run_scenario(client, auth, sc, idx, fx):
         "measured_turn() and the turn loop disagree about which turn is measured — they are "
         "the same rule and must not drift")
     prior = []
+    # ── D-THE-BEFORE-SNAPSHOT-IS-NOT-THE-STATE-THE-TURN-STARTS-FROM ────────────────────────
+    # 🔴 THE RUN RECORD CARRIED NO TURN-START TIME AT ALL — `started_at` is None on every row
+    # on disk — so refuting a single false flag needed a live DB query against a six-day-old
+    # session, and the answer would have been gone a week later.
+    #
+    # Measured 2026-08-30, session 01a04fe3-bd8e-7d21-81f2-4555c920a8c7: the DATA bar flagged a
+    # READ-intent scenario as a lifecycle write. The store's own timestamps refute it — the
+    # composition_work row was created at 23:38:37 with `updated_at == created_at`, and the
+    # turn's first message is 23:38:40 — so nothing wrote inside the measured window. The
+    # `before` snapshot is taken immediately after seeding, which is right, and something still
+    # replaced that row between the snapshot and the turn.
+    #
+    # This does NOT reshape the measured unit (that is the row's open recommendation and is not
+    # taken here). It records the one fact the run was missing, so a change whose `latest`
+    # PREDATES the turn can be told from one the turn caused, without an exception list.
+    _turn_started_at = _dt.datetime.now(_dt.UTC).isoformat()
     try:
-        return await _drive_turns(client, auth, sc, idx, fx, sid, turns, prior)
+        r = await _drive_turns(client, auth, sc, idx, fx, sid, turns, prior)
+        if isinstance(r, dict):
+            r["turn_started_at"] = _turn_started_at
+        return r
     except Exception as e:  # noqa: BLE001 — a BACKSTOP, not the main path
         # The two handlers inside send_turn swallow every httpx error into `out["error"]`, so
         # they carry the capture; this catches an error that escapes some OTHER way (a bad
@@ -1820,7 +1840,49 @@ def read_intent_violations(wrote: list[dict]) -> list[dict]:
     """
     ignore = TURN_BOOKKEEPING_TABLES | READ_AUDIT_TABLES | UNATTRIBUTABLE_GLOBAL_COUNTS
     return [r for r in wrote
-            if any(t not in ignore for t in (r.get("store_diff") or {}))]
+            if any(t not in ignore and _changed_during_the_turn(r, d)
+                   for t, d in (r.get("store_diff") or {}).items())]
+
+
+def _changed_during_the_turn(run: dict, table_diff) -> bool:
+    """Did this table's change happen INSIDE the measured window?
+
+    🔴 D-THE-BEFORE-SNAPSHOT-IS-NOT-THE-STATE-THE-TURN-STARTS-FROM. The DATA bar reads
+    `store_diff` as "what this TURN changed", and once it was not: a READ-intent scenario was
+    flagged as a lifecycle write because the book's composition_work row was REPLACED between
+    the `before` snapshot and the first user message. The store's own timestamps refuted it —
+    the row's `created_at == updated_at` at 23:38:37, the turn's first message at 23:38:40 —
+    but the run record carried no turn-start time, so refuting ONE flag needed a live query
+    against a six-day-old session.
+
+    `turn_started_at` is now recorded, and a change whose `after.latest` PREDATES it did not
+    happen in the measured window. That is a fact about time, not a judgement about intent,
+    which is why it can be applied here rather than parked in an exception list.
+
+    FAILS OPEN, deliberately and in the direction that keeps evidence: a run without the
+    timestamp (every row recorded before 2026-08-30) or a diff without a readable `latest` is
+    treated as IN the window, exactly as before. A guard that started ignoring changes because
+    it could not date them would be the more dangerous mistake.
+    """
+    started = run.get("turn_started_at")
+    if not started or not isinstance(table_diff, dict):
+        return True
+    after = table_diff.get("after")
+    if not isinstance(after, dict):
+        return True
+    latest = after.get("latest")
+    if not isinstance(latest, str) or not latest.strip() or latest.strip() == "-":
+        return True
+    try:
+        t_change = _dt.datetime.fromisoformat(latest.strip().replace(" ", "T"))
+        t_start = _dt.datetime.fromisoformat(started)
+    except ValueError:
+        return True
+    if t_change.tzinfo is None:
+        t_change = t_change.replace(tzinfo=_dt.UTC)
+    if t_start.tzinfo is None:
+        t_start = t_start.replace(tzinfo=_dt.UTC)
+    return t_change >= t_start
 
 
 def preflight_seed_asserts(scenarios) -> list[str]:

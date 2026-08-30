@@ -9142,7 +9142,6 @@
     },
     "meta": {
       "async": true,
-      "paid": true,
       "scope": "user",
       "synonyms": [
         "translate motif",
@@ -10242,6 +10241,7 @@
                 }
               ],
               "default": null,
+              "description": "OMIT THIS for one of YOUR OWN motifs — that is the usual case for every op. Supply it ONLY when the motif is already SHARED into that book's graph (op=create with target='book_shared' REQUIRES it). Passing a book_id you were merely given will refuse the call for a motif you own.",
               "title": "Book Id"
             },
             "category": {
@@ -10561,6 +10561,7 @@
             }
           ],
           "default": null,
+          "description": "OMIT THIS for one of YOUR OWN motifs — that is the usual case for every op. Supply it ONLY when the motif is already SHARED into that book's graph (op=create with target='book_shared' REQUIRES it). Passing a book_id you were merely given will refuse the call for a motif you own.",
           "title": "Book Id"
         },
         "category": {
@@ -15142,7 +15143,7 @@
     }
   },
   "composition_structure_template_edit": {
-    "description": "List, create, edit, clone, archive, or restore structure templates (the reusable ordered story beats a plan is shaped by — Save the Cat, Hero's Journey, Story Circle, Web Novel Arc, Kishōtenketsu, Three-Act, plus your own) — the unified template entry point. op=list returns the built-ins + your own with their beats; use it to find the template_id to pass to plan_compile. op=create (needs name; optional kind/beats). op=update your own (needs template_id + expected_version; only passed fields change). op=clone copies one (needs template_id; optional new name) — clone a built-in to customise it, built-ins are never edited in place. op=archive soft-archives (needs template_id; reversible via op=restore). op=restore un-archives (needs template_id).",
+    "description": "List, create, edit, clone, archive, or restore structure templates (the reusable ordered story beats a plan is shaped by — Save the Cat, Hero's Journey, Story Circle, Web Novel Arc, Kishōtenketsu, Three-Act, plus your own) — the unified template entry point. op=list returns the built-ins + your own with their beats; use it to find the template_id to pass to plan_compile. Pass include_archived=true to also see ARCHIVED templates of yours, which is where the template_id for op=restore comes from — without it an archived template is invisible and the restore is unreachable. op=create (needs name; optional kind/beats). op=update your own (needs template_id + expected_version; only passed fields change). op=clone copies one (needs template_id; optional new name) — clone a built-in to customise it, built-ins are never edited in place. op=archive soft-archives (needs template_id; reversible via op=restore). op=restore un-archives (needs template_id).",
     "inputSchema": {
       "$defs": {
         "_StructTemplateEditArgs": {
@@ -15175,6 +15176,11 @@
               ],
               "default": null,
               "title": "Expected Version"
+            },
+            "include_archived": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
             },
             "kind": {
               "anyOf": [
@@ -15262,6 +15268,11 @@
           ],
           "default": null,
           "title": "Expected Version"
+        },
+        "include_archived": {
+          "default": false,
+          "title": "Include Archived",
+          "type": "boolean"
         },
         "kind": {
           "anyOf": [
@@ -15722,7 +15733,7 @@
     }
   },
   "glossary_adopt_standards": {
-    "description": "Propose ADOPTING System standards into a book — scaffolds the book's ontology by copying the picked genres/kinds (+ their attributes & links) down into the book tier. High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are always included. Args are genre/kind CODES (see glossary_list_system_standards).",
+    "description": "Propose ADOPTING System standards into a book — scaffolds the book's ontology by copying the picked genres/kinds (+ their attributes & links) down into the book tier. High-impact: it does NOT adopt; it returns a confirm_token + a preview of how many are new, which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are always included. Args are genre/kind CODES (see glossary_list_system_standards). CALLING THIS IS HOW YOU ASK: the card carries the question with the preview attached. If the author already asked for the setup, do not ask again in prose first — that raises no card, mints no token, and spends a turn on permission they gave.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -16242,7 +16253,7 @@
     }
   },
   "glossary_book_sync_apply": {
-    "description": "Propose APPLYING a set of per-row sync choices to a book (take_theirs = overwrite the book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it does NOT apply; it returns a confirm_token + a preview, which a human reviews (and may flip any row) before confirming via glossary_confirm_action. Pass items from glossary_book_sync_available: each {entity, id, choice}. id is the BOOK row id from the available list.",
+    "description": "Propose APPLYING a set of per-row sync choices to a book (take_theirs = overwrite the book row from its source; keep_mine = keep the book's value but stop prompting). High-impact: it does NOT apply; it returns a confirm_token + a preview, which a human reviews (and may flip any row) before confirming via glossary_confirm_action. Pass items from glossary_book_sync_available: each {entity, id, choice}. id is the BOOK row id from the available list. CALLING THIS IS HOW YOU ASK: the card carries the question with every row attached and editable. If the author already asked for the updates, do not ask again in prose first — that raises no card, mints no token, and spends a turn on permission they gave.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -16805,12 +16816,16 @@
           "type": "string"
         },
         "source_markdown": {
-          "description": "the user's freeform notes / seed doc (characters, places, terms, …) to extract entity candidates from; treated as DATA, never as instructions",
+          "description": "SERVER-FILLED — do not set. The runtime resolves source_ref and writes the author's own text here; a value supplied by a caller is discarded.",
+          "type": "string"
+        },
+        "source_ref": {
+          "description": "WHICH of the author's own texts to extract from. The only accepted value today is \"last_user_message\" — the author's most recent message, fetched by the server. You cannot supply the document yourself: this tool extracts from what the AUTHOR wrote, never from text you compose.",
           "type": "string"
         }
       },
       "required": [
-        "source_markdown"
+        "source_ref"
       ],
       "type": "object"
     },
@@ -17020,6 +17035,7 @@
     "description": "List the SYSTEM standards catalogue — the entity kinds a book can adopt, by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes you want to glossary_adopt_standards; each kind's attributes come down with it. Calling this twice returns the identical list. For what a specific book ALREADY has, use glossary_book_ontology_read.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -18959,19 +18975,12 @@
             }
           ],
           "default": null,
-          "description": "mode=from_glossary: optional specific glossary entity ids; omit for the whole active glossary.",
+          "description": "mode=from_glossary: OMIT this to project the book's whole active glossary — that is the usual call. Supply it only to narrow to specific entities, as glossary entity UUIDs from glossary_search (not names).",
           "title": "Entity Ids"
         },
         "kind": {
           "anyOf": [
             {
-              "enum": [
-                "character",
-                "location",
-                "organization",
-                "concept",
-                "item"
-              ],
               "type": "string"
             },
             {
@@ -18979,11 +18988,11 @@
             }
           ],
           "default": null,
-          "description": "mode=manual: the entity kind (closed set).",
+          "description": "mode=manual: the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location, group → organization, thing → item).",
           "title": "Kind"
         },
         "mode": {
-          "description": "manual = create one node (name+kind); from_glossary = project the book's glossary entities into the graph.",
+          "description": "manual = create ONE node from a name+kind — one confirm card per node, so N nodes cost N calls and N approvals. from_glossary = create nodes for MANY glossary entities the book already has, in a SINGLE call behind ONE confirm card (optionally narrowed by entity_ids). If you need several nodes and they are already glossary entities, from_glossary reaches them all in one call.",
           "enum": [
             "manual",
             "from_glossary"
@@ -19395,14 +19404,7 @@
     "inputSchema": {
       "properties": {
         "kind": {
-          "description": "the entity kind (closed set)",
-          "enum": [
-            "character",
-            "location",
-            "organization",
-            "concept",
-            "item"
-          ],
+          "description": "the entity kind — one of: character, location, organization, concept, item. Ordinary synonyms are accepted and folded to these (person → character, place → location).",
           "title": "Kind",
           "type": "string"
         },
@@ -20139,7 +20141,7 @@
           "title": "Project Id"
         },
         "source_entity_id": {
-          "description": "The id of the relationship's source entity.",
+          "description": "The graph NODE id of the relationship's source — NOT a glossary entity id. Get it from kg_add_nodes (which returns each node's id) or kg_graph_query; if the entity exists only in the glossary, kg_add_nodes with mode=from_glossary turns it into a node first.",
           "title": "Source Entity Id",
           "type": "string"
         },
@@ -20157,7 +20159,7 @@
           "title": "Source Kind"
         },
         "target_entity_id": {
-          "description": "The id of the relationship's target entity.",
+          "description": "The graph NODE id of the relationship's target — NOT a glossary entity id. Same source as source_entity_id.",
           "title": "Target Entity Id",
           "type": "string"
         },
@@ -21417,8 +21419,7 @@
         "forget that",
         "no longer true",
         "remove that fact",
-        "retract that",
-        "that was wrong"
+        "retract that"
       ],
       "tier": "A"
     }
@@ -22514,7 +22515,10 @@
       "synonyms": [
         "validate plan",
         "check spec",
-        "golden rules"
+        "golden rules",
+        "golden linter",
+        "linter",
+        "lint the plan"
       ],
       "tier": "R"
     }
@@ -22654,7 +22658,7 @@
     }
   },
   "registry_list_workflows": {
-    "description": "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
+    "description": "List EVERY workflow the platform ships (System defaults + the signed-in user's own) — the full catalogue, regardless of what this book/surface can currently run. Pass `surface` to narrow to one (book | editor | studio); omit to see all. Returns slug, title, description, tier and status per workflow — not the full step list. For \"what can I run right now\", the chat surface's own workflow_list is scoped to the current turn instead.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -23098,6 +23102,7 @@
     "description": "Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23115,6 +23120,7 @@
     "description": "Get the signed-in user's account profile: display name, locale, avatar URL, bio, languages, email, and email-verified status. Read-only.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23131,13 +23137,25 @@
     }
   },
   "settings_list_models": {
-    "description": "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, provider kind, provider model name, context length, capabilities, tags, active/favorite flags. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
+    "description": "List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags — the fields you choose a model BY. Pass detail=full for pricing, notes, timestamps and the provider credential id. Returns a small page by default; `page.has_more` and `page.total` say what was withheld, and `limit` raises it. No secrets. 🔴 THIS IS NOT WHAT A PROVIDER CURRENTLY OFFERS. A model retired upstream still appears here, and one the provider newly offers does not appear until it is registered. If the user asks what their provider actually offers, or what they COULD register, answer with settings_provider_inventory instead — answering that question from this list is wrong in exactly the case it was asked to detect.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "active_only": {
           "description": "return only active models (default false — inactive models are included)",
           "type": "boolean"
+        },
+        "detail": {
+          "description": "how much of each model to return: summary (default — the fields you choose a model BY) or full (adds pricing, notes, timestamps, sort order and the provider credential id)",
+          "enum": [
+            "summary",
+            "full"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "description": "maximum models to return (default 10, max 100). The reply says how many were withheld.",
+          "type": "integer"
         },
         "only_favorites": {
           "description": "return only favorited models",
@@ -23166,6 +23184,7 @@
     "description": "List the user's configured AI provider credentials (e.g. OpenAI, Anthropic, a local LM Studio). Returns provider kind, display name, endpoint, status, and whether a secret is set — but NEVER the secret itself. Use to see which providers exist before registering a model.",
     "inputSchema": {
       "additionalProperties": false,
+      "properties": {},
       "type": "object"
     },
     "meta": {

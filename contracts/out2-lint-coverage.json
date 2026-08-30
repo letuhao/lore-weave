@@ -2,9 +2,9 @@
  "_what": "What fraction of list-shaped tools the OUT-2 defaults lint actually inspects.",
  "_derived_by": "python scripts/toolloop/out2_coverage.py",
  "list_shaped": 41,
- "inspected": 8,
- "skipped": 33,
- "recall": 0.195,
+ "inspected": 9,
+ "skipped": 32,
+ "recall": 0.22,
  "both_detail_and_limit": [
   "composition_list_outline",
   "composition_motif_book_list",
@@ -12,6 +12,7 @@
   "jobs_list",
   "kg_triage_list",
   "memory_search",
+  "settings_list_models",
   "story_search",
   "translation_list_versions"
  ],
@@ -46,7 +47,6 @@
   "kg_list_templates",
   "registry_list_skills",
   "registry_list_workflows",
-  "settings_list_models",
   "settings_list_providers",
   "tool_list",
   "web_search",

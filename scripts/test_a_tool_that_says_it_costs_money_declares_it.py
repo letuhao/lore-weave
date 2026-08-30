@@ -131,7 +131,20 @@ def test_a_tool_that_DOES_declare_paid_is_not_flagged():
     assert "book_index_chapter" not in undeclared_paid()
     paid = [td["function"]["name"] for td in _catalog()
             if (td["function"].get("_meta") or {}).get("paid")]
-    assert len(paid) >= 13, len(paid)
+    # 🔴 12, NOT 13, AND THE ONE THAT LEFT DID SO ON PURPOSE. `composition_library_translate`
+    # dropped `paid` on 2026-08-27 under DQ-T60, with the reasoning written beside the
+    # declaration: `paid` means THIS CALL spends, stated identically in three independent places,
+    # and this call does not — the JOB it starts does. The flag "was here on a reading of the
+    # flag the platform does not use, and it made this tool unusable."
+    #
+    # This floor is an ANTI-VACUITY bar, not a target: it exists so the list cannot quietly empty
+    # while the guard keeps passing. Lowering it by exactly the one tool a recorded decision
+    # removed keeps that property. Anything else leaving must be explained the same way.
+    #
+    # SURFACED 2026-08-30 only because contracts/tool-catalog-cache.json was refreshed — it had
+    # gone stale on 17 tools, so this guard had been reading a catalogue three days out of date
+    # and asserting against a world that no longer existed.
+    assert len(paid) >= 12, len(paid)
     assert not (set(paid) & set(undeclared_paid()))
 
 
