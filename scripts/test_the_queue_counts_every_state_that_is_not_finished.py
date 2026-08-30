@@ -107,7 +107,18 @@ class TestEveryUnfinishedRowIsQUEUED:
         rows, _ = g.rows()
         expected = {k for k, v in (pinned["defects"] or {}).items()
                     if isinstance(v, dict) and v.get("state") in gate.DEFECT_OPEN_STATES}
-        assert len(expected) >= 40, f"only {len(expected)} non-terminal rows — the ledger changed"
+        # 🔴 THE ANTI-VACUITY CHECK IS CROSS-DERIVED, NOT A FLOOR. This asserted `>= 40`
+        # non-terminal rows, chosen when 47 were open. Draining them to 26 — the whole point of
+        # the work — made my own guard red, and lowering the number to fit is exactly the move
+        # this loop forbids. So the expectation now comes from `progress`, which gate.py computes
+        # independently of this queue: if the two ever disagree, one of them is wrong, and that is
+        # a real finding rather than a stale constant.
+        prog = pinned.get("progress") or {}
+        want = int(prog.get("defects_open", 0)) + int(prog.get("defects_proven", 0))
+        assert want > 0, "progress reports no non-terminal defects at all — is that true?"
+        assert len(expected) == want, (
+            f"the queue's non-terminal set is {len(expected)} but `progress` says {want} "
+            "(defects_open + defects_proven) — the two derivations disagree")
         assert {r[4] for r in rows} == expected
 
     def test_a_terminal_row_is_NOT_queued(self, pinned):

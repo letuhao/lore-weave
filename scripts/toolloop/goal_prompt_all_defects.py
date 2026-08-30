@@ -42,6 +42,7 @@ BUDGET = 4000
 #: 3 -> 2 on 2026-08-28: this goal's row KEYS are longer than the contract-only sibling's (they
 #: carry a class tag) and the condition landed at 4162/4000. QUEUE is the elastic section exactly
 #: so an overflow is paid for HERE and never by trimming a rule.
+DQ_NAMED = 8   # blocking questions named inline; the rest are counted and linked
 NAMED = 2
 #: Characters of each named row's invariant to show. Enough to RECOGNISE the row, not to
 #: understand it — a row needing more than this has narration where its invariant should be.
@@ -197,8 +198,6 @@ def rows() -> tuple[list[tuple], collections.Counter]:
         # 🔴 COERCED, because a single bad value CRASHED the generator that ends the run.
         # `out.sort()` compares this element across rows, so one row carrying a STRING where the
         # convention is an int 1-4 raised TypeError and the whole queue became unreadable —
-        # measured 2026-08-31, from a row I had just filed with queue_group="composition".
-        # A malformed priority must cost that row its ordering, never everyone else's queue.
         # 🔴 COERCED, because a single bad value CRASHED the generator that ends the run.
         # `out.sort()` compares this element across rows, so one row carrying a STRING where the
         # convention is an int 1-4 raised TypeError and the whole queue became unreadable —
@@ -238,8 +237,18 @@ def build() -> tuple[str, list[tuple], collections.Counter]:
         for _b, _r, _g, _a, _k, _cls, _inv, dq in all_rows:
             if dq:
                 waiting[dq] = waiting.get(dq, 0) + 1
-        named = "  " + " · ".join(f"{dq}({n})" for dq, n in
-                                  sorted(waiting.items(), key=lambda x: (-x[1], x[0])))
+        # 🔴 TRIMMED, NOT TRUNCATED. Enumerating every blocking question grew past the 4000-char
+        # budget on 2026-08-31 (4023) as the DQ list reached 22 names. The skill's rule is to
+        # shorten the SOURCE or trim QUEUE and LINK the rest — never to cut upward from the
+        # bottom, because what sits at the bottom is STOP. So the questions blocking the MOST
+        # rows are named (they are where a single ruling frees the most work) and the tail is
+        # counted and pointed at the generated digest, which carries all of them in full.
+        _ranked = sorted(waiting.items(), key=lambda x: (-x[1], x[0]))
+        _shown, _rest = _ranked[:DQ_NAMED], _ranked[DQ_NAMED:]
+        named = "  " + " · ".join(f"{dq}({n})" for dq, n in _shown)
+        if _rest:
+            named += (f" · +{len(_rest)} more ({sum(n for _, n in _rest)} rows) — all of them, "
+                      "with recommendations, in docs/sessions/OPEN_DECISIONS.md")
         nxt = ("NEXT. No unblocked work. Every open row waits on a decision above; "
                "take those first.")
     return f"/goal {DURABLE}\n\n{head}\n{named}\n\n{nxt}\n", all_rows, counts
