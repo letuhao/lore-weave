@@ -74,11 +74,15 @@ class TestItMatchesTheREALLedger:
     these read the file the queue is actually derived from."""
 
     def test_the_four_rulings_are_recognised(self):
+        """All four CARRY a ruling — that is what `_has_ruling` answers, and it is why they were
+        invisible as work. Whether a ruling still RELEASES its rows is a separate question, and
+        three of these were later sent back corrected; see TestARulingSENTBACKIsAQuestionAgain."""
         dqs = LEDGER["deferred_questions"]
         for name in ("DQ-T44", "DQ-T53", "DQ-T58", "DQ-T64"):
-            q = dqs[name]
-            assert G._has_ruling(q), f"{name} carries an answer_* field and is not seen as ruled"
-            assert name not in G._open_dq_names(LEDGER), f"{name} still blocks its rows"
+            assert G._has_ruling(dqs[name]), (
+                f"{name} carries an answer_* field and is not seen as ruled")
+        assert "DQ-T53" not in G._open_dq_names(LEDGER), (
+            "DQ-T53's ruling was carried out and carries no correction, so it must not block")
 
     def test_questions_with_no_ruling_are_still_blocking(self):
         dqs = LEDGER["deferred_questions"]
@@ -88,3 +92,35 @@ class TestItMatchesTheREALLedger:
             f"only {len(unruled)} open questions are unruled — if this collapses, the release rule "
             "has widened past answered rulings and is freeing rows nobody decided")
         assert set(unruled) <= G._open_dq_names(LEDGER)
+
+class TestARulingSENTBACKIsAQuestionAgain:
+    """🔴 THE OTHER DIRECTION, and it bit within the hour of the first fix shipping.
+
+    The standing rule is "if it cannot be built, the question goes BACK CORRECTED with the
+    measurement showing why". Three rulings were returned that way on 2026-08-30 — DQ-T44 (three
+    of its five families are not live surfaces), DQ-T58 (its premise was refuted by the
+    before-measurement), DQ-T64 (its own equivalence condition failed). Releasing rows on those
+    would park a row at the head of the queue as WORK whose only completion is building the thing
+    the measurement just showed must not be built.
+    """
+
+    def test_a_returned_ruling_blocks_again(self):
+        led = {"deferred_questions": {"DQ-R": {
+            "state": "open", "question": "?", "answer_2026_08_28": "OWNER: do X",
+            "returned_corrected": "2026-08-30 — X cannot be built, here is the measurement",
+        }}}
+        assert G._open_dq_names(led) == {"DQ-R"}
+
+    def test_the_three_returned_rulings_block_in_the_REAL_ledger(self):
+        for name in ("DQ-T44", "DQ-T58", "DQ-T64"):
+            q = LEDGER["deferred_questions"][name]
+            assert "returned_corrected" in q, f"{name} lost its correction marker"
+            assert name in G._open_dq_names(LEDGER), f"{name} is releasing rows despite a correction"
+
+    def test_a_ruling_that_was_ACTED_ON_still_releases(self):
+        """ANTI-OVERREACH. DQ-T53's ruling was carried out — the owner re-enabled logging and the
+        re-run was executed — so it carries no correction and must NOT block. If every answered
+        question started blocking, the first fix would be undone."""
+        assert "returned_corrected" not in LEDGER["deferred_questions"]["DQ-T53"]
+        assert "DQ-T53" not in G._open_dq_names(LEDGER)
+

@@ -177,10 +177,28 @@ def test_the_concentration_is_SCENARIO_shaped_not_TOOL_shaped():
     assert len(clean) >= 4, (
         f"only {len(clean)} search-calling scenarios are error-free — the stall is spreading "
         "across the family and the tool-level reading is back")
-    assert clean_runs > total / 2, (
-        f"only {clean_runs} of {total} search-calling runs are in error-free scenarios. The "
-        "pooled bucket rate would now be a fair summary of the search itself, which it has not "
-        "been since 2026-08-30 — re-derive the row")
+    # 🔴 THIS BAR WAS `clean_runs > total / 2` AND IT MOVED THE WRONG WAY. Adding 35 CLEAN runs
+    # to the two ERRORING scenarios on 2026-08-30 — runs that made those scenarios' own rates
+    # better, 47% -> 30% and 67% -> 50% — pushed the clean SHARE from 57% to 48% and failed the
+    # guard. A bar that a clean run can break is measuring the population mix, not the claim.
+    #
+    # The claim is that the search TOOL is not what discriminates, and it has two halves that a
+    # fraction cannot express:
+    #   * a large ABSOLUTE body of runs calls the tool and never errors — a floor, which new
+    #     clean runs can only raise, so it is safe over a growing corpus in the way a ceiling
+    #     (`blank <= 10`, corrected the same day) is not;
+    #   * the errors CONCENTRATE — measured on the errors themselves, which is the quantity the
+    #     row is actually about.
+    assert clean_runs >= 90, (
+        f"only {clean_runs} runs sit in error-free search-calling scenarios (was 101 when this "
+        "was derived). Clean scenarios have started erroring, which is the tool-level reading "
+        "coming back")
+    top2 = sum(n for _, n in sorted(per_errs.items(), key=lambda kv: -kv[1])[:2])
+    all_errs = sum(per_errs.values())
+    assert all_errs and top2 / all_errs >= 0.85, (
+        f"the top two scenarios hold {top2} of {all_errs} errors ({top2 / max(all_errs,1):.0%}); "
+        "the concentration this row rests on has broken up and the pooled bucket rate would now "
+        "be a fair summary of the search itself — re-derive the row")
 
 
 def test_the_ZERO_ERROR_control_still_holds():

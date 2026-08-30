@@ -129,7 +129,8 @@ def _open_dq_names(led: dict) -> set[str]:
     """
     dqs = led.get("deferred_questions") or {}
     return {name for name, q in dqs.items()
-            if isinstance(q, dict) and q.get("state") == "open" and not _has_ruling(q)}
+            if isinstance(q, dict) and q.get("state") == "open"
+            and (not _has_ruling(q) or _returned_corrected(q))}
 
 
 def _has_ruling(q: dict) -> bool:
@@ -139,6 +140,21 @@ def _has_ruling(q: dict) -> bool:
     the ledger contains — not on a status word this loop would then have to keep in sync.
     """
     return any(str(k).startswith("answer") for k in q)
+
+
+def _returned_corrected(q: dict) -> bool:
+    """Has this ruling been SENT BACK because it could not be built as worded?
+
+    🔴 A RULING SENT BACK IS A QUESTION AGAIN. The standing rule is "if it cannot be built, the
+    question goes BACK CORRECTED with the measurement showing why", and a corrected question is
+    waiting on the owner exactly as an unanswered one is. Without this, a row whose ruling was
+    refuted by its own equivalence check sits at the head of the queue as WORK whose only
+    completion is building the thing the measurement just showed must not be built.
+
+    Kept SEPARATE from `_has_ruling` on purpose: the ruling still exists and is still worth
+    reading. What changed is whether it is actionable.
+    """
+    return any(str(k).startswith("returned_corrected") for k in q)
 
 
 def rows() -> tuple[list[tuple], collections.Counter]:
