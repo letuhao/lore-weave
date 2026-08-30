@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 50 of 52 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 51 of 53 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (43/44) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (44/45) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48aq 2026-08-30 — **a ratchet I added was DEFINED AND NEVER USED, and CI had been red about it for eleven commits**
+
+  ```
+  gate-number-visibility-gate  FAIL — a ratchet nobody can see:
+    glossary-ordinal-axis-gate.py: STRIDE_FLOOR = 1000000 never reaches the output
+  ...red since T48ag, through T48ah…T48ap, because `--run-all` is CI-ONLY and I never ran it
+  after   OK — 11 gate(s) carry a threshold; every one prints it on a green run
+  ```
+
+  🔴 **`STRIDE_FLOOR` was defined and referenced NOWHERE** — not printed, not compared. The gate
+  takes a pre-split census, so the threshold is applied by the PRODUCER's SQL, and the constant
+  silently documented a number in someone else's query. **The T48s shape at its purest, in a gate
+  I wrote to catch the T48s shape**, and the repo's own meta-gate had been saying so for eleven
+  commits while every one of my local hooks went green.
+
+  ⚠️ **AND I MUST CORRECT T48ao.** It said `glossary-ordinal-axis-gate` *"appears ONCE in the
+  repo: `--selftest` in pre-commit"* and that nothing ever fed it. **That is wrong.**
+  `.github/workflows/gates.yml:93` runs `gate-wiring-gate.py --run-all`, which iterates the same
+  filename predicate — so the gate ran in CI on every commit. The substance was worse than I
+  wrote, not better: **it ran, bare, answered `DISARMED`, and exited 0** — executed, green, and
+  proving nothing, where "never run" would at least have been visible as a gap.
+
+  📐 **Three fixes, each closing a different half.**
+
+  ```
+  1  the constant is PRINTED on every verdict AND in the refusal, so the ratchet is a diff
+     rather than history — and the selftest pins it to the documented producer SQL, so the
+     constant and the query cannot drift apart in silence
+  2  a BARE run now REFUSES (exit 2) instead of answering DISARMED at exit 0: bare, this gate
+     can only prove nothing, and the runner's honesty mechanism (NEEDS_ARGS + a staleness
+     probe) catches a gate that FAILS bare and cannot see one that passes vacuously
+  3  a NEEDS_ARGS row — the third, beside `qc5-acceptance-gate` and `soak-armed-gate`, whose
+     reasons read the same way — so `--run-all` runs its selftest: GREEN (0.1s)
+  ```
+
+  🔬 **Fix 2 briefly BROKE fix 1, which is the detail worth keeping.** `gate-number-visibility-gate`
+  inspects a **bare** run, so the refusal I added withheld the very number the meta-gate looks
+  for and it stayed red for a second, different reason. Caught by re-running it rather than
+  assuming the first fix had landed. The refusal now names the threshold too.
+
+  🧪 **BITE T48aq-1 — line 198, the refusal stops printing the number.**
+
+  ```
+  [gate-number-visibility-gate] FAIL — a ratchet nobody can see:
+      glossary-ordinal-axis-gate.py: STRIDE_FLOOR = 1000000 never reaches the output   exit 1
+  ```
+
+  Restored: `OK — 11 gate(s) carry a threshold`.
+
+  🧾 **THE PROCESS FINDING, and it is the second of its kind this session.** T48al found the
+  gateway suite red for four commits because nothing ran it. This is the same thing one level
+  up: **`--run-all` is what CI runs and it is not in the pre-commit hook**, so a gate can be red
+  in CI while every local commit is green. I have been committing for eleven cycles without once
+  running what CI runs.
+
+  ⚖️ **The two remaining `--run-all` reds are NOT mine and are not silenced.**
+  `pagination-cap-lint` (last touched 2026-08-05) and `projection-coverage-lint` (2026-08-03)
+  predate this session by weeks and belong to glossary and crates work outside this plan. They
+  are stated here rather than wrapped in a `KNOWN_RED` row, because a row would claim a tracked
+  deferral this plan does not own.
+
+  **QC (a) gates:** `gate-number-visibility-gate` **OK, 11 gates** (was FAIL);
+  `glossary-ordinal-axis-gate --selftest` 13/13 (1 new producer-coupling case);
+  `gate-wiring-gate --self-test` and its live run; `architecture-live-proof`,
+  `bitemporal-window-live-smoke`, `kal-surface-census-gate` selftests;
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** the seven-leg proof against the running iso stack — `"verdict":
+  "PROVEN", "ran": 7`, exit 0 — plus two full `--run-all` sweeps, before and after. No image
+  rebuild; no service code changed.
+  **QC (c) real data:** iso's `entity_facts` census, now printed by the gate on every run —
+  `stride floor 1000000 · ceiling 1 · chapter-scale 48610 · stride-scale 1 · mixed books 1`.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ap 2026-08-30 — **the security boundary was the LAST control wired and never fed; T48u's exclusion is reversed**
 

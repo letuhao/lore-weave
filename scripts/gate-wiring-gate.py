@@ -331,6 +331,10 @@ NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
         ["--selftest"], "requires --file or --selftest; the live arms need a stack and models"),
     "scripts/soak-armed-gate.py": (
         ["--selftest"], "requires --url, --file or --selftest; the live read needs /metrics"),
+    "scripts/glossary-ordinal-axis-gate.py": (
+        ["--selftest"],
+        "requires --census or --selftest; bare it can only answer DISARMED, which exits 0 and "
+        "proves nothing -- T48aq found it running green and vacuous in CI on every commit"),
 }
 
 

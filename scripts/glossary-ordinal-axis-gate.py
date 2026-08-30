@@ -69,6 +69,15 @@ CONSISTENT, OUTLIERS, REGRESSED, INVERTED, DISARMED = (
 
 #: A position at or above this is not a chapter number by any reading — the smallest stride
 #: this repo uses is 1 000 000, so a value here is an ordinal that escaped conversion.
+#:
+#: T48aq — it was DEFINED AND NEVER USED: not printed, not compared, referenced nowhere. The
+#: gate takes a pre-split census, so the threshold is applied by the PRODUCER, and this constant
+#: silently documented a number in someone else's SQL. `gate-number-visibility-gate` caught it —
+#: "a ratchet nobody can see… the number IS the mechanism" — and it had been RED for eleven
+#: commits because `--run-all` is CI-only and I never ran it.
+#:
+#: It is now printed on every verdict, and the selftest asserts the documented producer command
+#: uses this same threshold, so the constant and the SQL cannot drift apart in silence.
 STRIDE_FLOOR = 1_000_000
 
 
@@ -138,6 +147,9 @@ def _selftest() -> int:
         ("only REGRESSED and INVERTED block",
          sorted(v for v in (CONSISTENT, OUTLIERS, REGRESSED, INVERTED, DISARMED)
                 if v in _BLOCKING), sorted([INVERTED, REGRESSED])),
+        ("T48aq — the documented PRODUCER uses the same threshold as STRIDE_FLOOR, so the "
+         "constant and the SQL cannot drift apart in silence",
+         str(STRIDE_FLOOR) in __doc__ and __doc__.count(str(STRIDE_FLOOR)) >= 2, True),
         ("every verdict carries a reason",
          all(verdict(c, 1).get("reason") for c in
              (iso, None, {}, {"chapter_scale": 0, "stride_scale": 0, "mixed_books": 0})), True),
@@ -169,6 +181,26 @@ def main(argv: list[str]) -> int:
     if args.selftest:
         return _selftest()
 
+    # T48aq — REFUSE a bare invocation.
+    #
+    # `gate-wiring-gate --run-all` runs every discovered gate with NO arguments, and this one
+    # answered DISARMED and exited 0: executed in CI, green, and proving nothing, on every
+    # commit. That is worse than never running, because the green is visible and the vacuity
+    # is not. The runner's honesty mechanism (NEEDS_ARGS + a staleness probe) catches a gate
+    # that FAILS bare and cannot see one that passes vacuously -- so the gate has to say so.
+    #
+    # Same contract the two existing NEEDS_ARGS rows carry: "requires --file or --selftest".
+    if not args.census:
+        # The threshold is named even in the REFUSAL. `gate-number-visibility-gate` inspects a
+        # BARE run, so a refusal that withholds the number makes the ratchet invisible again --
+        # which is exactly what happened when T48aq added this branch and the meta-gate stayed
+        # red for a second reason.
+        print(f"[glossary-ordinal-axis] stride floor {STRIDE_FLOOR} · ceiling {args.ceiling}")
+        print("[glossary-ordinal-axis] REFUSED — no --census supplied. Bare, this gate can only "
+              "answer DISARMED, which exits 0 and proves nothing; run --selftest for the "
+              "offline checks or produce a census (see the usage block).")
+        return 2
+
     census = None
     if args.census:
         try:
@@ -181,6 +213,11 @@ def main(argv: list[str]) -> int:
     v = verdict(census, args.ceiling)
     label = ("FAIL" if v["verdict"] in _BLOCKING
              else "INDETERMINATE" if v["verdict"] == DISARMED else "OK")
+    # The numbers ON THE PASS PATH, not only on failure: a ratchet that speaks only when it
+    # breaks turns drift into history rather than a diff.
+    print(f"[glossary-ordinal-axis] stride floor {STRIDE_FLOOR} · ceiling {args.ceiling} · "
+          f"chapter-scale {census.get('chapter_scale')} · stride-scale "
+          f"{census.get('stride_scale')} · mixed books {census.get('mixed_books')}")
     print(f"[glossary-ordinal-axis] {label} — {v['verdict']}: {v['reason']}")
     return 1 if v["verdict"] in _BLOCKING else 0
 
