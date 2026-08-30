@@ -52,8 +52,42 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#: A label is DIRECTED. The `_BA` variants say the relation runs from B to A.
+#:
+#: 🔴 **WHY DIRECTION IS PART OF THE LABEL (T33k, 2026-08-30).** The first sheet presented
+#: each pair as `earlier`/`later`, ordered by `Event.event_order` — and that axis turned out
+#: to be the extractor's EMISSION index, not reading order. Measured on the 封神演義 corpus:
+#: 8 of 20 pairs were chronologically backwards, including 紂王作詩 → 盤古開天闢地, which puts
+#: the creation of the universe after a poem written in chapter one. With only
+#: `causes/precedes/unknown` available, every one of those collapses to `unknown` — the SAME
+#: answer as "these two events are unrelated". The instrument destroyed the distinction it
+#: existed to measure, and the system's one inverted prediction (P9: 帝乙生三子 → 成湯即位,
+#: six centuries backwards) scored as an unremarkable abstention.
+#:
+#: So the sheet no longer claims to know which event came first. It presents **A** and **B**
+#: and the labeller supplies the direction. A sheet that asserts no order cannot be wrong
+#: about one, and a backwards prediction is now a scored failure rather than a shrug — which
+#: is what T33's own criterion asks for: *a wrong order is worse than an absent one*.
 CAUSES, PRECEDES, UNKNOWN = "causes", "precedes", "unknown"
-LABELS = (CAUSES, PRECEDES, UNKNOWN)
+CAUSES_BA, PRECEDES_BA = "causes-ba", "precedes-ba"
+LABELS = (CAUSES, PRECEDES, CAUSES_BA, PRECEDES_BA, UNKNOWN)
+#: Every label that asserts SOME relation. `unknown` is the only non-positive.
+POSITIVE = (CAUSES, PRECEDES, CAUSES_BA, PRECEDES_BA)
+#: Same relation, opposite direction. Used to count the error class T33 cares most about.
+INVERSE = {CAUSES: CAUSES_BA, CAUSES_BA: CAUSES,
+           PRECEDES: PRECEDES_BA, PRECEDES_BA: PRECEDES}
+#: The relation with its direction stripped — `causes` vs `precedes`, regardless of way round.
+BASE = {CAUSES: CAUSES, CAUSES_BA: CAUSES, PRECEDES: PRECEDES, PRECEDES_BA: PRECEDES}
+
+#: What a person may type on a `LABEL:` line. The bare forms are accepted so a sheet emitted
+#: by the pre-T33k renderer (`earlier`/`later`, A=earlier) still parses to the same meaning.
+LABEL_WORDS = {
+    "a causes b": CAUSES, "causes": CAUSES,
+    "b causes a": CAUSES_BA,
+    "a precedes b": PRECEDES, "precedes": PRECEDES,
+    "b precedes a": PRECEDES_BA,
+    "unknown": UNKNOWN,
+}
 
 #: The system's ordered relationship types, as `causal_edges.py` persists them.
 REL_OF = {"CAUSES": CAUSES, "PRECEDES": PRECEDES}
@@ -78,7 +112,23 @@ _MACHINE = re.compile(
     r"|" + chr(92) + "bxx+" + chr(92) + "b|" + chr(92) + "btest" + chr(92) + "b|^-+$",
     re.I)
 
-LABEL_RE = re.compile(r"^LABEL:\s*(\S*)\s*$", re.M)
+#: The whole rest of the line, because a directed label is three words ("A causes B") and the
+#: single-token form this used to match would have silently truncated it to "a".
+LABEL_RE = re.compile(r"^LABEL:[ \t]*(.*?)[ \t]*$", re.M)
+
+#: A label that is neither blank nor a recognised phrase. Kept DISTINCT from blank: a typo
+#: that degraded to "unfilled" would understate the sheet, and this file's whole subject is
+#: instruments whose zero means something other than what it looks like.
+BAD_LABEL = "?"
+
+
+def normalise_label(raw: str) -> str:
+    """A `LABEL:` line's text -> one of `LABELS`, `""` when blank, or `BAD_LABEL`."""
+    s = " ".join(raw.lower().split()).rstrip(".").replace("->", " ").replace("→", " ")
+    s = " ".join(s.split())
+    if not s:
+        return ""
+    return LABEL_WORDS.get(s, BAD_LABEL)
 PAIR_RE = re.compile(r"^#### PAIR (P\d+)\s*$", re.M)
 BY_RE = re.compile(r"^labelled_by:[ 	]*(.*)$", re.M)
 
@@ -91,7 +141,7 @@ def parse_sheet(text: str) -> tuple[str, list[tuple[str, str]]]:
     """
     by = BY_RE.search(text)
     pairs = [m.group(1) for m in PAIR_RE.finditer(text)]
-    labels = [m.group(1).lower() for m in LABEL_RE.finditer(text)]
+    labels = [normalise_label(m.group(1)) for m in LABEL_RE.finditer(text)]
     return (by.group(1).strip() if by else ""), list(zip(pairs, labels))
 
 
@@ -105,8 +155,8 @@ def score(truth: dict[str, str], predicted: dict[str, str], *, pass_ran: bool = 
     if not filled:
         return {"verdict": EMPTY_SHEET, "reason": "no pair carries a label yet"}
 
-    positives = {p: r for p, r in filled.items() if r in (CAUSES, PRECEDES)}
-    asserted = {p: r for p, r in predicted.items() if r in (CAUSES, PRECEDES)}
+    positives = {p: r for p, r in filled.items() if r in POSITIVE}
+    asserted = {p: r for p, r in predicted.items() if r in POSITIVE}
 
     if not positives:
         return {"verdict": NO_POSITIVES, "labelled": len(filled),
@@ -130,15 +180,21 @@ def score(truth: dict[str, str], predicted: dict[str, str], *, pass_ran: bool = 
     fp = len(asserted) - tp
     fn = len(positives) - sum(1 for p in positives if p in asserted)
     # `causes` asserted where the truth is `precedes` is the expensive direction: it is a
-    # claim about WHY, and §T33 says a wrong order is worse than an absent one.
+    # claim about WHY. Direction-blind on purpose — an overclaim is an overclaim either way.
     overclaims = sum(1 for p, r in asserted.items()
-                     if r == CAUSES and positives.get(p) == PRECEDES)
+                     if BASE.get(r) == CAUSES and BASE.get(positives.get(p)) == PRECEDES)
+    # T33k — THE NUMBER THE ROW ACTUALLY ASKS FOR. §T33: *a wrong order is worse than an
+    # absent one*. Before direction was labelled this was unmeasurable: an inverted edge and
+    # a correct abstention produced the same `unknown` and the same score.
+    wrong_direction = sum(1 for p, r in asserted.items()
+                          if p in positives and positives[p] == INVERSE.get(r))
     return {
         "verdict": SCORED, "labelled": len(filled), "truth_positives": len(positives),
         "asserted": len(asserted), "tp": tp, "fp": fp, "fn": fn,
         "precision": round(tp / len(asserted), 3),
         "recall": round(tp / len(positives), 3),
         "causes_overclaimed_as_precedes": overclaims,
+        "wrong_direction": wrong_direction,
     }
 
 
@@ -179,6 +235,61 @@ def _selftest() -> int:
         ("a system predicting `unknown` explicitly counts as asserting nothing",
          score(T, {"P1": UNKNOWN, "P2": UNKNOWN}),
          lambda r: r["verdict"] == NO_PREDICTIONS),
+        # ── T33k — DIRECTION. The measured failure: the system asserted `precedes` on
+        # 帝乙生三子 -> 成湯即位, which is backwards by roughly six centuries, and the
+        # undirected sheet scored it as an unremarkable abstention. §T33: *a wrong order is
+        # worse than an absent one* — so it has to be countable, and it has to be a MISS.
+        ("THE ROW'S OWN CRITERION: a backwards edge is WRONG, not a near miss",
+         score({"P1": CAUSES}, {"P1": CAUSES_BA}),
+         lambda r: r["tp"] == 0 and r["fp"] == 1 and r["wrong_direction"] == 1),
+        ("...and the same relation the RIGHT way round is a true positive",
+         score({"P1": CAUSES}, {"P1": CAUSES}),
+         lambda r: r["tp"] == 1 and r["wrong_direction"] == 0),
+        ("a backwards `precedes` is counted too, not just backwards `causes`",
+         score({"P1": PRECEDES}, {"P1": PRECEDES_BA}),
+         lambda r: r["wrong_direction"] == 1 and r["tp"] == 0),
+        ("a B->A label is a POSITIVE, so an all-backwards sheet is not `NO-POSITIVES`",
+         score({"P1": CAUSES_BA, "P2": PRECEDES_BA}, {}),
+         lambda r: r["verdict"] == NO_PREDICTIONS and r["truth_positives"] == 2),
+        ("wrong relation AND wrong direction is not double-counted as a direction error",
+         score({"P1": CAUSES}, {"P1": PRECEDES_BA}),
+         lambda r: r["tp"] == 0 and r["wrong_direction"] == 0 and r["fp"] == 1),
+        ("an overclaim is an overclaim whichever way round it runs",
+         score({"P1": PRECEDES, "P2": PRECEDES_BA}, {"P1": CAUSES, "P2": CAUSES_BA}),
+         lambda r: r["causes_overclaimed_as_precedes"] == 2),
+    ]
+    # ── T33k — the label vocabulary ──────────────────────────────────────────────────────
+    cases += [
+        ("a directed label parses to its direction",
+         {"ab": normalise_label("A causes B"), "ba": normalise_label("B causes A")},
+         lambda r: r["ab"] == CAUSES and r["ba"] == CAUSES_BA),
+        ("...case, spacing and a trailing period do not matter",
+         {"x": [normalise_label("  b   PRECEDES   a. "), normalise_label("B -> precedes A")]},
+         lambda r: r["x"] == [PRECEDES_BA, PRECEDES_BA]),
+        ("BACKWARD COMPATIBILITY: a bare `causes` still means A->B",
+         {"x": normalise_label("causes")}, lambda r: r["x"] == CAUSES),
+        ("a blank label is blank",
+         {"x": normalise_label("   ")}, lambda r: r["x"] == ""),
+        ("A TYPO IS NOT A BLANK: an unrecognised label is marked, never silently unfilled",
+         {"x": normalise_label("A cause B")},
+         lambda r: r["x"] == BAD_LABEL and r["x"] != ""),
+        ("the multi-word label survives the line regex the single-token one would have cut",
+         {"x": parse_sheet("#### PAIR P1\nLABEL: B causes A\n")[1]},
+         lambda r: r["x"] == [("P1", CAUSES_BA)]),
+    ]
+    # ── T33k — the prose anchor, driven on the shape it was measured against ─────────────
+    _poem = "燧人取火免鮮食，伏羲畫卦陰陽前。神農治世嚐百草"
+    cases += [
+        ("a title lifted verbatim from the text anchors on the whole title",
+         {"x": prose_anchor("伏羲畫卦", _poem)},
+         lambda r: r["x"] is not None and r["x"][1] == "伏羲畫卦"),
+        ("...and anchors EARLIER for a phrase that appears earlier",
+         {"a": prose_anchor("燧人取火", _poem)[0], "b": prose_anchor("神農治世", _poem)[0]},
+         lambda r: r["a"] < r["b"]),
+        ("a title sharing nothing with the text does NOT anchor at 0",
+         {"x": prose_anchor("完全無關的事件", _poem)}, lambda r: r["x"] is None),
+        ("...which is the point: an unanchorable event is excluded, not filed first",
+         {"x": prose_anchor("XY", _poem)}, lambda r: r["x"] is None),
     ]
     sheet = ("labelled_by: \n#### PAIR P1\nLABEL: causes\n#### PAIR P2\nLABEL:\n")
     by, got = parse_sheet(sheet)
@@ -309,36 +420,62 @@ def labeller_ok(who: str) -> bool:
 
 
 
-def _sheet_text(args, pairs, pred, *, causal_pass_ran: bool) -> str:
-    """The sheet's markdown. ONE renderer for both stores — two would drift."""
+def _sheet_text(args, pairs, pred, *, causal_pass_ran: bool, notes=()) -> str:
+    """The sheet's markdown. ONE renderer for both stores — two would drift.
+
+    T33k — the pair is presented as **A** / **B** with NO claim about which came first. See
+    the `CAUSES_BA` block at the top of this file for the measurement that forced it.
+    """
     out = [
         "# T33 — causal labelling sheet",
         "",
         "labelled_by: ",
         "",
-        "> Fill each `LABEL:` with exactly one of `causes` / `precedes` / `unknown`.",
-        "> `causes` = the earlier event DIRECTLY brings about or enables the later one.",
-        "> `precedes` = it clearly happens after, but you cannot show causation.",
-        "> `unknown` = you cannot tell, or they are unrelated. **Prefer `unknown`** — the row's",
-        "> own criterion says a wrong order is worse than an absent one.",
+        "> Each pair shows two events, **A** and **B**, in NO PARTICULAR ORDER.",
+        "> Fill each `LABEL:` with exactly one of:",
+        ">",
+        "> | type this | means |",
+        "> |---|---|",
+        "> | `A causes B` | A directly brings about or enables B |",
+        "> | `B causes A` | B directly brings about or enables A |",
+        "> | `A precedes B` | B clearly happens after A, but you cannot show causation |",
+        "> | `B precedes A` | A clearly happens after B, but you cannot show causation |",
+        "> | `unknown` | you cannot tell, or they are unrelated |",
+        ">",
+        "> **Prefer `unknown`** — the row's own criterion says a wrong order is worse than an",
+        "> absent one. Judge from the text, not from the order they appear in below.",
         "",
-        "Ordering within a chapter is `Event.event_order`, present on every event in scope.",
-        "Read from the store the deployment DECLARES (`age`), not from Neo4j — reading the",
-        "wrong store is what made an earlier draft report the extractor as never having run.",
+        "**The order events are printed in carries no information.** Pair selection uses first",
+        "mention in the chapter's prose, which is a heuristic and is sometimes wrong; A/B",
+        "within a pair, and the pair order itself, are shuffled from a fixed seed. An earlier",
+        "sheet ordered pairs by `Event.event_order` and presented them as `earlier`/`later` —",
+        "that field is the extractor's EMISSION index, not reading order, so 8 of 20 pairs",
+        "were backwards and the sheet had no way to say so.",
+        "",
+        "Events are read from the store the deployment DECLARES (`age`), not from Neo4j —",
+        "reading the wrong store is what made an earlier draft report the extractor as never",
+        "having run.",
         "",
         "```json",
         json.dumps({"project_id": args.project_id, "chapters": args.chapter_ids,
+                    "axis": getattr(args, "axis", "prose"),
+                    "seed": getattr(args, "seed", 0),
                     "causal_pass_ran": causal_pass_ran,
-                    "pairs": {p[0]: {"earlier": p[2]["id"], "later": p[3]["id"],
-                                     "chapter": p[1]} for p in pairs},
+                    # Recorded so `--score` can qualify `recall` rather than print it bare:
+                    # 0 here means the sheet holds no pair the system stayed silent on.
+                    "unasserted_pairs": len(pairs) - len(pred),
+                    "pairs": {p[0]: {"a": p[2]["id"], "b": p[3]["id"], "chapter": p[1]}
+                              for p in pairs},
                     "system_predicted": pred}, ensure_ascii=False, indent=1),
         "```",
         "",
     ]
+    if notes:
+        out += ["> **Emit notes** — " + "; ".join(notes), ""]
     for pid, ch, a, b in pairs:
         out += [f"#### PAIR {pid}", "",
-                f"**earlier** — {a['title']}", f"> {(a.get('summary') or '')[:300]}", "",
-                f"**later** — {b['title']}", f"> {(b.get('summary') or '')[:300]}", "",
+                f"**A** — {a['title']}", f"> {(a.get('summary') or '')[:300]}", "",
+                f"**B** — {b['title']}", f"> {(b.get('summary') or '')[:300]}", "",
                 "LABEL:", ""]
     return chr(10).join(out)
 
@@ -373,6 +510,51 @@ def _age(sql_cypher: str, cols: str, *, port: int, db: str, graph: str) -> list[
     return out
 
 
+def _chapter_text(chapter_id: str, *, port: int, db: str) -> str:
+    """The chapter's prose, blocks joined in `block_index` order.
+
+    Read-only, and from book-service's own database: the graph holds no character offset for
+    an event (`provenances` is `["human_authored"]`, the EVIDENCED_BY edge carries only job
+    and model), so prose position has to come from the text itself.
+    """
+    r = subprocess.run(
+        ["psql", "-h", "localhost", "-p", str(port), "-U", "loreweave", "-d", db,
+         "-At", "-c",
+         "SELECT coalesce(text_content, '') FROM chapter_blocks "
+         "WHERE chapter_id = '" + chapter_id + "' ORDER BY block_index;"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "PGPASSWORD": "loreweave_dev"})
+    if r.returncode != 0:
+        raise SystemExit("book query failed: " + r.stderr[:300])
+    return r.stdout
+
+
+def prose_anchor(title: str, text: str, *, min_len: int = 2) -> tuple[int, str] | None:
+    """First position in `text` of the LONGEST substring of `title` that occurs in it.
+
+    ⚠️ **A HEURISTIC, and the design depends on it being allowed to be wrong.** Measured on
+    封神演義 ch.1: titles the extractor lifted verbatim out of the opening 古風 poem anchor
+    exactly (`燧人取火`, `伏羲畫卦`, `神農治世`, `禹王治水`, `桀王無道`, `成湯造亳` — which is
+    itself the tell that those "events" are a verse catalogue of allusions, not narrated
+    action), while paraphrased narrative titles fall back to a two-character name match and
+    land on the wrong mention (`紂王聽從費仲建議`, the chapter's LAST event, anchors on the
+    first `紂王` in the middle).
+
+    That error is affordable HERE and nowhere else, because this position only decides **which
+    events get paired together**. A badly chosen pair is a less informative question; it is
+    not a false premise. The sheet no longer states which event came first, so a wrong anchor
+    cannot put a wrong claim in front of the labeller. Selection tolerates a heuristic; the
+    premise must not.
+    """
+    n = len(title)
+    for length in range(n, min_len - 1, -1):
+        for start in range(0, n - length + 1):
+            pos = text.find(title[start:start + length])
+            if pos >= 0:
+                return pos, title[start:start + length]
+    return None
+
+
 def _emit_age(args) -> int:
     """Build the sheet from AGE — the store the declared deployment actually reads."""
     P = args.project_id
@@ -393,41 +575,179 @@ def _emit_age(args) -> int:
             order = 2147483647
         by_ch.setdefault(ch, []).append(
             {"id": eid, "title": title, "summary": summary, "eo": order})
-    for ch in by_ch:
-        by_ch[ch].sort(key=lambda e: e["eo"])
 
-    pairs, n = [], 0
+    notes: list[str] = []
+
+    # ── Order the events within each chapter ─────────────────────────────────────────────
     for ch in args.chapter_ids:
         evs = by_ch.get(ch, [])
-        for gap in (1, 2):
-            for i in range(len(evs) - gap):
-                n += 1
-                pairs.append((f"P{n}", ch, evs[i], evs[i + gap]))
-    pairs = pairs[: args.pairs]
+        if args.axis == "emission":
+            # 🔴 THE SORT KEY COLLIDES, AND THAT IS A PRODUCT BUG, NOT A SHEET BUG.
+            # `event_order = chapter_base + idx` (pass2_writer) restarts `idx` at 0 on every
+            # extraction JOB while `chapter_base` depends only on the chapter, so a chapter
+            # extracted in more than one job numbers its events twice. Measured on 封神演義
+            # ch.1: three jobs, 20 events, 7 duplicate values, every collision cross-job.
+            # A stable sort then falls back to whatever order the database handed back —
+            # exactly the tie-break defect this file's own docstring cites (the sort
+            # conformance test whose fixture created rows in the expected order). Refuse
+            # rather than emit pairs chosen by an arbitrary tie-break.
+            dupes = sorted({e["eo"] for e in evs
+                            if sum(1 for x in evs if x["eo"] == e["eo"]) > 1})
+            if dupes:
+                print("[t33-sheet] REFUSED — `event_order` is not unique in chapter "
+                      + ch + ": " + ", ".join(str(d) for d in dupes[:10])
+                      + (" ..." if len(dupes) > 10 else ""))
+                print("[t33-sheet] Sorting on a colliding key makes the tie-break the "
+                      "database's row order, so the pairs would be arbitrary while looking "
+                      "deliberate. Use --axis prose, or fix event_order at the writer.")
+                return 1
+            evs.sort(key=lambda e: (e["eo"], e["id"]))
+        else:
+            text = _chapter_text(ch, port=args.book_port, db=args.book_db)
+            if not text.strip():
+                print("[t33-sheet] REFUSED — chapter " + ch + " has no prose in "
+                      + args.book_db + ". An empty text anchors every event at position 0, "
+                      "which would look like a deliberate ordering and be none.")
+                return 1
+            unanchored = []
+            for e in evs:
+                hit = prose_anchor(e["title"], text)
+                e["pos"] = hit[0] if hit else None
+                e["anchor"] = hit[1] if hit else None
+                if hit is None:
+                    unanchored.append(e["title"])
+            # An event with no anchor is EXCLUDED and named. Defaulting it to 0 would file it
+            # first and read as "this happens at the start of the chapter" — a zero that
+            # means "not measured" presented as a measurement.
+            if unanchored:
+                notes.append(str(len(unanchored)) + " event(s) excluded, no prose anchor: "
+                             + ", ".join(unanchored[:6]))
+            by_ch[ch] = evs = [e for e in evs if e["pos"] is not None]
+            evs.sort(key=lambda e: (e["pos"], e["id"]))
 
+    # ── What the system claims, read BEFORE selection so every claim can be scored ───────
     edges = {}
     for rel in ("CAUSES", "PRECEDES"):
         for a, b in _age(
                 "MATCH (a:Event {project_id:'" + P + "'})-[r:" + rel + "]->(b:Event) "
                 "RETURN a.id AS a, b.id AS b", "a agtype, b agtype",
                 port=args.age_port, db=args.age_db, graph=args.age_graph):
-            edges[(a, b)] = rel.lower()
-    index = {(x[2]["id"], x[3]["id"]): x[0] for x in pairs}
-    pred = {index[k]: v for k, v in edges.items() if k in index}
+            edges[(a, b)] = REL_OF[rel]
 
-    out = _sheet_text(args, pairs, pred, causal_pass_ran=bool(edges))
+    # ── Select the pairs ─────────────────────────────────────────────────────────────────
+    # Every pair the system ASSERTED goes in first: a sheet that samples pairs independently
+    # of the predictions can miss most of them, and then `precision` is computed over
+    # whichever claims happened to be sampled. The previous sheet carried 2 of the project's
+    # edges. The rest of the budget is prose-adjacent pairs, which is what makes `recall`
+    # mean anything — without them the sheet only ever asks about the system's own answers.
+    in_scope = {e["id"]: (ch, e) for ch in args.chapter_ids for e in by_ch.get(ch, [])}
+    chosen: list[tuple] = []
+    seen: set[frozenset] = set()
+
+    def _add(ch, a, b):
+        key = frozenset((a["id"], b["id"]))
+        if a["id"] == b["id"] or key in seen:
+            return False
+        seen.add(key)
+        chosen.append((ch, a, b))
+        return True
+
+    asserted_in_scope = 0
+    for (ea, eb) in sorted(edges):
+        if ea in in_scope and eb in in_scope:
+            ch, a = in_scope[ea]
+            _, b = in_scope[eb]
+            if _add(ch, a, b):
+                asserted_in_scope += 1
+    for gap in (1, 2):
+        for ch in args.chapter_ids:
+            evs = by_ch.get(ch, [])
+            for i in range(len(evs) - gap):
+                if len(chosen) >= args.pairs:
+                    break
+                _add(ch, evs[i], evs[i + gap])
+    chosen = chosen[: args.pairs]
+    if asserted_in_scope > args.pairs:
+        notes.append("--pairs " + str(args.pairs) + " is smaller than the "
+                     + str(asserted_in_scope) + " asserted edge(s) in scope; precision would "
+                     "be computed over a subset of the system's claims")
+
+    # ── Shuffle, so neither position nor A/B leaks an answer ─────────────────────────────
+    # Without this, A is always the prose-earlier event and the asserted pairs are always
+    # first — a labeller would learn both patterns within a few rows and the direction
+    # measurement would be reading the layout, not the text.
+    import random
+    # Record the EFFECTIVE seed, not the flag. `"seed": null` in the manifest would say the
+    # shuffle was unseeded when it was seeded on the project id, and re-emitting from that
+    # record would produce a different sheet than the one someone labelled.
+    args.seed = args.seed if args.seed is not None else P
+    rng = random.Random(args.seed)
+    rng.shuffle(chosen)
+    pairs = []
+    for n, (ch, a, b) in enumerate(chosen, start=1):
+        if rng.random() < 0.5:
+            a, b = b, a
+        pairs.append((f"P{n}", ch, a, b))
+
+    # A prediction is DIRECTED: which way round it runs relative to the printed A/B is the
+    # thing being measured, so it is recorded that way and never as a bare relation.
+    pred = {}
+    for pid, ch, a, b in pairs:
+        if (a["id"], b["id"]) in edges:
+            pred[pid] = edges[(a["id"], b["id"])]
+        elif (b["id"], a["id"]) in edges:
+            pred[pid] = INVERSE[edges[(b["id"], a["id"])]]
+
+    # A sheet made only of pairs the system already claimed can measure PRECISION and cannot
+    # measure RECALL: every question on it is one the system answered, so a missed edge has
+    # nowhere to show up and `recall` reads high for a structural reason. The stop condition
+    # is "FEW **or** low-quality causal edges" — "few" is the recall half, so a sheet that
+    # cannot see it answers half the question while printing a number for both.
+    unasserted = len(pairs) - len(pred)
+    if unasserted == 0 and pairs:
+        notes.append("every pair on this sheet is one the system asserted — recall is "
+                     "computed only over its own claims and cannot detect a MISSED edge. "
+                     "Raise --pairs above " + str(asserted_in_scope) + " to add unasserted "
+                     "pairs")
+
+    out = _sheet_text(args, pairs, pred, causal_pass_ran=bool(edges), notes=notes)
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8", newline=chr(10)) as fh:
         fh.write(out)
-    print(f"[t33-sheet] {len(pairs)} pair(s) from {len(args.chapter_ids)} chapter(s) "
-          f"-> {args.out}")
-    print(f"[t33-sheet] AGE holds {len(edges)} ordered edge(s) in this project; the system "
-          f"asserts one on {len(pred)} of the sheet's pairs")
+    print(f"[t33-sheet] {len(pairs)} pair(s) from {len(args.chapter_ids)} chapter(s), "
+          f"axis={args.axis} -> {args.out}")
+    print(f"[t33-sheet] AGE holds {len(edges)} ordered edge(s) in this project; "
+          f"{asserted_in_scope} fall inside the labelled chapters and ALL of those are on "
+          f"the sheet; the system asserts one on {len(pred)} of its {len(pairs)} pairs")
+    for note in notes:
+        print("[t33-sheet] note: " + note)
     print("[t33-sheet] every LABEL is BLANK. This script does not write labels (rule 3).")
     return 0
 
 
 def _emit(args) -> int:
+    """RETIRED (T33k). Refuses, and says why rather than quietly emitting an old sheet.
+
+    🔴 This path kept its OWN copy of the renderer — `_sheet_text`'s docstring says "ONE
+    renderer for both stores, two would drift", and two had already drifted. When the sheet
+    stopped asserting an order, this copy did not: it would still print `earlier`/`later`
+    over `event_order`, which is the emission index, and hand a labeller the exact false
+    premise the change exists to remove. A second emitter that produces the defect being
+    fixed is worse than no second emitter.
+
+    It is refused rather than deleted because the Bolt query is the only record of how this
+    sheet was built before the store moved, and §8.1 may not be the last word on the backend.
+    Reviving it means porting it ONTO `_sheet_text` — prose anchoring, the collision refusal
+    and the shuffle included — not restoring the lines below.
+    """
+    print("[t33-sheet] REFUSED — --store neo4j no longer emits.")
+    print("[t33-sheet] The declared backend is `age` (§8.1), and reading the wrong store is "
+          "what made an earlier draft report the extractor as never having run.")
+    print("[t33-sheet] Use: --store age  (the default).")
+    return 1
+
+
+def _emit_neo4j_retired(args) -> int:
     from neo4j import GraphDatabase  # imported here so --selftest needs no driver
 
     drv = GraphDatabase.driver(args.bolt, auth=(args.user, args.password))
@@ -520,6 +840,16 @@ def _score(path: str) -> int:
               "  The ground truth must come from someone other than the thing being graded;\n"
               "  a detector scored against its own author's labels is green by construction.")
         return 2
+    # T33k — a label that is neither blank nor a recognised phrase must STOP the score, not
+    # decay into "unfilled". `parse_sheet` marks it; scoring around it would quietly shrink
+    # the denominator and report a cleaner sheet than the one on disk.
+    bad = [p for p, r in labelled if r == BAD_LABEL]
+    if bad:
+        print("[t33-score] REFUSED — " + str(len(bad)) + " label(s) not understood: "
+              + ", ".join(bad[:10]) + (" ..." if len(bad) > 10 else ""))
+        print("[t33-score] Each LABEL must read exactly one of: `A causes B`, `B causes A`, "
+              "`A precedes B`, `B precedes A`, `unknown`.")
+        return 2
     result = score(dict(labelled), manifest.get("system_predicted", {}),
                    pass_ran=bool(manifest.get("causal_pass_ran", True)))
     print(f"[t33-score] {path}")
@@ -529,6 +859,10 @@ def _score(path: str) -> int:
           f"number here is only as good as that signature.")
     for k, v in result.items():
         print(f"  {k:<32} {v}")
+    if "recall" in result and manifest.get("unasserted_pairs") == 0:
+        print("[t33-score] ⚠ recall above is NOT a recall over the corpus. Every pair on "
+              "this sheet is one the system asserted, so a missed edge had nowhere to "
+              "appear. Re-emit with a larger --pairs to measure it.")
     return 0 if result["verdict"] == SCORED else 1
 
 
@@ -624,6 +958,18 @@ def main(argv: list[str]) -> int:
         ROOT, "docs", "measurements", "2026-08-24-t33-causal-labelling-sheet.md"))
     ap.add_argument("--store", default="age", choices=("age", "neo4j"),
                     help="which store to read; the declared backend is `age` (§8.1)")
+    ap.add_argument("--axis", default="prose", choices=("prose", "emission"),
+                    help="how events are ordered for PAIR SELECTION only — the sheet asserts "
+                         "no order. `prose` anchors each event to its first mention in the "
+                         "chapter text; `emission` uses Event.event_order and REFUSES when "
+                         "that field collides, which it does whenever a chapter was "
+                         "extracted by more than one job.")
+    ap.add_argument("--seed", default=None,
+                    help="shuffle seed for pair order and A/B assignment. Defaults to the "
+                         "project id, so re-emitting the same corpus is reproducible.")
+    ap.add_argument("--book-port", type=int, default=25555,
+                    help="book-service Postgres, read for chapter prose (--axis prose)")
+    ap.add_argument("--book-db", default="loreweave_book")
     ap.add_argument("--age-port", type=int, default=25556)
     ap.add_argument("--age-db", default="loreweave_knowledge_vectors")
     ap.add_argument("--age-graph", default="g_shared")
