@@ -70,7 +70,7 @@ NO_PROOF_BASELINE = 55   # T48ay: pagination-cap-lint gained --selftest (7 cases
 #: **A ratchet on the numerator cannot tell "fewer unproven gates" from "a smaller denominator."**
 #: So the denominator gets a floor too, and a shrinking census reds as the regression it is.
 #: Same control as `--min-legs` (T48t), `--min-data` (T48aa) and `--min-routes` (T48am).
-CI_SCOPE_FLOOR = 118
+CI_SCOPE_FLOOR = 119
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -350,7 +350,12 @@ def main() -> int:
         proven = len(invoked) - len(unproven)
         print(f"gate-teeth-gate: PASS — {len(invoked)} CI-invoked gate(s), every one able to "
               f"return non-zero.")
-        print(f"  {proven} carry a red-ability proof; {len(unproven)} held at baseline.")
+        # The FLOOR is printed even when it equals the count. It used to reach the output
+        # only because `len(invoked)` happened to BE 118 — so the moment the census grew by
+        # one, the ratchet became invisible and `gate-number-visibility-gate` caught it.
+        # A number visible by coincidence is not visible.
+        print(f"  {proven} carry a red-ability proof; {len(unproven)} held at baseline; "
+              f"census floor CI_SCOPE_FLOOR = {CI_SCOPE_FLOOR}.")
     return rc
 
 

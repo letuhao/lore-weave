@@ -136,7 +136,18 @@ WHERE e.user_id = $user_id
 WITH DISTINCT e
 RETURN e.id AS id, e.title AS title, e.summary AS summary,
        e.event_order AS event_order, e.participants AS participants
-ORDER BY e.event_order DESC
+// L2 — `e.id` is the TIE-BREAK, and without it this query is non-deterministic on real
+// data. `event_order` is not unique: 51 colliding (project, event_order) pairs stand in
+// `g_shared` today, 102 events across 6 projects, all written before the pass2_writer fix
+// (b6c8fde13). With a bare `ORDER BY … DESC` in front of a `LIMIT`, which of two colliding
+// events survives the cut is whatever the store hands back — so the same canon check can
+// see a different evidence set on two runs, and neither run is wrong to look at.
+//
+// `e.id` rather than `e.title`: two sibling queries in `events.py` tie-break on title, and a
+// title is EDITABLE. Ordering history by a field the user can change means renaming an event
+// silently reorders the evidence behind a past check. §25 records that divergence rather
+// than unifying all four call sites here, which would move public ordering.
+ORDER BY e.event_order DESC, e.id DESC
 LIMIT $limit
 """
 

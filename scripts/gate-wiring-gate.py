@@ -223,6 +223,10 @@ NEEDS_STACK: dict[str, str] = {
         "(P1 DEFERRED 058)",
     "scripts/state-asof-live-smoke.sh": "proves the book-wide as-of read end to end on a "
         "running stack and measures it (QC-1)",
+
+    # L2 — a RATCHET over live data, so it needs the graph rather than a checkout.
+    "scripts/event-order-collision-gate.py": "counts colliding (project_id, event_order) "
+        "pairs in g_shared against a frozen ceiling; needs the AGE store, not a tree scan",
 }
 
 # Gates too SLOW to sit in a shared run. Skipped with the reason printed, exactly

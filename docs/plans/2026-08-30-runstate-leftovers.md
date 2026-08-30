@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L2 — 51 collided event_orders already in the store.
+RESUME: L6 — GO_INLINE_CAP cannot see a cap written against a named constant.
 
 ## Progress
 
-7 tasks — 3 done, 0 tracked, 4 untouched.
+7 tasks — 4 done, 0 tracked, 3 untouched.
 
 ---
 
@@ -54,7 +54,7 @@ RESUME: L2 — 51 collided event_orders already in the store.
   **BITE:** if closed, two writers racing one chapter must not produce a duplicate
   `event_order`; if accepted, the spec section must name what makes it rare.
 
-- [ ] **L2** — **51 colliding `(project_id, event_order)` pairs in the store.**
+- [x] **L2** — **51 colliding `(project_id, event_order)` pairs in the store.**
   The writer fix stops new ones; it renumbers nothing. Measured on iso 2026-08-30: 51
   duplicate pairs in `g_shared`. Every consumer of the reading axis is reading them today.
   **Criteria:** a decision with a number behind it — backfill and renumber, or accept and say
@@ -296,4 +296,75 @@ naming that job id; row deleted → **HTTP 200** again. The job row was written 
 isolated stack only and removed, verified 0 active after.
 **QC (c) real data:** iso — the live index definition above, and the 200/409/200 sequence on
 project `019fefde…`.
+---
+
+### ✅ L2 2026-08-30 — **the repair tool reaches 0 of the 102 events, and the real harm was somewhere else**
+
+```
+ordered events                                    1224
+colliding (project_id, event_order) pairs           51   -> ACCEPTED, frozen (§25)
+events on a collision                              102   across 6 projects
+of those carrying `chapter_id`                       0   <- the backfill's own filter
+collisions spanning two chapter bands                0   <- the spoiler cutoff is untouched
+```
+
+🎯 **The row's premise was wrong and measuring showed it.** L2 said *"`backfill_orders.py`
+already exists … so the cost of the first option is measurable rather than guessed."* It
+selects `WHERE e.chapter_id IS NOT NULL`, and **none of the 102 affected events has that
+property** (104 of 1320 store-wide do). A live `POST /backfill-orders` returning
+`events_ordered: 0` on the worst project is what sent me to look.
+
+⚖️ **ACCEPTED, because repair does not produce a CORRECT order.** There is no narrative
+source to renumber from — the emission order that produced these is the same one T33k caught
+putting `盤古開天闢地` at position 18 of 20 — and the backfill's own scheme is `sorted(ids)`,
+arbitrary in a different way. Renumbering 102 nodes would trade one deterministic wrong order
+for another. §25 carries the four checks behind that: the cutoff is band-level and no
+collision spans a band; nothing keys on `event_order` as an identity.
+
+🔴 **WHAT ACTUALLY BROKE.** Four sites order by `event_order` and disagreed on the tie-break —
+`events.py` ×2 on `title`, `timeline.py` on `id`, and
+`fact_for_check._EVENTS_AT_OR_BEFORE_CYPHER` on **nothing**, a bare `ORDER BY … DESC` in front
+of a `LIMIT`. On colliding data the cut is decided by the store, so one canon check could see
+a different evidence set on two runs. That is a DETERMINISM bug, and it is the actual cost of
+the 51. Fixed with `e.id` — not `title`, because a title is editable and ordering history by a
+mutable field means a rename silently reorders the evidence behind a past check.
+
+📐 **The freeze is a ratchet, not a sentence.** `event-order-collision-gate.py`, shrink-only
+at 51, red on growth, registered `NEEDS_STACK` so `--run-all` prints why it skips (L4).
+
+⚠️ **A selftest case of mine passed for the wrong reason and I nearly shipped it.** "A store
+that cannot be reached REFUSES" asserted only that the word REFUSED appeared — and it stayed
+GREEN with the returncode check disabled, because the *empty-result* guard caught the
+fallthrough and says REFUSED too. Two guards, one assertion, and the bite proved the case
+could not fail for its own reason. Split into two, each asserting its own sentence; both now
+bite independently.
+
+🧪 **BITE — four, each on its own claim.**
+
+```
+1 remove the tie-break from fact_for_check (line 150)  -> "these order by event_order with
+                                                          NOTHING after it" names the constant
+2 ceiling 51 -> 50                                     -> gate FAIL, exit 1
+3 swallow a failed query (returncode guard)            -> "cannot be REACHED" case FAILs
+4 drop the empty-result guard                          -> "returns nothing" case FAILs
+```
+
+**QC (a) gates:** `event-order-collision-gate --selftest` **7 cases, 4 negative**;
+`gate-wiring-gate` **134 discovered**, self-test exit 0; knowledge unit suite **4464 passed**,
+1 skipped (was 4461).
+**QC (b) live smoke:** seam crossed, `knowledge-service` REBUILT on `lw-iso`. The running
+container carries `ORDER BY e.event_order DESC, e.id DESC` ×1 and the bare form ×0. Against
+the live store on the worst project the ordering is byte-identical across runs — and the
+output shows the collision it is coping with: **two events both at `12000017`**.
+**QC (c) real data:** the census above, off `g_shared`.
+
+⚠️ **The full suite went 2 RED, and it was rule 5 catching an omission from L4.**
+`gate-teeth-gate`'s `CI_SCOPE_FLOOR = 118` was left behind when L4 widened discovery; adding
+this row's gate moved the CI-invoked census 118 → 119 and
+`gate-number-visibility-gate` reported *"a ratchet nobody can see"*. **The floor had only
+ever reached the output by coincidence** — it happened to equal `len(invoked)`, so the moment
+the census grew by one it vanished. Floor raised to 119 in this commit (rule 5) and now
+PRINTED explicitly, so its visibility is no longer an accident. Bitten by line number:
+drop the print AND move the floor off the census → `FAIL — CI_SCOPE_FLOOR = 117 never reaches
+the output`. Suite back to **104 GREEN, 0 RED**.
 ---

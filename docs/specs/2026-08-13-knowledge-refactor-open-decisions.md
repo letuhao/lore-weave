@@ -2434,3 +2434,54 @@ window is still possible; the index remains the thing that makes the extraction 
 unambiguous. It closes the case that was actually reachable — firing a backfill at a project
 that is visibly busy — and narrows the rest to a window measured in milliseconds. Stated
 here rather than left for someone to discover in the code.
+
+## 25 · The 51 `event_order` collisions are ACCEPTED — renumbering buys uniqueness, not correctness (L2, 2026-08-30)
+
+**Cited by leftovers row `L2`.**
+
+**Measured on `lw-iso`, 2026-08-30:** 1224 ordered events; **51 colliding
+`(project_id, event_order)` pairs**, 102 events, 6 projects. All written before `b6c8fde13`
+stopped `pass2_writer` restarting its within-chapter index at 0.
+
+**The row's own premise was wrong, and measuring is what showed it.** L2 said
+*"`backfill_orders.py` already exists and already imports the shared stride, so the cost of
+the first option is measurable rather than guessed."* The backfill selects
+`WHERE e.chapter_id IS NOT NULL`, and **0 of the 102 affected events carry `chapter_id`** —
+104 of 1320 events store-wide do. The existing tool reaches **none** of them. A live
+`POST /backfill-orders` on the worst project returned `events_ordered: 0`, which is what sent
+me to look.
+
+**DECIDED — ACCEPT, and freeze the number.** Not because repair is expensive, but because
+repair does not produce a correct order:
+
+* **There is no narrative source to renumber FROM.** The extractor's emission order produced
+  these values and is not narrative: T33k measured `盤古開天闢地` — the creation of the
+  universe — sitting at position 18 of 20 in one chapter.
+* **The backfill's own scheme is `sorted(event_ids)`** — id order, arbitrary in a different
+  way. Renumbering would trade one deterministic wrong order for another across 102 nodes.
+* **The spoiler cutoff is untouched.** Every collision is *within* a chapter band, and the
+  cutoff is `before_order N × EVENT_ORDER_CHAPTER_STRIDE` — a within-band clash cannot move
+  it. Checked, not assumed: 0 collisions span two bands, which is structural since a single
+  `event_order` value lives in exactly one band.
+* **Nothing uses `event_order` as an identity.** No dict keyed on it, no upsert, no join.
+  `motif_beat`'s *"`:Event` nodes keyed by `event_order`"* means ORDERED BY, not keyed.
+
+**WHAT ACTUALLY BROKE, AND IS NOW FIXED.** Four call sites order by `event_order` and they
+did not agree on the tie-break: `events.py` ×2 on `e.title ASC`, `timeline.py` on `e.id`, and
+`fact_for_check._EVENTS_AT_OR_BEFORE_CYPHER` on **nothing at all** — a bare
+`ORDER BY e.event_order DESC` in front of a `LIMIT`. On colliding data, which event survives
+the cut is whatever the store returns, so the same canon check could see a different evidence
+set on two runs and neither run was wrong to look at. That is the concrete harm of the 51,
+and it is a determinism bug rather than an ordering one.
+
+It now tie-breaks on `e.id`, not `e.title`: **a title is editable**, and ordering history by a
+field the user can change means renaming an event silently reorders the evidence behind a past
+check. The two `events.py` sites keep `title` for now — unifying all four moves public
+ordering and deserves its own cycle rather than riding along here. The divergence is recorded
+so it is a known choice rather than an accident.
+
+**The freeze is a RATCHET, not a comment.** `scripts/event-order-collision-gate.py` counts
+the pairs against `MAX_COLLIDING_PAIRS = 51`: shrink-only, red on growth, because a new
+collision means the writer regressed. It needs the live graph, so it is registered
+`NEEDS_STACK` and prints `SKIP … needs a live stack` in `--run-all` rather than being
+invisible (L4).
