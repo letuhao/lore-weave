@@ -2283,8 +2283,25 @@ has no back-compat reason to be loose.
    indirectly — so the seven either resolve to a capping function or become real findings. This
    is the only step that needs new code, and it is the one that decides whether the batch is 8
    or 1.
-2. Verify `toolBookGetChapter` by hand: it is a real per-function verdict today, not a blind
-   spot.
+2. ~~Verify `toolBookGetChapter` by hand: it is a real per-function verdict today, not a blind
+   spot.~~ **DONE 2026-08-30, and the claim was WRONG — it is a blind spot too.**
+   `mcp_tools_read.go:353` caps in its own function:
+
+   ```go
+   const maxChapterBlocks = 300                       // :246
+   if limit <= 0 || limit > maxChapterBlocks { limit = maxChapterBlocks }
+   ```
+
+   `GO_INLINE_CAP` requires `\d+` on **both** sides of the comparison and the assignment, so a
+   cap written against a NAMED CONSTANT is invisible to it. The batch is therefore **8 false
+   positives, not 7 blind spots plus 1 verdict** — which strengthens the decision above and
+   weakens the case for step 3: pointing the helper signal at `_go_capped_in_scope()` today
+   would red eight sites and none of them is a defect.
+
+   The narrower fix this exposes is its own step: teach `GO_INLINE_CAP` to resolve a
+   package-level `const NAME = <int>` on either side. A *variable* must NOT be accepted — the
+   whole point of the signal is that the bound is knowable at the call site, and
+   `limit = someVar` is not.
 3. Point `GO_CLAMP_SIGNALS` at `_go_capped_in_scope()` — one call site — and refresh the
    BASELINE by intersection, never `--regen`.
 
