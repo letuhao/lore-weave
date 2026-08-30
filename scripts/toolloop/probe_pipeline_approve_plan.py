@@ -69,6 +69,27 @@ try:
                           "-d", "loreweave_glossary", "-tAf", "-"],
                          input=q, capture_output=True, text=True).stdout.strip()
     print(f"\nglossary_entities on the fixture AFTER approve_plan: {out}")
+
+    # THE GRAPH HALF. The cast is only half of what the description promises ("Build the
+    # KNOWLEDGE GRAPH and the CAST ... in ONE call"). The schema declares two more ops for the
+    # other half, so the full protocol is start -> approve_plan -> project_kg -> approve_edges.
+    # Nothing in the corpus has ever exercised past the second.
+    import time as _t
+    for op in ("project_kg", "approve_edges"):
+        try:
+            rr = fx.mcp.call("composition_build_cast_and_graph",
+                             {"op": op, "book_id": fx.book_id, "run_id": run_id}) or {}
+            print(f"op={op} -> " + json.dumps({k: str(v)[:80] for k, v in rr.items()})[:340])
+        except Exception as e:  # noqa: BLE001 - a refusal IS the finding here
+            print(f"op={op} REFUSED -> {str(e)[:220]}")
+        _t.sleep(3)
+    for _i in range(30):
+        st = fx.mcp.call("composition_build_cast_and_graph",
+                         {"op": "status", "book_id": fx.book_id, "run_id": run_id}) or {}
+        if str(st.get("status") or "") not in ("building", "running", "pending"):
+            print("final status:", st.get("status"), "| edges:", str(st.get("edges"))[:100])
+            break
+        _t.sleep(6)
 finally:
     try:
         fx.teardown()
