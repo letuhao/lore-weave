@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 53 of 55 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 54 of 56 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (46/47) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (47/48) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,82 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48at 2026-08-30 — **the gate that checks gates can fail was counting the mechanism `gate-wiring-gate` replaced: 75 named, 118 actually run**
+
+  ```
+  before  75 CI-invoked gate(s) · 34 proofs · 41 at baseline
+  after  118 CI-invoked gate(s) · 62 proofs · 56 at baseline · every one able to return non-zero
+  ```
+
+  🎯 **`ci_invoked_scripts()` regexed workflow YAML for literal `scripts/<name>` mentions** —
+  gates NAMED in a workflow. But CI's actual mechanism is `gate-wiring-gate.py --run-all`, whose
+  own docstring says why:
+
+  > *"the runner iterates `discovered()` … so a gate written tomorrow runs in CI the day it
+  > lands, with nobody remembering to add a line. Enumerating names in a workflow would have
+  > been default-uncovered all over again, one level up."*
+
+  **The teeth gate was still counting the names.** 43 gates CI genuinely executes sat outside the
+  check, and every gate added since the runner landed — including the three from this session —
+  was outside it **by construction**.
+
+  📐 **Measured before building (rule 8), and that is why it was safe:** widening adds 43 gates,
+  of which **0 are toothless** and 15 carry no red-ability proof. The teeth assertion stays green;
+  only the proof baseline moves, 41 → 56, **in this commit** and for a stated reason — *the scope
+  grew, not the gates got worse*. That distinction is now a paragraph on the constant, because a
+  ratchet that grows silently is indistinguishable from rot.
+
+  🧪 **BITE T48at-1 — THE ONE T48ar COULD NOT LAND.** T48ar wrote a deliberately toothless gate,
+  watched `gate-teeth-gate` pass twice, and reported the negative result honestly as a scope
+  limitation. The same script, unchanged, against the widened scope:
+
+  ```
+  FAIL — gate wired into CI with NO reachable non-zero exit (it can never report a violation):
+     scripts/bite-toothless-gate.py   (workflows: via --run-all)                     exit 1
+  ```
+
+  **That is the cycle's whole justification**: a gate that cannot fail was invisible to the gate
+  whose one job is to find gates that cannot fail. Temp script removed; `PASS — 118` restored.
+
+  🔴 **BITE T48at-2 EXPOSED A SECOND DEFECT — in the ratchet's reading of its own numbers.**
+  Narrowing the scope back to names made the unproven count fall 56 → 41, and the gate printed:
+
+  ```
+  NOTE — gates without a red-ability proof dropped to 41 (baseline 56).
+     Progress — lower NO_PROOF_BASELINE to 41.
+  ```
+
+  **A census regression presented as progress, with an invitation to lock it in.** A ratchet on
+  the numerator cannot tell *fewer unproven gates* from *a smaller denominator*. So the
+  denominator gets a floor — `CI_SCOPE_FLOOR = 118` — and the same bite now reads:
+
+  ```
+  FAIL — the CI census SHRANK to 75 gate(s), floor 118. Fewer gates checked is not fewer
+  problems; a smaller denominator makes every ratio below it look better.               exit 1
+  ```
+
+  Fourth instance of one control this session — `--min-legs` (T48t), `--min-data` (T48aa),
+  `--min-routes` (T48am), and now a floor on a census — and the first time it protected a
+  DENOMINATOR rather than a result.
+
+  ⚖️ **The scope is asked OF the runner, never re-derived.** `_runner_covers()` imports
+  `gate-wiring-gate` and calls `discovered()`; re-implementing the predicate would let the two
+  drift, which is the exact failure this row is about. If the runner cannot be imported the
+  scope does not widen — a coverage claim must never rest on a guess — and `_runner_in_ci()`
+  first checks a workflow really invokes it, so claimed coverage stays real coverage.
+
+  **QC (a) gates:** `gate-teeth-gate` **PASS — 118 CI-invoked, every one able to return
+  non-zero**; `gate-number-visibility-gate`, `makefile-claim-gate`, `gate-wiring-gate` live and
+  `--self-test`, `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam crossed, no image changed; this cycle edits one
+  gate script. The live half is the two bites, one of which is a previously-failed bite now
+  landing.
+  **QC (c) real data:** the census itself, measured before and after — **75 → 118 gates in
+  scope, 0 toothless among the 43 newcomers, 15 without a proof**.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48as 2026-08-30 — **`make ci-local` printed "All local CI gates PASS" while running 15 lints and none of the repo's 117 gates**
 
