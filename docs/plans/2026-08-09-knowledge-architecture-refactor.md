@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 56 of 58 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 57 of 59 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (49/50) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (50/51) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,65 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ax 2026-08-30 — **SESSION_HANDOFF updated (the GRANT's second clause), and its own verification instruction made checkable**
+
+  ```
+  the handoff tells its reader:  "`sed -n 46p` on the plan for the progress block"
+  a TYPED LINE NUMBER in prose — true when written, silently wrong forever after
+  now checked: follow the instruction, assert it lands on `N of N rows done`
+  ```
+
+  🎯 **The GRANT authorises three things for T48/T49** — run the final verification, **update
+  SESSION_HANDOFF**, archive the plan. The first has run every cycle; the third genuinely waits
+  on T33. The second was owed and I had been deferring it as premature. It is done: the in-flight
+  section now records what the day produced rather than stopping at T48s.
+
+  📐 **And it is not prose-only, because the handoff makes a CHECKABLE claim.** It sends its
+  reader to `sed -n 46p` — a line number typed into a document, pointing into a 29 000-line plan
+  that grows by an evidence block every cycle. It is correct today by luck: every insertion this
+  session landed at line 24576, below it. **One paragraph added to the plan's header and the next
+  reader is handed a random line and told it is the row census.**
+
+  Same class as `makefile-claim-gate`'s typed lint count (T48as) and the plan verifier's typed
+  `DECIDED` marker (T48au): a number in prose that nothing re-derives. The check is the cheapest
+  possible one — **follow the instruction and see where it lands** — asserting the line matches
+  `N of N rows done` rather than comparing it to another typed number.
+
+  🧪 **BITE T48ax-1 — three lines inserted above the cited line.**
+
+  ```
+  FAIL — the handoff tells its reader to run `sed -n 46p` on the plan for the progress block,
+  and that line does not hold it. A typed line number in prose points somewhere else the moment
+  anything is inserted above it, and the next reader takes whatever it prints as the census.
+                                                                                    exit 1
+  ```
+
+  Restored: `OK … `sed -n 46p` still lands on the progress block`.
+
+  🧾 **What the handoff now says, in one line each**, so the next session inherits the shape
+  rather than re-deriving it: three spoiler leaks feeding one consumer (T48ad/T48ah/T48ai); the
+  proof grown 4 legs → 7; four floors that exist because *zero of zero failed* read as success;
+  and four guards that ran nowhere — a suite red for four commits, a ratchet red for eleven, and
+  a plan gate the goal names that nothing invoked.
+
+  ⚖️ **The recurring shape is named once, deliberately.** *A mechanism that exists, is tested,
+  and reaches nothing* — in the product, in the gates, in a Makefile, and repeatedly in work
+  written the same day to catch it. A next session that recognises the shape will find these
+  faster than one that reads 24 evidence blocks.
+
+  **QC (a) gates:** `handoff-staleness-gate` live and `--selftest`; `plan-final-verification`,
+  `gate-teeth-gate`, `makefile-claim-gate`, `gate-number-visibility-gate`, `gate-wiring-gate`,
+  `stale-deferral-gate`, `amendment-rot-gate` — all 0 by direct exit code. `doc-language-gate`
+  clean on the new prose.
+  **QC (b) live smoke:** N/A — no service seam crossed and no image changed; this cycle edits a
+  handoff and a gate. The live half is the bite, run against the real plan.
+  **QC (c) real data:** the plan's own line 46 — `**66 of 69 rows done · 3 open · 56 of 58
+  evidence blocks closed inside them.**` — before and after a three-line insertion above it.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`. **The GRANT's third clause, archiving
+  the plan, is the one that cannot move until it does.**
   ---
   ### ✅ T48aw 2026-08-30 — **the timeout discipline scanned Go, Rust and Python, and never the two services whose whole job is outbound calls**
 

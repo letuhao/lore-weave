@@ -39,6 +39,35 @@ _CLOSED_MARKERS = ("closed", "superseded", "retracted", "stale", "landed", "disc
 _WINDOW = 2
 
 
+#: The handoff tells its reader to verify the census with a command carrying a TYPED LINE
+#: NUMBER: "`sed -n 46p` on the plan for the progress block". True the day it was written, and
+#: silently wrong the moment anything is inserted above that line — after which the next reader
+#: is handed a random line of a 29 000-line plan and told it is the row census.
+#:
+#: T48ax. Same class as `makefile-claim-gate`'s typed lint count: a number in prose that nothing
+#: re-derives. This is the cheapest possible check of it — follow the instruction and see if it
+#: lands where the handoff says.
+_SEDLINE = re.compile(r"`sed -n (\d+)p`")
+#: What the progress block looks like, so "it landed" is a property and not a line number.
+_PROGRESS = re.compile(r"\d+ of \d+ rows done")
+
+
+def cited_sed_line(handoff_text: str) -> int | None:
+    """The line number the handoff tells the reader to print, if it cites one."""
+    m = _SEDLINE.search(handoff_text)
+    return int(m.group(1)) if m else None
+
+
+def sed_line_lands(plan_text: str, line_no: int | None) -> bool | None:
+    """Does that line actually hold the progress block? None when nothing is cited."""
+    if line_no is None:
+        return None
+    lines = plan_text.split(chr(10))
+    if not (1 <= line_no <= len(lines)):
+        return False
+    return bool(_PROGRESS.search(lines[line_no - 1]))
+
+
 def closed_ids(plan_text: str) -> set[str]:
     """Deferral ids the PLAN has struck. A struck heading is the plan's own closure marker."""
     return set(re.findall(r"~~DEFERRAL~~ `(D-[A-Z0-9][A-Z0-9-]{4,})`", plan_text))
@@ -120,8 +149,18 @@ def main() -> int:
         print("  blocker list that names a settled question sends the next session at work")
         print("  that does not exist — the plan records eight days lost to exactly this.")
         return 1
+    cited = cited_sed_line(handoff)
+    lands = sed_line_lands(plan, cited)
+    if lands is False:
+        print(f"[handoff-staleness-gate] FAIL — the handoff tells its reader to run "
+              f"`sed -n {cited}p` on the plan for the progress block, and that line does not "
+              f"hold it. A typed line number in prose points somewhere else the moment anything "
+              f"is inserted above it, and the next reader takes whatever it prints as the "
+              f"census.")
+        return 1
     print(f"[handoff-staleness-gate] OK — {len(_ID.findall(handoff))} deferral mention(s) in the "
-          f"handoff, {len(closed)} closed id(s) known from the plan, 0 presented as still owed")
+          f"handoff, {len(closed)} closed id(s) known from the plan, 0 presented as still owed"
+          + (f"; `sed -n {cited}p` still lands on the progress block" if lands else ""))
     return 0
 
 

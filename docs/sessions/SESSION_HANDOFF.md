@@ -49,6 +49,37 @@ leaving the four dimension scores and the craft notes untouched. `QC-5` closed o
 C48, and the basis is CHECKED rather than asserted: `qc5-acceptance-gate --closure` reds if the
 channel is turned back on without a `HELD-OUT-HOLDS` run.
 
+📐 **What 2026-08-30 added AFTER T48s, and why the row list grew by 24.** The session ran one
+method: **ask the proof what it does not cover, then measure rather than reason.** It produced
+three real spoiler leaks and a long tail of instruments that could not fail.
+
+* **Three leaks, all feeding the SAME consumer** — translation-service's `build_context_brief`,
+  which asks for the story state at chapter N. `wiki-neighborhood` advertised a window it did
+  not have (**T48ad**); `canonical` never read `as_of` at all and served the chapter-3 fold to a
+  reader held at chapter 1 (**T48ah**); and `canonical-translation` called a HOISTED copy of the
+  same read, so T48ah fixed one of two and the copy it missed is the one a reader sees
+  (**T48ai**). Each was diagnosed at the seam — through the KAL and again straight off the
+  owning service — never by analogy.
+* **The proof went from 4 legs to 7**: `TEMPORAL` now sweeps all nine temporal routes across
+  both substrates (T48ae/T48ak), `AXIS` checks the SSOT stores positions on one reading axis
+  (T48ao), `AUTH` checks the KAL's guard DISCRIMINATES rather than merely answers (T48ap,
+  reversing T48u's exclusion — open-decisions §21). Run it with all inputs and it reports
+  `"verdict": "PROVEN", "ran": 7`.
+* **Four floors, one control.** `--min-legs`, `--min-data`, `--min-routes` and a floor on a
+  gate CENSUS all exist because *zero of zero failed* kept reading as success (T48t, T48aa,
+  T48am, T48at).
+* **Guards that ran nowhere.** The knowledge-gateway suite was RED for four commits because
+  nothing ran it (T48al); `gate-number-visibility-gate` was red for ELEVEN because `--run-all`
+  is CI-only and takes 415s (T48aq); `plan-final-verification` — one of the four plan gates the
+  goal names — was invoked by nobody, and its "is this DECIDED" test was satisfied by the word
+  **UNDECIDED** (T48au). All four are wired now, path-scoped.
+
+⚠️ **The recurring shape, stated once so the next session recognises it:** *a mechanism that
+  exists, is tested, and reaches nothing.* It appeared in the product (a computed window
+  discarded), in the gates (a ratchet defined and never printed), in a Makefile ("All local CI
+  gates PASS" over 15 lints and 117 gates), and repeatedly in work written that same day to
+  catch it. **A bite that fails to bite is a finding**, and three of this session's rows exist
+  only because one did.
 **And two rows that are a re-run, not a task.** `T48`'s first criterion is *"every task fully
 implemented"*, and `plan-final-verification` refuses a QC row that certifies open work — so T48
 unblocks the moment T33 is scored. `T49` is ⛔ and depends on it: its remaining half is
