@@ -1,0 +1,45 @@
+{
+  "_note": "RESTORING THE SECOND ORPHAN. `composition-glossary-build-with-an-ontology` has 85 recorded runs — the largest of the five scenarios that have results in docs/eval/toolloop but no definition in the repo — and it carries one of the seven instances behind D-A-TURN-PROMISES-WORK-THAT-CONTINUES-AFTER-IT-ENDS. That row's question (DQ-T69) asks whether the platform should constrain a turn that promises a later message; the remedy cannot be tested against its own evidence while the scenario producing it cannot be run.\n\nRECONSTRUCTED FROM THE RECORDING, NOT INVENTED. The prompt is verbatim from docs/eval/toolloop/*/c-gbuild-raw.json, including the embedded story text — that text is what the extraction has to work on, so paraphrasing it would measure a different turn. The recorded runs card (pending_approval present) and move loreweave_glossary.glossary_entities, so the tier is A and the write lands on entities.\n\nTHE SEED IS THE ADOPT STEP AND NOTHING ELSE. The recorded runs call glossary_book_ontology_read and glossary_list_system_standards before extracting, which is the shape of a book that HAS an ontology — the scenario's own name says 'with an ontology'. The adopt step is copied verbatim from scenarios-c-evidence2.json, which is proven to make `character` proposable on a throwaway book. No entity is seeded: unlike the override scenario, the point here is that the turn EXTRACTS the cast from the prompt's own story text, so a pre-seeded cast would make the tool's work a no-op.",
+  "scenarios": [
+    {
+      "id": "composition-glossary-build-with-an-ontology",
+      "tool_under_test": "glossary_propose_entities",
+      "expect_tool": "glossary_propose_entities",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+      "prompt_source": "VERBATIM from the recorded runs in docs/eval/toolloop/*/c-gbuild-raw.json. The story text is part of the prompt and is kept exactly — it is the material the extraction operates on, so re-wording it would measure a different turn.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": { "genres": ["universal"], "kinds": ["character", "place"] }
+          },
+          "why": "The scenario's name is 'with an ontology' and the recorded runs read the book ontology before extracting, so the book must hold kinds first. `character` and `place` are both present in the prompt's story (two people, two locations). The step is copied from scenarios-c-evidence2.json, where the same call is proven to make `character` proposable on a throwaway book.\n\n🔴 NO CAST IS SEEDED, deliberately. The turn's job is to EXTRACT Aldric Vane and Mira Solene from the prompt's own text; seeding them would make the tool's work a no-op and the run would measure nothing — the fixture failure this loop has recorded repeatedly."
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "🔴 THE ASSERTION IS ZERO, NOT ONE. The cast must NOT exist before the turn: this scenario measures extraction, and an entity already present would let a turn look successful without extracting anything. It is the inverse of the override scenario's assertion, and for the opposite reason."
+        }
+      ],
+      "falsifier": "REFUTED IF: entities are created with NO confirm card (Tier A must card), OR the extraction invents a name that is not in the prompt's story text (a fabricated cast member is the worst outcome here), OR the turn ends promising a later message about work that will not continue.\n\n🔴 THE THIRD CLAUSE IS WHY THIS SCENARIO IS BEING RESTORED. It contributed one of the seven instances behind D-A-TURN-PROMISES-WORK-THAT-CONTINUES-AFTER-IT-ENDS — a synchronous turn ending with a promise of an update that cannot arrive. Whether any remedy DQ-T69 chooses works has to be measurable against this shape, and until now it could not be run at all.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "empty_case": "OWED — a story with no extractable cast must be refused clearly, not answered with an empty success.",
+        "idempotency": "OWED — re-extracting the same story must not duplicate the cast.",
+        "tenancy": "OWED — another owner's book must be refused with the uniform not-accessible answer."
+      },
+      "defects": []
+    }
+  ]
+}
