@@ -10790,6 +10790,26 @@ def _last_tool_error_for_author(tool_calls_history: list[dict]) -> str | None:
     `abandoned_expired` / `interrupted` population (1,156) is deliberately NOT this: the author
     walked away, and there is nobody to tell.
 
+    🔴 RE-DERIVED 2026-08-30 AND THE LAST CLAIM ABOVE IS FALSE. The population is the same 94 rows
+    — 67, 21 and 6, unchanged, because no silent turn has occurred since — but the error counts
+    are not:
+
+        outcome=failed      67 turns   58 carry a tool error    9 do NOT
+        outcome=completed   21 turns   10 carry a tool error   11 do NOT
+        outcome=NULL         6 turns    6 carry a tool error    0
+
+    Two predicates agree (`ok=false`, and `ok=false` with a non-empty error string), and they are
+    the same test this function applies. So this fallback reaches 74 of 94 and TWENTY TURNS STILL
+    REACH THE AUTHOR BLANK. Which reading was wrong is NOT established: historical rows do not
+    change, so either the 08-28 count was wrong or the column was later rewritten, and nothing on
+    hand decides it. What is checkable today is the 74.
+
+    The uncovered 20 are the WORST subset, not an edge. The most recent are single-call turns that
+    ran `composition_package_tree`, got `ok: true`, and said nothing: the tool worked, the data came
+    back, and the reply was empty — so there is no error to surface and this function correctly
+    returns None. What such a turn should say is a product decision the owner has not been asked.
+    It is DQ-T75, and the generic failure line they already declined is not it.
+
     Returns None when no failed call is recorded, and the turn then stays silent exactly as
     before. Absence of an error is not licence to invent one.
     """
