@@ -24573,6 +24573,69 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ---
   ---
   ---
+  ### ✅ T48av 2026-08-30 — **T55b's "framework 404" needles are a claim about EXTERNAL software, and one of the three was wrong**
+
+  ```
+  hit a path that does not exist on each running service, 2026-08-30:
+    FastAPI  :28216  {"detail":"Not Found"}                                     -> matched
+    Go/chi   :28211  404 page not found                                         -> matched
+    Nest     :23210  {"message":"Cannot GET /…","error":"Not Found",…}          -> NOT matched
+  ```
+
+  🎯 **Two hypotheses died on the way to this one, and both deaths were the point.** The sweep
+  reports `retrieve` and `search` as `NO-ROUTE` (T55b, six days old), so I asked whether those
+  refusals had gone stale. **Neither downstream exists** — still truthful. Then I asked whether a
+  stale refusal *could* go unnoticed: it cannot, because the 501 is derived per-request from the
+  downstream's own 404 body, not from a list. Self-correcting. Measured, not assumed, twice.
+
+  📐 **What that reading exposed instead**: `isUnroutedDownstream()` matches three hardcoded
+  literals documented as *"each framework's DEFAULT 404 page"* — **a claim about software this
+  repo does not own**, verified by nobody. The iso stack runs all three frameworks, so it is
+  answerable, and the answer was that the Nest needle is wrong.
+
+  🔴 **`/^Cannot (GET|POST|…) /` requires the body to START with `Cannot`. Nest wraps it in
+  JSON.** So a KAL route federating to an unbuilt Nest path would forward the 404 — *"your book
+  has no such entity"* — which is precisely the lie T55b was written to end, surviving for one of
+  the three frameworks its own comment names. Confirmed by running the real exported function
+  against the three captured bodies, not by reading the regex.
+
+  ⚖️ **LATENT, not live, and said plainly:** the KAL federates to FastAPI and Go services today,
+  so no current route hits the gap. It is a correctness fix to a documented claim and a trap
+  removed from the path of whoever first federates to a Nest downstream — not an outage.
+
+  🧾 **The needle stays PRECISE, which is the half that could have gone wrong.** A handler meaning
+  *absent* answers in its own vocabulary — glossary says `GLOSS_NOT_FOUND` — and that must keep
+  forwarding as a 404 rather than becoming a 501 about the KAL's wiring. The new pattern matches
+  `"message":"Cannot <VERB> /` inside JSON, and a negative case pins glossary's real body.
+
+  🧪 **BITE T48av-1 — line 151, the Nest envelope stops being recognised.**
+
+  ```
+  × Nest ENVELOPE (knowledge-gateway :23210) — this one did NOT match
+    Expected: true
+    Received: false                                                             exit 1
+  ```
+
+  Restored: **12 suites, 148 tests, exit 0** (was 144 — four new cases, one per framework plus
+  the handler-404 control).
+
+  📌 **The four new cases carry the bodies themselves, not a paraphrase.** A test asserting *"the
+  needle matches Nest"* would have passed against my belief about Nest; these assert the exact
+  strings the running services emitted, so the claim and the world are checked against each
+  other rather than against my reading of a doc-comment.
+
+  **QC (a) gates:** knowledge-gateway `npm test` **12 suites / 148 tests, exit 0**;
+  `plan-final-verification`, `gate-teeth-gate`, `makefile-claim-gate`,
+  `gate-number-visibility-gate`, `gate-wiring-gate` — all 0 by direct exit code.
+  **QC (b) live smoke:** the 16-route KAL sweep against the running iso stack, PASS, unchanged.
+  No image rebuild — the gateway image is not rebuilt because the change is inert for the
+  services it federates to today, and the sweep confirms the surface is unaffected.
+  **QC (c) real data:** the three 404 bodies above, captured from the running iso services on
+  ports 28216, 28211 and 23210.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
+  ---
   ### ✅ T48au 2026-08-30 — **the goal names four plan gates; the fourth ran nowhere — and its "is this DECIDED" check was satisfied by the word UNDECIDED**
 
   ```

@@ -124,7 +124,8 @@ export function ctxFromReq(req: {
  *
  *     Go (chi/mux)   `404 page not found`
  *     FastAPI        `{"detail":"Not Found"}` — Starlette's unmatched-path body
- *     Nest           `Cannot GET /…` / `Cannot POST /…`
+ *     Nest           `Cannot GET /…` — RAW, and also wrapped in Nest's JSON envelope:
+ *                    `{"message":"Cannot GET /…","error":"Not Found","statusCode":404}`
  *
  * A handler that means "absent" says so in the service's own vocabulary — glossary answers
  * `{"code":"GLOSS_NOT_FOUND","message":"entity not found in this book"}`, and that MUST keep
@@ -137,6 +138,16 @@ export function isUnroutedDownstream(body: string): boolean {
     b === '404 page not found' ||
     b.startsWith('404 page not found') ||
     /^\{"detail":\s*"Not Found"\}$/.test(b) ||
-    /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(b)
+    /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(b) ||
+    // T48av — Nest's ENVELOPE, measured live on the iso gateway 2026-08-30:
+    //   {"message":"Cannot GET /no-such-route","error":"Not Found","statusCode":404}
+    // The raw needle above requires the body to START with `Cannot`, so this form did not
+    // match and a KAL route federating to an unbuilt Nest path would have forwarded a 404 —
+    // the exact lie T55b fixed, surviving for one of the three frameworks the list names.
+    // Latent rather than live: the KAL federates to FastAPI and Go services today.
+    //
+    // Still precise: a handler that means "absent" answers in its own vocabulary
+    // (`GLOSS_NOT_FOUND`), never with `"message":"Cannot <VERB> /"`.
+    /"message"\s*:\s*"Cannot (GET|POST|PUT|PATCH|DELETE) \//.test(b)
   );
 }
