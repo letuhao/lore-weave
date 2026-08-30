@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 44 of 46 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 45 of 47 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (37/38) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (38/39) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,91 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ak 2026-08-30 — **all nine temporal routes swept, both substrates — and the sweep was judging a SLIDING WINDOW as a prefix**
+
+  ```
+  ELSEWHERE entities/:entityId/canonical            (TestFoldLoop, T48ah)
+  ELSEWHERE entities/:entityId/canonical-translation (TestFoldLoop agreement, T48ai)
+  HOLDS     entities/:entityId/facts               rows=[0, 5, 6, 6]    head=6
+  HOLDS     entities/:entityId/neighborhood        rows=[3, 7, 20, 20]  head=28
+  HOLDS     fact-for-check                         rows=[4, 10, 28, 28] head=28
+  HOLDS     state                                  rows=[0, 9, 20, 20]  head=20
+  HOLDS     timeline                               rows=[0, 3, 9, 6]    head=6
+  HOLDS     wiki-neighborhood                      rows=[3, 7, 20, 20]  head=28
+  NO-ROUTE  retrieve                               (T55b, refused by name)
+  [bitemporal] PASS — 9 route(s) swept, 0 not holding their position
+  ```
+
+  🎯 **The four glossary routes were verified BY HAND across T48ah and T48ai, and two of them I
+  had just fixed.** That is exactly the argument T48ae made for the graph substrate: a
+  hand-check is invisible to CI. The sweep now derives ALL temporal routes rather than only
+  graph-backed ones, and `neighborhood` and `wiki-neighborhood` agree exactly at `3, 7, 20, 20`
+  — the consistency T48ad and T48ae bought, now asserted rather than remembered.
+
+  🔴 **AND THE FIRST FULL RUN SCORED `timeline` AS A DEFECT THAT ISN'T ONE.** It measured
+  `rows=[0, 3, 9, 6]` and returned ERROR: *"a WIDER window returned FEWER rows; a cumulative
+  as-of read cannot do that."* Diagnosed from the route's own contract (rule 13):
+
+  > *"a sliding window (`_TIMELINE_CHAPTER_WINDOW` chapters) keeps the memo to recent continuity
+  > rather than the whole book"*
+
+  **It is a window, not a prefix.** A later position legitimately returns fewer rows as the
+  window slides past sparse chapters. My assumption was wrong, and an earlier run on another
+  book read `0/34/50/50` — monotone *only because it capped at 50*, which is how the wrong
+  assumption survived being measured once already.
+
+  📐 **So a route's temporal SHAPE is now part of its recipe**, and the two properties that
+  actually matter are kept for both shapes: **BOUNDED** (no row past the requested position —
+  the spoiler property) and **NON-VACUOUS** (not empty everywhere). Only monotonicity is
+  conditional. A detector that asserts a property the system never promised produces false reds,
+  and a false red on a correct route is how a gate gets switched off.
+
+  ⚖️ **Two more shapes had to be declared rather than assumed**, both found by running it:
+  `state` counts `entities` (its moving quantity) where `fact-for-check` returns a CONSTANT
+  anchor entity there, so `count_keys` is per-recipe; and `state`'s ordinals live one level down
+  inside each entity's `facts`, so the boundedness check reaches one level in — without that it
+  would have found no ordinals and silently asserted nothing.
+
+  🧾 **The two content-shaped routes are DECLARED, not omitted.** `COVERED_ELSEWHERE` names the
+  check that covers each — glossary-service's `TestFoldLoop`, which pins the degrade below the
+  fold head (T48ah) and the agreement between the two canonical surfaces (T48ai). Silence is how
+  `wiki-neighborhood` stayed uncovered through the whole of T48s's life.
+
+  🧪 **BITE T48ak-1 — line 181, `"cumulative": False` → `True`: a sliding window judged as a
+  prefix.**
+
+  ```
+  live      ERROR  timeline  rows=[0, 3, 9, 6]  ->  FAIL, 1 not holding its position   exit 1
+  offline   FAIL  THE WIRING: `timeline` is DECLARED non-cumulative in its recipe
+            FAIL  ...and every OTHER recipe stays cumulative unless it says otherwise  exit 1
+  ```
+
+  ⚠️ **The offline half only exists because the first version of it passed under the bite.** The
+  selftest drives `verdict()` with an explicit `cumulative=`, so it exercised the concept and
+  never the RECIPE — the flag could have been dropped from the table with only a live run to
+  notice. That is T48ac's shape (a function defined, tested, and reached by nothing), caught
+  this time by biting before believing.
+
+  ✅ **Rule 5: the proof's TEMPORAL leg moves in this commit.** It drove `neighborhood` alone —
+  the route the smoke was derived from — and now runs `--sweep` with the same
+  `--cold-downstream` declaration the SURFACE leg already makes. Five legs, `PROVEN`, exit 0,
+  with `[bitemporal] PASS — 9 route(s) swept` as its evidence line.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **29/29** (6 new: the sliding-window
+  shape, its two surviving properties, and the wiring); `architecture-live-proof`,
+  `kal-surface-census-gate` (selftest + live), `kal-read-surface-live-smoke`,
+  `glossary-ordinal-axis-gate`, `graph-store-migrated-gate` selftests, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** four sweeps and one five-leg proof against the running iso stack — the
+  two-sided fixture, the bite, the restore, and the acceptance book with glossary declared cold
+  (2 routes `COLD`, 4 `HOLDS`, PASS). No image rebuild; no service code changed.
+  **QC (c) real data:** entity `019f9f41-5f71-…` on the shared book — **28 KG relations and 6
+  glossary facts at ordinals 3–4** — the first fixture entity this session that exercises both
+  substrates at once.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48aj 2026-08-30 — **a route's doc comment counted for the route ABOVE it: the census said 11 temporal routes, it is 9**
 

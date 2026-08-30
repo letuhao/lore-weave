@@ -52,7 +52,7 @@ STRIDE = 1_000_000
 HOLDS, LEAKS, EMPTY, FLAT, ERROR = "HOLDS", "LEAKS", "EMPTY", "FLAT", "ERROR"
 
 
-def verdict(samples: list[dict], head_rows: int) -> dict:
+def verdict(samples: list[dict], head_rows: int, cumulative: bool = True) -> dict:
     """Pure. `samples` are `{as_of, rows, max_ordinal}` in ascending `as_of` order.
 
     Order matters: EMPTY and LEAKS are checked before monotonicity, because a read that
@@ -79,7 +79,14 @@ def verdict(samples: list[dict], head_rows: int) -> dict:
                 "window is advertised and not applied. This is T48s, exactly"}
 
     rows = [s["rows"] for s in samples]
-    if any(b < a for a, b in zip(rows, rows[1:])):
+    # MONOTONICITY IS NOT UNIVERSAL, and asserting it where it does not hold is a FALSE RED.
+    # `timeline` is documented as "a sliding window (_TIMELINE_CHAPTER_WINDOW chapters) keeps
+    # the memo to recent continuity rather than the whole book" -- a window, not a prefix -- so
+    # a later position legitimately returns fewer rows as the window slides past sparse
+    # chapters. Measured 0/3/9/6 and scored ERROR until the recipe said which shape it is. An
+    # earlier run on another book read 0/34/50/50 and looked monotone only because it capped
+    # at 50, which is how the wrong assumption survived.
+    if cumulative and any(b < a for a, b in zip(rows, rows[1:])):
         return {"verdict": ERROR, "rows": rows, "reason":
                 "a WIDER window returned FEWER rows; a cumulative as-of read cannot do that"}
 
@@ -169,6 +176,26 @@ RECIPES: dict[str, dict] = {
         # 50 is the endpoint's own ceiling: `limit: 200` answers 422 `less_than_equal`, which
         # the sweep reports as ERROR — a recipe that violates a contract measures nothing.
         "head": "widest", "body": {"limit": 50},
+        # A SLIDING WINDOW, not a prefix -- see the monotonicity note in verdict(). BOUNDED and
+        # NON-VACUOUS still hold and are still asserted; those are the spoiler properties.
+        "cumulative": False,
+    },
+    # ── the GLOSSARY substrate. `temporal_capability` advertises BOTH, and until T48ak this
+    # sweep drove only the graph half; the four glossary routes were checked BY HAND across
+    # T48ah/T48ai, which is invisible to CI -- the same argument T48ae made for the graph side.
+    "entities/:entityId/facts": {
+        "verb": "GET", "param": "as_of", "where": "query", "axis": "chapter",
+        "head": "unwindowed", "suffix": "limit=50", "downstream": "glossary",
+    },
+    "state": {
+        "verb": "GET", "param": "as_of", "where": "query", "axis": "chapter",
+        # The position is REQUIRED: unwindowed, `state` answers 0 entities. Its widest sample
+        # is the only honest baseline.
+        "head": "widest", "suffix": "limit=50", "downstream": "glossary",
+        # `entities` is this route's moving quantity. It is NOT in the default envelope list
+        # because `fact-for-check` returns a CONSTANT anchor entity there, and counting it
+        # would add a fixed number to every sample and mask a window that never narrows.
+        "count_keys": ("entities",),
     },
     # 501 by design since T55b — the KAL refuses BY NAME because its downstream has no such
     # route. Kept here rather than omitted: a route left out of this table is UNCOVERED, and
@@ -177,6 +204,18 @@ RECIPES: dict[str, dict] = {
         "verb": "POST", "param": "as_of", "where": "body", "axis": "ordinal",
         "head": "widest", "body": {"query": "a", "limit": 50}, "expect_no_route": True,
     },
+}
+
+#: Temporal routes this sweep does NOT drive, and WHY. A declaration, not an omission: the
+#: alternative is silence, and silence is how `wiki-neighborhood` stayed uncovered through the
+#: whole of T48s's life. Each entry names the check that does cover it.
+COVERED_ELSEWHERE: dict[str, str] = {
+    "entities/:entityId/canonical":
+        "content-shaped, not row-shaped: the assertion is that below the fold head the content "
+        "DEGRADES, which glossary-service's own TestFoldLoop pins against a real DB (T48ah)",
+    "entities/:entityId/canonical-translation":
+        "same content shape, and TestFoldLoop additionally asserts the two canonical surfaces "
+        "AGREE at one position -- the drift T48ai found (T48ai)",
 }
 
 _TEMPORAL_PARAM = re.compile(r"\b(as_of|at_order|chapter_order)\b")
@@ -204,7 +243,7 @@ def route_body(span: str) -> str:
     return chr(10).join(lines)
 
 
-def temporal_graph_routes(sources: list[str]) -> list[str]:
+def temporal_graph_routes(sources: list[str], graph_only: bool = True) -> list[str]:
     """Every GRAPH-BACKED route that accepts a story position, derived from the controllers.
 
     Derived rather than listed for the reason T48w gave: a hand list drifts, and then the
@@ -217,7 +256,7 @@ def temporal_graph_routes(sources: list[str]) -> list[str]:
         for i, m in enumerate(hits):
             end = hits[i + 1].start() if i + 1 < len(hits) else len(src)
             body = route_body(src[m.end():end])
-            if _TEMPORAL_PARAM.search(body) and _GRAPH_CALL.search(body):
+            if _TEMPORAL_PARAM.search(body) and (_GRAPH_CALL.search(body) or not graph_only):
                 found.append(m.group(2))
     return sorted(set(found))
 
@@ -228,7 +267,7 @@ def uncovered(routes: list[str], recipes: dict[str, dict]) -> list[str]:
     A route with no recipe is REPORTED, never skipped: `wiki-neighborhood` was uncovered for
     the whole of T48s's life and the leak survived because nothing said so out loud.
     """
-    return sorted(set(routes) - set(recipes))
+    return sorted(set(routes) - set(recipes) - set(COVERED_ELSEWHERE))
 
 
 #: Envelopes whose length moves with the story position. `entities` is deliberately absent:
@@ -239,19 +278,31 @@ ROW_ENVELOPES = ("edges", "relations", "items", "events")
 ORDINAL_KEYS = ("valid_from_ordinal", "event_order")
 
 
-def rows_and_max(payload: object) -> tuple[int | None, int | None]:
-    """Row count and the largest story ordinal in a response, whatever the envelope."""
+def rows_and_max(payload: object,
+                 keys: tuple[str, ...] = ROW_ENVELOPES) -> tuple[int | None, int | None]:
+    """Row count and the largest story ordinal in a response, whatever the envelope.
+
+    `keys` is per-recipe because one route's signal is another's constant: `state` moves in
+    `entities` while `fact-for-check` returns a fixed anchor entity there.
+    """
     if not isinstance(payload, dict) or "_error" in payload:
         return (None, None)
     total, ords = 0, []
-    for key in ROW_ENVELOPES:
+    for key in keys:
         rows = payload.get(key)
         if isinstance(rows, list):
             total += len(rows)
             for r in rows:
                 if isinstance(r, dict):
-                    ords += [r[k] for k in ORDINAL_KEYS
-                             if isinstance(r.get(k), int)]
+                    ords += [r[k] for k in ORDINAL_KEYS if isinstance(r.get(k), int)]
+                    # One level down: `state` returns entities whose facts carry the ordinals,
+                    # so a boundedness check that only looked at the top level would find none
+                    # and silently assert nothing.
+                    for nested in ("facts", "relations", "events"):
+                        for sub in (r.get(nested) or []):
+                            if isinstance(sub, dict):
+                                ords += [sub[k] for k in ORDINAL_KEYS
+                                         if isinstance(sub.get(k), int)]
     return (total, max(ords) if ords else None)
 
 
@@ -305,7 +356,7 @@ def drive(route: str, recipe: dict, positions: list[int], *, base_url: str, book
         payload = _call(target, recipe["verb"], body, headers)
         if isinstance(payload, dict) and payload.get("_error") == 501:
             return {"as_of": pos, "rows": None, "max_ordinal": None, "_no_route": True}
-        rows, mx = rows_and_max(payload)
+        rows, mx = rows_and_max(payload, recipe.get("count_keys", ROW_ENVELOPES))
         return {"as_of": pos, "rows": rows, "max_ordinal": mx}
 
     samples = [one(p) for p in positions]
@@ -324,7 +375,8 @@ def drive(route: str, recipe: dict, positions: list[int], *, base_url: str, book
         # only honest baseline; calling it 0 would score every such route FLAT.
         head_rows = samples[-1]["rows"]
     v = verdict([{k: s[k] for k in ("as_of", "rows", "max_ordinal")} for s in samples],
-                head_rows if head_rows is not None else 0)
+                head_rows if head_rows is not None else 0,
+                cumulative=recipe.get("cumulative", True))
     # A route whose widest position IS the head cannot be FLAT by construction; that reading
     # belongs to routes with a real unwindowed baseline.
     if recipe["head"] == "widest" and v["verdict"] == FLAT:
@@ -347,6 +399,22 @@ def _selftest() -> int:
          verdict([S(1, 0, None), S(3, 0, None)], 50)["verdict"] != HOLDS, True),
         ("a read that IGNORES the window returns the head at every position — FLAT",
          verdict([S(1, 50, None), S(3, 50, None)], 50), FLAT),
+        ("THE WIRING: `timeline` is DECLARED non-cumulative in its recipe, not merely "
+         "supported as a concept -- the selftest drives verdict() directly, so without this "
+         "the flag could be dropped from the table and only a live run would notice",
+         RECIPES["timeline"].get("cumulative", True), False),
+        ("...and every OTHER recipe stays cumulative unless it says otherwise",
+         sorted(k for k, v in RECIPES.items()
+                if v.get("cumulative", True) is False) == ["timeline"], True),
+        ("A SLIDING WINDOW may return fewer rows at a later position -- not an ERROR",
+         verdict([S(1, 3, 1_000_000), S(3, 9, 3_000_000), S(6, 6, 6_000_000)], 12,
+                 cumulative=False), HOLDS),
+        ("...but it is STILL bounded: a row past the position LEAKS even when sliding",
+         verdict([S(1, 3, 9_000_000)], 12, cumulative=False), LEAKS),
+        ("...and still non-vacuous: all-empty is EMPTY even when sliding",
+         verdict([S(1, 0, None), S(3, 0, None)], 12, cumulative=False), EMPTY),
+        ("...while a CUMULATIVE route keeps the monotonicity check",
+         verdict([S(1, 9, 1_000_000), S(3, 6, 3_000_000)], 12), ERROR),
         ("a WIDER window returning FEWER rows is an ERROR, not a narrower window",
          verdict([S(1, 40, 1_000_000), S(3, 10, 2_000_000)], 50), ERROR),
         ("the boundary is INCLUSIVE: max_ordinal == as_of x STRIDE is fine",
@@ -429,6 +497,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--cap", type=int, default=50)
     ap.add_argument("--project-id", default="",
                     help="the KG project; `fact-for-check` is prefixed projects/:projectId")
+    ap.add_argument("--cold-downstream", default="",
+                    help="downstreams this fixture has no data for; their temporal routes are "
+                         "SKIPPED with a stated reason rather than scored EMPTY")
     ap.add_argument("--sweep", action="store_true",
                     help="drive EVERY graph-backed temporal route, derived from the "
                          "controllers, not just `neighborhood`")
@@ -448,7 +519,7 @@ def main(argv: list[str]) -> int:
             path = os.path.join("services", "knowledge-gateway", "src", "kal", f)
             if os.path.exists(path):
                 srcs.append(io.open(path, encoding="utf-8").read())
-        routes = temporal_graph_routes(srcs)
+        routes = temporal_graph_routes(srcs, graph_only=False)
         gaps = uncovered(routes, RECIPES)
         print(f"[bitemporal] {len(routes)} graph-backed temporal route(s) derived; "
               f"{len(gaps)} with no recipe")
@@ -457,8 +528,16 @@ def main(argv: list[str]) -> int:
                   f"drive is how `wiki-neighborhood` leaked for the whole of T48s's life.")
             return 1
         positions = [int(p) for p in args.positions.split(",") if p.strip()]
+        cold = {c.strip() for c in args.cold_downstream.split(",") if c.strip()}
         bad = 0
         for route in routes:
+            if route in COVERED_ELSEWHERE:
+                print(f"  {'ELSEWHERE':<9} {route:<38} {COVERED_ELSEWHERE[route][:70]}")
+                continue
+            if RECIPES[route].get("downstream") in cold:
+                # Declared cold for THIS fixture (T48aa). A skip that says so is not a gap.
+                print(f"  {'COLD':<9} {route:<38} downstream declared cold for this fixture")
+                continue
             r = drive(route, RECIPES[route], positions, base_url=args.base_url,
                       book_id=args.book_id, project_id=args.project_id or args.book_id,
                       entity_id=args.entity_id, headers=headers)

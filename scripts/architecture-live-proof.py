@@ -249,11 +249,17 @@ def main(argv: list[str]) -> int:
     # A NEEDLE, not just an exit code: the smoke exits 0 only on HOLDS today, but the leg
     # should assert the verdict it is named for rather than inherit it from a convention.
     leg("5 TEMPORAL a windowed read HOLDS its story position",
-        ([py, "scripts/bitemporal-window-live-smoke.py", "--base-url", args.base_url,
-          "--book-id", args.book_id, "--user-id", args.user_id,
-          "--internal-token", args.internal_token, "--entity-id", args.entity_id]
-         if (args.book_id and args.user_id and args.internal_token and args.entity_id)
-         else None), '"verdict": "HOLDS"')
+        # T48ak — `--sweep`: EVERY temporal route, both substrates, derived from the
+        # controllers. This leg drove `neighborhood` alone until now, which is the route the
+        # smoke was derived from; T48ad found the same defect on a sibling it never touched.
+        # `--cold-downstream` is the SAME declaration the SURFACE leg makes about this fixture.
+        ([py, "scripts/bitemporal-window-live-smoke.py", "--sweep", "--base-url", args.base_url,
+          "--book-id", args.book_id, "--user-id", args.user_id, "--project-id", args.project_id,
+          "--internal-token", args.internal_token, "--entity-id", args.entity_id,
+          "--cold-downstream", args.cold_downstream]
+         if (args.book_id and args.user_id and args.internal_token and args.entity_id
+             and args.project_id)
+         else None), "not holding their position")
     leg("4 PORT     class (d) discharged by one of §10.1's two paths",
         [py, "scripts/port-adoption-gate.py"], "class (d) UNDISCHARGED 0/")
 
