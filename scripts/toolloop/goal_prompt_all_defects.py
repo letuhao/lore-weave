@@ -194,7 +194,21 @@ def rows() -> tuple[list[tuple], collections.Counter]:
         mentioned = set(_DQ_TOKEN.findall(str(named or "")))
         blocked = bool(mentioned & still_open)
         rank = CLASS_ORDER.index(cls) if cls in CLASS_ORDER else len(CLASS_ORDER)
-        out.append((blocked, rank, v.get("queue_group") or 4,
+        # 🔴 COERCED, because a single bad value CRASHED the generator that ends the run.
+        # `out.sort()` compares this element across rows, so one row carrying a STRING where the
+        # convention is an int 1-4 raised TypeError and the whole queue became unreadable —
+        # measured 2026-08-31, from a row I had just filed with queue_group="composition".
+        # A malformed priority must cost that row its ordering, never everyone else's queue.
+        # 🔴 COERCED, because a single bad value CRASHED the generator that ends the run.
+        # `out.sort()` compares this element across rows, so one row carrying a STRING where the
+        # convention is an int 1-4 raised TypeError and the whole queue became unreadable —
+        # measured 2026-08-31, from a row I had just filed with queue_group="composition". The
+        # crash needs a TIE on (blocked, rank) to surface, which is why it hid until two rows of
+        # one class were open at once. A malformed priority must cost that row its ordering,
+        # never everyone else's queue.
+        _qg = v.get("queue_group")
+        _qg = _qg if isinstance(_qg, int) else 4
+        out.append((blocked, rank, _qg,
                     not v.get("queue_anchor"), k, cls,
                     " ".join(inv.split())[:EXCERPT], named if blocked else None))
     # DQ-blocked LAST and never NEXT: they cannot be closed without an owner decision, and a

@@ -49,6 +49,22 @@ import goal_prompt_all_defects as g  # noqa: E402
 LEDGER = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text("utf-8"))
 
 
+@pytest.fixture
+def pinned(tmp_path, monkeypatch):
+    """The ledger, PINNED, so the expectation and `g.rows()` read the same bytes.
+
+    🔴 THESE TESTS WERE RACY AND IT COST A RED SUITE. The module reads the ledger once at import
+    and `g.rows()` re-reads it from disk; a ledger edit between the two — routine in this loop,
+    which closes rows while a suite runs — made them disagree and two guards failed spuriously.
+    A guard that goes red because the file it measures was edited is measuring the clock.
+    """
+    doc = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_text("utf-8"))
+    p = tmp_path / "pinned.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    monkeypatch.setattr(g, "LEDGER", p)
+    return doc
+
+
 class TestTheVocabularyHasExactlyOneHome:
     def test_terminal_and_open_partition_the_closed_set(self):
         assert set(gate.DEFECT_TERMINAL_STATES) | set(gate.DEFECT_OPEN_STATES) \
@@ -74,10 +90,10 @@ class TestTheVocabularyHasExactlyOneHome:
 
 
 class TestEveryUnfinishedRowIsQUEUED:
-    def test_the_proven_rows_are_in_the_queue(self):
+    def test_the_proven_rows_are_in_the_queue(self, pinned):
         rows, _ = g.rows()
         queued = {r[4] for r in rows}
-        proven = {k for k, v in (LEDGER["defects"] or {}).items()
+        proven = {k for k, v in (pinned["defects"] or {}).items()
                   if isinstance(v, dict) and v.get("state") == "proven"}
         assert proven, "no row is at `proven` any more — re-derive whether this guard still bites"
         missing = sorted(proven - queued)
@@ -85,20 +101,20 @@ class TestEveryUnfinishedRowIsQUEUED:
             f"{len(missing)} rows at `proven` are absent from the queue that ends the run: "
             f"{missing[:5]}")
 
-    def test_the_queue_total_equals_every_non_terminal_row(self):
+    def test_the_queue_total_equals_every_non_terminal_row(self, pinned):
         """ANTI-VACUITY AND ANTI-DRIFT IN ONE: the count is re-derived from the ledger rather than
         pinned, so it cannot rot, and it cannot pass by the queue being empty."""
         rows, _ = g.rows()
-        expected = {k for k, v in (LEDGER["defects"] or {}).items()
+        expected = {k for k, v in (pinned["defects"] or {}).items()
                     if isinstance(v, dict) and v.get("state") in gate.DEFECT_OPEN_STATES}
         assert len(expected) >= 40, f"only {len(expected)} non-terminal rows — the ledger changed"
         assert {r[4] for r in rows} == expected
 
-    def test_a_terminal_row_is_NOT_queued(self):
+    def test_a_terminal_row_is_NOT_queued(self, pinned):
         """The other half. A partition that put everything in OPEN would pass every test above."""
         rows, _ = g.rows()
         queued = {r[4] for r in rows}
-        fixed = {k for k, v in (LEDGER["defects"] or {}).items()
+        fixed = {k for k, v in (pinned["defects"] or {}).items()
                  if isinstance(v, dict) and v.get("state") == "fixed"}
         assert len(fixed) > 100, "the fixed population vanished — this assertion means nothing"
         assert not (queued & fixed), "a `fixed` row is being queued as work"
@@ -113,3 +129,41 @@ class TestAnUnknownStateRaises:
         monkeypatch.setattr(g, "LEDGER", p)
         with pytest.raises(ValueError, match="not one of"):
             g.rows()
+
+
+class TestOneBadRowCannotBreakTheWholeQueue:
+    """🔴 MEASURED 2026-08-31: the generator that ENDS THE RUN crashed outright.
+
+    `rows()` builds a sort key containing `queue_group`, and `out.sort()` compares that element
+    across every row. The convention is an int 1-4 (or absent); one row filed with
+    `queue_group="composition"` made the comparison `str < int` and raised TypeError, so the
+    queue — and `--check` with it — produced nothing at all.
+
+    A malformed priority must cost THAT ROW its ordering, never everyone else's queue. The state
+    field is different and is deliberately strict: an unrecognised STATE raises, because it means
+    nobody can say whether the row is work. A bad priority has an obvious safe default.
+    """
+
+    def test_a_string_queue_group_does_not_crash_the_queue(self, tmp_path, monkeypatch):
+        led = json.loads(json.dumps(LEDGER))
+        # 🔴 TWO ROWS, AND THAT IS THE WHOLE POINT. Tuple comparison only reaches the
+        # queue_group element when the earlier ones TIE, so a single injected row sorts by
+        # (blocked, rank) and never compares the bad value — the first version of this test did
+        # exactly that and stayed GREEN with the fix removed. These two are identical up to the
+        # priority, so the comparison must reach it.
+        for nm, qg in (("D-A-ROW-WITH-A-STRING-PRIORITY", "composition"),
+                       ("D-A-ROW-WITH-AN-INT-PRIORITY", 2)):
+            led["defects"][nm] = {
+                "state": "open", "defect_class": "instrument", "queue_group": qg,
+                "invariant": "a bad priority must not break the queue",
+            }
+        p = tmp_path / "ledger.json"
+        p.write_text(json.dumps(led), encoding="utf-8")
+        monkeypatch.setattr(g, "LEDGER", p)
+        rows, _ = g.rows()          # must not raise
+        assert "D-A-ROW-WITH-A-STRING-PRIORITY" in {r[4] for r in rows}
+
+    def test_the_ledger_on_disk_uses_the_int_convention(self):
+        bad = {k: v.get("queue_group") for k, v in (LEDGER["defects"] or {}).items()
+               if v.get("queue_group") is not None and not isinstance(v.get("queue_group"), int)}
+        assert not bad, f"queue_group must be an int 1-4 or absent: {bad}"

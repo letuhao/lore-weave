@@ -2,7 +2,7 @@
 
 *Generated 2026-08-31 by `scripts/toolloop/dq_digest.py`. Derived from the ledger at emit time — do not hand-edit; re-run it.*
 
-**25 defects are open and 20 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
+**26 defects are open and 21 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
 
 A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there and builds it **as worded** — if it cannot be built, the question comes back with the measurement showing why, rather than a substituted mechanism.
 
@@ -338,6 +338,14 @@ Each of these carries a ruling or a premise that this loop measured and found wr
 **Why it is yours, not mine:** It is a rule about what EVIDENCE closes a row, not a fact about this system, and the standing bar cuts both ways here. 'A row that STOPPED REPRODUCING is not fixed: no fix, no credit' exists to stop exactly this kind of reasoning — but its premise is 'no fix', and here a fix shipped, was proven red-able, and is proven firing in the row's own scenario. Deciding that a shipped fix plus full symptom…
 
 **Blocks:** `D-TURN-STALLS-AFTER-THE-SURFACE-IS-BUILT`
+
+### DQ-T85 — releases 1 defect
+
+**Asked:** What should a whole-run reader receive when a run holds ONE PACKAGE PER ARC? The read is wrong in two places (plan_forge_service.py:885 validate, :989 refine) and the repair shape is a design choice I should not make alone, because it changes what an LLM is shown.
+
+**My recommendation:** (a). It reuses a fold that already exists and is already guarded one file over, it keeps the payload shape the refiner is prompted with, and it makes the two readers agree — which is the invariant the sibling row established. I would fix validate() in the same change even though its only package-derived rule is premise_max: leaving one of two identical reads unfixed is how OBS-T1 came to sit unfiled inside another row's prose for weeks. WHY I AM NOT JUST DOING IT: (a) changes what an LLM receives on a real authoring path, and this loop's rule is that a mechanism is never substituted quietly. If you take (a) I can build and prove it; the reproduction fixture is a 3-arc spec, which `_autocomp…
+
+**Blocks:** `D-PLAN-VALIDATE-PREVIEWS-ONE-ARC-OF-A-MULTI-ARC-PACKAGE`
 
 ### DQ-T1 — releases 0 defects
 
