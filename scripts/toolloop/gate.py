@@ -101,6 +101,23 @@ def is_gate_backed(tool: str, row: dict) -> bool:
 #: and must name it. See the comment in `recompute_progress` for what the open set cost.
 DEFECT_STATES = ("open", "fixed", "proven", "withdrawn", "superseded")
 
+#: WHICH OF THOSE STATES IS STILL WORK. The closed set above says what a row MAY say; it never
+#: said which of them means finished, so every consumer decided for itself — and one of them
+#: decided by omission.
+#:
+#: 🔴 MEASURED 2026-08-30. `goal_prompt_all_defects.py` selected work with `state != "open"` and
+#: skipped everything else, so 25 rows at `proven` were invisible to the queue AND to the
+#: `--check` that ends the run. The ledger was not hiding them — `progress` carries
+#: `defects_proven: 25` right beside `defects_open: 24` — the QUEUE was, while its own header
+#: said "nothing is excluded". `proven` is not `fixed`, and the goal's bar is `fixed`.
+#:
+#: TERMINAL IS THE LIST THAT IS WRITTEN DOWN, AND OPEN IS THE REMAINDER, deliberately in that
+#: direction: a state token added later falls into OPEN and becomes visible, rather than
+#: vanishing from the queue the way `proven` did. Fail loud, not quiet.
+DEFECT_TERMINAL_STATES = ("fixed", "withdrawn", "superseded")
+DEFECT_OPEN_STATES = tuple(s for s in DEFECT_STATES if s not in DEFECT_TERMINAL_STATES)
+assert set(DEFECT_TERMINAL_STATES) <= set(DEFECT_STATES), "a terminal state left the closed set"
+
 
 class Gate:
     def __init__(self, batch: dict, path: pathlib.Path):

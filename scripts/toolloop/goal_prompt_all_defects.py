@@ -32,6 +32,9 @@ import pathlib
 import re
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import gate  # noqa: E402  — ONE home for the state vocabulary; see DEFECT_OPEN_STATES
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
 BUDGET = 4000
@@ -163,7 +166,19 @@ def rows() -> tuple[list[tuple], collections.Counter]:
     counts: collections.Counter = collections.Counter()
     out: list[tuple] = []
     for k, v in (led.get("defects") or {}).items():
-        if not isinstance(v, dict) or v.get("state") != "open":
+        if not isinstance(v, dict):
+            continue
+        # 🔴 THE QUEUE ASKS THE VOCABULARY, IT DOES NOT GUESS. This read `state != "open"` and
+        # skipped the rest, which silently dropped 25 rows at `proven` — not fixed, not
+        # withdrawn, and by this goal's own bar not finished. An unknown token RAISES rather
+        # than falling out, for the reason `recompute_progress` records at length: a row that
+        # matches nothing must be noticed, never absorbed.
+        st = v.get("state")
+        if st not in gate.DEFECT_STATES:
+            raise ValueError(
+                f"defect {k!r} has state {st!r}, which is not one of {gate.DEFECT_STATES}. "
+                "The queue cannot decide whether it is work.")
+        if st not in gate.DEFECT_OPEN_STATES:
             continue
         cls = v.get("defect_class") or "unclassified"
         counts[cls] += 1
