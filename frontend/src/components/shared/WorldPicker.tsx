@@ -143,6 +143,18 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     );
   }
 
+  // A FULL page means "there may be more", and this picker cannot tell the
+  // difference. It asks for a limit the route CLAMPS (200 -> 100) and then
+  // filters by name in the BROWSER, over whatever came back — so past the
+  // ceiling it omits entries with no symptom at all. That is exactly the defect
+  // the library page shipped: a book at rank 32 of 83 was unfindable by name and
+  // was recorded as a Vietnamese diacritic bug for six days.
+  //
+  // The real repair is a server-side `q` on this route, as the books list now
+  // has. Until that lands the truncation is at least VISIBLE, which is the
+  // difference between a wrong answer and an admitted one.
+  const pageIsFull = (worlds?.length ?? 0) >= Math.min(limit, 100);
+
   return (
     <div ref={rootRef} className="relative">
       <div className="flex items-center gap-2 rounded-md border bg-input px-3 py-2">
@@ -207,6 +219,14 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
                 <Plus className="h-3.5 w-3.5 shrink-0" />
                 <span>Create new world</span>
               </button>
+            </li>
+          )}
+          {pageIsFull && (
+            <li
+              className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
+              data-testid="picker-page-full"
+            >
+              Showing the first {worlds?.length ?? 0} — refine your search; more may exist.
             </li>
           )}
         </ul>

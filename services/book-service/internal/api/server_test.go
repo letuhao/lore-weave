@@ -591,3 +591,83 @@ func TestPlainTextToTiptapJSON(t *testing.T) {
 		}
 	})
 }
+
+// The library search's SQL fragment. The bug this replaces was not a crash: the
+// page asked for no limit, took the endpoint's default of 20, filtered those 20
+// in the browser, and displayed `total` from the server. A user with 83 books was
+// shown 83 and searched 20, so a book at rank 32 could not be found by name at
+// all — recorded for six days as a Vietnamese diacritic defect. The encoding was
+// never involved: the DB stores NFC and `title ILIKE '%Đế%'` matches. // doc-language-gate: ok -- the corpus span the bug was reported against
+func TestAppendTitleSearchFilter(t *testing.T) {
+	owner, lifecycle := "u1", "active"
+
+	t.Run("no query leaves the args and the SQL untouched", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("", []any{owner, lifecycle})
+		if frag != "" {
+			t.Fatalf("empty query must add no SQL, got %q", frag)
+		}
+		if len(args) != 2 {
+			t.Fatalf("empty query must append no args, got %d", len(args))
+		}
+	})
+
+	t.Run("the placeholder names the position the pattern lands at", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("Mị Đế", []any{owner, lifecycle}) // doc-language-gate: ok -- the corpus span the bug was reported against
+		if frag != " AND b.title ILIKE $3" {
+			t.Fatalf("fragment = %q, want $3 (after owner, lifecycle)", frag)
+		}
+		if len(args) != 3 {
+			t.Fatalf("args = %d, want 3", len(args))
+		}
+		// $3 must BE the pattern. An off-by-one here binds the lifecycle string
+		// as the search term and silently returns nothing.
+		if got, want := args[2], "%Mị Đế%"; got != want { // doc-language-gate: ok -- the corpus span the bug was reported against
+			t.Fatalf("args[2] = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("the pattern survives multi-byte input verbatim", func(t *testing.T) {
+		// escapeLikePattern only rewrites \, %% and _; a byte-oriented escaper
+		// would corrupt these and the miss would look like a diacritic problem
+		// rather than a mangled pattern.
+		for _, q := range []string{"Đế", "Mị Đế", "封神演義", "Winds"} { // doc-language-gate: ok -- the corpus span the bug was reported against
+			_, args := appendTitleSearchFilter(q, []any{owner, lifecycle})
+			if got, want := args[2], "%"+q+"%"; got != want {
+				t.Fatalf("q=%q produced %v, want %v", q, got, want)
+			}
+		}
+	})
+
+	t.Run("LIKE metacharacters are escaped, not honoured", func(t *testing.T) {
+		_, args := appendTitleSearchFilter("100%_x", []any{owner, lifecycle})
+		if got, want := args[2], `%100\%\_x%`; got != want {
+			t.Fatalf("args[2] = %v, want %v", got, want)
+		}
+	})
+
+	// The half that keeps `total` honest: the COUNT is built from the SAME
+	// fragment and a prefix of the SAME args. If the count query were given the
+	// unfiltered arg list, `total` would describe the library while `items`
+	// described the search — the original defect wearing different clothes.
+	t.Run("count args are a prefix of the page args", func(t *testing.T) {
+		frag, args := appendTitleSearchFilter("Đế", []any{owner, lifecycle}) // doc-language-gate: ok -- the corpus span the bug was reported against
+		countArgs := append([]any{}, args...)
+		pageArgs := append(args, 20, 0)
+
+		if len(countArgs) != 3 {
+			t.Fatalf("count args = %d, want 3 (owner, lifecycle, pattern)", len(countArgs))
+		}
+		if len(pageArgs) != 5 {
+			t.Fatalf("page args = %d, want 5 (+limit, offset)", len(pageArgs))
+		}
+		for i := range countArgs {
+			if countArgs[i] != pageArgs[i] {
+				t.Fatalf("arg %d diverges: count=%v page=%v", i, countArgs[i], pageArgs[i])
+			}
+		}
+		// And the fragment the count uses must be the same string.
+		if frag != " AND b.title ILIKE $3" {
+			t.Fatalf("fragment = %q", frag)
+		}
+	})
+}
