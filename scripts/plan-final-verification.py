@@ -67,7 +67,18 @@ REQUIRED_PARTS = ("blocker", "evidence", "unblock", "mechanism", "retry")
 #: The spec every unfinished task must cite. A task may be unfinished; it may not be UNDECIDED.
 #: "I have not typed it yet" is a schedule; "nobody has decided" is the thing this forbids.
 SPEC_DOC = "docs/specs/2026-08-13-knowledge-refactor-open-decisions.md"
-SPEC_RE = re.compile(r"2026-08-13-knowledge-refactor-open-decisions|📐 SPEC|DECIDED", re.I)
+#: What counts as "this row is DECIDED".
+#:
+#: T48au — this was `…|DECIDED` with `re.I`, and case-insensitive `DECIDED` is a substring of
+#: **UNDECIDED**. So a body saying *"this is undecided"* satisfied the check that the row is not
+#: undecided — as did *"we have not decided"* — and the gate's own failure message names the very
+#: word that defeats it. Measured: a `[~]` row's body here runs to 765 lines, so the loose form
+#: could not fail for any row that had accumulated evidence.
+#:
+#: The plan's own convention is the bolded `📐 **DECIDED**`, so that is what is matched, with no
+#: `re.I` on that arm. Measured before tightening: 0 of the 3 open rows lose their citation.
+SPEC_RE = re.compile(
+    r"2026-08-13-knowledge-refactor-open-decisions|📐 SPEC|\*\*DECIDED\*\*")
 
 TASK_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9-]+)\*\*", re.M)
 
@@ -115,6 +126,18 @@ def _selftest() -> int:
          "gate-wiring-gate.py" in body and "runs NOWHERE" in body),
         ("PLAN_GATES is a real subset, not secretly everything",
          0 < len(PLAN_GATES) < 20),
+        # T48au — the DECIDED marker must not be satisfied by the word it forbids. It was
+        # `DECIDED` under `re.I`, and "decided" is a substring of "UNDECIDED", so a row saying
+        # "this is undecided" passed the check that it is not undecided. With bodies running to
+        # 765 lines, the loose form could not fail for any row carrying evidence.
+        ("UNDECIDED does not satisfy the DECIDED marker",
+         not SPEC_RE.search("this row is UNDECIDED and blocked")),
+        ("...nor does 'we have not decided'",
+         not SPEC_RE.search("we have not decided yet")),
+        ("...while the plan's own bolded convention does",
+         bool(SPEC_RE.search("📐 **DECIDED** — settled in §4.3"))),
+        ("...and so does the spec link, which is the other accepted form",
+         bool(SPEC_RE.search("see " + SPEC_DOC))),
     ]
     failures = 0
     print("plan-final-verification - selftest (offline)")

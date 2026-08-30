@@ -131,6 +131,15 @@ command -v python >/dev/null 2>&1 || PY=python3
 # ...and the same question of the MAKEFILE: `ci-local` printed "All local CI gates PASS"
 # while running 15 lints and none of the repo's 117 gates. T48k's defect, one directory up.
 "$PY" "$ROOT/scripts/makefile-claim-gate.py"
+
+# THE FOURTH PLAN GATE. The goal names four -- verify, row-honesty, progress-block --check,
+# acceptance --floor -- and three were wired here. `plan-final-verification` was not: its only
+# two mentions in this file are COMMENTS about what it does. It is the one that asserts every
+# task is done-with-evidence or DECIDED with a spec citation, and that no QC row certifies open
+# work -- and it ran only when a human remembered. 6s, and every plan edit should pay it.
+if git diff --cached --name-only | grep -q "^docs/plans/"; then
+  "$PY" "$ROOT/scripts/plan-final-verification.py"
+fi
 #
 # gate-number-visibility-gate is 24s, so it runs only when scripts/ actually changes -- the
 # same path-scoping the knowledge-gateway suite got in T48al. A ratchet that prints nothing

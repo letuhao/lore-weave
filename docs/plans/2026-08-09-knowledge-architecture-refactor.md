@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 54 of 56 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 55 of 57 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (47/48) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (48/49) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48au 2026-08-30 — **the goal names four plan gates; the fourth ran nowhere — and its "is this DECIDED" check was satisfied by the word UNDECIDED**
+
+  ```
+  the goal:  "Keep the four plan gates green (verify, row-honesty, progress-block --check,
+              acceptance --floor)"
+  wired:      row-honesty ✓   progress-block ✓   acceptance ✓   verify ✗
+  its only two mentions in the hook were COMMENTS about what it does
+  ```
+
+  🎯 **`plan-final-verification` is the one that asserts every task is done-with-evidence or
+  DECIDED with a spec citation, and that no QC row certifies open work** — and nothing ran it. Not
+  the hook, not a workflow. It ran when a human remembered, which for this session meant me, by
+  hand, once a cycle. **6 seconds**, now scoped to any commit touching `docs/plans/`.
+
+  🔴 **AND THE CHECK IT ENFORCES COULD NOT FAIL.** `SPEC_RE` was
+  `…|DECIDED` with `re.I`, and **"decided" is a substring of "UNDECIDED"**:
+
+  ```
+  'this row is UNDECIDED and blocked'  -> satisfies the "is it decided" check: True
+  'we have not decided'                -> satisfies the "is it decided" check: True
+  ```
+
+  The gate's own failure message reads *"tasks are unfinished AND undecided (cite …, or mark the
+  body DECIDED)"* — **the word it forbids satisfies the test for it**. And a `[~]` row's body here
+  runs to **765 lines**, so the loose form could not fail for any row that had accumulated
+  evidence. Three open rows, three passes, no possible red.
+
+  🔬 **Found by biting, not by reading.** I stripped T33's spec citation expecting a red and got
+  `3 unfinished task(s) cite a decision; 0 do not`. Removing *every* SPEC_DOC mention in its
+  765-line block changed nothing either — which is what sent me to the regex instead of the plan.
+  **A bite that fails to bite is a finding**, and it was the second time this session (T48ar-2).
+
+  📐 **Tightened to the plan's own convention**, `📐 **DECIDED**` or the spec link, with no
+  `re.I` on that arm. Measured BEFORE changing it (rule 8): **0 of the 3 open rows lose their
+  citation**, so the fix costs nothing and the gate stays green for the right reason.
+
+  🧪 **TWO BITES.**
+
+  ```
+  T48au-1  the plan: T33's citation removed
+           before the fix  3 cite a decision; 0 do not                          exit 0
+           after the fix   2 cite; 1 does not — FAIL, naming T33                exit 1
+  T48au-2  the marker restored to `DECIDED` under re.I
+           2 selftest case(s) red                                                exit 1
+  ```
+
+  The first is the same edit, before and after — the clearest way to show a criterion that could
+  not fail now can. Both restored; the plan and the gate are byte-identical to their starts.
+
+  ⚖️ **Measured and NOT acted on, stated rather than buried:** 35 enforcement-shaped scripts
+  (live smokes, sweeps, `plan-final-verification` itself) sit outside `gate-wiring-gate`'s
+  name predicate, which reports *"118 gate(s) discovered, all wired or exempted"*. Most are
+  legitimately outside it — they need a live stack — and adding 35 EXEMPT rows would be churn
+  for its own sake. **The one that mattered was the plan's own verifier, and that is the one this
+  row fixes.** The rest is recorded so the next reader knows the census has a boundary rather
+  than discovering it the way I did.
+
+  **QC (a) gates:** `plan-final-verification` live and `--selftest` **9/9** (4 new marker cases);
+  `gate-teeth-gate`, `gate-number-visibility-gate`, `makefile-claim-gate`, `gate-wiring-gate` —
+  all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam crossed, no image changed; this cycle edits a hook
+  and one verifier. The live half is the two bites, one of them on the real plan.
+  **QC (c) real data:** the plan itself — 3 open rows, a 765-line body for T33, and the
+  before/after of the identical citation removal.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48at 2026-08-30 — **the gate that checks gates can fail was counting the mechanism `gate-wiring-gate` replaced: 75 named, 118 actually run**
 
