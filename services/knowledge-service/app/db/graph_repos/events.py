@@ -600,6 +600,68 @@ LIMIT $limit
 """
 
 
+# ── max_event_order_in_band ───────────────────────────────────────────
+
+# Archived events are DELIBERATELY counted. An archived event still owns its slot on the
+# reading axis; handing its number to a new event would collide the moment it is restored,
+# and a collision that only appears on restore is the worst kind to diagnose.
+_MAX_EVENT_ORDER_IN_BAND_CYPHER = """
+MATCH (e:Event)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.event_order >= $lo
+  AND e.event_order < $hi
+RETURN max(e.event_order) AS mx
+"""
+
+
+async def max_event_order_in_band(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    lo: int,
+    hi: int,
+) -> int | None:
+    """Highest `event_order` already used in `[lo, hi)`, or None when the band is empty.
+
+    🔴 **WHY (2026-08-30).** `pass2_writer` assigned `event_order = chapter_base + idx` with
+    `idx` restarting at 0 on every call, while `chapter_base` depends only on the chapter. A
+    chapter extracted by more than one job therefore numbered its events TWICE. Measured on
+    封神演義 ch.1 in the iso store: 3 jobs, 20 events, 7 duplicate values, every collision
+    cross-job and none within a job.
+
+    The damage is not cosmetic. `event_order` is the reading axis: the spoiler cutoff, the
+    timeline, `list_events_in_order`, and the causal pass's forward-only guard all read it.
+    Duplicates make every consumer's ordering depend on the store's row order — a stable sort
+    on a colliding key has no tie-break — so the axis silently stops being an order.
+
+    The band IS the chapter (`chapter_base = ordinal × EVENT_ORDER_CHAPTER_STRIDE`), so this
+    is a numeric range rather than a join through `EVIDENCED_BY`: it also catches events
+    written into the chapter's band by a path that attached a different source.
+
+    ⚠️ **Concurrency is NOT solved by this.** Two jobs extracting the same chapter at the
+    same time both read the same maximum and both write above it. That is a narrower and
+    rarer failure than the deterministic one above — which fired on every re-extraction —
+    and closing it needs a reservation the graph does not currently offer.
+    """
+    result = await run_read(
+        session,
+        _MAX_EVENT_ORDER_IN_BAND_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        lo=lo,
+        hi=hi,
+    )
+    async for record in result:
+        value = record["mx"]
+        return int(value) if value is not None else None
+    return None
+
+
+# ── list_events_for_chapter ───────────────────────────────────────────
+
+
 async def list_events_for_chapter(
     session: CypherSession,
     *,

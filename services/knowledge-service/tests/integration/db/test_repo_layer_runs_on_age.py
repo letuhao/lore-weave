@@ -46,7 +46,9 @@ _WAVE_3 = 29   # the READ/DERIVE surface across nine more modules              (
 _WAVE_4 = 54   # the BULK: entities (36), facts (12), events (12)              (T87)
 _WAVE_5 = 12   # enrichment, hierarchy summaries, the last janitors            (T88)
 _WAVE_6 = 1    # set_entity_embedding — NOT a vector-procedure function        (T91)
-_PROVEN_ON_AGE = _WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5 + _WAVE_6
+_WAVE_7 = 1    # max_event_order_in_band — the read that stops event_order colliding
+_PROVEN_ON_AGE = (_WAVE_1 + _WAVE_2 + _WAVE_3 + _WAVE_4 + _WAVE_5 + _WAVE_6
+                  + _WAVE_7)
 
 _GRAPH = "repo_conformance"
 
@@ -698,3 +700,63 @@ async def test_purge_project_runs_on_AGE_and_NAMES_what_it_could_not_do(age_sess
         f"the index sweep must come back as a NAMED skip, not an exception and not silence: "
         f"{out}"
     )
+
+
+async def test_wave_7_the_event_order_band_read_runs_on_AGE(age_session):
+    """The read that stops `event_order` colliding across extraction jobs.
+
+    🔴 **The bug it exists for, measured on the iso store 2026-08-30.** `pass2_writer`
+    assigned `event_order = chapter_base + idx` with `idx` restarting at 0 on every call,
+    while `chapter_base` depends only on the chapter. 封神演義 ch.1 had been written by three
+    jobs and carried **7 duplicate `event_order` values across 20 events**, every collision
+    cross-job and none within a job. `event_order` is the reading axis, so duplicates make a
+    stable sort fall through to the store's row order and the axis stops being an order with
+    nothing failing anywhere.
+
+    ⚠️ **This function is why the gate is right to insist.** Its unit tests drive a
+    `MagicMock` session, which proves the Python unwraps a record and nothing about whether
+    AGE accepts the query — and every arm below has a way to pass on Neo4j and fail here:
+    `max()` over an empty match, and a parameter compared with `IS NULL`.
+
+    The empty-band arm is the one that matters. `None` and `0` are both falsy and the caller
+    computes `idx = highest - chapter_base + 1`; a `0` would put every event of a fresh
+    chapter **below its own band**, in the previous chapter's.
+    """
+    s = age_session
+    from app.db.graph_repos import events as ev
+
+    uid, proj = f"u-{uuid.uuid4().hex[:8]}", f"p-{uuid.uuid4().hex[:8]}"
+
+    # An EMPTY band, before anything is written. `max()` over no rows.
+    empty = await ev.max_event_order_in_band(
+        s, user_id=uid, project_id=proj, lo=3_000_000, hi=4_000_000)
+    assert empty is None, (
+        f"an empty band answered {empty!r}. `0` sends the writer below its own band")
+
+    for order in (3_000_000, 3_000_004, 3_000_002):
+        await ev.merge_event(s, user_id=uid, project_id=proj,
+                             title=f"E{order}", source_type="chapter",
+                             event_order=order)
+    # A different chapter's band, to prove the bounds are doing work rather than the query
+    # just returning the project maximum.
+    await ev.merge_event(s, user_id=uid, project_id=proj, title="next chapter",
+                         source_type="chapter", event_order=4_000_009)
+
+    got = await ev.max_event_order_in_band(
+        s, user_id=uid, project_id=proj, lo=3_000_000, hi=4_000_000)
+    assert got == 3_000_004, (
+        f"expected the band's highest slot, got {got!r} — 4000009 leaking in means the "
+        f"bounds are not applied and every later chapter gets renumbered")
+
+    # The `$project_id IS NULL` branch: valid Cypher on Neo4j, and AGE has to agree.
+    unscoped = await ev.max_event_order_in_band(
+        s, user_id=uid, project_id=None, lo=3_000_000, hi=4_000_000)
+    assert unscoped == 3_000_004, (
+        f"the unscoped branch returned {unscoped!r}; if `$project_id IS NULL` evaluated "
+        f"false on AGE this would be None and every write would restart at 0 again")
+
+    # Tenancy — the half that a query ignoring `user_id` would still satisfy above.
+    assert await ev.max_event_order_in_band(
+        s, user_id=f"u-{uuid.uuid4().hex[:8]}", project_id=proj,
+        lo=3_000_000, hi=4_000_000) is None, (
+        "another user could read this chapter's band")

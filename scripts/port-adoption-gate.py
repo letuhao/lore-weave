@@ -1626,7 +1626,7 @@ def scan_engine_literals() -> dict[str, list[str]]:
 #: procedure at all, and running it (T91) showed it writes and enforces tenancy on AGE
 #: unchanged. Adjacency to the vector layer was doing the work that a measurement should
 #: have.
-MIN_AGE_PROVEN_FUNCTIONS = 118
+MIN_AGE_PROVEN_FUNCTIONS = 119
 
 #: T17 A33 — class (d) modules binding an ENGINE-TOUCHING repo function not yet proven on AGE.
 #: This is §10.1's second path expressed as a number, and it is **0**: of the 32 modules the

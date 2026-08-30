@@ -66,6 +66,7 @@ from app.db.graph_repos.entities import (
 from app.db.graph_repos.entity_status import merge_entity_status
 from app.db.graph_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
+    max_event_order_in_band,
     merge_event,
     rerank_chronological_order,
 )
@@ -809,7 +810,28 @@ async def write_pass2_extraction(
     statuses_merged = 0  # A2-S1b — :EntityStatus transitions written
     status_transitions: list[StatusTransition] = []  # D-T32 — projected for glossary
     dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
+    # 🔴 `idx` MUST NOT RESTART AT 0 FOR A CHAPTER THAT ALREADY HAS EVENTS.
+    # It used to, while `chapter_base` depends only on the chapter — so a chapter extracted
+    # by a second job numbered its events over the top of the first job's. Measured on
+    # 封神演義 ch.1: 3 jobs, 20 events, 7 duplicate `event_order` values, every collision
+    # cross-job. `event_order` is the reading axis (spoiler cutoff, timeline, the causal
+    # pass's forward-only guard), and duplicates make every consumer's ordering fall through
+    # to the store's row order, so the axis stops being an order without anything failing.
+    # Continuing from the band's current maximum keeps merges stable — an event that already
+    # exists keeps its original number via merge_event's MIN rule — and gives genuinely new
+    # events slots nobody holds. See `max_event_order_in_band` for the concurrency limit
+    # this does NOT close.
     idx = 0
+    if chapter_base is not None:
+        highest = await max_event_order_in_band(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            lo=chapter_base,
+            hi=chapter_base + EVENT_ORDER_CHAPTER_STRIDE,
+        )
+        if highest is not None:
+            idx = highest - chapter_base + 1
     # A2-S1b — chapter handle stamped on each status for retract-by-source +
     # FE display. Prefer the hierarchy chapter_id; fall back to the source_id.
     status_source_chapter = (
@@ -821,6 +843,17 @@ async def write_pass2_extraction(
         if not name_clean.strip():
             continue
 
+        if chapter_base is not None and idx >= EVENT_ORDER_CHAPTER_STRIDE:
+            # The chapter's band is full. Continuing would write into the NEXT chapter's
+            # band and corrupt the reading order of every chapter after this one, so this
+            # raises rather than degrading. Unreachable in practice (a band holds
+            # EVENT_ORDER_CHAPTER_STRIDE slots and re-extraction consumes one per event) —
+            # and "unreachable, so no guard" is how a silent global corruption ships.
+            raise ValueError(
+                f"event_order band for chapter ordinal {_chapter_ordinal} is exhausted "
+                f"(idx={idx} >= stride {EVENT_ORDER_CHAPTER_STRIDE}); writing on would "
+                f"overflow into the next chapter's reading-order band"
+            )
         event_order = chapter_base + idx if chapter_base is not None else None
         idx += 1
 

@@ -37,6 +37,23 @@ JOB_ID = "test-job-001"
 _PATCH_BASE = "app.extraction.pass2_writer"
 
 
+@pytest.fixture(autouse=True)
+def _empty_event_order_band():
+    """Every write in this module is a chapter's FIRST extraction, so the band is empty.
+
+    The writer now asks the store for the highest `event_order` already used in the
+    chapter's band before numbering (it used to restart at 0, which collided whenever a
+    chapter was extracted by more than one job). These tests are not about that; without
+    this, each would reach the real repo call through a MagicMock session and fail on an
+    un-awaitable mock, which reads as a defect in the code under test rather than a missing
+    stub.
+    """
+    with patch(_PATCH_BASE + ".max_event_order_in_band",
+               new_callable=AsyncMock, return_value=None) as m:
+        yield m
+
+
+
 def _status_metric(outcome: str) -> float:
     """Current value of the A2-S1b status_effect outcome counter (module-level
     Counter accumulates across tests, so assert a DELTA, not an absolute)."""
