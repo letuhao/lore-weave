@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -63,6 +64,10 @@ type streamGuard struct {
 	requestPayload map[string]any
 	completion     strings.Builder
 	requestStatus  string
+
+	// startedAt stamps the stream's open so finalizeOutcome can say how long a
+	// silent one stayed silent. See the terminal log line there.
+	startedAt time.Time
 }
 
 // preflightStream runs the streaming spend-guardrail pre-flight: estimate the
@@ -146,6 +151,7 @@ func (s *Server) preflightStream(
 	}
 
 	g := &streamGuard{
+		startedAt:     time.Now(),
 		guardrail:     s.guardrail,
 		reservationID: res.ReservationID,
 		jobID:         jobID,
@@ -227,6 +233,44 @@ func (g *streamGuard) finalizeOutcome(streamErr error) {
 		g.requestStatus = "provider_error"
 	default:
 		g.requestStatus = "success"
+	}
+
+	// ── D-TURN-STALLS-AFTER-THE-SURFACE-IS-BUILT / D-UPSTREAM-ERROR-WITH-NO-MESSAGE ──
+	//
+	//	THE INVARIANT. A stream that logged its START logs how it ENDED.
+	//
+	// This is the one hop two defect rows spent weeks narrowing to and then could not cross.
+	// Both recorded the same wall: provider-registry emits `chat context preflight` and then
+	// NOTHING — the identical single line for a turn that completes and for a turn that hangs
+	// forever — so "did the call to the provider ever return?" had no witness on either side,
+	// and a call that was never made was indistinguishable from one that never came back.
+	//
+	// THE MECHANISM WAS ALREADY HERE AND MERELY SILENT. The terminal status is computed right
+	// above and has been recorded to `usage_logs` all along; it was simply never emitted, and
+	// `streamErr` — the only place the provider's actual failure exists in this process — was
+	// classified into one word and then dropped on the floor. Nothing new is measured below.
+	// Every field was already in hand at the moment the information was being destroyed.
+	//
+	// `usage` is the field those rows actually needed: it says whether the provider sent a
+	// final usage chunk, which distinguishes "the call returned" from "the stream opened and
+	// nothing ever came back". `duration_ms` gives a silent stream a length.
+	lg := []any{
+		"status", g.requestStatus,
+		"op", g.op,
+		"model_ref", g.modelRef.String(),
+		"duration_ms", time.Since(g.startedAt).Milliseconds(),
+		"output_chars", g.outChars,
+		"usage", g.finalUsage != nil,
+	}
+	if streamErr != nil {
+		// The provider's own words, not a category. A row that reads "provider reported a
+		// failure without saying why" was written because this string had nowhere to go.
+		lg = append(lg, "err", streamErr.Error())
+	}
+	if g.requestStatus == "success" {
+		slog.Info("chat stream finished", lg...)
+	} else {
+		slog.Warn("chat stream finished", lg...)
 	}
 }
 
