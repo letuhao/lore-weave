@@ -43,6 +43,52 @@ router = APIRouter(
 )
 
 
+#: The statuses the one-active-job partial index covers, kept as ONE tuple so this guard and
+#: the index cannot drift apart. Spelled the same way `extraction_jobs.list_active` does.
+_ACTIVE_JOB_STATUSES = ("pending", "running", "paused")
+
+
+async def _refuse_if_extraction_active(project_id: UUID) -> None:
+    """409 while an extraction job holds this project.
+
+    🔴 **WHY (L3, 2026-08-30).** `event_order` has exactly TWO writers:
+    `pass2_writer` (under an extraction job) and `run_orders_backfill` (this endpoint).
+    Two *extractions* cannot race — `idx_extraction_jobs_one_active_per_project` is a UNIQUE
+    partial index over `(project_id) WHERE status IN (pending, running, paused)`, so the
+    second INSERT fails and the endpoint answers 409. Verified live, not read: the index is
+    present on `loreweave_knowledge`.
+
+    **This endpoint was outside that invariant entirely.** It checked that the project exists
+    and that a graph is configured, then renumbered `event_order` across the whole project.
+    And the two writers do not merely overlap, they DISAGREE: the backfill assigns
+    `base + idx` over `sorted(event_ids)` — dense from 0 — while the writer continues from the
+    band's current maximum. Run together they produce two numberings of one chapter, and the
+    reading axis is whatever interleaving won.
+
+    Nothing here is hypothetical about the damage: `event_order` is the spoiler cutoff, the
+    timeline, `list_events_in_order`, and the causal pass's forward-only filter. A duplicate
+    there is not a crash; it is a stable sort silently falling back to row order.
+
+    The guard is a READ, so it is subject to the same TOCTOU as any check-then-act — a job
+    could start in the window. That is a much narrower race than an unguarded backfill, and
+    the index remains the thing that makes the extraction side unambiguous; this closes the
+    case where a backfill is fired at a project that is visibly busy.
+    """
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT job_id FROM extraction_jobs WHERE project_id = $1 "
+        "AND status = ANY($2::text[]) LIMIT 1",
+        project_id, list(_ACTIVE_JOB_STATUSES),
+    )
+    if row is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"extraction job {row['job_id']} is active on this project; a backfill "
+                f"would renumber event_order underneath it"
+            ),
+        )
+
+
 @router.post("/{project_id}/backfill-orders")
 async def backfill_orders(project_id: UUID) -> dict:
     """Backfill event_order / chronological_order / passage chapter_index
@@ -55,6 +101,9 @@ async def backfill_orders(project_id: UUID) -> dict:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
         )
+    # AFTER the 404: a caller naming a project that does not exist should hear that, not
+    # a 409 about a job it could not have started.
+    await _refuse_if_extraction_active(project_id)
     user_id = row["user_id"]
 
     if not settings.neo4j_uri:

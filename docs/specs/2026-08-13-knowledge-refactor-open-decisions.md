@@ -2377,3 +2377,60 @@ supposed to carry it, and §4.3 had already moved corpus-wide coverage to QC-6.
 It is recorded here rather than struck because striking it would assert a measurement that
 does not exist. It travels with the 20 labels above: both ask *is this pass any good*, and
 neither is answered by *does it emit a non-zero acyclic set*.
+
+## 24 · `event_order`'s two writers — one race was impossible, the other was real and unguarded (L3, 2026-08-30)
+
+**Cited by leftovers row `L3`.**
+
+**The question the row asked.** `b6c8fde13` fixed the deterministic collision: the
+within-chapter index continues from the band's maximum instead of restarting at 0. It said
+plainly what it did NOT close — *"two jobs extracting the same chapter at the SAME time both
+read that maximum and both write above it."* L3 asked for that to be closed, or accepted with
+the blast radius **measured, not assumed**.
+
+**Measured, and the answer inverts the question.** `event_order` has exactly two writers:
+
+| writer | under the one-active-job invariant? |
+|---|---|
+| `pass2_writer.write_pass2_extraction` | **yes** — it runs only inside an extraction job |
+| `run_orders_backfill` (`POST /internal/projects/{id}/backfill-orders`) | **no** — nothing checked |
+
+**Two extractions cannot race.** `idx_extraction_jobs_one_active_per_project` is a UNIQUE
+partial index on `(project_id) WHERE status IN ('pending','running','paused')` — so a second
+concurrent `POST /extraction/start` fails its INSERT and the endpoint answers 409. Read out
+of the live database rather than out of the migration file:
+
+```
+CREATE UNIQUE INDEX idx_extraction_jobs_one_active_per_project
+  ON public.extraction_jobs USING btree (project_id)
+  WHERE (status = ANY (ARRAY['pending','running','paused']))
+```
+
+⚠️ Checking it took two tries and the first one nearly produced the wrong answer: the index
+is on `loreweave_knowledge` (5555), and querying `loreweave_knowledge_vectors` (5556, the
+AGE store) returned **empty** — which reads exactly like "the invariant does not exist". The
+wrong-store defect this plan has now hit four times.
+
+The events consumer was checked too, because its own comments say it runs *"OUTSIDE the
+one-active-job-per-project extraction lock"*. It **retracts evidence** and never calls
+`merge_event`, so it cannot assign an `event_order` and is not a third writer.
+
+**The backfill was the real hole, and it is worse than an overlap: the two writers DISAGREE.**
+`run_orders_backfill` assigns `base + idx` over `sorted(event_ids)` — dense from 0 — while
+`pass2_writer` continues from the band's current maximum. Run together they produce two
+numberings of one chapter and the reading axis is whatever interleaving won. That is not a
+crash: `event_order` is the spoiler cutoff, the timeline, `list_events_in_order` and the
+causal pass's forward-only filter, and a duplicate there is a stable sort quietly falling
+back to row order.
+
+**DECIDED — the backfill endpoint takes the same invariant.** It answers **409** while a
+`pending`/`running`/`paused` job holds the project, naming the job, and the status tuple is
+one constant so the guard and the index cannot drift apart. The 404 for an unknown project
+still wins, so a caller naming a project that does not exist hears that rather than a
+conflict about a job it could not have started.
+
+**What this does NOT claim.** The guard is a READ, so a job starting inside the check→act
+window is still possible; the index remains the thing that makes the extraction side
+unambiguous. It closes the case that was actually reachable — firing a backfill at a project
+that is visibly busy — and narrows the rest to a window measured in milliseconds. Stated
+here rather than left for someone to discover in the code.

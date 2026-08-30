@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L3 — event_order still collides when two jobs extract one chapter at once.
+RESUME: L2 — 51 collided event_orders already in the store.
 
 ## Progress
 
-7 tasks — 2 done, 0 tracked, 5 untouched.
+7 tasks — 3 done, 0 tracked, 4 untouched.
 
 ---
 
@@ -44,7 +44,7 @@ RESUME: L3 — event_order still collides when two jobs extract one chapter at o
   `buildWorldListQueries` does, and a test drives THAT.
   **BITE:** delete the predicate from the books COUNT → red. It is green today.
 
-- [ ] **L3** — **`event_order` collides under concurrent extraction.**
+- [x] **L3** — **`event_order` collides under concurrent extraction.**
   `b6c8fde13` fixed the deterministic half: the within-chapter index continues from the
   band's maximum instead of restarting at 0. Two jobs extracting one chapter at the SAME time
   still both read that maximum and both write above it.
@@ -228,4 +228,72 @@ function ran live.
 2 drop accessFilter from the COUNT (line 986)   -> "COUNT does not hide bible containers"
 3 LIMIT/OFFSET numbered off countArgs (984)     -> "expected LIMIT $4 OFFSET $5"
 ```
+---
+
+### ✅ L3 2026-08-30 — **the race the row named was impossible; the one nobody named was real**
+
+```
+writers of event_order                                    2
+  pass2_writer          under the one-active-job invariant  YES
+  run_orders_backfill   under it                            NO  <- unguarded
+extraction x extraction   prevented by a UNIQUE partial index (read LIVE)
+backfill  x extraction    unguarded, and the two schemes DISAGREE
+```
+
+🎯 **The row asked for the two-extractions race to be closed or accepted with the blast
+radius measured.** Measuring inverted the question: two extractions **cannot** race.
+`idx_extraction_jobs_one_active_per_project` is a UNIQUE partial index over
+`(project_id) WHERE status IN (pending, running, paused)`, so the second `POST
+/extraction/start` fails its INSERT and answers 409. The claim was already in
+`pass2_writer`'s docstring — *"Concurrent writers on the same chapter are not expected
+(one-active-job-per-project K17.9)"* — and rule 2 says run it rather than read it, which is
+what turned up the actual hole.
+
+⚠️ **Verifying it took two tries, and the first would have produced the WRONG answer.** The
+index lives on `loreweave_knowledge` (5555); querying `loreweave_knowledge_vectors` (5556,
+the AGE store) returns **empty**, which reads exactly like "no such invariant". Fourth time
+this plan's lineage has hit the wrong-store defect.
+
+🔴 **`POST /internal/projects/{id}/backfill-orders` was outside the invariant entirely** —
+it checked the project exists and a graph is configured, then renumbered `event_order`
+project-wide. And the two writers do not merely overlap, they **disagree**: the backfill
+assigns `base + idx` over sorted ids (dense from 0), the writer continues from the band's
+maximum. Run together, one chapter gets two numberings and the axis is whatever interleaving
+won — a stable sort silently falling back to row order, not a crash.
+
+The events consumer was checked too, because its own comments say it runs *"OUTSIDE the
+one-active-job-per-project extraction lock"*. It **retracts evidence** and never calls
+`merge_event`, so it is not a third writer.
+
+📐 **Closed by giving the backfill the same invariant** (§24). 409 while a job holds the
+project, naming the job; the status tuple is ONE constant so the guard cannot drift narrower
+than the index; and the 404 still wins so an unknown project hears that instead.
+
+⚖️ **What it does NOT claim:** the guard is a read, so a job starting inside the check→act
+window remains possible. It closes the reachable case — a backfill fired at a visibly busy
+project — and §24 says so rather than leaving it to be discovered.
+
+🧪 **BITE — three, each on its own claim, by line number.**
+
+```
+1 the guard is never called (line 106)        -> 2 FAIL (409 test + status-set test)
+2 statuses narrowed to ("running",)           -> "guard covers ['running'], the partial
+                                                  index covers pending/running/paused"
+3 guard moved BEFORE the project lookup       -> "a missing project is 404 not 409" FAILs
+```
+
+⚠️ **The existing test harness had to be repaired first, and it is the same class again.**
+`_fake_pool` answered every `fetchrow` with one row, so the endpoint's new second query got
+the *project* row as the answer to "is a job running?" and two passing tests turned 409. A
+fake that cannot tell two questions apart agrees with whatever the caller asks next; it now
+dispatches on the query.
+
+**QC (a) gates:** `gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0**; knowledge unit
+suite **4461 passed**, 1 skipped (was 4458), 3 new cases.
+**QC (b) live smoke:** seam crossed, `knowledge-service` REBUILT on `lw-iso` and restarted.
+Against it — idle project → **HTTP 200**; a `running` job inserted on iso → **HTTP 409**
+naming that job id; row deleted → **HTTP 200** again. The job row was written to the
+isolated stack only and removed, verified 0 active after.
+**QC (c) real data:** iso — the live index definition above, and the 200/409/200 sequence on
+project `019fefde…`.
 ---
