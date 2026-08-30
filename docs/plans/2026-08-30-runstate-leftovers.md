@@ -1,0 +1,108 @@
+# Run-state leftovers — 2026-08-30
+
+**GOAL: every leftover the knowledge-architecture run state left behind is either FIXED or
+DECIDED IN WRITING, and a command proves which.**
+
+`2026-08-09-knowledge-architecture-refactor.md` closed at 69/69 and was archived
+(`dfa2a799f`). It closed honestly — but "the plan is done" is not "there is nothing left",
+and the difference had been living in a session transcript, a handoff paragraph and two spec
+sections. This plan is that difference, written down as rows so it can be worked and counted
+instead of remembered.
+
+**Nothing here is a blocker.** Every row is something that is *unfinished* or *undecided*, and
+the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
+undecided. Decide it, spec it, keep building.
+
+RESUME: L4 — a live smoke shipped today that nothing runs.
+
+## Progress
+
+7 tasks — 0 done, 0 tracked, 7 untouched.
+
+---
+
+## Rows
+
+- [ ] **L4** — **`picker-search-live-smoke.sh` runs from nothing.**
+  Shipped in `3ff182679` and referenced by no gate, no CI leg, no other script;
+  `gate-wiring-gate` reports 118 gates discovered and does not see it, because it does not
+  match the `*-gate` discovery shape. A live proof nobody runs is a transcript.
+  **Criteria:** it is reachable from something that runs on its own — either wired as a
+  gate, or named in a CI leg, or registered so `gate-wiring-gate` counts it and can call it
+  unwired. Whatever it becomes, `gate-wiring-gate` must be able to *see* it.
+  **Decide, don't drift:** it needs a running stack, so it may be legitimately EXEMPT from
+  CI — but then the exemption is declared, with the reason, in the place exemptions live.
+  **BITE:** break the wiring (rename it, or drop its registration) → the thing that now knows
+  about it goes red. If nothing goes red, it is still unwired.
+
+- [ ] **L5** — **the books' search test keeps the blind spot worlds lost.**
+  `TestAppendTitleSearchFilter` drives the pure helper twice and calls that "count args are a
+  prefix of the page args". Measured on the worlds equivalent: deleting the filter from the
+  COUNT left every such subtest GREEN, because the helper it drives is untouched. `total`
+  then describes the library while `items` describe the search.
+  **Criteria:** the books list builds its page query and its COUNT from one function, the way
+  `buildWorldListQueries` does, and a test drives THAT.
+  **BITE:** delete the predicate from the books COUNT → red. It is green today.
+
+- [ ] **L3** — **`event_order` collides under concurrent extraction.**
+  `b6c8fde13` fixed the deterministic half: the within-chapter index continues from the
+  band's maximum instead of restarting at 0. Two jobs extracting one chapter at the SAME time
+  still both read that maximum and both write above it.
+  **Criteria:** either closed (a reservation, an advisory lock, or a unique constraint that
+  makes the second writer retry), or ACCEPTED in writing with the reason and the blast radius
+  — how often two jobs can touch one chapter at once, measured, not assumed.
+  **BITE:** if closed, two writers racing one chapter must not produce a duplicate
+  `event_order`; if accepted, the spec section must name what makes it rare.
+
+- [ ] **L2** — **51 colliding `(project_id, event_order)` pairs in the store.**
+  The writer fix stops new ones; it renumbers nothing. Measured on iso 2026-08-30: 51
+  duplicate pairs in `g_shared`. Every consumer of the reading axis is reading them today.
+  **Criteria:** a decision with a number behind it — backfill and renumber, or accept and say
+  what breaks while they stand. `backfill_orders.py` already exists and already imports the
+  shared stride, so the cost of the first option is measurable rather than guessed.
+  **Rule 6:** iso is authorised for the writes; the dev store is READ-ONLY.
+  **BITE:** the collision count is a COMMAND, and after the chosen action it prints what the
+  decision says it should — 0 for a backfill, 51 with a recorded reason for an acceptance.
+
+- [ ] **L6** — **`GO_INLINE_CAP` cannot see a cap against a named constant.**
+  Measured 2026-08-30 (§22, corrected): `mcp_tools_read.go` caps `limit` against
+  `const maxChapterBlocks = 300` and the regex requires `\d+` on both sides, so the site reads
+  as uncapped. The batch §22 priced at "7 blind spots + 1 real verdict" is 8 blind spots.
+  **Criteria:** the signal resolves a package-level `const NAME = <int>` on either side. A
+  **variable** must NOT be accepted — the point of the signal is that the bound is knowable at
+  the call site, and `limit = someVar` is not.
+  **Then, and only if the batch is small enough to be honest:** §22 step 3, pointing
+  `GO_CLAMP_SIGNALS` at `_go_capped_in_scope()` and refreshing the BASELINE by intersection,
+  never `--regen`.
+  **BITE:** `--selftest` gains a case for the named-constant cap and one for the variable it
+  must still reject; break the const resolution → the first reds.
+
+- [ ] **L1** — **`D-T33-CAUSAL-COVERAGE-UNMEASURED`: accepted, never measured.**
+  *Does the causal pass work across the whole corpus, not just where it was pointed.* Nothing
+  measured it. The 32-pair sheet answers accuracy on TWO chapters and says nothing about
+  coverage.
+  **Criteria:** a coverage number over a defined denominator, produced by a command anyone can
+  re-run — or the deferral restated with what makes it unmeasurable. §4.3 already retracted a
+  global `0.34 %` that divided by residue from runs which never touched the pipeline; a ratio
+  over a denominator the design did not choose is the failure mode to avoid, not repeat.
+  **BITE:** the denominator is named in the output. A coverage figure that does not say what
+  it divided by is the retracted number wearing a different hat.
+
+- [ ] **L7** — **4355 legacy per-project `g_<hex>` graphs on iso.**
+  Raised during the refactor, never chased. The declared deployment reads `g_shared` keyed by
+  `project_id`; these are the pre-migration shape.
+  **Criteria:** a decision — drop them on iso (they are isolated-stack residue), or keep them
+  and say why. Whichever, the count is printed before and after.
+  **Rule 6:** iso only. Dropping a graph on the dev store is not authorised by this row.
+  **BITE:** the count command exists and reports the number the decision predicts.
+
+---
+
+## Not in this plan, deliberately
+
+- **The 32 causal labels** (`docs/measurements/2026-08-24-t33-causal-labelling-sheet.md`).
+  Drafted and awaiting a signature; `--score` refuses an assistant and that guard is
+  untouched. **A hand-back, not a row** — no amount of autonomous work can produce it.
+- **§19's five merge-to-main steps.** The PO's instruction on 2026-08-30 was to keep them in
+  the handoff and merge later. Listed there, not here, so that this plan cannot be read as
+  authorising them.
