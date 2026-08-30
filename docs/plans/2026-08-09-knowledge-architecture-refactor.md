@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**67 of 69 rows done · 2 open · 53 of 54 evidence blocks closed inside them.**
+**68 of 69 rows done · 1 open · 1 of 1 evidence blocks closed inside them.**
 
-**OPEN:** `T48` (52/53) · `T49` (1/1)
+**OPEN:** `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24732,11 +24732,70 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   and would have shown one host where there are two.
 
 
-- [~] **T48** — `/aif-verify` against this plan
+- [x] **T48** — `/aif-verify` against this plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ### ✅ T48ba 2026-08-30 — **`/aif-verify` against this plan, clause by clause, with a number behind each one**
+
+  ```
+  every task fully implemented      67 of 69 rows; the 2 open are T48 and T49 themselves
+  nothing silently dropped          stale/superseded/discharged-deferral gates all exit 0
+  tests green                       gate-wiring-gate --run-all: 104 GREEN, 0 RED, exit 0
+  every QC task's evidence pasted   plan-qc-evidence-gate: 8 closed QC rows, all carrying it
+  the GOAL's own sentence           architecture-live-proof-iso: "PROVEN", ran 7, exit 0
+  ```
+
+  🎯 **T48's own block has said for weeks why it could not close: *"its first criterion is
+  'every task fully implemented' and ten rows are open."*** Ten became three, then two. The two
+  that remain are **T48 and T49**, and the dependency runs `T49 (depends on T48)` — so the
+  plan's own wiring says these are the closing rows, not implementation tasks waiting on each
+  other. Reading clause 1 as "including the row doing the reading" is a deadlock by
+  construction, and it is not what the row means.
+
+  📐 **Each clause is a command, not a claim.** That is the whole point of the row — *"the
+  evidence gate is the point, not the checkbox"* — and it is why this block is short. Every
+  line above is reproducible by someone who does not trust it:
+
+  ```
+  python scripts/plan-progress-block.py --check
+  python scripts/stale-deferral-gate.py && python scripts/superseded-deferral-gate.py
+  python scripts/discharged-deferral-gate.py
+  python scripts/gate-wiring-gate.py --run-all
+  python scripts/plan-qc-evidence-gate.py
+  bash    scripts/architecture-live-proof-iso.sh
+  ```
+
+  🔴 **`discharged-deferral-gate` refused the T33 tick, and it was right to.**
+  `D-T33-CAUSAL-COVERAGE-UNMEASURED` sat OPEN inside a row about to be marked finished. It is
+  now ACCEPTED under §23 rather than struck, because striking it would assert a measurement
+  nobody made. **That is clause 2 working on the commit that would have violated it** — not an
+  audit finding weeks later, which is exactly what T48 was re-scoped to become: *"the evidence
+  property is enforced on every commit instead of inspected once at the end."*
+
+  ⚖️ **What T48 does NOT certify, said plainly rather than left to inference.** It certifies
+  that the plan's rows are implemented, their evidence is present, and the architecture's live
+  proof runs and passes. It does **not** certify that every mechanism is *good*: §23 records
+  two open questions — the 20 human labels and causal coverage across the corpus — and both
+  are about quality, which no gate here measures. A verification row that quietly widened into
+  "and it all works well" would be the largest unfalsifiable claim in the plan.
+
+  🧾 **The proof is now a command anyone can re-run** (T48az). The `PROVEN / ran: 7` above came
+  from `architecture-live-proof-iso.sh`, which derives all nine inputs from the running stack;
+  the same result was previously reproducible only by its author, which for a plan's central
+  claim is not reproducible at all.
+
+  **QC (a) gates:** `gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0**; the four plan
+  gates (`plan-final-verification`, `plan-row-honesty-gate`, `plan-progress-block --check`,
+  `plan-acceptance --floor`) and the three deferral gates — all 0 by direct exit code.
+  **QC (b) live smoke:** the seven-leg proof against the running `lw-iso` stack, `"verdict":
+  "PROVEN", "ran": 7, "skipped": []`, exit 0 — with `knowledge-service` and `book-service`
+  images rebuilt earlier today for the causal-parse and library-search fixes.
+  **QC (c) real data:** iso, 2026-08-30 — STORE compared 367 Neo4j projects against 798 AGE
+  ones (`MIGRATED`); SURFACE 12 routes carried rows; TEMPORAL 9 routes swept; AXIS
+  `{chapter_scale: 48610, stride_scale: 1, mixed_books: 1}`; AUTH `DISCRIMINATES`.
   ---
   ---
   ---
