@@ -1,0 +1,2669 @@
+{
+  "batch": "c-motifadopt-postfix",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_adopt",
+      "scenario": "composition-motif-adopt-named",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "answer_expect": null,
+      "falsifier_sha": "bfe5bb854d24eb76",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a051d7-e4e9-7c06-ba21-76b24171c92e",
+          "project_id": "01a051d7-e649-7cfb-943c-ac10cf47df17",
+          "seed_ids": {
+            "01a051d7-e4e9-7c06-ba21-76b24171c92e": "fixture book_id",
+            "01a051d7-e649-7cfb-943c-ac10cf47df17": "fixture project_id (composition_work)",
+            "01a051d7-e582-7e02-a8f9-8ee71f6371f3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051d8-2cf8-7ecb-8b27-f3e9e6ae04b2",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAxMjMsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.831616+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.824386+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.626542+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.831616+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:44:58.824386+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a051d8-a20f-7777-90f0-e445cad1b0c9",
+          "project_id": "01a051d8-a38a-79d2-9d89-fab571a3d1a1",
+          "seed_ids": {
+            "01a051d8-a20f-7777-90f0-e445cad1b0c9": "fixture book_id",
+            "01a051d8-a38a-79d2-9d89-fab571a3d1a1": "fixture project_id (composition_work)",
+            "01a051d8-a2c0-78cd-a95e-66aa0d66007d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051d8-faa2-7c69-8161-9e9d2c04d026",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAxNzUsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.280603+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.273683+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.072238+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.280603+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:45:47.273683+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption in the card that just appeared."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a051d9-725f-7511-a686-e9e3e526f750",
+          "project_id": "01a051d9-73f6-7998-a215-59e2c93556d4",
+          "seed_ids": {
+            "01a051d9-725f-7511-a686-e9e3e526f750": "fixture book_id",
+            "01a051d9-73f6-7998-a215-59e2c93556d4": "fixture project_id (composition_work)",
+            "01a051d9-7341-70b4-b6c7-9cc77eaa9fa3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051d9-bafa-7ee6-b50e-7332901a3e73",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAyMjcsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.63706+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.629738+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.448723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.63706+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:46:40.629738+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a051da-2ee1-7264-8db1-35484128042d",
+          "project_id": "01a051da-302a-7c77-a552-853ec54b332e",
+          "seed_ids": {
+            "01a051da-2ee1-7264-8db1-35484128042d": "fixture book_id",
+            "01a051da-302a-7c77-a552-853ec54b332e": "fixture project_id (composition_work)",
+            "01a051da-2f85-7d34-a26d-4f484bd8eb54": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051da-80ad-744d-b3bc-459c8466e8ee",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAyNzUsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.815815+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.810238+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.645568+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.815815+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:47:28.810238+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a051da-fa64-786b-ad7f-95595cffea1b",
+          "project_id": "01a051da-fc25-78ea-9fc0-a4acd7ae156b",
+          "seed_ids": {
+            "01a051da-fa64-786b-ad7f-95595cffea1b": "fixture book_id",
+            "01a051da-fc25-78ea-9fc0-a4acd7ae156b": "fixture project_id (composition_work)",
+            "01a051da-fb21-7f15-9412-65b7de83b97b": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051db-5800-7001-9068-e6f07d2ca9dd",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAzMzAsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:21.037099+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:21.027842+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:20.76978+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:21.037099+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:48:21.027842+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 5,
+          "book_id": "01a051db-c305-71ba-a7e1-199993b3dda1",
+          "project_id": "01a051db-c465-7c3d-a519-c4c54c33f6ea",
+          "seed_ids": {
+            "01a051db-c305-71ba-a7e1-199993b3dda1": "fixture book_id",
+            "01a051db-c465-7c3d-a519-c4c54c33f6ea": "fixture project_id (composition_work)",
+            "01a051db-c3a1-7729-bd1f-308745cae388": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051dc-17d8-7f57-a4df-abfb62d6f855",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODAzNzksInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.299306+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.293092+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.097289+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.299306+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:49:12.293092+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 6,
+          "book_id": "01a051dc-8e01-7b1e-af4e-57dde616cc53",
+          "project_id": "01a051dc-8f8b-7bd7-b53a-eee85e7cbfbe",
+          "seed_ids": {
+            "01a051dc-8e01-7b1e-af4e-57dde616cc53": "fixture book_id",
+            "01a051dc-8f8b-7bd7-b53a-eee85e7cbfbe": "fixture project_id (composition_work)",
+            "01a051dc-8ec9-725a-8446-02470ba7c5fa": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051dc-e430-7081-b88f-3f22da28b132",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODA0MzIsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.305422+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.299199+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.104859+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.305422+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:04.299199+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 7,
+          "book_id": "01a051dd-58fc-72cf-b722-b554a17c6d50",
+          "project_id": "01a051dd-5a63-7d7c-845d-2119b4280a04",
+          "seed_ids": {
+            "01a051dd-58fc-72cf-b722-b554a17c6d50": "fixture book_id",
+            "01a051dd-5a63-7d7c-845d-2119b4280a04": "fixture project_id (composition_work)",
+            "01a051dd-599f-7d54-88b8-09f8f619d31f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051dd-a275-7cbd-8fa2-251f9bcbb703",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODA0ODAsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.233525+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.226621+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.031651+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.233525+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:50:56.226621+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption in the card that just appeared."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 8,
+          "book_id": "01a051de-183e-7089-8183-9f8a41d0d4dd",
+          "project_id": "01a051de-1997-7ef7-a756-93aaff9ffc0a",
+          "seed_ids": {
+            "01a051de-183e-7089-8183-9f8a41d0d4dd": "fixture book_id",
+            "01a051de-1997-7ef7-a756-93aaff9ffc0a": "fixture project_id (composition_work)",
+            "01a051de-18d3-7e19-8399-b35a7cc34d8a": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051de-6946-7ab1-8763-f7189af91977",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODA1MzEsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:45.182022+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:45.175279+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:44.979673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:45.182022+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:51:45.175279+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:16.226905+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:16.226905+00"
+              }
+            }
+          },
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 9,
+          "book_id": "01a051de-e229-7fa6-b1b4-353a929c8685",
+          "project_id": "01a051de-e3b0-7e81-8e3a-f8ad2c8f1706",
+          "seed_ids": {
+            "01a051de-e229-7fa6-b1b4-353a929c8685": "fixture book_id",
+            "01a051de-e3b0-7e81-8e3a-f8ad2c8f1706": "fixture project_id (composition_work)",
+            "01a051de-e2e0-7016-87d7-df2015eb1b88": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a051df-2da6-7a60-8b5a-44fff27d5c30",
+          "prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif \"A Grudge Older Than the Holder\" — copy that built-in trope into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"e6c27ac3-08e2-5a6d-a08a-7941a4d6b90f\", \"code\": \"wuxia.inherited_feud\", \"name\": \"A Grudge Older Than the Holder\", \"kind\": \"sequence\", \"summary\": \"A feud is handed down with the sword \\u2014 two houses, two schools, two families who have killed each other's p"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwODA1ODEsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6ImU2YzI3YWMzLTA4ZTItNWE2ZC1hMDhhLTc5NDFhNGQ2YjkwZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiJlNmMyN2FjMy0wOGUyLTVhNmQtYTA4YS03OTQxYT"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 65,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.927547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.912029+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.703817+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.927547+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 08:52:36.912029+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the \"A Grudge Older Than the Holder\" motif for your library; you can confirm the adoption on the card now."
+        }
+      ],
+      "surfaced_count": 10,
+      "called_count": 10,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}
