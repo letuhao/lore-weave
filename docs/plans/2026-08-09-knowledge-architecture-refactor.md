@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 60 of 62 evidence blocks closed inside them.**
+**67 of 69 rows done · 2 open · 53 of 54 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (7/8) · `T48` (52/53) · `T49` (1/1)
+**OPEN:** `T48` (52/53) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10238,7 +10238,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   **Evidence:** 2 new tests + the **full Go api suite green (63.6 s, live Postgres)**.
 
-- [~] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
+- [x] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.3. Unfinished, not undecided.
   Widen `app/extraction/causal_edges.py` from `causes/enables` to `causes | precedes`; copy the
   `motif_link` cycle guard to the event DAG.
@@ -10250,6 +10250,93 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
   dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
+  ---
+  ### ✅ T33j 2026-08-30 — **the live run the row has been waiting for since 2026-08-14 — and it first reported a zero that was a parse bug**
+
+  ```
+  T33's bite: "run over the corpus -> edge count non-zero AND the graph acyclic"
+    edges_written                                 2
+    cycles through a node back to itself          0
+    ordered edges NOT strictly forward            0
+    event_order                     1000001, 1000002, 1000003   (chapter x stride)
+  ```
+
+  🎯 **The row's own note said what was left: *"what remains is the live run, not another
+  row."*** It has run, on `lw-iso`, against the planted corpus, through the real extractor and
+  the real causal pass. §23 records the decision that separates T33's bite (a non-zero acyclic
+  set) from the labelling sheet's question (are the judgements CORRECT) — the second is harder,
+  needs a person, and **the row's bite never asked for it**. Treating the sheet as T33's exit
+  is what kept a row open whose stated criteria were met.
+
+  🔴 **THE FIRST RUN REPORTED `edges_written: 0`, AND THAT NUMBER WAS A LIE ABOUT THE WORLD.**
+
+  ```
+  llm_jobs, finish_reason=stop, content verbatim:
+    [[E1, E2, unknown], [E2, E3, causes], [E2, E4, causes], [E3, E6, unknown], ...]
+  parse_edges(that exact string)        -> []
+  parse_edges(same content, quoted)     -> [(e2,e3,causes), (e2,e4,causes)]
+  ```
+
+  Correct content, bare identifiers, invalid JSON. **Zero is also exactly what T33's stop
+  condition looks like** — *"yields few or low-quality causal edges"* — and the pass is
+  documented ADVISORY / never raises, so an outage produces the same number. The row would
+  have closed, or been declared blocked, on a figure that described a parser.
+
+  ⚖️ **Diagnosed from the workload, not by analogy** (rule 13). Three candidate causes were
+  live: the detector genuinely finding nothing; the reasoning-budget failure this file already
+  records from a previous corpus bite; and a plumbing fault. `llm_jobs` distinguished them in
+  one query — `finish_reason=stop`, 73 output tokens, on-task content — and running the real
+  `parse_edges` over that exact string settled which side was wrong.
+
+  📐 **The repair is bounded, and the bound is the point.** `_loads_lenient` already tolerated
+  code fences and a list embedded in prose; it now makes one further attempt at quoting bare
+  word tokens. **It cannot invent an edge**: ids are still checked against `window_ids` and
+  relations against `causes`/`precedes`, so a hallucinated token becomes a DROPPED triple
+  rather than a fabricated one, and `unknown` stays dropped. Both properties are tests —
+  a lenient parser is precisely the change that quietly starts accepting what it should not.
+
+  🧾 **The planted arm cannot be SCORED, and its own design said so before it ran.** Extraction
+  yielded **7 events from 16 designed beats**, and `DESIGN.md`'s pre-committed rule is that a
+  chapter whose event count differs from its beat count is *reported as ambiguous, not silently
+  re-aligned*. Authoring a new design at event granularity **after** seeing those events is the
+  exact drift the SHA-256 binding exists to prevent. **The binding did its job by stopping me
+  from producing a score**, which is a stranger and better outcome than a number.
+
+  ⬜ **The 20 human labels stay owed**, under their own name in §23 rather than as T33's
+  blocker. `--score` still refuses an assistant signature and that guard was not touched by a
+  single byte.
+
+  🧪 **BITE T33j-1 — the repair no longer quotes anything (line 134).**
+
+  ```
+  FAILED test_bare_identifiers_from_a_real_run_are_recovered
+  FAILED test_the_quoted_form_of_the_same_answer_parses_identically
+  FAILED test_bare_identifiers_inside_a_code_fence_still_parse
+  3 failed, 18 passed
+  ```
+
+  The two SAFETY tests keep passing under the bite — `leniency_cannot_invent_an_edge` and
+  `unknown_is_still_dropped` — so they are not propped up by the thing they are guarding.
+
+  ⚠️ **My first attempt at that bite hit the wrong line** and broke the `try/except`, which
+  surfaced as a collection *error* rather than a test failure. Repaired and re-bitten on the
+  regex itself. A bite that errors is not a bite: it proves the file is broken, not that the
+  check has teeth.
+
+  📌 **`tagged_only=false` is deliberate in the runner.** The endpoint defaults to inferring
+  only over motif-tagged events, and an untagged corpus hands the pass an EMPTY input — which
+  reports "no edges" for a reason that has nothing to do with the detector. That confound
+  would have answered T33's stop condition with a number that never described it.
+
+  **QC (a) gates:** knowledge-service `pytest tests/unit` — **4451 passed**, including 6 new
+  causal-parse cases; `plan-final-verification`, `plan-row-honesty-gate`,
+  `plan-progress-block --check`, `plan-acceptance --floor`, `plan-qc-evidence-gate` — all 0 by
+  direct exit code.
+  **QC (b) live smoke:** the seam WAS crossed and the image WAS rebuilt — `lw-iso` knowledge
+  service rebuilt and restarted, then the full arm re-run: `edges_written 0 -> 2` over the same
+  corpus and the same model.
+  **QC (c) real data:** iso, 2026-08-30 — 7 events extracted (5 + 2) across two authored
+  chapters, 2 CAUSES edges, 0 cycles, 0 backward edges, ordinals on the chapter×stride axis.
   ---
   ### ✅ T33h 2026-08-30 — **the scorer printed `precision 1.0` over labels made by `random.choice`, and its guard accepted the sheet**
 
@@ -10992,7 +11079,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   artefact. It no longer does — the shallowness is now a measured 9.38 % over a real scope
   rather than a 0.34 % over residue, and X1 can be argued against a number that means something.
 
-  ### 🔻 DEFERRAL `D-T33-CAUSAL-COVERAGE-UNMEASURED` — the bite is one book, the graph is eight projects
+  ### 🔻 DEFERRAL `D-T33-CAUSAL-COVERAGE-UNMEASURED` — the bite is one book, the graph is eight projects — T33: **ACCEPTED 2026-08-30, spec §23.** Not discharged: it asks whether the pass is any GOOD across the corpus, which no run here measured, and it travels with the 20 human labels rather than with T33's bite.
 
   | | |
   |---|---|

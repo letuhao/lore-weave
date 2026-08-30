@@ -2296,3 +2296,67 @@ through all of this.
 per-file by helper name, or per-function by an inline bound.* That sentence is what the lint
 checks, its `--selftest` pins both halves and the direction the resolver fails in, and this
 section records the narrower rule it could enforce with the price attached.
+
+## 23 · T33 closes on ITS OWN bite; the labelling sheet answers a different question — DECIDED (2026-08-30)
+
+**Cited by plan row `T33`.**
+
+Two things have been treated as one, and separating them is what unblocks the row.
+
+**What T33's row actually asks.** Its criteria are: widen `causal_edges.py` from `causes/enables`
+to `causes | precedes`; copy the `motif_link` cycle guard to the event DAG; make `unknown` a
+first-class answer; and one bite — ***"run over the corpus → edge count non-zero **and** the
+graph acyclic"***. The row's own note from 2026-08-14 says the code and the unit evidence are
+done and *"what remains is the live run, not another row."*
+
+**That live run has now happened**, on `lw-iso`, against the planted corpus:
+
+```
+edges_written                                   2
+cycles through a node back to itself            0
+ordered edges that are NOT strictly forward     0
+event_order                       1000001, 1000002, 1000003   (chapter x stride)
+```
+
+**What the labelling sheet asks is a different, harder question:** not *"does the pass emit a
+non-zero acyclic set"* but *"are its judgements CORRECT"*. That is accuracy, it needs ground
+truth from a person, and **the row's bite never asked for it.** The sheet (T33f–T33h) is a
+richer instrument built later; treating it as T33's exit condition is what left the row open
+while its stated criteria were met.
+
+**DECIDED — T33 closes on the criteria it states, and the accuracy question stays open under
+its own name.** Not a downgrade: the bite is the same one the row has carried since it was
+written, and it is now measured on real data rather than asserted.
+
+**Still owed, and recorded here so it cannot be lost with the row:**
+
+* `docs/measurements/2026-08-24-t33-causal-labelling-sheet.md` — 20 pairs, every `LABEL:`
+  blank, `labelled_by:` unsigned. `--score` refuses an assistant signature and **that guard
+  is untouched**: a detector graded against labels its own author wrote is green by
+  construction.
+* The PLANTED arm cannot substitute for it, and its own design said so before it ran. It also
+  cannot be scored **at beat granularity**: extraction yielded **7 events from 16 designed
+  beats**, and `DESIGN.md`'s pre-committed mapping rule is that a chapter whose event count
+  differs from its beat count is *reported as ambiguous, not silently re-aligned*. Writing a
+  new design at event granularity **after** seeing those events is exactly the drift the
+  SHA-256 binding exists to prevent, so it is not a repair — a fresh corpus with a design
+  authored first is.
+
+**What the planted arm did deliver**, which is why it was worth running: the pass reported
+`edges_written: 0` while the model had answered correctly in bare-identifier JSON, and the
+parser dropped two real causal edges in silence. **A zero there is indistinguishable from
+"there is no causation in this text" — the exact signature of T33's own stop condition.** The
+row would have closed on a number that described a parse bug. Fixed, tested, and re-measured
+live (0 → 2).
+
+**`D-T33-CAUSAL-COVERAGE-UNMEASURED` — ACCEPTED here, not discharged.** Its question is
+*"the bite is one book, the graph is eight projects"*: does the pass produce useful causal
+edges across the whole corpus, not just where it was pointed. That is a COVERAGE question,
+it is the accuracy question in another coat, and **nothing in this run measured it** — the
+planted arm is two authored chapters. Its own `To unblock` mechanism (a synthetic reference
+corpus with hand-authored ground truth) was retracted in 2026-08-21 by the plan that was
+supposed to carry it, and §4.3 had already moved corpus-wide coverage to QC-6.
+
+It is recorded here rather than struck because striking it would assert a measurement that
+does not exist. It travels with the 20 labels above: both ask *is this pass any good*, and
+neither is answered by *does it emit a non-zero acyclic set*.
