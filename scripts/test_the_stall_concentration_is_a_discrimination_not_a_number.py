@@ -78,6 +78,18 @@ LEDGER = json.loads((ROOT / "contracts" / "tool-deep-dive-ledger.json").read_tex
     encoding="utf-8"))
 
 
+def _open_dq_names() -> set[str]:
+    """The queue generator's OWN answer to "which questions are still open" — one home for the
+    definition that decides whether a defect is actionable. Hard-coding a name here is what made
+    this file assert a stale fact."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "goalgen", ROOT / "scripts" / "toolloop" / "goal_prompt_all_defects.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m._open_dq_names(LEDGER)
+
+
 def buckets():
     runs: collections.Counter = collections.Counter()
     errs: collections.Counter = collections.Counter()
@@ -220,12 +232,47 @@ def test_the_ROW_no_longer_asserts_the_stale_rate():
     assert "40.4%" in blob and "1,491" in blob
 
 
-def test_the_row_is_BLOCKED_on_the_owner_action_it_named():
+def test_the_row_is_BLOCKED_on_a_question_that_is_still_OPEN():
+    """🔴 THE REFERENT MOVED AND THE ASSERTION DID NOT, which is how this guard went red on
+    2026-08-30 against work that was going RIGHT.
+
+    It read `blocked_by_dq == "DQ-T53"` and `DQ-T53.state == "open"`. Both were true when written
+    and both are now false, because DQ-T53 was ANSWERED AND CARRIED OUT: the owner turned the
+    provider's server logging on, the re-runs it asked for were executed, and the row was
+    re-pointed at the question that actually blocks it now. A guard that pins a specific
+    question name turns "the owner did the thing" into a test failure.
+
+    What must stay true is the INTENT — this row is not offered as actionable work while a
+    decision is outstanding — so it is asserted against the queue generator's own definition of
+    "still open" rather than a name. The next re-point cannot silently unblock it either.
+    """
     r = LEDGER["defects"]["D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH"]
-    assert r.get("blocked_by_dq") == "DQ-T53"
+    blocker = r.get("blocked_by_dq")
+    assert blocker in _open_dq_names(), (
+        f"blocked_by_dq={blocker!r} is not an OPEN question — the row is either unblocked or "
+        "pointing at a decision that has already been made")
+
+
+def test_the_owner_action_the_row_ORIGINALLY_named_was_CARRIED_OUT():
+    """The historical fact, kept rather than deleted. DQ-T53 was this row's original blocker and
+    the loop's own record of what unblocked it; dropping the assertion entirely would lose that
+    the wall came down.
+
+    🔴 AND MY FIRST VERSION OF THIS ASSERTION TRUSTED THE STATUS WORD, which is the very bug this
+    repo already has a guard for. It read `state == "answered"` and went red: DQ-T53's `state`
+    string still literally says "open" while the row carries `answer_2026_08_28` and
+    `the_owners_action_is_DONE_and_the_re_run_found_nothing_2026_08_30`. Writing a ruling and
+    updating a status word are two separate acts and nobody is obliged to do the second — which
+    is exactly why `_open_dq_names` keys on the RULING, not the word, and why four rulings once
+    sat invisible behind an un-updated `state`.
+    """
     dq = LEDGER["deferred_questions"]["DQ-T53"]
-    assert dq["state"] == "open"
-    assert "I am not able to do it" in dq["my_recommendation"]
+    assert any(str(k).startswith("answer") for k in dq), (
+        "DQ-T53 carries no ruling — if it lost one, the provider-log evidence this row and two "
+        "others rest on needs re-checking")
+    assert "DQ-T53" not in _open_dq_names(), (
+        "DQ-T53 is blocking again — either its ruling was withdrawn or a correction was returned "
+        "on it, and the rows that were unblocked by it should be re-read")
 
 
 def test_the_tautology_the_row_warned_about_is_not_repeated():
