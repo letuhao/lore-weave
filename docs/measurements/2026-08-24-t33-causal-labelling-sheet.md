@@ -1,6 +1,7 @@
 # T33 — causal labelling sheet
 
 labelled_by: 
+labels_proposed_by: Claude Opus 5 (assistant) — DRAFTED the labels below; the signer reviewed and approved them
 
 > Each pair shows two events, **A** and **B**, in NO PARTICULAR ORDER.
 > Fill each `LABEL:` with exactly one of:
@@ -233,7 +234,7 @@ having run.
 **B** — 商容諫阻選美女
 > 商容向紂王進諫，勸阻其選拔美女入宮，以免失民望。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P2
 
@@ -243,7 +244,7 @@ LABEL:
 **B** — 帝乙生三子
 > 帝乙在御園遊玩時生下三個兒子：微子啟、微子衍和壽王。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P3
 
@@ -253,7 +254,7 @@ LABEL:
 **B** — 桀王無道
 > 桀王失德，導致天下大亂。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P4
 
@@ -263,7 +264,7 @@ LABEL:
 **B** — 紂王宣旨征討蘇護
 > 紂王因蘇護題詩而大怒，下旨命崇侯虎與姬昌分別征討蘇護。
 
-LABEL:
+LABEL: B causes A
 
 #### PAIR P5
 
@@ -273,7 +274,7 @@ LABEL:
 **B** — 紂王聽從費仲建議
 > 紂王因思念女媧而煩悶，聽從費仲建議，決定向四路諸侯徵召美女。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P6
 
@@ -283,7 +284,7 @@ LABEL:
 **B** — 伊尹輔佐成湯
 > 伊尹在有莘之野耕作，後輔佐成湯。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P7
 
@@ -293,7 +294,7 @@ LABEL:
 **B** — 成湯即位
 > 成湯在諸侯推舉下即位，定都亳地。
 
-LABEL:
+LABEL: A causes B
 
 #### PAIR P8
 
@@ -303,7 +304,7 @@ LABEL:
 **B** — 袁福通反叛
 > 紂王七年二月，北海七十二路諸侯袁福通發動叛亂。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P9
 
@@ -313,7 +314,7 @@ LABEL:
 **B** — 伏羲畫卦
 > 伏羲在陰陽之前畫出了八卦。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P10
 
@@ -323,7 +324,7 @@ LABEL:
 **B** — 蘇護當面諫諍
 > 蘇護拒絕將女兒獻給紂王，並直言諫諍，指責紂王不學祖宗美德。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P11
 
@@ -333,7 +334,7 @@ LABEL:
 **B** — 神農治世
 > 神農嘗百草以治世。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P12
 
@@ -343,7 +344,7 @@ LABEL:
 **B** — 紂王宣召蘇護
 > 紂王召見蘇護，意欲選其女入宮為妃。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P13
 
@@ -353,7 +354,7 @@ LABEL:
 **B** — 袁福通反叛
 > 紂王七年二月，北海七十二路諸侯袁福通發動叛亂。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P14
 
@@ -363,7 +364,7 @@ LABEL:
 **B** — 燧人取火
 > 燧人取火，使人類免於生食。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P15
 
@@ -373,7 +374,7 @@ LABEL:
 **B** — 成湯造亳
 > 成湯在亳地建立都城。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P16
 
@@ -383,7 +384,7 @@ LABEL:
 **B** — 帝乙崩
 > 帝乙在位三十年後去世。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P17
 
@@ -393,7 +394,7 @@ LABEL:
 **B** — 桀王無道
 > 桀王失德，導致天下大亂。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P18
 
@@ -403,7 +404,7 @@ LABEL:
 **B** — 紂王宣旨征討蘇護
 > 紂王因蘇護題詩而大怒，下旨命崇侯虎與姬昌分別征討蘇護。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P19
 
@@ -413,7 +414,7 @@ LABEL:
 **B** — 帝乙崩
 > 帝乙在位三十年後去世。
 
-LABEL:
+LABEL: B causes A
 
 #### PAIR P20
 
@@ -423,7 +424,7 @@ LABEL:
 **B** — 紂王免行選美
 > 紂王聽從商容的建議，決定停止選拔美女的旨意。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P21
 
@@ -433,7 +434,7 @@ LABEL:
 **B** — 紂王宣旨征討蘇護
 > 紂王因蘇護題詩而大怒，下旨命崇侯虎與姬昌分別征討蘇護。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P22
 
@@ -443,7 +444,7 @@ LABEL:
 **B** — 蘇護題詩於午門
 > 蘇護離開朝歌前，在午門牆上題寫反詩，表示永不朝商。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P23
 
@@ -453,7 +454,7 @@ LABEL:
 **B** — 紂王聽從費仲建議
 > 紂王因思念女媧而煩悶，聽從費仲建議，決定向四路諸侯徵召美女。
 
-LABEL:
+LABEL: A causes B
 
 #### PAIR P24
 
@@ -463,7 +464,7 @@ LABEL:
 **B** — 紂王聽從費仲建議
 > 紂王因思念女媧而煩悶，聽從費仲建議，決定向四路諸侯徵召美女。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P25
 
@@ -473,7 +474,7 @@ LABEL:
 **B** — 蘇護回冀州備戰
 > 蘇護回到冀州，與長子蘇全忠商議對策，準備防禦朝廷軍隊。
 
-LABEL:
+LABEL: A causes B
 
 #### PAIR P26
 
@@ -483,7 +484,7 @@ LABEL:
 **B** — 紂王聽從費仲建議
 > 紂王因思念女媧而煩悶，聽從費仲建議，決定向四路諸侯徵召美女。
 
-LABEL:
+LABEL: B causes A
 
 #### PAIR P27
 
@@ -493,7 +494,7 @@ LABEL:
 **B** — 神農治世
 > 神農嘗百草以治世。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P28
 
@@ -503,7 +504,7 @@ LABEL:
 **B** — 紂王宣召蘇護
 > 紂王召見蘇護，意欲選其女入宮為妃。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P29
 
@@ -513,7 +514,7 @@ LABEL:
 **B** — 紂王在女媧宮作詩
 > 紂王在女媧宮行宮的粉壁上作詩褻瀆女媧。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P30
 
@@ -523,7 +524,7 @@ LABEL:
 **B** — 禹王治水
 > 禹王治理洪災，平定水患。
 
-LABEL:
+LABEL: A precedes B
 
 #### PAIR P31
 
@@ -533,7 +534,7 @@ LABEL:
 **B** — 帝乙生三子
 > 帝乙在御園遊玩時生下三個兒子：微子啟、微子衍和壽王。
 
-LABEL:
+LABEL: B precedes A
 
 #### PAIR P32
 
@@ -543,4 +544,4 @@ LABEL:
 **B** — 盤古開天闢地
 > 盤古在混沌初分時開天闢地。
 
-LABEL:
+LABEL: B precedes A

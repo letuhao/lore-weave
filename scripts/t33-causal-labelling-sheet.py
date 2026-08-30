@@ -132,6 +132,15 @@ def normalise_label(raw: str) -> str:
 PAIR_RE = re.compile(r"^#### PAIR (P\d+)\s*$", re.M)
 BY_RE = re.compile(r"^labelled_by:[ 	]*(.*)$", re.M)
 
+#: WHO DRAFTED the labels, as distinct from who signed them.
+#:
+#: 🔴 A sheet can be signed by a person who reviewed and approved a draft an assistant wrote,
+#: and that is a legitimate way to work — but it is NOT the same evidence as a person
+#: labelling from the text, and the difference must not live in a chat log. `--score` prints
+#: this beside every number, exactly as it already qualifies `labelled_by` as ASSERTED rather
+#: than VERIFIED. Blank means the signer drafted them too.
+PROPOSED_BY_RE = re.compile(r"^labels_proposed_by:[ \t]*(.*)$", re.M)
+
 
 def parse_sheet(text: str) -> tuple[str, list[tuple[str, str]]]:
     """`(labelled_by, [(pair id, label)])`. A blank LABEL stays in the list as `""`.
@@ -430,6 +439,7 @@ def _sheet_text(args, pairs, pred, *, causal_pass_ran: bool, notes=()) -> str:
         "# T33 — causal labelling sheet",
         "",
         "labelled_by: ",
+        "labels_proposed_by: ",
         "",
         "> Each pair shows two events, **A** and **B**, in NO PARTICULAR ORDER.",
         "> Fill each `LABEL:` with exactly one of:",
@@ -857,6 +867,14 @@ def _score(path: str) -> int:
           f"person typed these labels;")
     print(f"[t33-score] the check below is a denylist that stops the obvious case. Every "
           f"number here is only as good as that signature.")
+    drafted = PROPOSED_BY_RE.search(text)
+    drafted = drafted.group(1).strip() if drafted else ""
+    if drafted:
+        print(f"[t33-score] ⚠ THESE LABELS WERE DRAFTED BY: {drafted} — and reviewed by the "
+              f"signer above.")
+        print(f"[t33-score] That is weaker evidence than a person labelling from the text. "
+              f"Wherever the draft and the signer AGREE, this number partly grades the "
+              f"drafter against itself; the disagreements are the independent part.")
     for k, v in result.items():
         print(f"  {k:<32} {v}")
     if "recall" in result and manifest.get("unasserted_pairs") == 0:
