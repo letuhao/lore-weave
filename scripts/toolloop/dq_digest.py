@@ -26,6 +26,7 @@ import datetime as _dt
 import importlib.util
 import json
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -122,11 +123,24 @@ def build() -> str:
         # population — and that the OTHER direction is 2.5x larger, not smaller — lives in a
         # separate field. A digest that prints the question and hides the correction hands the
         # owner the stale number in the most authoritative-looking place on the page.
+        # 🔴 SURFACE BY DATE, NOT BY TOPIC WORD — and the topic-word list is why. The first
+        # version matched keys containing "corrected", "re_derived", "premise" and a handful of
+        # others. Checked against its own output on 2026-08-30 and it was MISSING the session's
+        # biggest results: the pipeline tool's 0-of-80, its five-call protocol, the 1.3M-id
+        # census, a p=0.048 batch, and the tie population falling from 25 to 13. Every one of
+        # those lives in a field this page exists to show, and every one has a DATE in its key.
+        #
+        # A hand-kept vocabulary of interesting-sounding words cannot keep up with what gets
+        # measured, and when it falls behind it fails SILENTLY — the page still renders, just
+        # without the finding. Keying on the date stamp instead means a field written today is
+        # shown today, whatever it is called.
+        _DATED = re.compile(r"20\d\d[_-]\d\d[_-]\d\d")
         for k in q:
             kl = str(k).lower()
-            if any(t in kl for t in ("corrected", "re_derived", "rederived", "premise",
-                                     "is_static", "moved_the", "verified_unchanged",
-                                     "blast_radius", "not_be_reproduced", "established")):
+            if _DATED.search(str(k)) or any(t in kl for t in (
+                    "corrected", "re_derived", "rederived", "premise",
+                    "is_static", "moved_the", "verified_unchanged",
+                    "blast_radius", "not_be_reproduced", "established")):
                 # 1600, not 600: a correction's POINT is usually its numbers, and they sit
                 # after the sentence that sets them up. At 600 the DQ-T71 entry showed the
                 # framing and cut off before "4.32%" — the figure that reverses which half
