@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L6 — GO_INLINE_CAP cannot see a cap written against a named constant.
+RESUME: L1 — causal coverage, accepted and never measured.
 
 ## Progress
 
-7 tasks — 4 done, 0 tracked, 3 untouched.
+7 tasks — 5 done, 0 tracked, 2 untouched.
 
 ---
 
@@ -64,7 +64,7 @@ RESUME: L6 — GO_INLINE_CAP cannot see a cap written against a named constant.
   **BITE:** the collision count is a COMMAND, and after the chosen action it prints what the
   decision says it should — 0 for a backfill, 51 with a recorded reason for an acceptance.
 
-- [ ] **L6** — **`GO_INLINE_CAP` cannot see a cap against a named constant.**
+- [x] **L6** — **`GO_INLINE_CAP` cannot see a cap against a named constant.**
   Measured 2026-08-30 (§22, corrected): `mcp_tools_read.go` caps `limit` against
   `const maxChapterBlocks = 300` and the regex requires `\d+` on both sides, so the site reads
   as uncapped. The batch §22 priced at "7 blind spots + 1 real verdict" is 8 blind spots.
@@ -367,4 +367,64 @@ the census grew by one it vanished. Floor raised to 119 in this commit (rule 5) 
 PRINTED explicitly, so its visibility is no longer an accident. Bitten by line number:
 drop the print AND move the floor off the census → `FAIL — CI_SCOPE_FLOOR = 117 never reaches
 the output`. Suite back to **104 GREEN, 0 RED**.
+---
+
+### ✅ L6 2026-08-30 — **§22's batch of 8 is 2, and both survivors are the shape L5 deliberately introduced**
+
+```
+selftest cases          8 -> 15  (9 negative)
+BASELINE rows          27 -> 24  (3 were never defects; pruned by intersection)
+§22 step-3 batch        8 ->  2  after two instrument bugs were fixed
+```
+
+🎯 **Two instrument bugs, not one.** The row named the first: `GO_INLINE_CAP` required `\d+`
+on both sides, so `if limit <= 0 || limit > maxChapterBlocks { limit = maxChapterBlocks }` read
+as uncapped — and it failed on the SHAPE too, since the old pattern needed `if <limit> >`
+immediately after the `if`. The second turned up while measuring: **three of the five findings
+a stricter signal produced were `//` COMMENTS** — `search.go` documenting its own placeholders
+(`// $3 = escaped ILIKE pattern   $4 = limit`). The instrument was reporting on its own prose,
+the "hygiene grep matches a comment" defect this repo has hit before.
+
+📐 **A VARIABLE is still not a cap**, and that is the half worth guarding. `_go_int_consts`
+resolves only package-level `const NAME = <int>` — never a `var`, never a chained const, never
+a string. Widening a signal is precisely the change that quietly starts accepting what it
+should not.
+
+🔴 **THREE BASELINE ROWS WERE NEVER DEFECTS.** `canonical_summary_handler.go`,
+`wiki_gold_pairs.go` and `wiki_handler.go` cap against `maxCanonicalDirtyLimit`,
+`goldPairsMaxLimit` and a compound `if limit <= 0 || limit > 100`. Pruned by intersection,
+never `--regen`, with a note where they stood: a baseline row for a non-defect makes the list
+look like it is carrying work that does not exist.
+
+⚖️ **§22 step 3 is NOT taken, and now for a better reason than §22 had.** Measured with the
+instrument honest, it would newly red **two** sites — `runLexicalSearch` and
+`buildBookListQueries` — and **both are query BUILDERS whose cap lives one hop up, in the
+caller**. The repo wants that shape: L5 extracted `buildBookListQueries` so the page query and
+the COUNT could not drift. Function-scoping the helper signal would penalise the structure
+this plan spent a cycle introducing. §22 records the number and what step 3 would first need:
+the resolver already follows a file-scope SQL const to the functions that NAME it, and would
+have to follow a builder to the functions that CALL it.
+
+⚠️ **One of my four bites did not land, and fixing that found a missing case.** "Only the
+comparison bound is checked, not the assigned value" left the suite GREEN — because the
+`a VARIABLE bound is NOT a cap` case puts `someVar` on both sides, so checking the comparison
+alone catches it. `if limit > 500 { limit = someVar }` is the case that separates them, and
+it did not exist. Added; the bite now reds.
+
+🧪 **BITE — four, each on its own claim, by line number.**
+
+```
+1 const resolver returns nothing (line 112)      -> "cap against a package-level int const" FAILs
+2 any identifier accepted as a bound (line 120)  -> the VARIABLE and non-int-const cases FAIL
+3 only the comparison bound checked (line 234)   -> "ASSIGNS a variable" FAILs (after the case existed)
+4 comment guard removed (line 258)               -> "a LIMIT inside a // comment" FAILs
+```
+
+**QC (a) gates:** `pagination-cap-lint --selftest` **15 cases, 9 negative**;
+`pagination-cap-lint` OK, 28 baselined; `gate-wiring-gate --run-all` **104 GREEN, 0 RED,
+exit 0**.
+**QC (b) live smoke:** N/A — a lint predicate and a baseline list. No service code, no image,
+no seam crossed.
+**QC (c) real data:** the whole tree, scanned: 24 findings, 0 outside the BASELINE; the
+step-3 simulation above run over the same walk.
 ---

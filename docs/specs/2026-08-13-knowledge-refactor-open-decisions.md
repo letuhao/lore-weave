@@ -2302,8 +2302,35 @@ has no back-compat reason to be loose.
    package-level `const NAME = <int>` on either side. A *variable* must NOT be accepted — the
    whole point of the signal is that the bound is knowable at the call site, and
    `limit = someVar` is not.
-3. Point `GO_CLAMP_SIGNALS` at `_go_capped_in_scope()` — one call site — and refresh the
-   BASELINE by intersection, never `--regen`.
+3. ~~Point `GO_CLAMP_SIGNALS` at `_go_capped_in_scope()` — one call site — and refresh the
+   BASELINE by intersection, never `--regen`.~~ **MEASURED 2026-08-30 (L6) — the batch is 2,
+   not 8, and BOTH survivors are the same false positive. Step 3 is NOT taken.**
+
+   Step 1 landed: `GO_INLINE_CAP` now resolves a package-level `const NAME = <int>` (single
+   and block form) on either side, and a `//` comment no longer counts as a query — three of
+   the five findings a stricter signal produced were `search.go` documenting its own
+   placeholders (`// $3 = escaped ILIKE pattern   $4 = limit`), the instrument reporting on
+   its own prose. Three BASELINE rows were dead and are pruned by intersection.
+
+   With the instrument honest, step 3 would newly red **two** sites:
+
+   ```
+   search.go::LIMIT $4 OFFSET $5        lexicalSearchSQL -> runLexicalSearch (no cap)
+                                        …whose CALLERS call parseLimitOffset
+   server.go::LIMIT $… OFFSET $…        buildBookListQueries (no cap)
+                                        …whose caller listBooksByLifecycle calls it
+   ```
+
+   **Both are query BUILDERS whose cap lives one hop up, in the caller** — and the repo
+   actively wants that shape: L5 extracted `buildBookListQueries` precisely so the page query
+   and the COUNT cannot drift apart. Function-scoping the helper signal would penalise the
+   structure this plan spent a cycle introducing.
+
+   So step 3 needs a step 0 that §22 did not know about: `_go_capped_in_scope` already follows
+   a file-scope SQL const to the functions that name it, and it would have to follow a query
+   BUILDER to the functions that call it — one level up the same idea. That is a real
+   extension, not a flag flip, and it is what a future cycle would build. Recorded with the
+   number rather than left as "8 findings, mostly noise".
 
 The three background sweepers already in the BASELINE (`dek_shred_sweeper`, `reparse_sweeper`,
 `epub_asset_retention`) are verified non-defects with server-set batch sizes and keep their rows
