@@ -49,6 +49,16 @@ import urllib.request
 #: T48s's fix repaired.
 STRIDE = 1_000_000
 
+#: Floor on DERIVED temporal routes. A RATCHET: it moves with the controllers, not with what a
+#: given fixture can drive. Nine is what the two read controllers declare today.
+#:
+#: It exists because the sweep read its sources through `if os.path.exists(path)` -- a guard I
+#: wrote to be defensive -- which turned a missing controller into SILENCE rather than a crash,
+#: and silence swept nothing and reported `PASS -- 0 route(s) swept, 0 not holding their
+#: position` at exit 0. The sibling read-sweep, lacking that kindness, raises FileNotFoundError
+#: and exits 1. **The defensive check is what created the vacuous pass.**
+DEFAULT_MIN_ROUTES = 9
+
 HOLDS, LEAKS, EMPTY, FLAT, ERROR = "HOLDS", "LEAKS", "EMPTY", "FLAT", "ERROR"
 
 
@@ -433,6 +443,13 @@ def _selftest() -> int:
         "@Post('plain')", "async c() { return knowledge.post('/p', {}); }",
     ])
     for label, got, want in [
+        ("THE FLOOR is tied to reality: the real controllers derive at least the default",
+         len(temporal_graph_routes([io.open(os.path.join(
+             "services", "knowledge-gateway", "src", "kal", f), encoding="utf-8").read()
+             for f in ("kal-read.controller.ts", "kal-project-read.controller.ts")],
+             graph_only=False)) >= DEFAULT_MIN_ROUTES, True),
+        ("...and the default is not zero, which would make the floor decorative",
+         DEFAULT_MIN_ROUTES > 0, True),
         ("T48aj — the NEXT route's doc comment must not count for THIS route",
          temporal_graph_routes([chr(10).join([
              "@Post('plain')", "async a() { return knowledge.post('/p', {}); }",
@@ -497,6 +514,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--cap", type=int, default=50)
     ap.add_argument("--project-id", default="",
                     help="the KG project; `fact-for-check` is prefixed projects/:projectId")
+    ap.add_argument("--min-routes", type=int, default=DEFAULT_MIN_ROUTES,
+                    help="floor on DERIVED temporal routes; a RATCHET that moves with the "
+                         "controllers, not with what a given fixture can drive")
     ap.add_argument("--cold-downstream", default="",
                     help="downstreams this fixture has no data for; their temporal routes are "
                          "SKIPPED with a stated reason rather than scored EMPTY")
@@ -523,6 +543,20 @@ def main(argv: list[str]) -> int:
         gaps = uncovered(routes, RECIPES)
         print(f"[bitemporal] {len(routes)} graph-backed temporal route(s) derived; "
               f"{len(gaps)} with no recipe")
+        # THE FLOOR. A derivation that returns NOTHING sweeps nothing and reports
+        # "0 route(s) swept, 0 not holding their position" at exit 0 -- and the proof's
+        # TEMPORAL leg matches on that very sentence, so the vacuity propagates. Proven by
+        # running the sweep from a tree with no controllers.
+        #
+        # This is the third time this session: `--min-legs` (T48t) and `--min-data` (T48aa)
+        # are the same control, and the gateway's own specs carry literal floors
+        # (`>= 13` handlers, `>= 8` as_of readers). A regex that stops matching -- a
+        # reformatted decorator, a renamed file -- must RED, not read clean.
+        if len(routes) < args.min_routes:
+            print(f"[bitemporal] FAIL — only {len(routes)} temporal route(s) derived, floor is "
+                  f"{args.min_routes}. A sweep over nothing proves the harness runs and "
+                  f"nothing else; the derivation is broken, not the system.")
+            return 1
         if gaps:
             print(f"[bitemporal] FAIL — UNCOVERED: {gaps}. A temporal route this smoke cannot "
                   f"drive is how `wiki-neighborhood` leaked for the whole of T48s's life.")

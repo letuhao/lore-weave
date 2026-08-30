@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 46 of 48 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 47 of 49 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (39/40) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (40/41) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,75 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48am 2026-08-30 — **the sweep I built last cycle passes on ZERO routes, and my own defensive check is what made it quiet**
+
+  ```
+  before  (controllers unreadable)  PASS — 0 route(s) swept, 0 not holding their position  exit 0
+  after   (controllers unreadable)  FAIL — only 0 temporal route(s) derived, floor is 9    exit 1
+          (real tree)               PASS — 9 route(s) swept, 0 not holding their position  exit 0
+  ```
+
+  🎯 **Found by reading the gateway's own specs in T48al.** Both carry a literal floor —
+  `expect(declared.length).toBeGreaterThanOrEqual(13)` on the write surface,
+  `>= 8` on the as_of readers — each with the same note: *"it is also the control arm: every
+  other assertion in this file is satisfied by an EMPTY table."* **My sweep, one cycle old, had
+  no such floor.** Proven by running it from a tree with no controllers: it swept nothing and
+  reported PASS.
+
+  ⚠️ **AND THE PROOF INHERITS IT.** `architecture-live-proof`'s TEMPORAL leg matches on the
+  needle `"not holding their position"` — which the vacuous line *contains*. A broken derivation
+  would have carried a green five-leg `PROVEN` with it.
+
+  🔴 **THE QUIETNESS WAS MINE, and this is the part I would not have guessed.** The sweep reads
+  its sources through a guard I wrote to be careful:
+
+  ```
+  if os.path.exists(path):
+      srcs.append(io.open(path, encoding="utf-8").read())
+  ```
+
+  The sibling `kal-read-surface-live-smoke`, which lacks that kindness, raises
+  `FileNotFoundError` and exits 1 on the same tree. **The defensive check is what converted a
+  loud failure into a silent pass** — a missing file became an empty list, and an empty list
+  swept clean. Measured both, side by side, rather than assumed.
+
+  📐 **Third instance of one control this session**, which is why it gets a name rather than a
+  patch: `--min-legs` over skipped legs (T48t), `--min-data` over a one-sided surface (T48aa),
+  and now `--min-routes` over an empty derivation. Each time the shape is identical — *zero of
+  zero failed* — and each time it read as success.
+
+  ✅ **The two siblings were checked, not assumed.** `kal-surface-census-gate` anchors its paths
+  to `ROOT`, so it read the real controllers even from an empty tree and was never vulnerable;
+  `kal-read-surface-live-smoke` crashes at exit 1. Only the one built last cycle had the hole.
+
+  🔬 **The floor is tied to reality rather than typed once**: a selftest case asserts the real
+  controllers derive at least `DEFAULT_MIN_ROUTES`, so the constant cannot drift above what
+  exists, and a second asserts it is not zero — a floor of zero is decorative, which is exactly
+  what the bite makes it.
+
+  🧪 **BITE T48am-1 — line 60, `DEFAULT_MIN_ROUTES = 9 → 0`.**
+
+  ```
+  live      (no controllers)  PASS — 0 route(s) swept, 0 not holding their position   exit 0
+  offline   FAIL  ...and the default is not zero, which would make the floor decorative  exit 1
+  ```
+
+  The live half reproduces the vacuous pass exactly; the offline half is what CI sees. Restored;
+  the real sweep reports **9 route(s) swept** and the proof's TEMPORAL leg carries that sentence
+  as its evidence.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **31/31** (2 new floor cases);
+  `architecture-live-proof`, `kal-surface-census-gate` selftests, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** four sweeps against the running iso stack — the vacuous tree before and
+  after, the bite, and the real tree — plus the five-leg proof, `PROVEN`, exit 0. No image
+  rebuild; no service code changed.
+  **QC (c) real data:** N/A because this cycle produces no data. Its measurement is the
+  derivation itself: 0 routes from an empty tree, 9 from the real one.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48al 2026-08-30 — **the KAL gateway's suite was RED for four commits, and nothing anywhere runs it**
 
