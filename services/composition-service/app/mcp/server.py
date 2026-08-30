@@ -680,8 +680,7 @@ def _translate_estimate(
         "project_id every other composition_* tool requires (a book_id is NOT a "
         "project_id). Grant-gated — VIEW on the book required."
     ),
-    meta=require_meta(
-        "R", "book",
+    meta=require_meta("R", "book",
         synonyms=[
             "composition work", "authoring context", "get work",
             "resolve project id", "the book's authoring workspace",
@@ -6052,6 +6051,21 @@ async def plan_propose_spec(
     return out
 
 
+# 🔴 "linter" IS THE AUTHOR'S WORD FOR THIS TOOL AND IT REACHED NOTHING. The description
+# above has said "run the S1–S8 golden linter" since this tool shipped, but R1
+# answerability reads `synonyms`, not the description — so measured against
+# `answerable_tools`, "Run the golden linter on this plan." returned the EMPTY SET while
+# "validate plan" and "check the golden rules" both resolved here.
+#
+# That gap is the surface half of D-THE-PROBLEMS-PANEL-IS-REPORTED-AS-THE-GOLDEN-LINTER:
+# asked for the linter, the model reached for composition_diagnostics — the problems
+# panel — and reported its output as the linter's, on 5 of 5 runs with plan_validate
+# advertised 0 of 5. Given the linter, the same model used it and ONLY it, ten calls
+# across five sessions.
+#
+# PRECISION CHECKED BEFORE SHIPPING, because a synonym that steals a neighbour's request
+# is worse than a missing one: with these three added, "show me the problems panel" still
+# resolves to composition_diagnostics alone.
 @mcp_server.tool(
     name="plan_validate",
     description="PlanForge: run the S1–S8 golden linter (+ fidelity report) on a run's spec. `passed` "
@@ -6060,7 +6074,10 @@ async def plan_propose_spec(
         "`applicable`: false means the rule had nothing to check here (a rule about a named "
         "entity says nothing about a book without one), so neither its ✓ nor its ✗ is a "
         "verdict. VIEW required.",
-    meta=require_meta("R", "book", synonyms=["validate plan", "check spec", "golden rules"], tool_name="plan_validate"),
+    meta=require_meta("R", "book",
+                      synonyms=["validate plan", "check spec", "golden rules",
+                                "golden linter", "linter", "lint the plan"],
+                      tool_name="plan_validate"),
 )
 async def plan_validate(
     ctx: MCPContext,

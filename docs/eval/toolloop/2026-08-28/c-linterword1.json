@@ -1,0 +1,1625 @@
+{
+  "batch": "c-linterword1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "plan_validate",
+      "scenario": "the-authors-word-linter-reaches-the-linter",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the model calls plan_propose_spec (starting a SECOND run to obtain a run_id — the row's stated failure), OR it invents a run_id, OR it passes the book_id in the run_id slot, OR it asks the AUTHOR for a run_id (a UUID no author has). Store check: loreweave_composition.plan_run stays at 1 row for this book.",
+      "answer_expect": {
+        "all_of": [
+          "plan"
+        ],
+        "why": "Deliberately weak on the TEXT. The assertion is the CALL: plan_validate reached with a run_id that came from a reader rather than from a new run. A reply that discusses the plan while no linter ran is exactly what the tool-call trace, not the prose, has to rule out."
+      },
+      "falsifier_sha": "313889fcad341bc9",
+      "ship_audit": {
+        "gate": "N/A — Tier R, no confirm card.",
+        "absent_case": "N/A here; plan_validate's absent-run refusal is not what this measures.",
+        "idempotency": "N/A — a read.",
+        "tenancy": "covered by the VIEW gate on the book."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a050de-ee37-74ef-bf3e-00c38501bda3",
+          "project_id": "01a050de-efc6-7c65-81bf-4e897545cd19",
+          "seed_ids": {
+            "01a050de-ee37-74ef-bf3e-00c38501bda3": "fixture book_id",
+            "01a050de-efc6-7c65-81bf-4e897545cd19": "fixture project_id (composition_work)",
+            "01a050de-eef2-7612-9c5c-9f796ad936a0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a050de-f04f-785e-84ae-fcb2f91ecf93": "seed[0] plan_propose_spec.run_id",
+            "01a050de-f054-72e4-8db9-4b67afee4569": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a050de-f05b-79e9-bbd6-59d555138c91": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a050de-f082-718d-8ba6-522571905d05": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a050de-f079-7677-b3cc-d337acea6ed0": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a050de-f058-79fd-ba16-9d3bb637f45a": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a050de-efd5-7645-9530-dc07ac609484": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a050df-3f2a-797f-96cc-421a1af4170a",
+          "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "scenario_prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "plan_validate"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a050de-ee37-74ef-bf3e-00c38501bda3\", \"work\": {\"project_id\": \"01a050de-efc6-7c65-81bf-4e897545cd19\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "book_list",
+              "result_head": "{\"ok\": true, \"result\": {\"books\": [{\"access_level\": \"owner\", \"book_id\": \"01a050de-ee37-74ef-bf3e-00c38501bda3\", \"chapter_count\": 1, \"lifecycle_state\": \"active\", \"original_language\": \"en\", \"title\": \"LOOP-THROWAWAY-the-authors-word-linter-reaches-the-linter-0-cd37cc50\"}, {\"access_level\": \"owner\", \"book"
+            },
+            {
+              "tool": "plan_validate",
+              "result_head": "{\"ok\": true, \"result\": {\"passed\": true, \"rules\": [{\"id\": \"vars_four\", \"passed\": false, \"message\": \"codes=[]\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"pa_not_realm\", \"passed\": true, \"message\": \"\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"arc2_discovery\", \"passed\": false, \"message\":"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "book_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "plan_validate"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.8052+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:13:02.973686+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:03.160159+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:13:02.973686+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.789897+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.578273+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.8052+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:13:02.973686+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:03.160159+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:13:02.973686+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:02.789897+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:32.28798+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:32.28798+00"
+              }
+            }
+          },
+          "answer": "The golden linter has run on your plan (Run `01a050de-f04f-785e-84ae-fcb2f91ecf93`). \n\nYour plan **passed all hard rules**, meaning the core structure is valid and ready for compilation. There are several advisory warnings regarding pacing and detail, but nothing that blocks the drafting process.\n\n### ✅ Passed Rules (Hard)\n*   **Spec has arcs**: You have 2 arcs defined.\n*   **Spec has events**: You have 4 events defined.\n*   **Premise length**: Your premise is within the optimal character limit.\n*   **Notes linked**: All your source notes have been successfully integrated into the plan.\n\n### ⚠️ Advisory Warnings (Non-blocking)\nThese are suggestions for strengthening the story; they do not prevent you from compiling the plan.\n*   **Pacing/Discovery**: The linter suggests checking the discovery of your second arc.\n*   **Event Density**: The plan currently has fewer than 4 events (the threshold used for this check).\n*   **Open Questions**: No open questions were identified in the plan.\n*   **Value Shifts**: Some events in your second arc are missing explicit \"value shifts\" (the emotional or situational change that drives a scene).\n\n**Would you like to refine the plan to address these advisory warnings, or shall we proceed to compile the plan into a chapter structure?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a050df-b841-79ac-bd80-25fe887a42cc",
+          "project_id": "01a050df-b98a-7354-aec2-91d66ee2a5fb",
+          "seed_ids": {
+            "01a050df-b841-79ac-bd80-25fe887a42cc": "fixture book_id",
+            "01a050df-b98a-7354-aec2-91d66ee2a5fb": "fixture project_id (composition_work)",
+            "01a050df-b8db-7674-97aa-8691a48f1b25": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a050df-ba00-7b8d-811c-532b8d54f1e2": "seed[0] plan_propose_spec.run_id",
+            "01a050df-ba03-7f4b-8c2b-cd3320f941b5": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a050df-ba09-7ef0-af8f-9523dc9a5da7": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a050df-ba29-7360-b8ce-1ce88c2f9e45": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a050df-ba22-7507-b7dd-1a3c96a3b2c5": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a050df-ba06-7f0d-bb6d-cc8e644018c3": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a050df-b990-7348-a0b3-9ef07308ce66": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a050df-fbac-7621-b742-fe9ac88fd716",
+          "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "scenario_prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "plan_validate"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a050df-b841-79ac-bd80-25fe887a42cc\", \"work\": {\"project_id\": \"01a050df-b98a-7354-aec2-91d66ee2a5fb\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "book_list",
+              "result_head": "{\"ok\": true, \"result\": {\"books\": [{\"access_level\": \"owner\", \"book_id\": \"01a050df-b841-79ac-bd80-25fe887a42cc\", \"chapter_count\": 1, \"lifecycle_state\": \"active\", \"original_language\": \"en\", \"title\": \"LOOP-THROWAWAY-the-authors-word-linter-reaches-the-linter-1-3d422512\"}, {\"access_level\": \"owner\", \"book"
+            },
+            {
+              "tool": "plan_validate",
+              "result_head": "{\"ok\": true, \"result\": {\"passed\": true, \"rules\": [{\"id\": \"vars_four\", \"passed\": false, \"message\": \"codes=[]\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"pa_not_realm\", \"passed\": true, \"message\": \"\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"arc2_discovery\", \"passed\": false, \"message\":"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "book_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "plan_validate"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.448024+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:13:54.597453+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.730384+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:13:54.597453+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.44168+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.26723+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.448024+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:13:54.597453+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.730384+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:13:54.597453+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:13:54.44168+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The golden linter has run on your plan (Run ID: `01a050df-ba00-7b8d-811c-532b8d54f1e2`). \n\nYour plan passed all **Hard Rules**, meaning the core structure is valid and ready for the next steps.\n\n### ✅ Passed Rules\n*   **Spec has arcs**: You have 2 arcs defined.\n*   **Spec has events**: You have 4 events defined.\n*   **Premise length**: Your premise is within the optimal character limit.\n*   **Notes linked**: All notes in your source document were successfully linked to the plan.\n\n### ⚠️ Advisory Observations\nThe following rules are advisory (they don't block compilation) but highlight areas where the plan could be strengthened:\n*   **Arc Discovery**: The linter noted an opportunity for more discovery in your second arc.\n*   **Anchor Minimum**: The plan currently has 0 anchors (the linter suggests 4+ for high-density plans).\n*   **Open Questions**: No open questions were identified in the plan.\n*   **Value Shift**: The linter flagged that events in your second arc (`arc_2_event_1`, `arc_2_event_2`) do not explicitly define a value shift.\n\n**Status:** Your plan is structurally sound and has passed the hard validation requirements."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a050e0-763d-769d-ab97-3cde3811bdc3",
+          "project_id": "01a050e0-7789-709a-ace3-611c72d9ef98",
+          "seed_ids": {
+            "01a050e0-763d-769d-ab97-3cde3811bdc3": "fixture book_id",
+            "01a050e0-7789-709a-ace3-611c72d9ef98": "fixture project_id (composition_work)",
+            "01a050e0-76da-799e-a6e7-b62c33072981": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a050e0-780a-719c-898e-4a51dde530e2": "seed[0] plan_propose_spec.run_id",
+            "01a050e0-780d-7afe-a62c-b34b1f248178": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a050e0-7813-789a-9cb9-333ae4c02e24": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a050e0-7832-7e1f-b1fa-3742b4fbd997": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a050e0-782b-70a7-b8fc-66ecdf74b940": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a050e0-7810-79c2-87c2-6df2176953a9": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a050e0-778f-7d6f-b05e-1eeb2a559793": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a050e0-c702-77ce-af5e-f57da571f232",
+          "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "scenario_prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "plan_validate"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a050e0-763d-769d-ab97-3cde3811bdc3\", \"work\": {\"project_id\": \"01a050e0-7789-709a-ace3-611c72d9ef98\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "book_list",
+              "result_head": "{\"ok\": true, \"result\": {\"books\": [{\"access_level\": \"owner\", \"book_id\": \"01a050e0-763d-769d-ab97-3cde3811bdc3\", \"chapter_count\": 1, \"lifecycle_state\": \"active\", \"original_language\": \"en\", \"title\": \"LOOP-THROWAWAY-the-authors-word-linter-reaches-the-linter-2-0b041d52\"}, {\"access_level\": \"owner\", \"book"
+            },
+            {
+              "tool": "plan_validate",
+              "result_head": "{\"ok\": true, \"result\": {\"passed\": true, \"rules\": [{\"id\": \"vars_four\", \"passed\": false, \"message\": \"codes=[]\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"pa_not_realm\", \"passed\": true, \"message\": \"\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"arc2_discovery\", \"passed\": false, \"message\":"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "book_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "plan_validate"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.087801+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:14:43.246875+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.38032+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:14:43.246875+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.080364+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:42.906511+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.087801+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:14:43.246875+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.38032+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:14:43.246875+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:14:43.080364+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The golden linter has completed its check on your plan (Run `01a050e0-780a-719c-898e-4a51dde530e2`). \n\nYour plan passed all **Hard Rules**, meaning the structural foundation is valid and ready for the next stages.\n\n### ✅ Passed Rules\n*   **Spec has arcs**: You have 2 arcs defined.\n*   **Spec has events**: You have 4 major events/beats.\n*   **Premise length**: Your premise is within the optimal character limit.\n*   **Notes linked**: All your source notes have been successfully integrated into the plan.\n\n### ⚠️ Advisory Notes (Non-blocking)\nThe following items were flagged as advisory. These do not prevent you from compiling or drafting, but they are suggestions for strengthening the story:\n\n*   **Arc Discovery**: The linter suggests more explicit discovery/setup in your second arc.\n*   **Anchor Points**: The plan currently has 0 anchor points (the linter suggests 4+ for high-density pacing).\n*   **Open Questions**: No open questions were identified in the plan.\n*   **Value Shifts**: The linter noted that the events in your second arc (`arc_2_event_1`, `arc_2_event_2`) lack explicit \"value shifts\" (the emotional or situational change that drives a scene).\n\n**What's next?**\nSince the hard rules passed, you are cleared to move toward **compiling** the plan into a structured chapter/scene outline. Would you like me to start that process?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a050e1-428c-73f7-a6a0-5eb51860dbf1",
+          "project_id": "01a050e1-43d4-7783-9cd6-6745ad119eb0",
+          "seed_ids": {
+            "01a050e1-428c-73f7-a6a0-5eb51860dbf1": "fixture book_id",
+            "01a050e1-43d4-7783-9cd6-6745ad119eb0": "fixture project_id (composition_work)",
+            "01a050e1-432b-7769-a133-10bea853795b": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a050e1-444a-702e-8c3f-e9bdf0060f30": "seed[0] plan_propose_spec.run_id",
+            "01a050e1-444d-741d-8ee0-c1b7e044f272": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a050e1-4453-7512-ba4a-ca0d87de2279": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a050e1-446f-728d-b99b-c36dcf908bcd": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a050e1-4468-7a04-968e-b34a5488d1ff": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a050e1-4450-741c-9b5b-34aa6a1c0b0a": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a050e1-43da-7095-852e-299876f98ccc": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a050e1-876c-7ced-bbf8-6750a592d4ab",
+          "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "scenario_prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "plan_validate"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a050e1-428c-73f7-a6a0-5eb51860dbf1\", \"work\": {\"project_id\": \"01a050e1-43d4-7783-9cd6-6745ad119eb0\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "book_list",
+              "result_head": "{\"ok\": true, \"result\": {\"books\": [{\"access_level\": \"owner\", \"book_id\": \"01a050e1-428c-73f7-a6a0-5eb51860dbf1\", \"chapter_count\": 1, \"lifecycle_state\": \"active\", \"original_language\": \"en\", \"title\": \"LOOP-THROWAWAY-the-authors-word-linter-reaches-the-linter-3-8f99e86c\"}, {\"access_level\": \"owner\", \"book"
+            },
+            {
+              "tool": "plan_validate",
+              "result_head": "{\"ok\": true, \"result\": {\"passed\": true, \"rules\": [{\"id\": \"vars_four\", \"passed\": false, \"message\": \"codes=[]\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"pa_not_realm\", \"passed\": true, \"message\": \"\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"arc2_discovery\", \"passed\": false, \"message\":"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "book_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "plan_validate"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.386+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:15:35.53185+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.67021+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:15:35.53185+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.379824+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.211349+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.386+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:15:35.53185+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.67021+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:15:35.53185+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:15:35.379824+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The golden linter has run on your plan (Run: `01a050e1-444a-702e-8c3f-e9bdf0060f30`). \n\nYour plan **passed all hard rules**, meaning the structure is valid and ready for the next stages. There are some advisory warnings regarding pacing and detail, but nothing that blocks the process.\n\n### ✅ Passed (Hard Rules)\n*   **Spec has arcs**: You have 2 arcs defined.\n*   **Spec has events**: 4 events were successfully identified.\n*   **Premise length**: Your premise is within the optimal character limit.\n*   **Notes linked**: All your source notes were successfully integrated into the plan.\n\n### ⚠️ Advisory (Non-blocking)\n*   **Arc Discovery**: The linter suggests more discovery might be needed for Arc II.\n*   **Anchor Points**: The plan currently has 0 anchor points (the linter suggests 4+ for high-fidelity planning).\n*   **Open Questions**: No open questions were identified in this pass.\n*   **Value Shift**: Some events in Arc II are missing explicit \"value shift\" markers, which helps with tracking character/story progression.\n\n**What's next?**\nSince the hard rules passed, you can proceed to **compile** the plan into a real chapter/scene structure, or we can refine the plan to address those advisory warnings."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a050e2-0254-74b5-ba32-f594f89da604",
+          "project_id": "01a050e2-03a6-7bd4-ae88-1d9e45fada32",
+          "seed_ids": {
+            "01a050e2-0254-74b5-ba32-f594f89da604": "fixture book_id",
+            "01a050e2-03a6-7bd4-ae88-1d9e45fada32": "fixture project_id (composition_work)",
+            "01a050e2-02fe-723d-8fe5-4978ebb6c7ff": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a050e2-043f-70f4-b033-811147326337": "seed[0] plan_propose_spec.run_id",
+            "01a050e2-0443-70ff-9283-d30a146bb172": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+            "01a050e2-044a-720a-998d-743b3ec1a054": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+            "01a050e2-0475-7875-940f-70414e3f57fc": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+            "01a050e2-046b-7569-8bc6-767db1781890": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+            "01a050e2-0446-7d14-bc1d-e8fa2147207b": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+            "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+            "01a050e2-03ac-7e57-937e-8be287250b3e": "seed[1] plan_compile.work_id"
+          },
+          "session_id": "01a050e2-5780-75e5-8121-686ba17abfcd",
+          "prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "scenario_prompt": "Run the golden linter on my plan for this book and tell me which rules pass.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "plan_validate"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_suggest",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a050e2-0254-74b5-ba32-f594f89da604\", \"work\": {\"project_id\": \"01a050e2-03a6-7bd4-ae88-1d9e45fada32\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 2, \"arcs\": [\"arc \\\"Arc I - The Emberfall\\\" \\u00b7 outline\", \"arc \\\"Arc II - The Reckoning\\\" \\u00b7 outline\"], \"arcs_cap"
+            },
+            {
+              "tool": "book_list",
+              "result_head": "{\"ok\": true, \"result\": {\"books\": [{\"access_level\": \"owner\", \"book_id\": \"01a050e2-0254-74b5-ba32-f594f89da604\", \"chapter_count\": 1, \"lifecycle_state\": \"active\", \"original_language\": \"en\", \"title\": \"LOOP-THROWAWAY-the-authors-word-linter-reaches-the-linter-4-8be00169\"}, {\"access_level\": \"owner\", \"book"
+            },
+            {
+              "tool": "plan_validate",
+              "result_head": "{\"ok\": true, \"result\": {\"passed\": true, \"rules\": [{\"id\": \"vars_four\", \"passed\": false, \"message\": \"codes=[]\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"pa_not_realm\", \"passed\": true, \"message\": \"\", \"tier\": \"advisory\", \"applicable\": false}, {\"id\": \"arc2_discovery\", \"passed\": false, \"message\":"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "book_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "call": "plan_validate"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "book_list",
+                "composition_package_tree",
+                "plan_validate"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.492862+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:16:24.688701+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.850192+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:16:24.688701+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.485901+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.31776+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.492862+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 4,
+                "latest": "2026-08-30 04:16:24.688701+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.850192+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 2,
+                "latest": "2026-08-30 04:16:24.688701+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 04:16:24.485901+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The golden linter has completed its check on your plan (Run `01a050e2-043f-70f4-b033-811147326337`).\n\n### ✅ Passed Rules\n**Hard Rules (Mandatory)**\n*   **Spec has arcs:** Your plan contains 2 arcs.\n*   **Spec has events:** Your plan contains 4 events.\n*   **Premise length:** Your premise is within the recommended character limit.\n*   **Notes linked:** All notes in your source document were successfully linked to the plan.\n\n**Advisory Rules (Recommendations)**\n*   **No early explanations:** The plan avoids premature exposition.\n\n### ⚠️ Advisory Warnings\nThe following rules did not pass, though they are not \"hard\" blockers:\n*   **Arc 2 Discovery:** The linter suggests more clarity or discovery in the second arc.\n*   **Anchor Minimum:** The plan has fewer than 4 anchors (this is a recommendation, not a requirement).\n*   **Open Questions:** No open questions were identified in the plan.\n*   **Value Shift:** Some events in Arc II are missing a defined \"value shift\" (the change in state or tension).\n\n**Note:** The plan is technically valid and ready for the next stage, as all **Hard Rules** passed."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 1,
+      "suspended_count": 0
+    }
+  ]
+}
