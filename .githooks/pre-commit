@@ -120,6 +120,23 @@ command -v python >/dev/null 2>&1 || PY=python3
 # real position can make. A ratchet on that number, census-driven so CI runs it offline.
 "$PY" "$ROOT/scripts/glossary-ordinal-axis-gate.py" --selftest
 
+# THE TWO META-GATES: the ones that police GATES. Neither was in this hook, and
+# `gate-wiring-gate --run-all` -- which CI runs and this hook does not -- takes 415s, so a
+# gate could be red in CI while every local commit went green. It was, for eleven commits
+# (T48aq: a ratchet defined and never printed).
+#
+# gate-teeth-gate is 0s and asks the question this session kept answering by hand: can this
+# gate FAIL at all? Unconditional.
+"$PY" "$ROOT/scripts/gate-teeth-gate.py"
+#
+# gate-number-visibility-gate is 24s, so it runs only when scripts/ actually changes -- the
+# same path-scoping the knowledge-gateway suite got in T48al. A ratchet that prints nothing
+# on a green run turns drift into history rather than a diff.
+if git diff --cached --name-only | grep -q "^scripts/"; then
+  echo "meta-gates: scripts/ changed — checking ratchet visibility (24s)"
+  "$PY" "$ROOT/scripts/gate-number-visibility-gate.py"
+fi
+
 # THE KAL GATEWAY'S OWN SUITE. Nothing ran it: not this hook, and no CI workflow -- the only
 # `npm test` in .github belongs to the game subtree. Its 144 tests include the `as_of`
 # forwarding discipline (T48h), which had been RED for four commits after T48ad gave

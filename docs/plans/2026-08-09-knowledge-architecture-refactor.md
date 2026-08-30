@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 51 of 53 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 52 of 54 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (44/45) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (45/46) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,70 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ar 2026-08-30 — **the two gates that police GATES were in neither hook nor my habits; CI runs them 415s away from the commit**
+
+  ```
+  gate-teeth-gate               0s   "a gate wired into CI must be able to FAIL"   -> unconditional
+  gate-number-visibility-gate  24s   "a ratchet nobody can see"                    -> scripts/-scoped
+  gate-wiring-gate --run-all  415s   what CI actually runs                          -> stays CI's
+  ```
+
+  🎯 **T48aq's process finding, made mechanical.** A gate can be red in CI while every local
+  commit is green, because `--run-all` is CI-only and takes **415 seconds** — measured, not
+  guessed. That is why `gate-number-visibility-gate` stayed red for eleven commits while my
+  hooks passed. The two meta-gates that would have caught it were in the hook not at all.
+
+  📐 **Wired proportionately, which is the whole design.** `gate-teeth-gate` is **0s**, so it
+  runs on every commit. `gate-number-visibility-gate` is **24s**, so it runs only when `scripts/`
+  actually changes — the same path-scoping the knowledge-gateway suite got in T48al. The 415s
+  runner stays where it belongs.
+
+  🧪 **BITE T48ar-1 — T48aq's exact defect, re-introduced, against THE HOOK.**
+
+  ```
+  meta-gates: scripts/ changed — checking ratchet visibility
+  [gate-number-visibility-gate] FAIL — a ratchet nobody can see:
+      glossary-ordinal-axis-gate.py: STRIDE_FLOOR = 1000000 never reaches the output
+  HOOK BLOCK exit=1
+  ```
+
+  The defect that hid for eleven commits now stops the commit that makes it. Restored: `OK — 11
+  gate(s) carry a threshold`.
+
+  ⚠️ **BITE T48ar-2 FAILED TO BITE, and that is reported rather than dressed up.** I wrote a
+  deliberately toothless gate — a script with no failing exit path — expecting
+  `gate-teeth-gate` to red. **It did not**, twice. The reason is scope, and I read it off its own
+  output rather than guessing:
+
+  ```
+  gate-teeth-gate: PASS — 75 CI-INVOKED gate(s), every one able to return non-zero.
+  ```
+
+  It polices the gates **CI invokes**; an unwired new script is not one of them, so the bite was
+  out of scope from the start. Its mechanism is `len(unproven) != NO_PROOF_BASELINE` (41) and
+  that count never moved. **So this cycle proves the wiring of one meta-gate and merely adds the
+  other** — the teeth gate is cheap, correct, and its enforcement is inherited from its own
+  history, not from anything I demonstrated here. Claiming otherwise would be the overstatement
+  T48aq had to correct.
+
+  ⚖️ **Why not simply run `--run-all` in the hook:** 415s per commit would be turned off within a
+  day, and a gate people disable is worse than one that runs elsewhere. The honest split is
+  fast-and-local for the classes that keep biting, complete-and-slow in CI — which is the
+  arrangement the repo already documents, minus the two lines that made it true for meta-gates.
+
+  **QC (a) gates:** `gate-teeth-gate` (75 CI-invoked, all able to fail) and
+  `gate-number-visibility-gate` (11 thresholds, all printed) both green and now both wired;
+  `gate-wiring-gate` live and `--self-test`; `glossary-ordinal-axis-gate --selftest`;
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam is crossed and no image changed; this cycle adds
+  two lines to a git hook. The live half is the hook block executed above, which reddened on a
+  real defect and passed on its restoration.
+  **QC (c) real data:** N/A because this cycle produces no data. Its measurements are the wall
+  times that decided the wiring: 0s, 24s, 415s.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48aq 2026-08-30 — **a ratchet I added was DEFINED AND NEVER USED, and CI had been red about it for eleven commits**
 
