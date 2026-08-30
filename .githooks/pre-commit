@@ -587,6 +587,15 @@ if [ -n "$STAGED_TS" ]; then
   }
 fi
 
+# T48az -- the GOAL's proof takes nine inputs and its docstring documents four. The
+# `PROVEN / ran: 7` in the plan was assembled by hand and never written down, so nothing in
+# the repo could reproduce the plan's own central claim. The wrapper owns that derivation.
+# Only the selftest runs here; the derivation needs a live stack. What it pins is the
+# fail-closed property: the first version validated inside `$(...)`, so `die` exited the
+# SUBSHELL and the script sailed on with an empty --project-id, which the proof turned into
+# a SKIP. Five of the seven cases are negative, and they drive the REAL function.
+bash "$ROOT/scripts/architecture-live-proof-iso.sh" --selftest
+
 # T48ay -- PERF-3's Go leg recognised a page cap only by the NAME of a helper
 # (clampLimit/parseLimitOffset), and glossary-service and statistics-service have
 # no such helper: every one of their list routes clamps INLINE and read as

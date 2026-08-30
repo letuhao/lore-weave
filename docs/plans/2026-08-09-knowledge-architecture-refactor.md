@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 58 of 60 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 59 of 61 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (51/52) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (52/53) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24741,6 +24741,119 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
   scores `REFUSED — labelled_by: (blank) is not a person`.
+  ---
+  ### ✅ T48az 2026-08-30 — **the plan's central claim had no runnable command behind it, and reproducing it changed the answer twice**
+
+  ```
+  bare `--run`                        "verdict": "TOO-FEW-LEGS", "ran": 2, floor 3      exit 1
+  the docstring's documented usage    4 of 9 inputs -> 5 legs SKIP "inputs not supplied"
+  bash scripts/architecture-live-proof-iso.sh
+                                      "verdict": "PROVEN", "ran": 7, skipped: []        exit 0
+  ```
+
+  🎯 **The GOAL is *"the architecture is implemented correctly and a live run proves it"*, and
+  the proof of it could not be re-run.** `architecture-live-proof.py` takes nine inputs; its own
+  Usage documents four. The `PROVEN / ran: 7` recorded in T48ap was assembled by hand in a
+  shell — three censuses from ad-hoc SQL, a book and project picked by eye, a stranger JWT
+  minted on the spot — and none of it was written down. **Nothing in the repo could reproduce
+  the plan's own central claim**, which is the one thing a handoff has to leave behind.
+
+  📐 **Why the derivation had no home, and why that was nobody's mistake.** Every gate here
+  refuses to open a database on purpose — `graph-store-migrated-gate` says so in as many words:
+  *"a gate that opened database connections could not be run offline in CI, which is where the
+  selftest has to work."* Correct, and it leaves the derivation homeless. This is the home: one
+  wrapper that owns nine derivations and hands the gates their inputs.
+
+  🔴 **THE FIRST LIVE RUN PRINTED TWO `REFUSED` LINES AND KEPT GOING.**
+
+  ```
+  architecture-live-proof-iso: REFUSED — a knowledge project for book 019fb89f… came back EMPTY
+  architecture-live-proof-iso: REFUSED — the owner … failed: ERROR: column "book_id" …
+    [derive] book 019fb89f… · project  · entity 019fbc43…          <- project is EMPTY
+  ```
+
+  Every value was validated as `X="$(require_value 'label' "$(psql …)")"`. That reads as
+  fail-closed and is not: **`die` runs inside the command substitution, so `exit 1` kills the
+  subshell** and the script continues with an empty variable — which the proof turns into a
+  SKIP. The wrapper written to stop legs skipping silently was itself skipping silently. Fixed
+  structurally: assign first, validate in the current shell.
+
+  ⚠️ **And the selftest could not have caught it, because I had written it to pass.** It defined
+  its own local `require_value` that returned exit codes instead of dying — a copy of the
+  function, graded on its own behaviour. **It was green while the shipped function did not
+  refuse at all.** It now runs the real function in a subshell and reads its exit code; five of
+  the seven cases are negative. Rule 3, and this time the criterion was mine.
+
+  🔴 **THE STORE LEG FAILED, AND THE WRONG SIDE WAS MINE** (rule 13). `EMPTY_DECLARED`: the AGE
+  census reported 367 projects and **0** nodes. The diagnosis came from the workload, not from
+  analogy — no `g_<hex>` graph existed for the one real project Neo4j holds. This stack carries
+  **4356 legacy per-project graphs** *and* a `g_shared`, and the live architecture is the
+  latter: one graph keyed by a `project_id` property. I had censused the dead topology.
+
+  ```
+  wrong source   4356 legacy g_<uuid> graphs   367 project(s), 0 node(s)     -> EMPTY_DECLARED
+  right source   g_shared, by project_id       798 project(s), 8813 node(s) -> MIGRATED
+  ```
+
+  ⏱️ **Rule 8 caught the batch late, and the timeout is what caught it.** Counting all 4356
+  graphs one `docker exec` at a time is ~25 minutes; collapsing it into a single statement
+  trades that for `out of shared memory` — 4356 relations exceed `max_locks_per_transaction`.
+  Both were unnecessary. The other store is read FIRST, because `graph-store-migrated` asks,
+  per project the other store holds, whether the declared store holds it too — so the other
+  census drives the comparison and the declared one only has to cover it. 0.6 seconds.
+
+  📌 **This is a STRONGER result than the one it reproduces, and the difference is worth naming.**
+  T48ap's STORE leg ran against an EMPTY other-census, which §20 decided reads as `SOLE_STORE`.
+  This one compares 367 non-empty Neo4j projects against 798 AGE ones and answers
+  **`MIGRATED: the declared store holds all 367 project(s) the other has`** — the comparison
+  §20 was written to stand in for, now actually performed.
+
+  🧪 **BITE T48az-1 — the census graph name, line 203: `g_shared` → `g_absent`.**
+
+  ```
+  architecture-live-proof-iso: REFUSED — AGE g_shared census failed: ERROR:  graph
+  "g_absent" does not exist                                                            exit 1
+  ```
+
+  No leg ran. The refusal is structural, not a printed line the script walks past. **Its first
+  wording was `REFUSED — … failed: LOAD`** — `head -1` of psql's output names the `LOAD` that
+  succeeded rather than the `ERROR` that did not, so the refusal misnamed its own cause. A
+  `first_error()` helper now prefers the ERROR line.
+
+  🧪 **BITE T48az-2 — the census filter, line 203: `IS NOT NULL` → `IS NULL`.** Still valid SQL,
+  still a real graph, selects almost nothing:
+
+  ```
+    [derive] AGE g_shared (declared) census: 1 project(s), 54 node(s)
+    FAIL  2 STORE    the declared store holds the corpus                          rc=1
+    "verdict": "NOT-PROVEN",  "ran": 7,  "reason": "1 leg(s) failed"              exit 1
+  ```
+
+  ⚠️ **My first attempt at that bite did not bite** — it edited line `i+1`, and the predicate is
+  on line `i`, so the census came back 798/8813 unchanged and the run passed. A bite that leaves
+  the number identical is not a bite; re-run on the right line, restored, PROVEN again.
+
+  **QC (a) gates:** `gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0**;
+  `architecture-live-proof-iso --selftest` 7 cases / 5 negative, wired into pre-commit;
+  `gate-teeth-gate`, `gate-number-visibility-gate`, `plan-final-verification`,
+  `plan-progress-block --check`, `plan-acceptance --floor`, `plan-row-honesty-gate`,
+  `plan-qc-evidence-gate`, `handoff-staleness-gate` — all 0 by direct exit code.
+  **QC (b) live smoke:** this cycle IS the live smoke — seven legs against the running `lw-iso`
+  stack, crossing the gateway, knowledge-service, glossary-service, Neo4j and AGE seams. No
+  image rebuild: no service code changed, only a script, the hook and the handoff.
+  **QC (c) real data:** iso, 2026-08-30 — axis `{chapter_scale: 48610, stride_scale: 1,
+  mixed_books: 1}`; Neo4j 367 projects / 1449 nodes; AGE `g_shared` 798 projects / 8813 nodes;
+  subject book `019f9f2d…` → project `019f9f41-78a0-7ac1-a88c-9213748484a1`; SURFACE 12 routes
+  carried rows, TEMPORAL 9 routes swept, AUTH `DISCRIMINATES`.
+
+  🧾 **The handoff now names the command**, and says not to run the proof bare — five legs SKIP
+  and the floor answers `TOO-FEW-LEGS`, which is loud but tells a reader nothing about how to
+  get a real run.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`. What this cycle removes is the other
+  half of T48's remaining work: the final verification is now a command anyone can re-run,
+  rather than a result only its author could produce.
   ---
   ### ✅ T48aw 2026-08-30 — **the timeout discipline scanned Go, Rust and Python, and never the two services whose whole job is outbound calls**
 

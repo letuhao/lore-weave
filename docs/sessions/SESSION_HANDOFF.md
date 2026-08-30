@@ -10,6 +10,18 @@
 
 ## ⏸ 2026-08-21 — the run STOPPED on four decisions, and they are the whole remaining list
 
+**The GOAL's own sentence is one command, and it needs the `lw-iso` stack up:**
+
+```bash
+bash scripts/architecture-live-proof-iso.sh          # -> "verdict": "PROVEN", "ran": 7
+```
+
+It derives all nine inputs the proof takes — the subject book/project/entity, the internal
+token and a freshly minted stranger JWT, and three censuses — then runs the seven legs. Do
+**not** run `architecture-live-proof.py --run` bare: five legs SKIP for want of inputs and
+the floor answers `TOO-FEW-LEGS`. The wrapper refuses rather than skipping, so a run that
+cannot derive an input exits non-zero naming which one.
+
 Read the state from the commands, not from here — `python scripts/plan-final-verification.py`
 for the row census and `sed -n 46p` on the plan for the progress block. What this section is
 for is the part no command prints: **why** the open rows are open.
