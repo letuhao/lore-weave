@@ -592,6 +592,14 @@ ONESHOT_CREATE_TOOLS: dict[str, str] = {"kg_project_create": "project_id"}
 TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
 TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
 
+# D-RAIL-PINNED-TURN-NEVER-COMPLETES — how many byte-identical (tool, arguments) calls one
+# response stream may emit before the pass is cut. Every cap above it acts on a DISPATCHED call;
+# this one acts on the STREAM, which is the only place a turn that never finishes can be reached.
+# 8 is p99.9 of identical repeats within a pass over 16,554 live groups (p99 = 3, max = 540). The
+# 43 groups between 5 and 8 are ordinary reads and survive; every one of the 16 above 8 is a
+# repeat pathology. Raising this does not make the platform more capable — it lengthens the hang.
+IDENTICAL_TOOL_CALL_CAP = 8
+
 
 # ── T7-D1: `include_deprecated` must default the way the model was TOLD it defaults ──
 # `tool_list` is dispatched CONSUMER-LOCALLY, right here — the ai-gateway's `handleToolList`
@@ -5126,6 +5134,50 @@ async def _stream_with_tools(
             # and hand off to the steer/cap block after the loop.
             loop_det = ReasoningLoopDetector()
             _looped = False
+            # ── D-RAIL-PINNED-TURN-NEVER-COMPLETES — THE SAME LOOP, IN THE OTHER CHANNEL ─────
+            # `loop_det` is fed ONLY by TokenEvent and ReasoningEvent deltas, so it watches the
+            # TEXT channels and is blind to a provider that repeats a TOOL CALL. `tool_frags`
+            # below is an unbounded dict keyed by the provider's own output index, and nothing
+            # ever bounded it.
+            #
+            # READ FROM LM STUDIO'S OWN LOG 2026-08-30, the first time this stall was captured
+            # in front of it: ONE turn emitted `translation_update_settings` 274 times with
+            # byte-identical arguments — {"book_id":"current_book","target_language":["vi"]} —
+            # output_index reaching 137, slot n_tokens climbing ~81 per repeat past 33k. The
+            # service dispatched NONE of them, because every guard it has (the repeat-breaker,
+            # H7's write cap, the turn ceiling) acts on a DISPATCHED call and nothing dispatches
+            # until the stream ends. The stream never ends. `llm_stream_idle_read_timeout_s = 0`
+            # is not the cause but is why nothing trips: frames arrive the whole time, so there
+            # is no idle to time out.
+            #
+            # THE BAR IS DERIVED, NOT PICKED. Over 16,554 (tool, arguments) groups within a pass
+            # in the live store: p99 = 3, p99.9 = 8, max = 540. EVERY group above 8 is a repeat
+            # pathology — tool_list{"category":"book"} x540/235/235/41/41, book_get on one id
+            # x63/16/16/16/16/16/10/9, glossary_list_chapter_links x178 — and not one is
+            # legitimate work. The 43 groups in the 5-to-8 band are ordinary reads and are left
+            # alone. A flat CALL-COUNT cap was measured and rejected: one legitimate pass made
+            # 30 calls across 10 DISTINCT tools, so volume does not discriminate and repetition
+            # does.
+            _call_repeats: Counter = Counter()
+            _settled_idx: set = set()
+            _last_tc_index = None
+            _tool_loop_reason = ""
+
+            def _settle(idx) -> str:
+                """Count a completed slot; return a reason if it has repeated past the bar."""
+                if idx is None or idx in _settled_idx:
+                    return ""
+                _settled_idx.add(idx)
+                _sl = tool_frags.get(idx) or {}
+                _nm = _sl.get("name")
+                if not _nm:
+                    return ""
+                _key = (_nm, _sl.get("arguments") or "")
+                _call_repeats[_key] += 1
+                if _call_repeats[_key] > IDENTICAL_TOOL_CALL_CAP:
+                    return f"tool_call_repeat:{_nm}x{_call_repeats[_key]}"
+                return ""
+
             _stream_iter = client.stream(request)
             try:
                 async for ev in _stream_iter:
@@ -5190,6 +5242,16 @@ async def _stream_with_tools(
                             _looped = True
                             break
                     elif isinstance(ev, ToolCallEvent):
+                        # A NEW index means the previous slot is complete — the provider streams
+                        # them in order — so that is the moment its (name, arguments) can be
+                        # counted. Settling on completion rather than on every fragment is what
+                        # makes the comparison meaningful: arguments arrive in deltas.
+                        if ev.index != _last_tc_index:
+                            _tool_loop_reason = _settle(_last_tc_index)
+                            _last_tc_index = ev.index
+                            if _tool_loop_reason:
+                                _looped = True
+                                break
                         slot = tool_frags.setdefault(
                             ev.index, {"id": None, "name": None, "arguments": ""}
                         )
@@ -5255,12 +5317,12 @@ async def _stream_with_tools(
                 logger.warning(
                     "D-REASONING-LOOP: session=%s pass=%d aborted a reasoning-channel "
                     "loop (%s) model_ref=%s",
-                    session_id, iteration, loop_det.reason, model_ref,
+                    session_id, iteration, _tool_loop_reason or loop_det.reason, model_ref,
                 )
                 if trace is not None:
                     trace.add(
                         "compile", "T6", "tools",
-                        f"reasoning_loop_aborted:{loop_det.reason[:48]}",
+                        f"reasoning_loop_aborted:{(_tool_loop_reason or loop_det.reason)[:48]}",
                         is_error=True,
                     )
                 if content_hold or reasoning_hold:
