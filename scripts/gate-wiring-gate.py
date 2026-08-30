@@ -41,13 +41,25 @@ looks at the result.
 
 SCOPE — WHAT IS IN, AND THE LIMIT SAID OUT LOUD
 -----------------------------------------------
-IN: files whose name ends `-gate` / `-lint` (either separator). OUT: the 9
-`*-smoke.sh` scripts. A smoke is a gate in spirit, and every one of them needs a
-live stack, so pulling them in would produce nine SKIP lines and no signal —
-a category this file is not yet built to enforce. That is a **limit, not
-coverage**: the smokes' own not-in-CI problem is tracked as
-`D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI`, and widening
-`is_gate()` to `-smoke` is the obvious next step once a stack-up CI job exists.
+IN: files whose name ends `-gate` / `-lint` / `-live-smoke` (either separator).
+
+⚠️ **The `-live-smoke` half was added on 2026-08-30 (L4), against what this
+section used to say** — and the argument it used to make was contradicted by
+this same file, twenty lines further down. It read: *"pulling them in would
+produce nine SKIP lines and no signal"*. But `NEEDS_STACK`'s own comment says
+the opposite about exactly those lines — *"Printed, never silent. A skipped gate
+that says nothing is indistinguishable from a passing one, and that is the exact
+confusion this file exists to remove."* Both cannot be right. A SKIP carrying a
+reason IS signal; **absence** is the thing that carries none, and fifteen live
+smokes were absent.
+
+The count was stale too: nine when written, fifteen when measured.
+
+What this does **not** do is put them in CI. They still cannot run on a bare
+checkout, `D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI` are
+untouched, and a stack-up CI job is still the thing that would discharge them.
+This changes *invisible* to *skipped, with a reason, by name* — which is worth
+having on its own and is not a claim to have solved the other problem.
 
 SCOPE IS A PREDICATE, NOT A LIST
 --------------------------------
@@ -102,8 +114,22 @@ def is_gate(name: str) -> bool:
     # default-uncovered shape this file exists to close. Accepting `_` pulls the
     # pytest self-tests in too; they get EXEMPT rows, which is the visible
     # outcome rather than the silent one.
+    # 🔴 `-live-smoke` (L4, 2026-08-30). A live smoke is not a gate — it needs a running
+    # stack and can never be a CI leg — but it IS a check somebody wrote and expects to
+    # protect something, which is exactly what this file exists to keep visible.
+    #
+    # Measured before widening: FIFTEEN of them, in `scripts/` and `scripts/raid/`, and this
+    # predicate matched NONE. Every one was invisible here — not exempt, not tracked-red,
+    # not skipped-with-a-reason: absent. `picker-search-live-smoke.sh` was only the fifteenth
+    # to arrive, so the row that sent me here ("a smoke I shipped that nothing runs") was
+    # describing a category, not a mistake in one commit.
+    #
+    # They land in NEEDS_STACK, so `--run-all` prints `SKIP … needs a live stack: <reason>`
+    # for each. That is the point: a check that says nothing is indistinguishable from a
+    # passing one, and fifteen of them were saying nothing.
     return (
-        stem.endswith(("-gate", "_gate", "-lint", "_lint"))
+        stem.endswith(("-gate", "_gate", "-lint", "_lint",
+                       "-live-smoke", "_live_smoke"))
         or "-lint-" in stem
         or "_lint_" in stem
         or "-gate-" in stem
@@ -156,6 +182,47 @@ NEEDS_STACK: dict[str, str] = {
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_skill_gate.py": "an EVAL harness against a live service; same "
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
+
+    # ── the live smokes (L4, 2026-08-30) ────────────────────────────────────────────────
+    # Fifteen checks that were invisible to this file until `is_gate` learned the shape.
+    # Every one needs a RUNNING stack by definition, so NEEDS_STACK is the honest category
+    # rather than a parking space: none of them can ever be a CI leg on a bare checkout, and
+    # saying that once here is better than fifteen people rediscovering it.
+    #
+    # The reasons are each script's OWN, read out of its header — a boilerplate "needs a
+    # stack" fifteen times would be a row that carries no information and rots without
+    # anybody noticing.
+    "scripts/archive-worker-live-smoke.sh": "stands up foundation-dev and runs the "
+        "archive-worker against it (P1 DEFERRED 056+057)",
+    "scripts/bitemporal-window-live-smoke.py": "asks a RUNNING knowledge-service whether a "
+        "windowed read holds a reader at a position; T48s found live that it did not",
+    "scripts/entity-lifecycle-guards-live-smoke.sh": "proves the three Phase-0 lifecycle "
+        "guards on a running glossary-service (QC-0)",
+    "scripts/epoch-activation-live-smoke.sh": "drives the epoch path end to end against a "
+        "real Postgres (Q0b B3b+B3c)",
+    "scripts/glossary-lifecycle-live-smoke.sh": "the QC-4 emit-wiring proof; it catches a "
+        "BYPASS, which only exists at runtime",
+    "scripts/kal-auth-boundary-live-smoke.py": "asks whether the KAL's guard DISCRIMINATES "
+        "rather than merely answers — needs the KAL up and a real token",
+    "scripts/kal-read-surface-live-smoke.py": "drives every KAL read route, derived from the "
+        "controller, and reports which ANSWER",
+    "scripts/knowledge-graph-backend-live-smoke.py": "proves the knowledge HTTP surface on "
+        "whichever engine KNOWLEDGE_GRAPH_BACKEND selected; it writes, so it needs a stack",
+    "scripts/meta-rs-pg-live-smoke.sh": "runs crates/meta-rs/tests/pg_live.rs against a real "
+        "Postgres (Q1 B2b)",
+    "scripts/metaworker-live-smoke.sh": "stands up TWO databases for the meta-worker canon "
+        "fan-out (P1 DEFERRED 069)",
+    "scripts/picker-search-live-smoke.sh": "rebuilt images plus a browser: it asserts the "
+        "picker's typed term reaches the SERVER, which a client-side filter renders "
+        "identically (L4)",
+    "scripts/publisher-live-smoke.sh": "the event-sourcing spine's publisher wiring "
+        "(DEFERRED 054 D-PUBLISHER-LIVE-WIRING)",
+    "scripts/raid/degraded-live-smoke.sh": "orchestrates the L1.J degraded-mode flow; it "
+        "brings the stack up itself (RAID cycle 33)",
+    "scripts/retention-worker-live-smoke.sh": "runs both retention paths against live data "
+        "(P1 DEFERRED 058)",
+    "scripts/state-asof-live-smoke.sh": "proves the book-wide as-of read end to end on a "
+        "running stack and measures it (QC-1)",
 }
 
 # Gates too SLOW to sit in a shared run. Skipped with the reason printed, exactly
@@ -503,6 +570,29 @@ def self_test() -> int:
         fails.append("treated an ordinary script as a gate")
     if is_gate("some-gate.txt"):
         fails.append("treated a non-script as a gate")
+
+    # L4 — the `-live-smoke` shape. Without this case, narrowing the predicate back would
+    # make fifteen checks invisible again and every other assertion here would stay green:
+    # the gate would report a smaller, tidier world and call it OK.
+    if not is_gate("picker-search-live-smoke.sh"):
+        fails.append("did not recognise a -live-smoke script as in scope")
+    if not is_gate("some_live_smoke.py"):
+        fails.append("did not recognise the underscore spelling of -live-smoke")
+    # ...and the shape must stay a SUFFIX. `smoke-test-helpers.sh` is not a check.
+    if is_gate("smoke-helpers.sh"):
+        fails.append("treated a merely smoke-ish filename as a check")
+
+    # Every live smoke discovered must carry a registry row. They cannot run on a bare
+    # checkout, so an unregistered one is not "wired" — it is the absence this row closed,
+    # arriving again in a file nobody has written yet.
+    unregistered = [
+        n for n in discovered()
+        if n.rsplit("/", 1)[-1].rsplit(".", 1)[0].endswith(("-live-smoke", "_live_smoke"))
+        and n not in NEEDS_STACK and n not in EXEMPT and n not in TOO_SLOW
+        and n not in KNOWN_RED
+    ]
+    if unregistered:
+        fails.append(f"live smoke(s) with no registry row: {unregistered}")
 
     # The scope must stay a PREDICATE. If someone replaces it with a list, a gate
     # created tomorrow is default-uncovered and this whole file is theatre.

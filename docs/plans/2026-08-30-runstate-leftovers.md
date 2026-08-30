@@ -13,17 +13,17 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L4 — a live smoke shipped today that nothing runs.
+RESUME: L5 — a helper test that stays green with the COUNT filter deleted.
 
 ## Progress
 
-7 tasks — 0 done, 0 tracked, 7 untouched.
+7 tasks — 1 done, 0 tracked, 6 untouched.
 
 ---
 
 ## Rows
 
-- [ ] **L4** — **`picker-search-live-smoke.sh` runs from nothing.**
+- [x] **L4** — **`picker-search-live-smoke.sh` runs from nothing.**
   Shipped in `3ff182679` and referenced by no gate, no CI leg, no other script;
   `gate-wiring-gate` reports 118 gates discovered and does not see it, because it does not
   match the `*-gate` discovery shape. A live proof nobody runs is a transcript.
@@ -106,3 +106,65 @@ RESUME: L4 — a live smoke shipped today that nothing runs.
 - **§19's five merge-to-main steps.** The PO's instruction on 2026-08-30 was to keep them in
   the handoff and merge later. Listed there, not here, so that this plan cannot be read as
   authorising them.
+
+---
+
+### ✅ L4 2026-08-30 — **the row said I created a defect; measuring found a category of fifteen**
+
+```
+is_gate() matched -gate / -lint only
+live smokes in scripts/ and scripts/raid/          15
+of those matched by the predicate                   0
+of those carrying a registry row                    0
+after: discovered 118 -> 133, SKIP lines 7 -> 22, GREEN 104 (unchanged)
+```
+
+🎯 **The row's framing was wrong and that is the finding.** It read *"a live smoke shipped
+today that nothing runs"* and named `3ff182679` as having created the defect. Measured
+(rule 8): **fifteen** live smokes exist and `is_gate()` matched **none**. `picker-search`
+was the fifteenth to arrive, not the first to be missed. Every one was *absent* from
+`gate-wiring-gate` — not exempt, not tracked-red, not skipped-with-a-reason.
+
+🔴 **THE FILE CONTRADICTED ITSELF, AND THAT IS WHY THE CATEGORY STAYED INVISIBLE.** Its
+SCOPE section argued the smokes were deliberately out because *"pulling them in would
+produce nine SKIP lines and no signal"*. Twenty lines below, `NEEDS_STACK`'s own comment
+says of exactly those lines: *"Printed, never silent. A skipped gate that says nothing is
+indistinguishable from a passing one, and that is the exact confusion this file exists to
+remove."* Both cannot be true. **A SKIP carrying a reason is signal; absence is what carries
+none.** The docstring now records which side won and why, rather than being quietly deleted.
+
+📐 **Fifteen rows, fifteen reasons, each read out of the script's own header.** A boilerplate
+*"needs a stack"* fifteen times is a row that carries no information and rots unnoticed —
+the same defect one level down. `--run-all` now prints each by name with what it does.
+
+⚖️ **What this does NOT do, said out loud.** They still cannot run in CI.
+`D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI` are untouched, and a stack-up
+CI job remains the thing that would discharge them. This changes *invisible* to *skipped, by
+name, with a reason* — worth having, and not a claim to have solved the other problem. The
+scope docstring said widening was for "once a stack-up CI job exists"; visibility does not
+need one, and that distinction is now written where the old sentence was.
+
+🧪 **BITE — three, each on a different claim, each red for its own reason.**
+
+```
+1 predicate drops -live-smoke (line 132)  self-test: 2 FAILs + gate: stale-row FAIL
+2 drop picker-search's registry row       self-test: "live smoke(s) with no registry row"
+3 rename the script                       gate exit 1 (stale row) + self-test exit 1
+```
+
+⚠️ **Bite 2 exposed something I had to check rather than assume.** The main gate exits **0**
+under it — `wiring_report()` short-circuits on `runner_in_ci()` and never computes
+`uncovered`. The new check only fires under `--self-test`, so "it reds" would have been a
+claim about a command nobody runs. Verified: `.github/workflows/gates.yml:85` runs
+`--self-test`. It is wired.
+
+**QC (a) gates:** `gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0** — GREEN unchanged
+while SKIP went 7 → 22, so this changed what is VISIBLE, not what runs. `--self-test` exit 0
+with four new cases (the suffix shape both spellings, a merely-smoke-ish name rejected, and
+every discovered live smoke carrying a row).
+**QC (b) live smoke:** the subject itself, re-run after the change — `picker-search-live-smoke`
+**OK**, 4/4 browser checks against the running iso stack. No service seam crossed by this
+cycle (a lint predicate and a registry), so no image rebuild was owed.
+**QC (c) real data:** the counts above, read off the tree today: 15 live smokes, 0 matched,
+0 registered; 118 → 133 discovered.
+---
