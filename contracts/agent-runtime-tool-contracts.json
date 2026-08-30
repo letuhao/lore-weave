@@ -893,6 +893,10 @@
     "kg_propose_edge": {
       "source_entity_id": "kg_add_nodes",
       "target_entity_id": "kg_add_nodes"
+    },
+    "_added_2026_08_30": "composition_arc_get.node_id <- composition_arc_list. VERIFIED THREE WAYS before writing it down, because a declaration that is merely plausible puts a dead supplier on every matching turn's wire:\n  * the schema — composition_arc_get declares node_id as 'The arc/saga (structure_node) id. (a UUID)';\n  * a real payload — composition_arc_list returns {\"nodes\": [{\"id\": \"01a0214c-47c6-...\", \"kind\": \"arc\", \"title\": \"Arc I — The Hollow Keep\"}]}, i.e. structure_node rows carrying id beside title;\n  * the emitter is CALLABLE — composition_arc_list(book_id=None, include_archived=False) has NO required argument, so arming it gives the model a call it can always make. That is the property the 2026-08-25 note said was missing when it left node_id undeclared: 'node_id (composition_arc_list returned an empty nodes[])'. An empty list on a throwaway fixture is not evidence of the row's shape; a populated one from the live store is.\n\nMEASURED HARM: composition_arc_get is 93 calls, 0 ok, 0 carded, every failure 'missing required argument(s): [node_id]'. On those 93 turns composition_package_tree was advertised 93 of 93 and returns arcs as PLAIN STRINGS ('arc \"The Shifting Tide\" · outline') with no id of any kind, while composition_arc_list was advertised 0 of 93. Its own description already points at arc_list in prose — and prose does not ARM.\n\n🔴 THE CRITERION THIS ADDS, learned from the six tools that ALREADY declare an emitter and still never succeed: a declaration only closes the chain if the EMITTER ITSELF is callable from ambient context. world_map_delete declares map_id <- world_map_list, and world_map_list needs a world_id that nothing on its surface produces — so the chain is broken one link further up and the declaration buys nothing. arc_list needs nothing.",
+    "composition_arc_get": {
+      "node_id": "composition_arc_list"
     }
   }
 }

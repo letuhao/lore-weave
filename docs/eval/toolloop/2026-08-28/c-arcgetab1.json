@@ -1,0 +1,1391 @@
+{
+  "batch": "c-arcgetab1",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_arc_get",
+      "scenario": "composition-arc-get-v2",
+      "intent": "read",
+      "falsifier": "RE-RUN AFTER THE WHITESPACE ARM (an `*_id` containing a space is a NAME). v1 was called 3/3 with node_id='The Hollow Keep' and node_id='arc_1'; the tool refused correctly but only after a round trip, and one reply told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. REFUTED IF a NAME again reaches the tool as node_id. EXPECTED: it is dropped and reported missing, so the model lists the arcs and resolves the id.",
+      "answer_expect": {
+        "all_of": [
+          "Hollow Keep"
+        ],
+        "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+      },
+      "falsifier_sha": "8084c01eac5df305",
+      "ship_audit": {
+        "absent_case": "OWED — a node_id that does not exist must be refused, and must be distinguishable from an arc that exists but is empty (D-ABSENT-ENTITY-READS-AS-UNUSED).",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0505f-305f-7b06-a4d7-e2214d896f43",
+          "project_id": "01a0505f-31a6-7562-9480-4462a02238d9",
+          "seed_ids": {
+            "01a0505f-305f-7b06-a4d7-e2214d896f43": "fixture book_id",
+            "01a0505f-31a6-7562-9480-4462a02238d9": "fixture project_id (composition_work)",
+            "01a0505f-30f6-7281-9704-3b58dc5e09cc": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0505f-321e-7988-bcbc-2d93dcd83244": "seed[0] composition_arc_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_arc_create.created_by"
+          },
+          "session_id": "01a0505f-8758-7001-bf01-ca0394a7328a",
+          "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "scenario_prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_get",
+            "composition_arc_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_get",
+            "composition_arc_list",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_arc_list",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [{\"id\": \"01a0505f-321e-7988-bcbc-2d93dcd83244\", \"book_id\": \"01a0505f-305f-7b06-a4d7-e2214d896f43\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\","
+            },
+            {
+              "tool": "composition_arc_get",
+              "result_head": "{\"ok\": true, \"result\": {\"id\": \"01a0505f-321e-7988-bcbc-2d93dcd83244\", \"book_id\": \"01a0505f-305f-7b06-a4d7-e2214d896f43\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\", \"goal\": \"\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.052958+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.166311+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.04476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:30.869774+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.052958+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.166311+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:53:31.04476+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here are the details for **Arc I — The Hollow Keep**:\n\n*   **Status:** Outline\n*   **Rank:** I\n*   **Chapters:** 0\n*   **Open Narrative Promises:** None\n*   **Roster/Tracks:** No characters or plot tracks are currently assigned to this arc.\n\nIt looks like this arc is currently just a placeholder in your outline. Would you like to start adding beats or assigning characters to it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0505f-f88d-786e-b4ab-956a8b2add89",
+          "project_id": "01a0505f-f9be-7082-9016-fff14c380f02",
+          "seed_ids": {
+            "01a0505f-f88d-786e-b4ab-956a8b2add89": "fixture book_id",
+            "01a0505f-f9be-7082-9016-fff14c380f02": "fixture project_id (composition_work)",
+            "01a0505f-f919-78f3-8507-15923a5b38fd": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0505f-fa5d-7ae7-9979-57473921f359": "seed[0] composition_arc_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_arc_create.created_by"
+          },
+          "session_id": "01a05060-4bea-7112-8a81-a495004796cf",
+          "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "scenario_prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_get",
+            "composition_arc_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_get",
+            "composition_arc_list",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_arc_list",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [{\"id\": \"01a0505f-fa5d-7ae7-9979-57473921f359\", \"book_id\": \"01a0505f-f88d-786e-b4ab-956a8b2add89\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\","
+            },
+            {
+              "tool": "composition_arc_get",
+              "result_head": "{\"ok\": true, \"result\": {\"id\": \"01a0505f-fa5d-7ae7-9979-57473921f359\", \"book_id\": \"01a0505f-f88d-786e-b4ab-956a8b2add89\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\", \"goal\": \"\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.275674+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.429423+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.269437+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.105448+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.275674+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.429423+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:54:22.269437+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here are the details for **Arc I — The Hollow Keep**:\n\n*   **Status:** Outline\n*   **Rank:** I\n*   **Chapters:** 0\n*   **Open Narrative Promises:** None\n*   **Roster/Tracks:** No characters or plot tracks are currently assigned to this arc.\n\nIt looks like this arc is currently just a placeholder in your outline. Would you like to start adding beats or characters to it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05060-c49f-7293-a765-042bbad30306",
+          "project_id": "01a05060-c60f-7a34-b8eb-f7b25a3bd08c",
+          "seed_ids": {
+            "01a05060-c49f-7293-a765-042bbad30306": "fixture book_id",
+            "01a05060-c60f-7a34-b8eb-f7b25a3bd08c": "fixture project_id (composition_work)",
+            "01a05060-c542-709f-9c19-55a030052992": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05060-c6a4-7223-94bd-60361fac55ec": "seed[0] composition_arc_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_arc_create.created_by"
+          },
+          "session_id": "01a05061-0d4c-71bb-bbdc-3d6290adcfc0",
+          "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "scenario_prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_get",
+            "composition_arc_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_get",
+            "composition_arc_list",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_arc_list",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [{\"id\": \"01a05060-c6a4-7223-94bd-60361fac55ec\", \"book_id\": \"01a05060-c49f-7293-a765-042bbad30306\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\","
+            },
+            {
+              "tool": "composition_arc_get",
+              "result_head": "{\"ok\": true, \"result\": {\"id\": \"01a05060-c6a4-7223-94bd-60361fac55ec\", \"book_id\": \"01a05060-c49f-7293-a765-042bbad30306\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\", \"goal\": \"\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.590114+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.72401+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.574552+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.369691+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.590114+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.72401+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:55:14.574552+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here are the details for **Arc I — The Hollow Keep**:\n\n*   **Status:** Outline\n*   **Chapter Count:** 0\n*   **Structure:** This arc is currently a top-level saga (Depth 0).\n*   **Roster & Tracks:** No characters or plot tracks have been assigned to this arc yet.\n*   **Open Narrative Promises:** None.\n\nIt looks like this arc is currently just a placeholder in your outline. Would you like to start adding chapters to it or defining the characters involved?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05061-8020-70ee-913d-06484dabbd01",
+          "project_id": "01a05061-8161-7c87-95f8-4ef0d3279816",
+          "seed_ids": {
+            "01a05061-8020-70ee-913d-06484dabbd01": "fixture book_id",
+            "01a05061-8161-7c87-95f8-4ef0d3279816": "fixture project_id (composition_work)",
+            "01a05061-80ae-7bd5-8c48-6d56db6a08c4": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05061-81e1-7879-a682-bd3fdce1800c": "seed[0] composition_arc_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_arc_create.created_by"
+          },
+          "session_id": "01a05061-cf13-7052-b1f7-930998add26b",
+          "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "scenario_prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_get",
+            "composition_arc_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_get",
+            "composition_arc_list",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_arc_list",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [{\"id\": \"01a05061-81e1-7879-a682-bd3fdce1800c\", \"book_id\": \"01a05061-8020-70ee-913d-06484dabbd01\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\","
+            },
+            {
+              "tool": "composition_arc_get",
+              "result_head": "{\"ok\": true, \"result\": {\"id\": \"01a05061-81e1-7879-a682-bd3fdce1800c\", \"book_id\": \"01a05061-8020-70ee-913d-06484dabbd01\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\", \"goal\": \"\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.535795+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.657458+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.529057+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.350607+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.535795+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.657458+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:02.529057+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here are the details for **Arc I — The Hollow Keep**:\n\n*   **Status:** Outline\n*   **Rank:** I\n*   **Chapters:** 0\n*   **Open Narrative Promises:** None\n*   **Roster/Tracks:** No characters or plot tracks are currently assigned to this arc.\n\nIt looks like this arc is currently an empty placeholder in your outline. Would you like to start adding beats or characters to it?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05062-3086-7e8e-bb9c-5efbaeb1e11e",
+          "project_id": "01a05062-31ef-7b20-900a-0bade2aea9f6",
+          "seed_ids": {
+            "01a05062-3086-7e8e-bb9c-5efbaeb1e11e": "fixture book_id",
+            "01a05062-31ef-7b20-900a-0bade2aea9f6": "fixture project_id (composition_work)",
+            "01a05062-3120-7d6f-8945-9e7ecce41a2e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05062-3292-7d20-ace0-c549b8496c35": "seed[0] composition_arc_create.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_arc_create.created_by"
+          },
+          "session_id": "01a05062-8215-76dc-ba5b-7238dccc8efe",
+          "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "scenario_prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_arc_get",
+            "composition_arc_list"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_get",
+            "composition_arc_list",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_arc_list",
+              "result_head": "{\"ok\": true, \"result\": {\"nodes\": [{\"id\": \"01a05062-3292-7d20-ace0-c549b8496c35\", \"book_id\": \"01a05062-3086-7e8e-bb9c-5efbaeb1e11e\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\","
+            },
+            {
+              "tool": "composition_arc_get",
+              "result_head": "{\"ok\": true, \"result\": {\"id\": \"01a05062-3292-7d20-ace0-c549b8496c35\", \"book_id\": \"01a05062-3086-7e8e-bb9c-5efbaeb1e11e\", \"created_by\": \"019d5e3c-7cc5-7e6a-8b27-1344e148bf7c\", \"parent_id\": null, \"kind\": \"arc\", \"depth\": 0, \"rank\": \"i\", \"title\": \"Arc I \\u2014 The Hollow Keep\", \"summary\": \"\", \"goal\": \"\""
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_list"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "call": "composition_arc_get"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_arc_get",
+                "composition_arc_list"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.742381+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.890743+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.726012+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.520621+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.742381+00"
+              },
+              "loreweave_composition.structure_node": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.890743+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 01:56:47.726012+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Here are the details for **Arc I — The Hollow Keep**:\n\n*   **Status:** Outline\n*   **Rank:** I\n*   **Chapters:** 0\n*   **Summary:** (No summary provided)\n*   **Goal:** (No goal set)\n*   **Open Narrative Promises:** None\n\nThe arc is currently in the **outline** stage and has no chapters or roster bindings assigned to it yet."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
