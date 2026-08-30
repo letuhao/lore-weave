@@ -30,6 +30,8 @@ interface Props {
 export function WorldPicker({ value, onChange, disabled, placeholder, limit = 200, onCreateNew }: Props) {
   const { accessToken } = useAuth();
   const [worlds, setWorlds] = useState<World[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [selectedWorld, setSelectedWorld] = useState<World | null>(null);
   const [fallback, setFallback] = useState<World | null>(null);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -45,10 +47,19 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
       return;
     }
     let cancelled = false;
+    // THE NAME FILTER IS THE SERVER'S. It was a client-side `includes()` over
+    // one clamped page, so a world past the ceiling could not be found by
+    // typing its name and nothing said so. `GET /v1/worlds` genuinely had no
+    // search parameter — unlike the projects route, where one existed and this
+    // layer just never sent it — so `q` was added to the handler, applied to
+    // the page query AND the COUNT.
     worldsApi
-      .listWorlds(accessToken, { limit })
+      .listWorlds(accessToken, { limit, ...(debounced.trim() ? { q: debounced.trim() } : {}) })
       .then((res) => {
-        if (!cancelled) setWorlds(Array.isArray(res?.items) ? res.items : []);
+        if (!cancelled) {
+          setWorlds(Array.isArray(res?.items) ? res.items : []);
+          setTotal(typeof res?.total === 'number' ? res.total : (res?.items?.length ?? 0));
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -59,7 +70,7 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => {
       cancelled = true;
     };
-  }, [accessToken, limit]);
+  }, [accessToken, limit, debounced]);
 
   // Debounce the name filter.
   useEffect(() => {
@@ -79,14 +90,27 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const selected = useMemo(
-    () => (value ? worlds?.find((w) => w.world_id === value) ?? null : null),
-    [worlds, value],
-  );
+  // REMEMBERED, not re-derived from the current page. Deriving it worked while
+  // this held every world; now that the list is a search result the chosen
+  // world is usually absent from it, and re-deriving would blank the picker's
+  // label the moment you typed — then fire the by-id fallback on every keystroke.
+  useEffect(() => {
+    if (!value) {
+      setSelectedWorld(null);
+      return;
+    }
+    const hit = worlds?.find((w) => w.world_id === value);
+    if (hit) setSelectedWorld(hit);
+  }, [worlds, value]);
+  const selected = selectedWorld;
 
   // Resolve a selected-but-unlisted world by id so the chip shows a name.
+  // Reads the LOADED PAGE, not `selected` — see ProjectPicker: `selected` is
+  // set by an effect, so gating on it fires a getWorld for a world already in
+  // hand, once per load and once per keystroke under server-side search.
+  const valueInPage = worlds?.some((w) => w.world_id === value) ?? false;
   useEffect(() => {
-    if (!value || !accessToken || selected || worlds === null) {
+    if (!value || !accessToken || valueInPage || selected || worlds === null) {
       setFallback(null);
       return;
     }
@@ -102,14 +126,10 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     return () => {
       cancelled = true;
     };
-  }, [value, accessToken, selected, worlds]);
+  }, [value, accessToken, selected, worlds, valueInPage]);
 
-  const matches = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
-    const list = worlds ?? [];
-    if (!q) return list.slice(0, 50);
-    return list.filter((w) => w.name.toLowerCase().includes(q)).slice(0, 50);
-  }, [worlds, debounced]);
+  // The server has already applied the name filter; this only caps the render.
+  const matches = useMemo(() => (worlds ?? []).slice(0, 50), [worlds]);
 
   function select(w: World) {
     onChange(w.world_id);
@@ -143,17 +163,12 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     );
   }
 
-  // A FULL page means "there may be more", and this picker cannot tell the
-  // difference. It asks for a limit the route CLAMPS (200 -> 100) and then
-  // filters by name in the BROWSER, over whatever came back — so past the
-  // ceiling it omits entries with no symptom at all. That is exactly the defect
-  // the library page shipped: a book at rank 32 of 83 was unfindable by name and
-  // was recorded as a Vietnamese diacritic bug for six days.
-  //
-  // The real repair is a server-side `q` on this route, as the books list now
-  // has. Until that lands the truncation is at least VISIBLE, which is the
-  // difference between a wrong answer and an admitted one.
-  const pageIsFull = (worlds?.length ?? 0) >= Math.min(limit, 100);
+  // Kept after search moved server-side: the route still clamps `limit`, so a
+  // search matching more than a page shows a partial list, and a picker that
+  // quietly lists 100 of 140 is indistinguishable from one whose user has 100.
+  // `total` now comes from the SAME filtered query as `items`, so this counts
+  // unshown MATCHES rather than unshown worlds.
+  const notShown = Math.max(0, total - (worlds?.length ?? 0));
 
   return (
     <div ref={rootRef} className="relative">
@@ -221,12 +236,12 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
               </button>
             </li>
           )}
-          {pageIsFull && (
+          {notShown > 0 && (
             <li
               className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
               data-testid="picker-page-full"
             >
-              Showing the first {worlds?.length ?? 0} — refine your search; more may exist.
+              {notShown} more match{notShown === 1 ? '' : 'es'} not shown — keep typing to narrow.
             </li>
           )}
         </ul>

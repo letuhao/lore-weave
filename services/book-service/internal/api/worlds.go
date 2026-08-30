@@ -219,6 +219,52 @@ func (s *Server) getWorld(w http.ResponseWriter, r *http.Request) {
 	s.getWorldByID(w, r.Context(), worldID, ownerID, http.StatusOK)
 }
 
+// appendWorldNameFilter — the `q` predicate for the worlds list, for BOTH the page query and
+// the COUNT.
+//
+// ONE function, deliberately, and the count query aliases `worlds AS w` so it can take this
+// fragment verbatim. The alternative — a `w.name` predicate on the page and a bare `name` one
+// on the count — is two spellings of the same rule, and the failure when they drift is not a
+// crash: `total` describes the whole library while `items` describes the search, so the UI
+// says "12 of 340" for a query that matched 12 and the user goes looking for the other 328.
+//
+// Mirrors `appendTitleSearchFilter` (books). The pattern is BOUND, never interpolated, and
+// `escapeLikePattern` neutralises `%`, `_` and `\` so a user typing `100%` searches for the
+// text rather than matching every row.
+func appendWorldNameFilter(q string, args []any) (string, []any) {
+	if q == "" {
+		return "", args
+	}
+	args = append(args, escapeLikePattern(q))
+	return fmt.Sprintf(" AND w.name ILIKE $%d", len(args)), args
+}
+
+// buildWorldListQueries — the page query AND the count query for one worlds request.
+//
+// 🔴 **BOTH ARE BUILT HERE BECAUSE A TEST OF THE HELPER ALONE CANNOT SEE THEM DRIFT.**
+// The first version of this left the two `s.pool.Query` calls inline in the handler and
+// tested only `appendWorldNameFilter`. Measured: deleting the filter from the COUNT — the
+// exact regression that makes `total` describe the library while `items` describe the
+// search — left every test GREEN, because the helper it drove was still correct. A pure
+// function proven in isolation says nothing about whether its callers use it.
+//
+// Returning both queries from one function makes the wiring itself the thing under test.
+func buildWorldListQueries(ownerID any, q string, limit, offset int) (
+	pageSQL string, pageArgs []any, countSQL string, countArgs []any,
+) {
+	where, args := appendWorldNameFilter(q, []any{ownerID})
+	countSQL = `SELECT COUNT(*) FROM worlds w WHERE w.owner_user_id=$1` + where
+	countArgs = append([]any{}, args...)
+
+	pageArgs = append(args, limit, offset)
+	pageSQL = worldSelectSQL + `
+WHERE w.owner_user_id=$1` + where + fmt.Sprintf(`
+ORDER BY w.created_at DESC
+LIMIT $%d OFFSET $%d
+`, len(pageArgs)-1, len(pageArgs))
+	return pageSQL, pageArgs, countSQL, countArgs
+}
+
 // listWorlds — owner-scoped list of the caller's worlds.
 func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := s.requireUserID(r)
@@ -228,11 +274,17 @@ func (s *Server) listWorlds(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parseLimitOffset(r)
 	ctx := r.Context()
-	rows, err := s.pool.Query(ctx, worldSelectSQL+`
-WHERE w.owner_user_id=$1
-ORDER BY w.created_at DESC
-LIMIT $2 OFFSET $3
-`, ownerID, limit, offset)
+	// `q` — server-side name search. WorldPicker used to load one clamped page and filter it
+	// in the browser, so a world past the page boundary was UNFINDABLE by typing its name,
+	// and the box looked like it had searched everything. Same defect the library search
+	// carried, and the same cure: narrow in the database.
+	//
+	// It is applied to the page query AND the COUNT below. A filtered page under an
+	// unfiltered total reports "12 of 340" for a search that matched 12 — the number reads
+	// as "there is more" when there is not.
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	pageSQL, pageArgs, countSQL, countArgs := buildWorldListQueries(ownerID, q, limit, offset)
+	rows, err := s.pool.Query(ctx, pageSQL, pageArgs...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list worlds")
 		return
@@ -251,7 +303,7 @@ LIMIT $2 OFFSET $3
 		}
 	}
 	var total int
-	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM worlds WHERE owner_user_id=$1`, ownerID).Scan(&total)
+	_ = s.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 

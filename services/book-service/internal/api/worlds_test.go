@@ -315,3 +315,145 @@ func TestWorldResponseNullBibleHandles(t *testing.T) {
 		t.Fatalf("bible_chapter_id should be a nil *uuid.UUID, got %v", c)
 	}
 }
+
+// ── the worlds list's `q` — server-side name search ─────────────────────────
+//
+// WorldPicker loaded one clamped page and filtered it in the browser, so a world past the
+// page boundary could not be found by typing its name and the search box gave no sign that
+// it had only looked at part of the list. Identical to the library-search defect that was
+// filed for six days as a Vietnamese diacritic problem; the cure is the same, and so is the
+// half that is easy to forget — the COUNT has to be filtered too.
+func TestAppendWorldNameFilter(t *testing.T) {
+	t.Parallel()
+	owner := "u1"
+
+	t.Run("no query adds no SQL and no args", func(t *testing.T) {
+		frag, args := appendWorldNameFilter("", []any{owner})
+		if frag != "" {
+			t.Fatalf("empty query must add no SQL, got %q", frag)
+		}
+		if len(args) != 1 {
+			t.Fatalf("empty query must append no args, got %d", len(args))
+		}
+	})
+
+	t.Run("the placeholder names the position the pattern lands at", func(t *testing.T) {
+		frag, args := appendWorldNameFilter("Aetheria", []any{owner})
+		if frag != " AND w.name ILIKE $2" {
+			t.Fatalf("fragment = %q, want $2 (after owner)", frag)
+		}
+		// $2 must BE the pattern. An off-by-one binds the owner id as the search
+		// term and the endpoint silently returns nothing at all.
+		if got, want := args[1], "%Aetheria%"; got != want {
+			t.Fatalf("args[1] = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("multi-byte names survive verbatim", func(t *testing.T) {
+		for _, q := range []string{"Đế", "封神", "Aetheria"} { // doc-language-gate: ok -- the corpus span the bug was reported against
+			_, args := appendWorldNameFilter(q, []any{owner})
+			if got, want := args[1], "%"+q+"%"; got != want {
+				t.Fatalf("q=%q produced %v, want %v", q, got, want)
+			}
+		}
+	})
+
+	t.Run("LIKE metacharacters are escaped, not honoured", func(t *testing.T) {
+		// Without this a user typing `%` matches every world and the search looks
+		// like it silently ignored them.
+		_, args := appendWorldNameFilter("50%_x", []any{owner})
+		if got, want := args[1], `%50\%\_x%`; got != want {
+			t.Fatalf("args[1] = %v, want %v", got, want)
+		}
+	})
+
+	// The half that keeps `total` honest. The page and the COUNT take the SAME
+	// fragment; if the count were left unfiltered, `total` would describe the whole
+	// library while `items` described the search.
+	t.Run("the page and the count share one fragment and one arg prefix", func(t *testing.T) {
+		pageFrag, pageArgs := appendWorldNameFilter("Aetheria", []any{owner})
+		countFrag, countArgs := appendWorldNameFilter("Aetheria", []any{owner})
+		if pageFrag != countFrag {
+			t.Fatalf("page and count fragments diverge: %q vs %q", pageFrag, countFrag)
+		}
+		pageArgs = append(pageArgs, 20, 0) // + limit, offset
+		if len(countArgs) != 2 || len(pageArgs) != 4 {
+			t.Fatalf("countArgs=%d pageArgs=%d, want 2 and 4", len(countArgs), len(pageArgs))
+		}
+		for i := range countArgs {
+			if countArgs[i] != pageArgs[i] {
+				t.Fatalf("arg %d diverges: count=%v page=%v", i, countArgs[i], pageArgs[i])
+			}
+		}
+		// And the fragment must name `w.name`, not a bare `name`: the COUNT aliases
+		// `worlds AS w` precisely so this one string works in both queries.
+		if !strings.Contains(pageFrag, "w.name") {
+			t.Fatalf("fragment %q must qualify the column so both queries can use it", pageFrag)
+		}
+	})
+}
+
+// The WIRING, not the helper. `TestAppendWorldNameFilter` above proves the fragment is
+// correct; it went on passing when the COUNT was built without it, because the helper it
+// drove was untouched. This drives the function that builds BOTH queries, so a predicate
+// that reaches one and not the other is visible.
+func TestBuildWorldListQueries(t *testing.T) {
+	t.Parallel()
+	owner := "u1"
+
+	t.Run("with a query, the predicate reaches BOTH the page and the count", func(t *testing.T) {
+		pageSQL, pageArgs, countSQL, countArgs := buildWorldListQueries(owner, "Aetheria", 20, 0)
+		if !strings.Contains(pageSQL, "w.name ILIKE") {
+			t.Fatalf("page query is missing the name predicate:\n%s", pageSQL)
+		}
+		// THE REGRESSION THIS EXISTS FOR. An unfiltered count reports `total` over
+		// the whole library beside `items` from the search, so the picker says
+		// "more matches exist" forever and the user hunts for rows that are not
+		// missing — the truncation notice lying in the opposite direction.
+		if !strings.Contains(countSQL, "w.name ILIKE") {
+			t.Fatalf("COUNT is not filtered — total would describe the library "+
+				"while items describe the search:\n%s", countSQL)
+		}
+		if len(countArgs) != 2 {
+			t.Fatalf("count args = %d, want 2 (owner, pattern)", len(countArgs))
+		}
+		if len(pageArgs) != 4 {
+			t.Fatalf("page args = %d, want 4 (owner, pattern, limit, offset)", len(pageArgs))
+		}
+		for i := range countArgs {
+			if countArgs[i] != pageArgs[i] {
+				t.Fatalf("arg %d diverges: count=%v page=%v", i, countArgs[i], pageArgs[i])
+			}
+		}
+	})
+
+	t.Run("without a query, neither carries a predicate", func(t *testing.T) {
+		pageSQL, pageArgs, countSQL, countArgs := buildWorldListQueries(owner, "", 20, 0)
+		if strings.Contains(pageSQL, "ILIKE") || strings.Contains(countSQL, "ILIKE") {
+			t.Fatal("an empty q must add no predicate to either query")
+		}
+		if len(countArgs) != 1 || len(pageArgs) != 3 {
+			t.Fatalf("args = count %d / page %d, want 1 and 3", len(countArgs), len(pageArgs))
+		}
+	})
+
+	t.Run("the LIMIT/OFFSET placeholders follow the pattern, not precede it", func(t *testing.T) {
+		// With a search the pattern takes $2, so the page must bind $3/$4. An
+		// off-by-one here pages by the search pattern and returns nothing.
+		pageSQL, _, _, _ := buildWorldListQueries(owner, "Aetheria", 20, 0)
+		if !strings.Contains(pageSQL, "LIMIT $3 OFFSET $4") {
+			t.Fatalf("expected LIMIT $3 OFFSET $4 with a search present:\n%s", pageSQL)
+		}
+		unfiltered, _, _, _ := buildWorldListQueries(owner, "", 20, 0)
+		if !strings.Contains(unfiltered, "LIMIT $2 OFFSET $3") {
+			t.Fatalf("expected LIMIT $2 OFFSET $3 with no search:\n%s", unfiltered)
+		}
+	})
+
+	t.Run("the count aliases the table so one fragment serves both", func(t *testing.T) {
+		_, _, countSQL, _ := buildWorldListQueries(owner, "Aetheria", 20, 0)
+		if !strings.Contains(countSQL, "FROM worlds w") {
+			t.Fatalf("the COUNT must alias `worlds AS w` for the shared fragment:\n%s", countSQL)
+		}
+	})
+}

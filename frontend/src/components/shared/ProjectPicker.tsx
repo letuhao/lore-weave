@@ -11,11 +11,13 @@ import type { Project } from '@/features/knowledge/types';
  * project is chosen): users pick BY NAME, never by a UUID dropdown. An empty
  * selection is VALID (no project linked).
  *
- * Active projects load once (`knowledgeApi.listProjects`, `include_archived:
- * false`) and filter client-side by name — the same load-once shape BookPicker
- * uses, scaling past a plain `<select>` because matches are filtered, not all
- * rendered. World-level projects are already hidden BE-side (W1: the HOME list
- * excludes `world_id IS NOT NULL`), so they never appear here.
+ * The name filter is the SERVER'S (`knowledgeApi.listProjects({ search })`,
+ * `include_archived: false`), debounced and re-fetched. It used to be a
+ * client-side `includes()` over one page: the call asks for `limit: 200` while
+ * the route clamps to 100, so past 100 projects one simply could not be found
+ * by typing its name — the same defect the library page shipped, one page
+ * further in. World-level projects are already hidden BE-side (W1: the HOME
+ * list excludes `world_id IS NOT NULL`), so they never appear here.
  *
  * A linked-but-unlisted project (e.g. one archived after it was linked) is
  * resolved by id (`getProject`) so the chip shows a name instead of a raw UUID
@@ -40,6 +42,8 @@ interface Props {
 export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 200, onCreateNew }: Props) {
   const { accessToken } = useAuth();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [fallback, setFallback] = useState<Project | null>(null);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState('');
@@ -55,10 +59,32 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
       return;
     }
     let cancelled = false;
+    // THE NAME FILTER IS THE SERVER'S. It used to be a client-side `includes()`
+    // over whatever this one call returned — and the call asks for `limit: 200`
+    // while the route clamps to 100, so the picker narrowed 100 rows believing
+    // it held every project. Below 101 projects that is invisible; above it, a
+    // project simply cannot be found by typing its name and nothing says so.
+    //
+    // The `search` parameter has existed on `GET /v1/knowledge/projects` since
+    // C7-followup, described in its own docstring as "server-side so the browser
+    // narrows across ALL projects, not just loaded cursor pages", and the API
+    // client already forwards it. Only this caller never sent it.
     knowledgeApi
-      .listProjects({ limit, include_archived: false }, accessToken)
+      .listProjects(
+        { limit, include_archived: false, ...(debounced.trim() ? { search: debounced.trim() } : {}) },
+        accessToken,
+      )
       .then((res) => {
-        if (!cancelled) setProjects(res.items);
+        if (!cancelled) {
+          setProjects(res.items);
+          // This route is CURSOR-paginated and returns no `total`, so there is
+          // no honest count of unshown matches. `next_cursor` is the one thing
+          // it does say authoritatively: another page exists. Reporting that is
+          // strictly better than the old inference — "the page came back full,
+          // so there MAY be more" — which was also wrong in the other direction
+          // whenever the last page happened to be exactly full.
+          setHasMore(Boolean(res.next_cursor));
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -69,7 +95,7 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
     return () => {
       cancelled = true;
     };
-  }, [accessToken, limit]);
+  }, [accessToken, limit, debounced]);
 
   // Debounce the name filter.
   useEffect(() => {
@@ -89,16 +115,33 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const selected = useMemo(
-    () => (value ? projects?.find((p) => p.project_id === value) ?? null : null),
-    [projects, value],
-  );
+  // The selected project is REMEMBERED, not re-derived from the current page.
+  // Deriving it worked only while this component held every project; now that
+  // the list is a SEARCH RESULT, the chosen project is usually absent from it,
+  // and re-deriving would blank the picker's own label the moment you typed —
+  // and then fire the archived-project fallback fetch below on every keystroke.
+  useEffect(() => {
+    if (!value) {
+      setSelectedProject(null);
+      return;
+    }
+    const hit = projects?.find((p) => p.project_id === value);
+    if (hit) setSelectedProject(hit);
+  }, [projects, value]);
+  const selected = selectedProject;
 
   // Resolve a linked-but-unlisted project (archived) by id so the chip shows a
   // name, not a UUID. Only fires once the list has loaded and the value isn't
   // already in it.
+  // The guard reads the LOADED PAGE, not `selected`. `selected` is now set by
+  // an effect, so for one render after the list arrives it is still null while
+  // the project sits right there in `projects` — and gating on it fired a
+  // getProject for a project the picker had already been handed. Harmless-
+  // looking, but it is a request per load, and per keystroke once the list
+  // became a search result.
+  const valueInPage = projects?.some((p) => p.project_id === value) ?? false;
   useEffect(() => {
-    if (!value || !accessToken || selected || projects === null) {
+    if (!value || !accessToken || valueInPage || selected || projects === null) {
       setFallback(null);
       return;
     }
@@ -114,14 +157,10 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
     return () => {
       cancelled = true;
     };
-  }, [value, accessToken, selected, projects]);
+  }, [value, accessToken, selected, projects, valueInPage]);
 
-  const matches = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
-    const list = projects ?? [];
-    if (!q) return list.slice(0, 50);
-    return list.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 50);
-  }, [projects, debounced]);
+  // The server has already applied the name filter; this only caps the render.
+  const matches = useMemo(() => (projects ?? []).slice(0, 50), [projects]);
 
   function select(p: Project) {
     onChange(p.project_id);
@@ -157,17 +196,11 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
     );
   }
 
-  // A FULL page means "there may be more", and this picker cannot tell the
-  // difference. It asks for a limit the route CLAMPS (200 -> 100) and then
-  // filters by name in the BROWSER, over whatever came back — so past the
-  // ceiling it omits entries with no symptom at all. That is exactly the defect
-  // the library page shipped: a book at rank 32 of 83 was unfindable by name and
-  // was recorded as a Vietnamese diacritic bug for six days.
-  //
-  // The real repair is a server-side `q` on this route, as the books list now
-  // has. Until that lands the truncation is at least VISIBLE, which is the
-  // difference between a wrong answer and an admitted one.
-  const pageIsFull = (projects?.length ?? 0) >= Math.min(limit, 100);
+  // Kept rather than dropped once search moved server-side. The route clamps
+  // `limit` to 100, so a search matching 140 still shows 100 — and a picker
+  // that quietly lists 100 of 140 is indistinguishable from one whose user has
+  // exactly 100 projects. `hasMore` comes from `next_cursor`, so it states a
+  // fact the server reported instead of inferring one from the page size.
 
   return (
     <div ref={rootRef} className="relative">
@@ -235,12 +268,12 @@ export function ProjectPicker({ value, onChange, disabled, placeholder, limit = 
               </button>
             </li>
           )}
-          {pageIsFull && (
+          {hasMore && (
             <li
               className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
               data-testid="picker-page-full"
             >
-              Showing the first {projects?.length ?? 0} — refine your search; more may exist.
+              More matches exist than are shown — keep typing to narrow.
             </li>
           )}
         </ul>

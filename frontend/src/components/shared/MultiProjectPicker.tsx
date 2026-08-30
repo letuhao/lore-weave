@@ -50,6 +50,7 @@ export function MultiProjectPicker({
   // id → name for any selected project not in the loaded active list (archived).
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [error, setError] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
@@ -65,10 +66,24 @@ export function MultiProjectPicker({
       return;
     }
     let cancelled = false;
+    // THE NAME FILTER IS THE SERVER'S — see ProjectPicker for the measurement.
+    // `search` has existed on this route since C7-followup ("server-side so the
+    // browser narrows across ALL projects, not just loaded cursor pages") and
+    // the API client already forwards it; this caller simply never sent it, and
+    // narrowed one clamped page in the browser instead.
     knowledgeApi
-      .listProjects({ limit, include_archived: false }, accessToken)
+      .listProjects(
+        { limit, include_archived: false, ...(debounced.trim() ? { search: debounced.trim() } : {}) },
+        accessToken,
+      )
       .then((res) => {
-        if (!cancelled) setProjects(res.items);
+        if (!cancelled) {
+          setProjects(res.items);
+          // Cursor-paginated, no `total` — `next_cursor` is the server's own
+          // statement that another page exists, which beats inferring it from
+          // a full-looking page.
+          setHasMore(Boolean(res.next_cursor));
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -79,7 +94,7 @@ export function MultiProjectPicker({
     return () => {
       cancelled = true;
     };
-  }, [accessToken, limit]);
+  }, [accessToken, limit, debounced]);
 
   // Debounce the name filter.
   useEffect(() => {
@@ -127,13 +142,13 @@ export function MultiProjectPicker({
     };
   }, [value, accessToken, projects, byId, fallbacks]);
 
+  // The server applied the NAME filter; the only filtering left here is hiding
+  // what is already chosen, which is a property of this component's state and
+  // could not be done server-side.
   const matches = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
     const selected = new Set(value);
-    const list = (projects ?? []).filter((p) => !selected.has(p.project_id));
-    if (!q) return list.slice(0, 50);
-    return list.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 50);
-  }, [projects, debounced, value]);
+    return (projects ?? []).filter((p) => !selected.has(p.project_id)).slice(0, 50);
+  }, [projects, value]);
 
   function add(p: Project) {
     if (value.includes(p.project_id) || atCap) return;
@@ -148,17 +163,11 @@ export function MultiProjectPicker({
     return byId.get(id)?.name ?? fallbacks[id] ?? 'Linked project';
   }
 
-  // A FULL page means "there may be more", and this picker cannot tell the
-  // difference. It asks for a limit the route CLAMPS (200 -> 100) and then
-  // filters by name in the BROWSER, over whatever came back — so past the
-  // ceiling it omits entries with no symptom at all. That is exactly the defect
-  // the library page shipped: a book at rank 32 of 83 was unfindable by name and
-  // was recorded as a Vietnamese diacritic bug for six days.
-  //
-  // The real repair is a server-side `q` on this route, as the books list now
-  // has. Until that lands the truncation is at least VISIBLE, which is the
-  // difference between a wrong answer and an admitted one.
-  const pageIsFull = (projects?.length ?? 0) >= Math.min(limit, 100);
+  // Kept after search moved server-side: the route still clamps `limit` to 100,
+  // so a search matching more than that shows a partial list, and a picker that
+  // quietly lists 100 of 140 is indistinguishable from one whose user has 100.
+  // `hasMore` is the server's `next_cursor`, so it reports a fact rather than
+  // inferring one from a full-looking page.
 
   return (
     <div ref={rootRef} className="relative">
@@ -255,12 +264,12 @@ export function MultiProjectPicker({
               </button>
             </li>
           )}
-          {pageIsFull && (
+          {hasMore && (
             <li
               className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
               data-testid="picker-page-full"
             >
-              Showing the first {projects?.length ?? 0} — refine your search; more may exist.
+              More matches exist than are shown — keep typing to narrow.
             </li>
           )}
         </ul>
