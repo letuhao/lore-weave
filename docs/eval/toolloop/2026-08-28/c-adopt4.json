@@ -1,0 +1,1367 @@
+{
+  "batch": "c-adopt4",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_motif_adopt",
+      "scenario": "composition-motif-adopt-named",
+      "intent": "write",
+      "falsifier": "REFUTED IF: a clone lands with NO confirm card (Tier W — its own description says adopting 'crosses the tenancy boundary and counts against your library quota', which is why it is human-confirmed), OR the model invents a motif_id rather than listing the built-ins first, OR it passes retag_genres the author never mentioned — retagging is optional and silently re-genre-ing an adopted motif changes what it will match later.",
+      "answer_expect": null,
+      "falsifier_sha": "bfe5bb854d24eb76",
+      "ship_audit": {
+        "gate": "The card IS the audit — this is a cross-tenancy copy against a quota.",
+        "absent_case": "OWED — a motif_id that is neither public nor the caller's must be refused.",
+        "tenancy": "OWED — 🔴 THIS TOOL CROSSES THE BOUNDARY BY DESIGN, so the check is the inverse of every other one in this batch: adopting a PUBLIC motif must be allowed, and adopting another USER's private motif must not."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a05160-09aa-78e3-a5a5-fa3db6d0cba9",
+          "project_id": "01a05160-0b33-7c7e-a65d-17b05043e0bf",
+          "seed_ids": {
+            "01a05160-09aa-78e3-a5a5-fa3db6d0cba9": "fixture book_id",
+            "01a05160-0b33-7c7e-a65d-17b05043e0bf": "fixture project_id (composition_work)",
+            "01a05160-0a4f-7cc5-9531-f14d7b13564f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a05160-54f9-74b8-9a04-862e55bd47bd",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on th"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwNzIyNzIsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6IjkyYmZkY2IwLTU4ZDEtNWYwMy1hYzY1LWRjNWQzYWZiNmY5ZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiI5MmJmZGNiMC01OGQxLTVmMDMtYWM2NS1kYzVkM2"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.972608+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.953438+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.727426+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.972608+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:03.953438+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the change in the card to finish the process."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a05160-cd16-7a69-bafc-f5dd850be19d",
+          "project_id": "01a05160-ce65-702f-a976-ecfbd480b148",
+          "seed_ids": {
+            "01a05160-cd16-7a69-bafc-f5dd850be19d": "fixture book_id",
+            "01a05160-ce65-702f-a976-ecfbd480b148": "fixture project_id (composition_work)",
+            "01a05160-cdad-7ca0-a3bd-2a20262f06ba": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a05161-1efc-77c1-8838-c384cdfacced",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on th"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwNzIzMjAsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6IjkyYmZkY2IwLTU4ZDEtNWYwMy1hYzY1LWRjNWQzYWZiNmY5ZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiI5MmJmZGNiMC01OGQxLTVmMDMtYWM2NS1kYzVkM2"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.93037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.924392+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.741402+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.93037+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:34:53.924392+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the change in the card that has appeared."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a05161-9a12-7e43-8814-4395e5938c5b",
+          "project_id": "01a05161-9b78-7218-b08d-1afc30e070ce",
+          "seed_ids": {
+            "01a05161-9a12-7e43-8814-4395e5938c5b": "fixture book_id",
+            "01a05161-9b78-7218-b08d-1afc30e070ce": "fixture project_id (composition_work)",
+            "01a05161-9abb-797b-aa30-300cb3305efb": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a05161-e693-7779-81d7-b2fbc405f052",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on th"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwNzIzNzQsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6IjkyYmZkY2IwLTU4ZDEtNWYwMy1hYzY1LWRjNWQzYWZiNmY5ZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiI5MmJmZGNiMC01OGQxLTVmMDMtYWM2NS1kYzVkM2"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.431203+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.423079+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.23534+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.431203+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:35:46.423079+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the change in the card to finish copying it."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05162-5c72-7a88-bca2-3effc1541a8c",
+          "project_id": "01a05162-5dca-786d-88c0-3d6e4e4c2165",
+          "seed_ids": {
+            "01a05162-5c72-7a88-bca2-3effc1541a8c": "fixture book_id",
+            "01a05162-5dca-786d-88c0-3d6e4e4c2165": "fixture project_id (composition_work)",
+            "01a05162-5d15-7d63-8d5b-1516a00bbaef": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a05162-ad45-7d95-bdf0-54b3dba0c3ba",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on th"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwNzI0MjIsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6IjkyYmZkY2IwLTU4ZDEtNWYwMy1hYzY1LWRjNWQzYWZiNmY5ZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiI5MmJmZGNiMC01OGQxLTVmMDMtYWM2NS1kYzVkM2"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:36.175892+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:36.169925+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:35.989662+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:36.175892+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:36:36.169925+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The 'Face-Slap Reversal' motif is ready for you to confirm in the editor."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05163-1ea2-7efd-8d5a-10d415e7892d",
+          "project_id": "01a05163-1fe4-7f14-9757-6b90010016dc",
+          "seed_ids": {
+            "01a05163-1ea2-7efd-8d5a-10d415e7892d": "fixture book_id",
+            "01a05163-1fe4-7f14-9757-6b90010016dc": "fixture project_id (composition_work)",
+            "01a05163-1f3e-73fd-9dfb-db4ff40d867f": "fixture chapter_id (the EDITOR CONTEXT the turn carries)"
+          },
+          "session_id": "01a05163-6478-76cf-992b-7fb32bc40aa2",
+          "prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "scenario_prompt": "Adopt motif — copy the built-in trope 'Face-Slap Reversal' into my library so I can customise it.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_motif_adopt",
+            "composition_motif_search"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_authoring_run_list",
+            "composition_create_work",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_generate",
+            "composition_get_outline_node",
+            "composition_get_work",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_adopt",
+            "composition_motif_bind_edit",
+            "composition_motif_book_list",
+            "composition_motif_edit",
+            "composition_motif_get",
+            "composition_motif_search",
+            "composition_motif_suggest_for_chapter",
+            "composition_outline_node_edit",
+            "composition_package_tree",
+            "composition_scene_link_edit",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_get",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_motif_search",
+              "result_head": "{\"ok\": true, \"result\": {\"motifs\": [{\"id\": \"92bfdcb0-58d1-5f03-ac65-dc5d3afb6f9f\", \"code\": \"cultivation.face_slap\", \"name\": \"Face-Slap Reversal\", \"kind\": \"situation\", \"summary\": \"An arrogant party mocks the underestimated protagonist, who then reveals hidden power and turns the humiliation back on th"
+            },
+            {
+              "tool": "composition_motif_adopt",
+              "result_head": "{\"ok\": true, \"result\": {\"confirm_token\": \"eyJkIjoiY29tcG9zaXRpb24ubW90aWZfYWRvcHQiLCJleHAiOjE3ODgwNzI0NzIsInAiOnsiYm9va19pZCI6bnVsbCwiYm9va19zaGFyZWQiOmZhbHNlLCJtb3RpZl9pZCI6IjkyYmZkY2IwLTU4ZDEtNWYwMy1hYzY1LWRjNWQzYWZiNmY5ZiIsInJldGFnX2dlbnJlcyI6bnVsbH0sInIiOiI5MmJmZGNiMC01OGQxLTVmMDMtYWM2NS1kYzVkM2"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_search"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "call": "composition_motif_adopt"
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            },
+            {
+              "pass_size": 70,
+              "of_the_called": [
+                "composition_motif_adopt",
+                "composition_motif_search"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.86617+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.860414+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.694088+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.86617+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-30 06:37:25.860414+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared the 'Face-Slap Reversal' motif for your library; please confirm the change in the card to finish the adoption."
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
