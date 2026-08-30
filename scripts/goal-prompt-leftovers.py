@@ -92,6 +92,18 @@ def resume() -> str:
     return " ".join(m.group(1).split()) if m else ""
 
 
+def plan_is_complete() -> bool:
+    """No row is open. A state this generator could not represent until it happened.
+
+    `--check` demanded that `RESUME:` name a row, which is right while work remains and
+    impossible once it does not — so a finished plan made the command ERROR. That is the
+    T49 shape inverted: a tool with no way to say DONE forces the document to lie, either
+    by inventing a RESUME or by leaving a row unticked. Both were worse than this branch.
+    """
+    marks = [m for m, _rid, _t in rows()]
+    return bool(marks) and all(m == "x" for m in marks)
+
+
 def condition() -> str:
     rules, cycle = _invariants()
     open_rows = [(rid, title) for mark, rid, title in rows() if mark != "x"]
@@ -121,6 +133,13 @@ def condition() -> str:
 
 def check() -> int:
     bad = 0
+    if plan_is_complete():
+        n = len(rows())
+        print(f"[goal-leftovers] COMPLETE — {n} of {n} row(s) done, none open. There is no "
+              f"prompt to emit; a queue of nothing is not a goal.")
+        print("[goal-leftovers] The two PO hand-backs stay owed and are NOT rows: the 32 "
+              "causal labels, and section 19's merge-to-main steps.")
+        return 0
     cond = condition()
     n = len(cond)
     head = BUDGET - n
@@ -200,6 +219,17 @@ def selftest() -> int:
     GOOD = ("RESUME: L1 — do the thing.\n\n"
             "- [ ] **L1** — **a real row** with words after it.\n")
     run("a well-formed plan passes", GOOD, False)
+    # A FINISHED plan is COMPLETE, not an error. Before this branch existed, ticking the
+    # last row made --check ERROR on "RESUME names no row" — a tool with no way to say
+    # DONE forces the document to lie, by inventing a RESUME or leaving a row unticked.
+    DONE = ("RESUME: none.\n\n"
+            "- [x] **L1** — **a done row** here.\n")
+    run("every row ticked is COMPLETE, not an error", DONE, False)
+
+    PARTLY = ("RESUME: L2 — go.\n\n"
+              "- [x] **L1** — **done** here.\n"
+              "- [ ] **L2** — **open** here.\n")
+    run("...and a plan with one row still open is NOT complete", PARTLY, False)
     run("NO ROWS is an error, not an empty queue",
         "RESUME: L1 — x.\n\nnothing here\n", True)
     run("an open row missing from the output is an error",
@@ -230,6 +260,8 @@ def main(argv: list[str]) -> int:
     if "--selftest" in argv:
         return selftest()
     if "--check" in argv:
+        return check()
+    if plan_is_complete():
         return check()
     print(PREFIX + condition())
     return 0
