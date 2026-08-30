@@ -12,6 +12,7 @@
   "a-hyphenated-compound-must-reach-its-tool": "plan_validate",
   "a-linter-pass-must-not-approve-the-plan": "plan_validate",
   "add-a-person-to-the-graph": "kg_add_nodes",
+  "an-arc-request-reaches-the-tool-and-is-refused-naming-chapters": "composition_motif_bind_edit",
   "an-override-refusal-must-arm-the-supplier-it-names": "composition_entity_override_edit",
   "author-pastes-a-placeholder-book-id": "book_update_details",
   "book-chapter-bulk-create": "book_chapter_bulk_create",
@@ -59,6 +60,7 @@
   "composition-authoring-run-manage-seeded": "composition_authoring_run_manage",
   "composition-authoring-run-manage-with-a-plan": "composition_authoring_run_manage",
   "composition-authoring-run-review": "composition_authoring_run_review",
+  "composition-build-cast-and-graph-approved": "composition_build_cast_and_graph",
   "composition-canon-rule-edit": "composition_canon_rule_edit",
   "composition-conformance-run": "composition_conformance_run",
   "composition-conformance-run-v2": "composition_conformance_run",
@@ -129,6 +131,7 @@
   "glossary-create-chapter-link-v2": "glossary_create_chapter_link",
   "glossary-create-evidence": "glossary_create_evidence",
   "glossary-create-evidence-attrvalue": "glossary_create_evidence",
+  "glossary-create-evidence-attrvalue-LEFT-PENDING": "glossary_create_evidence",
   "glossary-create-evidence-recheck": "glossary_create_evidence",
   "glossary-create-evidence-v2": "glossary_create_evidence",
   "glossary-curation-list": "glossary_curation_list",
@@ -151,6 +154,7 @@
   "glossary-plan": "glossary_plan",
   "glossary-propose-aliases": "glossary_propose_aliases",
   "glossary-propose-batch": "glossary_propose_batch",
+  "glossary-propose-batch-ADOPT-ALLOWED": "glossary_adopt_standards",
   "glossary-propose-batch-adopted-and-named": "glossary_propose_batch",
   "glossary-propose-batch-v2": "glossary_propose_batch",
   "glossary-propose-new-attribute": "glossary_propose_new_attribute",
@@ -182,6 +186,7 @@
   "kg-project-list": "kg_project_list",
   "kg-project-list-empty": "kg_project_list",
   "kg-propose-edge": "kg_propose_edge",
+  "kg-propose-edge-NODES-ALLOWED": "kg_add_nodes",
   "kg-propose-edge-approve": "kg_propose_edge",
   "kg-propose-edge-with-a-projectable-glossary": "kg_propose_edge",
   "kg-propose-fact": "kg_propose_fact",
@@ -316,19 +321,17 @@
   "world-map-update-region": "world_map_update_region",
   "world-move-book": "world_move_book",
   "world-update": "world_update",
-  "an-arc-request-reaches-the-tool-and-is-refused-naming-chapters": "composition_motif_bind_edit"
+  "composition-glossary-build-with-an-ontology-PARTS-arm": "glossary_propose_entities"
  },
- "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.450, 0.476), a gap of 0.026, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
- "measured": 79,
- "lottery_count": 22,
+ "choiceless_runs_excluded": 102,
+ "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.431, 0.457), a gap of 0.026, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
+ "measured": 80,
+ "lottery_count": 20,
  "lottery": [
   "catalog_get_book",
   "composition_arc_import_analyze",
-  "composition_build_cast_and_graph",
   "composition_canon_rule_restore",
-  "composition_derivative_edit",
   "composition_generate",
-  "composition_motif_adopt",
   "composition_motif_bind_edit",
   "composition_scene_link_edit",
   "glossary_book_sync_apply",
@@ -339,6 +342,7 @@
   "jobs_cancel",
   "jobs_pause",
   "kg_ontology_propose",
+  "kg_propose_edge",
   "kg_triage_schema_write",
   "plan_bootstrap_apply",
   "propose_edit",
@@ -363,8 +367,8 @@
   },
   "composition_arc_apply": {
    "calls": 20,
-   "runs": 42,
-   "rate": 0.476
+   "runs": 25,
+   "rate": 0.8
   },
   "composition_arc_edit": {
    "calls": 10,
@@ -402,9 +406,9 @@
    "rate": 1.0
   },
   "composition_build_cast_and_graph": {
-   "calls": 70,
-   "runs": 165,
-   "rate": 0.424
+   "calls": 80,
+   "runs": 175,
+   "rate": 0.457
   },
   "composition_canon_rule_restore": {
    "calls": 0,
@@ -428,13 +432,13 @@
   },
   "composition_derivative_edit": {
    "calls": 9,
-   "runs": 20,
-   "rate": 0.45
+   "runs": 15,
+   "rate": 0.6
   },
   "composition_entity_override_edit": {
-   "calls": 72,
-   "runs": 108,
-   "rate": 0.667
+   "calls": 77,
+   "runs": 113,
+   "rate": 0.681
   },
   "composition_generate": {
    "calls": 0,
@@ -447,9 +451,9 @@
    "rate": 1.0
   },
   "composition_motif_adopt": {
-   "calls": 4,
-   "runs": 30,
-   "rate": 0.133
+   "calls": 19,
+   "runs": 40,
+   "rate": 0.475
   },
   "composition_motif_bind_edit": {
    "calls": 15,
@@ -462,8 +466,8 @@
    "rate": 1.0
   },
   "composition_motif_link_edit": {
-   "calls": 62,
-   "runs": 62,
+   "calls": 112,
+   "runs": 112,
    "rate": 1.0
   },
   "composition_reference_update": {
@@ -481,6 +485,11 @@
    "runs": 15,
    "rate": 0.667
   },
+  "glossary_adopt_standards": {
+   "calls": 3,
+   "runs": 5,
+   "rate": 0.6
+  },
   "glossary_book_sync_apply": {
    "calls": 5,
    "runs": 45,
@@ -492,9 +501,9 @@
    "rate": 0.4
   },
   "glossary_create_evidence": {
-   "calls": 9,
-   "runs": 45,
-   "rate": 0.2
+   "calls": 21,
+   "runs": 85,
+   "rate": 0.247
   },
   "glossary_curation_list": {
    "calls": 16,
@@ -538,8 +547,8 @@
   },
   "jobs_cancel": {
    "calls": 7,
-   "runs": 75,
-   "rate": 0.093
+   "runs": 40,
+   "rate": 0.175
   },
   "jobs_get": {
    "calls": 26,
@@ -548,13 +557,13 @@
   },
   "jobs_pause": {
    "calls": 8,
-   "runs": 74,
-   "rate": 0.108
+   "runs": 39,
+   "rate": 0.205
   },
   "kg_add_nodes": {
-   "calls": 4,
-   "runs": 5,
-   "rate": 0.8
+   "calls": 9,
+   "runs": 10,
+   "rate": 0.9
   },
   "kg_entity_edge_timeline": {
    "calls": 5,
@@ -568,8 +577,8 @@
   },
   "kg_propose_edge": {
    "calls": 28,
-   "runs": 50,
-   "rate": 0.56
+   "runs": 65,
+   "rate": 0.431
   },
   "kg_triage_place_edge": {
    "calls": 10,
@@ -688,8 +697,8 @@
   },
   "translation_update_settings": {
    "calls": 10,
-   "runs": 10,
-   "rate": 1.0
+   "runs": 20,
+   "rate": 0.5
   },
   "workflow_list": {
    "calls": 5,

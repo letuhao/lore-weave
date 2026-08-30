@@ -171,6 +171,83 @@ def _bar_derivation(rates: dict) -> str:
     )
 
 
+BY_DESIGN_UNREACHABLE = ROOT / "contracts" / "unreachable-scenario-turns-baseline.json"
+
+
+def _choiceless_ids() -> set[str]:
+    """Scenario ids whose MEASURED turn is declared unable to reach its own tool.
+
+    Read from the `by_design` category of the reachability baseline — the one home that already
+    curates this, whose stated rule is that the measured turn MUST NOT reach its tool and that
+    becoming reachable would be a REGRESSION. Its keys are `file::id`; runs record only the id.
+    """
+    try:
+        d = json.loads(BY_DESIGN_UNREACHABLE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {k.split("::", 1)[-1] for k in (d.get("by_design") or {})}
+
+
+def _offered_no_choice(run: dict, choiceless: set[str]) -> bool:
+    """True when this run's measured turn could not have been a selection at all.
+
+    🔴 A SELECTION RATE MUST BE MEASURED OVER TURNS WHERE A SELECTION WAS POSSIBLE. A bare
+    confirmation — every one of these records the prompt "Yes, go ahead and do it." — carries no
+    request, so its zero says nothing about whether the model prefers the tool. Pooled with real
+    attempts it silently halves the rate, and the rate GATES VERDICTS through the DQ-T51 bar:
+
+        composition_arc_apply   20/20 on its single-turn arm, 0/17 on confirmations
+                                pooled 20/47 = 0.426  -> BELOW the bar
+                                over turns that offered a choice 20/25 = 0.800
+
+    Nothing about the tool changed. This is the same failure the `_history` note above records —
+    a tool crossing the bar with no behaviour having moved — arriving through a different door.
+
+    BOTH HALVES ARE REQUIRED, and each one alone is measurably wrong:
+
+      the DECLARATION alone      the id `composition-arc-apply` is declared choiceless for its
+                                 p4-confirm arm, but the SAME id also has a genuine
+                                 "Apply arc template …" arm whose 0/5 is a real non-selection.
+                                 Ids are reused across scenario files; dropping by id would
+                                 delete that observation.
+      the EMPTY SURFACE alone    an empty `answerable_tools` does NOT prove the tool was absent:
+                                 `extract-cannot-be-handed-a-model-authored-document` returns the
+                                 empty set and the tool is still called 5 of 5 — the baseline
+                                 already records it as a measured FALSE POSITIVE of that gate.
+                                 Dropping on this signal alone would delete five POSITIVES and
+                                 bias every rate upward.
+
+    Measured together over the whole corpus: 102 runs excluded, and the tool was called on ZERO
+    of them — so this removes no positive observation. Three tools cross the bar
+    (composition_arc_apply, composition_derivative_edit, composition_motif_adopt) and the lottery
+    list shrinks 23 -> 20. All three cross UPWARD, which makes their zeros count as evidence
+    about the tool instead of being excused as a lost draw. The bar itself is untouched.
+    """
+    if run.get("scenario") not in choiceless:
+        return False
+    prompt = run.get("prompt")
+    if not prompt:
+        return False
+    sys.path.insert(0, str(ROOT / "services" / "chat-service"))
+    from app.services.tool_surface import answerable_tools  # noqa: PLC0415
+    return not answerable_tools(prompt, _catalog_defs())
+
+
+def _catalog_defs() -> list[dict]:
+    """The cached catalogue in the shape `answerable_tools` expects. Cached per process."""
+    global _CATALOG_DEFS
+    if _CATALOG_DEFS is None:
+        raw = json.loads((ROOT / "contracts" / "tool-catalog-cache.json").read_text("utf-8"))
+        _CATALOG_DEFS = [{"type": "function", "function": {
+            "name": n, "description": t.get("description") or "",
+            "parameters": t.get("inputSchema") or {}, "_meta": t.get("meta") or {}}}
+            for n, t in raw.items()]
+    return _CATALOG_DEFS
+
+
+_CATALOG_DEFS: list[dict] | None = None
+
+
 def derive() -> dict:
     sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
     import collections
@@ -189,6 +266,8 @@ def derive() -> dict:
 
     runs: collections.Counter = collections.Counter()
     calls: collections.Counter = collections.Counter()
+    choiceless = _choiceless_ids()
+    skipped = 0
     for f in sorted((ROOT / "docs" / "eval" / "toolloop").rglob("*-raw.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
@@ -202,6 +281,12 @@ def derive() -> dict:
             tool = want.get(r.get("scenario"))
             if not tool:
                 continue
+            # A turn that offered no choice is not a selection observation — see
+            # `_offered_no_choice`. Excluded HERE, at the denominator, because once the arms are
+            # pooled into a single counter they cannot be separated again.
+            if _offered_no_choice(r, choiceless):
+                skipped += 1
+                continue
             runs[tool] += 1
             if tool in called_names(r):
                 calls[tool] += 1
@@ -210,6 +295,7 @@ def derive() -> dict:
              for t, n in runs.items() if n >= MIN_RUNS}
     lottery = sorted(t for t, v in rates.items() if v["rate"] < LOTTERY_BELOW)
     return {"min_runs": MIN_RUNS, "lottery_below": LOTTERY_BELOW, "_want": want,
+            "choiceless_runs_excluded": skipped,
             "_bar_derivation": _bar_derivation(rates),
             "measured": len(rates), "lottery_count": len(lottery),
             "lottery": lottery, "rates": dict(sorted(rates.items()))}

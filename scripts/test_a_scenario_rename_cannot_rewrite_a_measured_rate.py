@@ -93,15 +93,93 @@ class TestRunsDoNotFallOutOfEVERYDenominator:
 
 class TestTheBarStillClassifiesTheSameTools:
     def test_restoring_the_history_did_not_move_a_tool_across_the_bar(self):
-        """The fix RESTORES a population, so it changes rates — and the one it changed most,
-        composition_build_cast_and_graph, lands back where it was before the rename rather than
-        somewhere new. A fix that reshuffled the band would need its own justification."""
+        """The fix RESTORES a population, so it changes rates. What must NOT change is which side
+        of the verdict bar a tool lands on — that is what the rename defect did.
+
+        🔴 RE-AIMED 2026-08-30 AT THE PROPERTY THE NAME CLAIMS. This asserted that ONE tool,
+        composition_build_cast_and_graph, sits BELOW the bar. That was a snapshot of a day when
+        both sides of the comparison happened to be below it, not a statement about the history —
+        and it went red when the tool crossed on new data: two fresh batches called it 5/5 each,
+        moving it 70/165 = 0.424 to 80/175 = 0.457 against a bar of 0.4507. The denominator grew
+        by exactly the ten runs the numerator did, so nothing was re-composed; the tool simply got
+        picked more.
+
+        The assertion now compares the two derivations directly — WITH the history map and with it
+        emptied — and requires that they classify identically. Measured 2026-08-30 over the 80
+        tools present in both: ZERO depend on the history for their side of the bar, including the
+        one this defect was found on (0.457 with, 0.588 without — both above). That is strictly
+        stronger than the pinned value, and it cannot rot when a new batch lands.
+        """
         d = sr.derive()
         r = d["rates"]["composition_build_cast_and_graph"]
         assert r["runs"] >= 150, (
             f"the restored denominator is {r['runs']}, not the ~155 the history recovers — the "
             "orphaned runs have fallen out again")
-        assert r["rate"] < sr.LOTTERY_BELOW, (
-            f"composition_build_cast_and_graph is at {r['rate']} and no longer in the lottery "
-            "band. If that is a real behaviour change it is a finding; if it is a denominator "
-            "changing composition again, it is this defect returning")
+
+        real = sr._history
+        sr._history = lambda: {}
+        try:
+            without = sr.derive()["rates"]
+        finally:
+            sr._history = real
+
+        bar = sr.LOTTERY_BELOW
+        both = [t for t in d["rates"] if t in without]
+        assert len(both) >= 50, f"only {len(both)} tools in both derivations — nothing was compared"
+        moved = {t: (d["rates"][t]["rate"], without[t]["rate"])
+                 for t in both
+                 if (d["rates"][t]["rate"] < bar) != (without[t]["rate"] < bar)}
+        assert not moved, (
+            "the history map decides which side of the verdict bar these tools land on, so a "
+            f"scenario rename can still rewrite what `proven` means for them: {moved}")
+
+class TestADeclarationCannotSILENTLYOVERRULETheHistory:
+    """🔴 THE DOOR THE 2026-08-30 INSTANCE CAME THROUGH, NAMED. `derive()` lets a CURRENT
+    declaration beat the history map — deliberately, so that deliberately changing a scenario's
+    `expect_tool` takes effect. The cost is that re-declaring a RECORDED id with a different tool
+    silently reattributes every historical run of it, and nothing said so.
+
+    Restoring `scenarios-c-gbuild-restored.json` did exactly that: it reused the recorded id
+    `composition-glossary-build-with-an-ontology` — already claimed by the DQ-T50 split, which
+    maps it to composition_build_cast_and_graph — and declared glossary_propose_entities instead.
+    85 runs changed owner and the pipeline tool's denominator fell 165 -> 85.
+
+    The existing guard above caught it only because it happened to pin that one tool's value. This
+    names the conflict itself, and fails with the id rather than with a number.
+    """
+
+    def test_no_id_is_declared_with_two_different_tools(self):
+        seen: dict[str, set[str]] = {}
+        where: dict[str, set[str]] = {}
+        for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            for sc in d.get("scenarios", []):
+                if sc.get("id") and sc.get("expect_tool"):
+                    seen.setdefault(sc["id"], set()).add(sc["expect_tool"])
+                    where.setdefault(sc["id"], set()).add(f.name)
+        assert len(seen) >= 100, f"only {len(seen)} ids scanned — the sweep read nothing"
+        clash = {k: (sorted(v), sorted(where[k])) for k, v in seen.items() if len(v) > 1}
+        assert not clash, (
+            "one scenario id declares two different tools, so whichever file is read last decides "
+            f"which tool every recorded run of it measured: {clash}")
+
+    def test_no_declaration_contradicts_the_recorded_history(self):
+        hist = sr._history()
+        assert len(hist) >= 200, f"history has {len(hist)} entries — it was not read"
+        bad = {}
+        for f in sorted((ROOT / "scripts" / "toolloop").glob("scenarios-*.json")):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                continue
+            for sc in d.get("scenarios", []):
+                sid, tool = sc.get("id"), sc.get("expect_tool")
+                if sid and tool and sid in hist and hist[sid] != tool:
+                    bad[sid] = {"declared": tool, "history": hist[sid], "file": f.name}
+        assert not bad, (
+            "a scenario re-declares a RECORDED id with a different tool, so every historical run "
+            "of that id has silently changed owner. Give the new arm its own id — the runs already "
+            f"on disk measured the tool the history names: {bad}")

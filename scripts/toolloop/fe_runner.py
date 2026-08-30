@@ -1739,6 +1739,23 @@ def claimed_a_write_its_own_call_refused(runs: list[dict]) -> list[dict]:
     out = []
     for r in runs:
         text = (r.get("text") or "").strip()
+        # 🔴 THE SERVER'S OWN SENTENCE IS NOT THE MODEL'S CLAIM, and this detector counted it as
+        # one for three days. `_CLAIMED_DONE` matches `has been saved`, which is a SUBSTRING of
+        # the suspend line the platform appends — "Nothing has been saved yet; confirm the card
+        # above to apply it." The negation is invisible to the pattern, so every carded turn
+        # carrying that line looked like a completion claim.
+        #
+        # MEASURED 2026-08-30: 13 of this detector's 39 corpus-wide hits were the server line
+        # ALONE, all of them dated on or after 2026-08-28 — the day the line shipped. They
+        # concentrated so hard (8 of 8 runs of one scenario, 5 of 5 of another) that they read as
+        # a REGRESSION, and I recorded one before checking the text. The replies were honest:
+        # "I've attempted to apply the override … but I cannot find an existing what-if derivative".
+        #
+        # The exclusion set already existed and was already used by `denied_a_write_that_landed`,
+        # whose own docstring records counting five server sentences as defects. The mechanism was
+        # here; it simply was not applied on this side.
+        for _line in _SERVER_APPENDED_LINES:
+            text = text.replace(_line, " ")
         if not text or not _CLAIMED_DONE.search(text):
             continue
         if r.get("pending_approval"):        # the carded row's population, not this one
