@@ -115,10 +115,30 @@ def _open_dq_names(led: dict) -> set[str]:
     `blocked_by_dq` records WHICH question a row waits on, never whether the answer arrived. A
     row is blocked only while its question is genuinely open, so answering one releases its rows
     with no second edit — and therefore no second place to forget.
+
+    🔴 AND `state` IS NOT WHERE THE ANSWER ARRIVES. The owner writes a ruling into an `answer_*`
+    field; flipping `state` is a separate bookkeeping act that nobody is obliged to perform, and
+    on 2026-08-30 FOUR rulings — DQ-T44, T53, T58, T64 — had been sitting behind `state: open`
+    with their answers written. This function called all four "waiting on the owner", every row
+    they block read as DQ-blocked, and the generator printed "NEXT. No unblocked work. Every open
+    row waits on a decision above" while seven rows had a ruling ready to build.
+
+    A queue that reports no work while work exists is worse than a wrong queue: nobody looks
+    again. So ANSWERED means answered — the presence of a ruling releases the rows, exactly as
+    flipping `state` would, and the two no longer have to agree for the queue to be right.
     """
     dqs = led.get("deferred_questions") or {}
     return {name for name, q in dqs.items()
-            if isinstance(q, dict) and q.get("state") == "open"}
+            if isinstance(q, dict) and q.get("state") == "open" and not _has_ruling(q)}
+
+
+def _has_ruling(q: dict) -> bool:
+    """Has the owner written a ruling on this question, whatever its `state` says?
+
+    Keyed on the FIELD PREFIX the owner actually uses (`answer_2026_08_28`), because that is what
+    the ledger contains — not on a status word this loop would then have to keep in sync.
+    """
+    return any(str(k).startswith("answer") for k in q)
 
 
 def rows() -> tuple[list[tuple], collections.Counter]:
