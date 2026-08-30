@@ -169,6 +169,46 @@ elif [[ "${PERF_LINT_BASELINE_REGEN:-}" == "1" ]]; then
   exit 0
 fi
 
+# ── TypeScript leg (T48aw) ──────────────────────────────────────────────────
+#
+# The discipline scanned .go, .rs and .py and NEVER .ts — so it skipped the two services whose
+# whole job is outbound calls: the KAL and the BFF. Measured 2026-08-30 across
+# services/*/src/**/*.ts: 18 real `fetch(` call sites, 15 carrying a signal or timeout, 3
+# carrying neither (all in mcp-public-gateway).
+#
+# Comments are STRIPPED before matching. The first version of this measurement counted
+# `// … over fetch` in a module doc as a call site and reported 8 offenders instead of 3 — the
+# same mentions-vs-uses false positive T48aj found in a route census, made by me, again.
+#
+# ADVISORY, exactly like the Python leg: the three findings are pre-existing and live in another
+# domain. This leg exists so the NEXT one is visible on the commit that adds it — not so this
+# commit reds someone else's service.
+ts_files=$(find "$repo_root/services" -path "*/src/*" -name "*.ts" \
+  -not -path "*/node_modules/*" 2>/dev/null || true)
+if [[ -n "$ts_files" ]]; then
+  # BOTH comment forms. The first run of this leg reported downstream.ts:7 — a line inside a
+  # `/** … */` header that merely says "Uses Node's global fetch" — because it stripped only
+  # `//`. A lint with a known false positive teaches people to ignore it, which is worse than
+  # no lint; block state is tracked per file so the count is 4 real sites, not 5.
+  ts_new=$(echo "$ts_files" | xargs awk '
+    FNR == 1 { inblock = 0 }
+    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
+    inblock { if (stripped ~ /\*\//) inblock = 0; next }
+    stripped ~ /^\/\*/ { if (stripped !~ /\*\//) inblock = 1; next }
+    stripped ~ /^\// && stripped ~ /^\/\// { next }
+    /fetch[ \t]*\(/ {
+      at = FNR; buf = $0
+      for (i = 1; i <= 6; i++) { if ((getline nxt) > 0) buf = buf " " nxt; else break }
+      if (buf !~ /signal/ && buf !~ /[Tt]imeout/ && buf !~ /AbortSignal/)
+        printf "  %s:%d\n", FILENAME, at
+    }' 2>/dev/null || true)
+  if [[ -n "$ts_new" ]]; then
+    echo "[timeout-discipline] WARN (advisory) — TS outbound fetch with no signal or timeout:"
+    echo "  -> pass { signal }: AbortSignal.timeout(ms), or a request-scoped controller"
+    echo "$ts_new"
+  fi
+fi
+
 if [[ $violations -gt 0 ]]; then
   echo "[timeout-discipline] FAIL — $violations unguarded call(s) (SR06 I16 · PERF-1)"
   exit 1

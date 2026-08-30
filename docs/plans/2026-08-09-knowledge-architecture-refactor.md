@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 55 of 57 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 56 of 58 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (48/49) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (49/50) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,72 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48aw 2026-08-30 — **the timeout discipline scanned Go, Rust and Python, and never the two services whose whole job is outbound calls**
+
+  ```
+  legs before   *.go   *.rs   *.py
+  legs after    *.go   *.rs   *.py   *.ts
+  measured      18 real `fetch(` sites across services/*/src · 14 bounded · 4 with neither
+                a signal nor a timeout (all in mcp-public-gateway)
+  ```
+
+  🎯 **`timeout-discipline-lint.sh` enforces "every outbound call carries a timeout" on three of
+  the four languages here.** The omitted one is TypeScript — the KAL and the BFF, the services
+  that exist to call other services. Reached by asking what bounds a KAL downstream call: the
+  answer is an `AbortSignal` tied to **client disconnect**, not a timeout, so a hung downstream
+  is bounded by undici's defaults rather than by the gateway.
+
+  🔴 **AND I MIS-MEASURED IT TWICE BEFORE THE NUMBER WAS RIGHT.**
+
+  ```
+  1st  8 offenders — counted `// … over fetch` in a module doc as a call site.
+       Mentions-vs-uses, the same false positive T48aj found in a route census. Mine, again.
+  2nd  3 offenders — comments stripped, but the line numbers came from the STRIPPED buffer,
+       so every one of them pointed at the wrong line of the real file.
+  3rd  5 offenders — the awk leg stripped `//` but not `/* … */`, so a header saying
+       "Uses Node's global fetch" scored as a call.
+  4th  4 offenders, correct, with true line numbers.
+  ```
+
+  **A lint with a known false positive teaches people to ignore it**, which is worse than no
+  lint — so the block-comment state is tracked per file rather than shipped as a caveat.
+
+  ⚖️ **ADVISORY, matching the Python leg, and that is a scope decision not a shrug.** All four
+  findings are pre-existing and live in `mcp-public-gateway`, another domain. A blocking leg
+  would red someone else's service on a commit that is not theirs. The leg exists so the NEXT
+  one is visible on the commit that adds it.
+
+  🧪 **BITE T48aw-1 — the KAL's own `fetch` loses its signal (line 33).**
+
+  ```
+  WARN (advisory) — TS outbound fetch with no signal or timeout:
+    services/knowledge-gateway/src/kal/downstream.ts:33
+  ```
+
+  ⚠️ **The first attempt at that bite silently did nothing, and the reason is worth keeping:** my
+  mutation carried the comment `// BITE … the signal is dropped`, and the check greps for the
+  word `signal`. **The bite's own comment satisfied the check it was probing.** Third time this
+  session a comment has defeated a check — T48aj's route census, T48as's Makefile note, and now
+  my own bite. Re-run with nothing incriminating in the mutation; restored byte-identical.
+
+  📌 **What the leg does NOT claim.** It asks for a signal *or* a timeout, and the KAL has a
+  signal — one tied to client disconnect. That is a real bound on a zombie request and **not** a
+  bound on a slow downstream. Saying so here rather than letting a green lint imply the stronger
+  property; tightening it to demand a time bound would red the KAL today and belongs to whoever
+  owns that decision.
+
+  **QC (a) gates:** `timeout-discipline-lint` PASS with the new leg reporting 4 advisory
+  findings; knowledge-gateway `npm test` 12 suites / **148 tests**; `gate-teeth-gate`,
+  `makefile-claim-gate`, `plan-final-verification`, `gate-number-visibility-gate`,
+  `gate-wiring-gate` — all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam crossed and no image changed; the only file
+  shipped is a lint. The live half is the bite above, run against the real tree.
+  **QC (c) real data:** the TS corpus itself — 121 files, 18 real call sites, 14 bounded, 4 not —
+  each count re-derived after each of the three measurement errors above.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48av 2026-08-30 — **T55b's "framework 404" needles are a claim about EXTERNAL software, and one of the three was wrong**
 
