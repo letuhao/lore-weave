@@ -2556,3 +2556,53 @@ what this deferral is about.
 **What this does NOT say.** It is coverage, not accuracy. Whether the 10.26 % it labels are
 labelled CORRECTLY is the 32-pair sheet's question, still awaiting a signature under §23.
 Two different questions, and §4.3 exists because they were once answered with one number.
+
+## 27 · The 4355 legacy graphs were TEST RESIDUE, and a 120-graph sample said the opposite (L7, 2026-08-30)
+
+**Cited by leftovers row `L7`.**
+
+```
+graphs BEFORE 4356 (g_shared + 4355)     AFTER 1
+registry      472 projects known to the product
+classified    real 0 · fixture 3810 · empty 545
+cost removed  4355 vertex tables / 68 MB  ->  1 table / 16 kB
+```
+
+**They were not "pre-migration shape".** Their contents say what they are — an `Entity` named
+`Kai` with facts `an outer disciple` / `an inner disciple`, under `user_id: u-e3cb628932f4`
+and `project_id: p-e3cb628932f4`. That is this repo's standard integration fixture. Each test
+run created a throwaway graph and never dropped it.
+
+**A SAMPLE WOULD HAVE DESTROYED DATA — twice over, in two different ways.**
+
+* A seeded 120-graph sample reported **0 real, 109 synthetic, 11 empty**. The full census with
+  the same rule reported **142 real**. Dropping on the sample's authority would have taken
+  them.
+* Then the 142 turned out to be `p-inject` and `p-0e3d1764591e-second` — fixture ids that no
+  id-SHAPE rule classifies correctly. A `^[pu]-[0-9a-f]+$` regex called them REAL; the
+  earlier "anything that is not a UUID is residue" rule would have called a future id format
+  RESIDUE and dropped it.
+
+**So the classifier asks the REGISTRY, not the id.** `knowledge_projects` answers the actual
+question — *is this a project the product knows about?* — and it is a fact rather than a
+pattern. 472 rows; `p-inject` is not among them, `019fefde-…` is. With the registry as the
+authority: **0 of 4355 graphs held a project the product knows about.**
+
+`registered_projects()` REFUSES an empty or unreadable registry rather than returning an empty
+set, because "nothing is registered" and "the query failed" would classify the entire store as
+droppable and differ by 4355 graphs.
+
+**THE COST OF LEAVING THEM WAS NOT DISK.** 68 MB is unremarkable. The sharp edge is that a
+single ordinary maintenance query across 4355 schemas **exceeds `max_locks_per_transaction`**
+(`ERROR: out of shared memory`), so counting rows in one statement was impossible and the
+census had to batch. After the sweep that statement runs. A schema count at which routine DBA
+work starts failing is a better argument than megabytes.
+
+**DECIDED — dropped on `lw-iso` only, and the tool cannot do otherwise.** `--drop` refuses any
+target that is not `(25556, loreweave_knowledge_vectors)`, checked BEFORE any query. `g_shared`
+is never a candidate. `scripts/legacy-graph-sweep.py` is a maintenance command and deliberately
+NOT named `*-gate`: a check CI runs must never be able to drop a graph.
+
+**Verified after:** `g_shared` is the only graph left, and the numbers §25 and §26 measured are
+unchanged — `51` colliding pairs at the ceiling, `REACH 3/82`, `YIELD 131/1277`,
+`CONSISTENCY 0 of 131`. The sweep touched nothing the product reads.

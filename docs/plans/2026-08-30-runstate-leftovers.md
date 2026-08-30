@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L7 — 4355 legacy per-project g_<hex> graphs on iso.
+RESUME: none — every row is closed. The two PO hand-backs (the 32 causal labels, §19's merge-to-main steps) are recorded under 'Not in this plan, deliberately'.
 
 ## Progress
 
-7 tasks — 6 done, 0 tracked, 1 untouched.
+7 tasks — 7 done, 0 tracked, 0 untouched.
 
 ---
 
@@ -88,7 +88,7 @@ RESUME: L7 — 4355 legacy per-project g_<hex> graphs on iso.
   **BITE:** the denominator is named in the output. A coverage figure that does not say what
   it divided by is the retracted number wearing a different hat.
 
-- [ ] **L7** — **4355 legacy per-project `g_<hex>` graphs on iso.**
+- [x] **L7** — **4355 legacy per-project `g_<hex>` graphs on iso.**
   Raised during the refactor, never chased. The declared deployment reads `g_shared` keyed by
   `project_id`; these are the pre-migration shape.
   **Criteria:** a decision — drop them on iso (they are isolated-stack residue), or keep them
@@ -483,4 +483,68 @@ exit 0**; `gate-number-visibility-gate` exit 0.
 three numbers above. No service code changed, so no image rebuild was owed.
 **QC (c) real data:** 82 projects with events, 131 ordered edges, 1277 candidate pairs, read
 off the store today.
+---
+
+### ✅ L7 2026-08-30 — **a 120-graph sample said "0 real"; the full census said 142, and both were wrong**
+
+```
+graphs BEFORE 4356 (g_shared + 4355)      AFTER 1
+registry      472 projects known to the product
+classified    real 0 · fixture 3810 · empty 545
+cost removed  4355 vertex tables / 68 MB  ->  1 table / 16 kB
+```
+
+🎯 **Not "pre-migration shape" — TEST RESIDUE**, and the contents said so:
+`Entity{name: "Kai"}`, `Fact{content: "an outer disciple"}`, under `user_id: u-e3cb628932f4`
+and `project_id: p-e3cb628932f4`. This repo's standard integration fixture, one throwaway
+graph per test run, never dropped.
+
+🔴 **A SAMPLE WOULD HAVE DESTROYED DATA, AND THEN THE FIX FOR THAT WOULD HAVE TOO.** A seeded
+120-graph sample reported **0 real**. The full census with the same rule reported **142**.
+Dropping on the sample's authority would have taken them — and 2.8 % is exactly the kind of
+coverage that reads as thorough. Then the 142 turned out to be `p-inject` and
+`p-0e3d1764591e-second`: fixture ids that **no id-SHAPE rule gets right**. A
+`^[pu]-[0-9a-f]+$` regex called them REAL; the earlier "not a UUID ⇒ residue" rule would have
+called a future id format RESIDUE and dropped it. My own selftest caught that second one
+before it ran.
+
+📐 **So the classifier asks the REGISTRY, not the id.** `knowledge_projects` answers *is this
+a project the product knows about* as a fact. With it: **0 of 4355** held one.
+`registered_projects()` refuses an empty or unreadable registry rather than returning an empty
+set — "nothing is registered" and "the query failed" would classify the whole store as
+droppable and differ by 4355 graphs.
+
+⚠️ **THE DROP REPORTED SUCCESS HAVING DONE NOTHING.** First run: `dropped 0; graphs AFTER:
+4356`, **exit 0**. `drop_graph` lives in `ag_catalog` and needs `LOAD 'age'`, so all 4355
+calls errored — and the loop counted `+= 1 if rc == 0 else 0` and checked only
+`after == before - dropped`, which holds trivially at `4356 == 4356 - 0`. Silent success is
+a bug, not an environment problem, and it was mine. Failures are now collected and printed,
+and "there were graphs to drop and none was dropped" is its own FAIL.
+
+⚠️ **The safety guard was in the wrong place and biting it proved nothing.** Aimed at the dev
+store, the script refused — on *"the store did not answer"*, because the census ran first and
+the connection failed. The target guard never executed. Moved to the top of `main()`; both
+bites now refuse for their own reason, naming the authorised target.
+
+⚖️ **Deliberately NOT named `*-gate`.** It has a destructive mode, and a check CI runs must
+never be able to drop a graph. That is the one place L4's "make it discoverable" rule does not
+apply, said out loud rather than left as an oversight.
+
+🧪 **BITE — three on the guards, before anything was dropped.**
+
+```
+1 --drop --port 5555 (the dev store)   -> REFUSED, naming the only authorised target
+2 --drop --db loreweave_knowledge      -> REFUSED, same guard, wrong database
+3 --reg-db nonexistent_db              -> REFUSED: "without the registry every graph looks
+                                          like residue"
+```
+
+**QC (a) gates:** `legacy-graph-sweep --selftest` **11 cases, 5 negative**;
+`gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0**.
+**QC (b) live smoke:** the sweep IS the live run, against `lw-iso`. Afterwards `g_shared` is
+the only graph and the numbers §25/§26 measured are unchanged — `51` colliding pairs at the
+ceiling, `REACH 3/82`, `YIELD 131/1277`, `CONSISTENCY 0 of 131`; `picker-search-live-smoke`
+still exit 0. The sweep touched nothing the product reads.
+**QC (c) real data:** the census above — 472 registry rows, 3810 fixture graphs, 545 empty,
+4355 dropped, 4356 → 1.
 ---
