@@ -128,10 +128,28 @@ def test_the_WEAKENING_control_is_still_true():
 
 
 def test_the_blank_search_population_is_absent_from_the_corpus():
-    """Re-derived with arguments REASSEMBLED PER CALL ID, which is the row's own method_note. 5
-    blank searches in 364, all in a scenario whose prompt names no target."""
+    """Re-derived with arguments REASSEMBLED PER CALL ID, which is the row's own method_note.
+
+    🔴 RE-ANCHORED 2026-08-30, AND THE OLD BAR WAS THE MISTAKE THIS LOOP SPENT TODAY LEARNING.
+    It read `assert blank <= 10` — an ABSOLUTE COUNT of offending calls, checked against a corpus
+    that grows every time a batch runs. The count reached 20 and the guard went red without
+    anything getting worse: today's three motif-link timeout batches each ran
+    `composition-motif-adopt` five more times, and that scenario blank-searches every single
+    time. A numerator asserted against a moving denominator measures the CORPUS, not the defect —
+    the same error corrected today on two ledger rows, where 270 runs were really 15 and 285 were
+    really 22.
+
+    WHAT IS ACTUALLY INVARIANT, and what is asserted instead:
+      * blank searches stay CONFINED to `composition-motif-adopt`, whose prompt names no target,
+      * that scenario blanks at essentially 100% — 20 of 20, unchanged from the original 5 of 5,
+      * and its NAMED sibling `composition-motif-adopt-named` is 0 of 15, which is the control
+        that makes the confinement a discrimination rather than an accident of one scenario
+        being rare.
+    """
     blank = withq = 0
     offenders = collections.Counter()
+    searched_runs = collections.Counter()
+    blanked_runs = collections.Counter()
     for f in sorted((ROOT / "docs" / "eval" / "toolloop").rglob("*-raw.json")):
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
@@ -149,9 +167,11 @@ def test_the_blank_search_population_is_absent_from_the_corpus():
                     names[cid] = ev["toolCallName"]
                 if ev.get("type") == "TOOL_CALL_ARGS":
                     args[cid] += str(ev.get("delta") or "")
+            run_searched = run_blanked = False
             for cid, nm in names.items():
                 if not nm.endswith("_search"):
                     continue
+                run_searched = True
                 try:
                     a = json.loads(args.get(cid) or "{}")
                 except Exception:
@@ -160,7 +180,35 @@ def test_the_blank_search_population_is_absent_from_the_corpus():
                     withq += 1
                 else:
                     blank += 1
+                    run_blanked = True
                     offenders[r.get("scenario")] += 1
+            if run_searched:
+                searched_runs[r.get("scenario")] += 1
+                if run_blanked:
+                    blanked_runs[r.get("scenario")] += 1
+
+    # ANTI-VACUITY: a corpus with no searches in it would satisfy everything below.
     assert withq >= 300, withq
-    assert blank <= 10, (blank, offenders)
+
+    # THE CONFINEMENT. One scenario, and it is the one whose prompt names no target.
     assert set(offenders) <= {"composition-motif-adopt"}, dict(offenders)
+
+    # THE RATE, not the count. This scenario has always blanked on every run it searched on.
+    adopt = "composition-motif-adopt"
+    assert searched_runs[adopt] >= 20, (
+        f"only {searched_runs[adopt]} runs of {adopt} searched — the population shrank and the "
+        "rate below is no longer meaningful")
+    assert blanked_runs[adopt] == searched_runs[adopt], (
+        f"{adopt} now blanks on {blanked_runs[adopt]} of {searched_runs[adopt]} runs rather than "
+        "all of them — the behaviour this row describes has CHANGED, in either direction, and the "
+        "row must be re-derived rather than kept")
+
+    # THE CONTROL that makes the confinement a discrimination: same tool, prompt names a target.
+    named = "composition-motif-adopt-named"
+    assert searched_runs[named] >= 10, (
+        f"the named control has only {searched_runs[named]} searching runs — too few to control "
+        "anything")
+    assert blanked_runs[named] == 0, (
+        f"the NAMED sibling has started blank-searching ({blanked_runs[named]} of "
+        f"{searched_runs[named]}) — naming the target no longer prevents it, which is a bigger "
+        "finding than this row and needs its own investigation")
