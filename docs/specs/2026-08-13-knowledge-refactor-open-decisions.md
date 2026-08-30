@@ -2238,3 +2238,61 @@ skipping in CI because no token is minted there, the answer is to mint one, not 
   never quietly edited — the same rule the plan uses for its own retractions.
 * New questions get a section here on the day they are found. They do not get a deferral,
   because this project does not have deferrals.
+
+## 22 · PERF-3's helper signal passes a whole FILE — DECIDED: left as-is, and the price of changing it measured (T48ay, 2026-08-30)
+
+**The question.** `pagination-cap-lint`'s Go leg decides a list query is bounded if the file
+containing it mentions `clampLimit` or `parseLimitOffset` **anywhere**. That is a file-level
+signal for a per-query property: one helper call in a 3000-line `server.go` vouches for every
+other `LIMIT $N` in it, including one that caps nothing.
+
+**Measured before deciding** (rule 8), by routing the helper signal through the same
+`_go_capped_in_scope()` resolver the new inline signal uses:
+
+```
+39   raw findings if the helper signal were function-scoped
+31   already carried by the BASELINE
+ 8   would newly RED CI — all eight in book-service:
+        mcp_tools_read.go:353   toolBookGetChapter
+        search.go:36,46,49,64,85,100,126   (seven file-scope SQL constants)
+```
+
+The first-pass estimate was "32 across four services"; that came from a prototype whose constant
+resolver did not handle the `const` keyword, and it is wrong in both directions. The numbers
+above are the shipped resolver's.
+
+**DECIDED — the helper signal stays file-level; the new inline signal is function-scoped.**
+
+Seven of the eight are not demonstrated defects. They are file-scope SQL constants in
+`search.go` that no function names, so the resolver cannot show they are capped and **fails
+closed** — a resolution failure costs a finding and never hides one (pinned by the
+`file-scope SQL const that NO function references` selftest case). Turning that into eight red
+lines in book-service, on a commit from the knowledge refactor, would hand that service's owners
+a batch that is mostly an instrument's blind spot rather than their bug. Same call as T48aw,
+where a new lint leg was made advisory for the same reason and the same domain boundary.
+
+What this does **not** do is inherit the looseness into new work. The inline-cap signal added in
+T48ay is function-scoped from birth: a `LIMIT` is judged by its enclosing function, and a
+file-scope SQL constant by **every** function naming it — if any one of them fails to cap, the
+site is a finding, because that caller is the one reaching the database unbounded. A new signal
+has no back-compat reason to be loose.
+
+**How this stops being a decision and becomes a fix**, in order:
+
+1. Teach the constant resolver the `search.go` shape — constants assembled or referenced
+   indirectly — so the seven either resolve to a capping function or become real findings. This
+   is the only step that needs new code, and it is the one that decides whether the batch is 8
+   or 1.
+2. Verify `toolBookGetChapter` by hand: it is a real per-function verdict today, not a blind
+   spot.
+3. Point `GO_CLAMP_SIGNALS` at `_go_capped_in_scope()` — one call site — and refresh the
+   BASELINE by intersection, never `--regen`.
+
+The three background sweepers already in the BASELINE (`dek_shred_sweeper`, `reparse_sweeper`,
+`epub_asset_retention`) are verified non-defects with server-set batch sizes and keep their rows
+through all of this.
+
+**Not a deferral.** The rule PERF-3's Go leg enforces today is: *a page cap is recognised
+per-file by helper name, or per-function by an inline bound.* That sentence is what the lint
+checks, its `--selftest` pins both halves and the direction the resolver fails in, and this
+section records the narrower rule it could enforce with the price attached.

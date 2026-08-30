@@ -37,6 +37,18 @@ handled="$(grep -rhoE '"[a-z][a-z_]*\.[a-z_.]+"' "$repo_root"/crates/projections
 # history / seeders, or ephemeral) — OR a tracked deferred gap. Adding an event
 # here REQUIRES a reason; this is the audit trail for "why no projection".
 declare -A allow=(
+  # T48ay — the seven glossary lifecycle events. Each is CONSUMED, none is projected into the
+  # Rust read model, and none was allowlisted, so this gate had been red and unacknowledged.
+  # The consumer named on each row was verified by locating the handler, not by grepping the
+  # event name: dispatch is by FUNCTION-NAME convention (`handle_<event with dots as
+  # underscores>`), so a literal search for the name finds nothing and reads as "no consumer".
+  [glossary.entity_updated]="by-design: knowledge-service handle_glossary_entity_updated (C4/K14 glossary_sync), not a read-model projection"
+  [glossary.entity_merged]="by-design: knowledge-service handle_glossary_entity_merged, not a read-model projection"
+  [glossary.entity_deleted]="by-design: knowledge-service handle_glossary_entity_deleted, not a read-model projection"
+  [glossary.entity_restored]="by-design: knowledge-service handle_glossary_entity_restored, not a read-model projection"
+  [glossary.entity_purged]="by-design: knowledge-service handle_glossary_entity_purged, not a read-model projection"
+  [glossary.entity_status_changed]="by-design: knowledge-service handle_glossary_entity_status_changed, not a read-model projection"
+  [glossary.name_confirmed]="by-design: learning-service handle_name_confirmed — a source=human signal, not a read-model projection"
   [reality.created]="by-design: handled by world-service reality_seeder, not a read-model projection"
   [world.tick]="by-design: ephemeral world clock; no read-model projection"
   [xreality.canon.promoted]="by-design: cross-reality trigger consumed by meta-worker canon_writer fanout"

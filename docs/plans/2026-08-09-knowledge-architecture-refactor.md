@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 57 of 59 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 58 of 60 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (50/51) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (51/52) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24631,6 +24631,116 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
   scores `REFUSED — labelled_by: (blank) is not a person`. **The GRANT's third clause, archiving
   the plan, is the one that cannot move until it does.**
+  ---
+  ### ✅ T48ay 2026-08-30 — **CI's gate suite was red on two gates with no KNOWN_RED row, and neither red was a defect in the code it pointed at**
+
+  ```
+  gate-wiring-gate --run-all, before   104 gates · 2 RED · KNOWN_RED empty
+  gate-wiring-gate --run-all, after    104 gates · 0 RED                        exit 0
+  ```
+
+  🎯 **The runner's own message is the reason this row exists**: *"A gate that is red and
+  unacknowledged is how a whole suite becomes background noise."* Two gates had been failing with
+  nothing tracking them. Both turned out to be instruments describing the tree wrongly — neither
+  named a real unbounded query or a real missing consumer.
+
+  🔴 **`projection-coverage-lint` — seven glossary lifecycle events with "no projection handler".**
+  All seven are consumed. A literal grep for the event names finds nothing, and that is the
+  **fourth time this session a mentions-vs-uses search has produced a confident wrong answer**:
+  dispatch here is by FUNCTION-NAME convention, so `glossary.entity_purged` is handled by
+  `handle_glossary_entity_purged` and the string never appears. Located the handlers instead —
+  six in `services/knowledge-service/app/events/handlers.py:42-47`, one
+  (`handle_name_confirmed`) in `services/learning-service/app/events/handlers.py:909`. None is a
+  Rust read-model projection, which is precisely what the lint's allowlist is for. Seven rows
+  added, each naming its consumer and how the consumer was found.
+
+  🔴 **`pagination-cap-lint` — `mirror_truth_handler.go:51` "unbounded".** It is bounded:
+  `queryInt(q.Get("limit"), 200)`, floored at 1, capped at 500, three lines above the query. The
+  Go leg recognised a cap only by the NAME of a helper (`clampLimit` / `parseLimitOffset`), and
+  **glossary-service and statistics-service contain neither** — so every list route in both
+  services clamps inline and reads as unbounded. The lint's own BASELINE said so, in a note left
+  for whoever came next: *"the regex … cannot see a clamp 3-40 lines earlier … clearing these
+  properly means teaching the lint to find the clamp."* This is that.
+
+  📐 **The new signal is FUNCTION-scoped, and the old one deliberately is not.** The helper signal
+  passes a whole file — a `clampLimit` anywhere in a 3000-line `server.go` vouches for every
+  query in it. Tightening that is a real improvement and I measured it before choosing: **39 raw
+  findings, 31 already baselined, 8 that would newly red CI — all eight in book-service, and
+  seven of those are `search.go` constants no function names**, which the resolver cannot clear
+  and so fails closed on. Handing another service eight red lines that are mostly an instrument's
+  blind spot is the T48aw decision again, so the existing signal is untouched and the *new* one
+  carries no back-compat reason to be loose: a LIMIT is judged by its enclosing function, and a
+  SQL constant by **every** function naming it — if any caller fails to cap, the site is still a
+  finding, because that is the caller that reaches the database unbounded. **A resolution failure
+  costs a finding and never hides one**, and the eighth selftest case pins that direction. The
+  file-level looseness of the helper signal is §22, with the batch and the order to work it in.
+
+  🔴 **My first estimate of that batch was "32 across four services" and it was wrong**, from a
+  prototype whose constant resolver did not handle the `const` keyword — the same gap that made
+  `mirror_truth_handler` itself look unresolvable ten minutes earlier. Re-measured with the
+  shipped resolver: 39 / 31 / 8, one service. The decision did not change; the reason for it did,
+  from *"four services"* to *"seven of eight are an instrument's blind spot, not their bug."*
+
+  🧾 **Ten sites changed verdict and I checked all ten one at a time** (rule 2 — a number that
+  reads as success is guilty until checked). Seven glossary handlers, two statistics
+  leaderboards, one `internalMirrorTruthIDs`; each resolves to a function containing a real
+  `if limit > N { limit = N }`. Three of the eight files are large enough that a file-level match
+  would have proved nothing about the site, which is why the scoping came first and the verdict
+  second.
+
+  🗑️ **Eleven BASELINE entries pruned — none by fixing a route.** The detector now sees the clamp
+  they were parked around; one (`mcp_worlds`) had been dead since that route was fixed, and one
+  of `pipeline_read_tools`' two entries no longer matches any hit. **An entry that matches no
+  current hit is worse than none** — it asserts debt that does not exist and makes the tracked
+  count unfalsifiable. Pruned by INTERSECTION with the live scan, never by `--regen`, so a
+  genuinely new offender cannot be absorbed while the baseline is being tidied. 31 remain.
+
+  🧪 **BITE T48ay-1 — the allowlist row for `glossary.entity_purged` removed (line 49).**
+
+  ```
+  [projection-coverage] FAIL — registered event 'glossary.entity_purged' has NO projection
+  handler and is NOT allowlisted
+  [projection-coverage] FAIL — 1 uncovered + unallowlisted event(s)                    exit 1
+  ```
+
+  Restored: `[projection-coverage] PASS`.
+
+  🧪 **BITE T48ay-2 — the backreference deleted from `GO_INLINE_CAP` (line 77).**
+
+  ```
+  FAIL guard tests limit but assigns offset    expected the lint to flags -> passed
+  pagination-cap-lint --selftest: FAIL (1 of 8 case(s) wrong)                          exit 1
+  ```
+
+  ⚠️ **That bite is a re-run of a bug this cycle actually shipped for ten minutes.** Both regexes
+  were first written through a heredoc, which ate `\1` and `\b` and left byte 0x01 and 0x08 in
+  the file — visible only under `cat -A`, and the lint went green with the same-variable
+  requirement silently gone. Rewritten with `chr(92)`. **The negative case that pins it is the
+  one the detector was not derived from**: `if limit > 500 { offset = 500 }`, which caps nothing.
+  Five of the eight selftest cases are negative for that reason, and the selftest is wired into
+  the hook **above** the phase gate — that hook's own comment says the phase gate runs last so
+  a real finding is not hidden behind a phase-state failure, and a lint appended below it
+  would be reached only after passing the very gate that comment warns about.
+
+  📌 **Two more numbers moved in this commit, and both were caused by it** (rule 5). Adding the
+  `--selftest` gave one more gate a red-ability proof, so `gate-teeth-gate`'s `NO_PROOF_BASELINE`
+  goes 56 → 55 (62 → 63 proofs). That gate's progress-exit returns *before* printing
+  `CI_SCOPE_FLOOR`, which is why `gate-number-visibility-gate` fired as well — **one cause, two
+  reds**, and lowering the ratchet cleared both. Diagnosed rather than recorded (rule 13).
+
+  **QC (a) gates:** `gate-wiring-gate --run-all` — **104 GREEN, 0 RED, exit 0** (was 2 RED,
+  untracked). `pagination-cap-lint --selftest` 8 cases / 5 negative; `projection-coverage-lint`
+  PASS at 5/22 projected + 17 consumed elsewhere; `gate-teeth-gate` PASS at 118 CI-invoked gates;
+  `gate-number-visibility-gate` OK, 11 thresholds all printed on a green run.
+  **QC (b) live smoke:** N/A — no service seam crossed and no image changed. The diff is two
+  lints, one ratchet and the hook; `git status` shows no file under `services/`. The live half is
+  the two bites, run against the real tree.
+  **QC (c) real data:** the Go corpus itself — 41 raw parameterised-LIMIT sites, 10 re-verified
+  per enclosing function, 11 dead baseline entries removed, 31 tracked; and the event registry's
+  22 registered events, 5 projected, 17 consumed elsewhere.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48aw 2026-08-30 — **the timeout discipline scanned Go, Rust and Python, and never the two services whose whole job is outbound calls**
 

@@ -62,7 +62,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 # 15 of them carry no red-ability proof and **0 of them are toothless**. The ratchet's rule is
 # unchanged and is the reason this line carries a paragraph: it may not grow because gates rot,
 # only because the census honestly covers more of them, and that has to be argued in the diff.
-NO_PROOF_BASELINE = 56
+NO_PROOF_BASELINE = 55   # T48ay: pagination-cap-lint gained --selftest (7 cases, 4 negative)
 
 #: A FLOOR on the census itself. T48at's own bite exposed why: narrowing the scope back to
 #: workflow NAMES made the unproven count drop 56 -> 41 and the gate printed

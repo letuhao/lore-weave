@@ -587,6 +587,16 @@ if [ -n "$STAGED_TS" ]; then
   }
 fi
 
+# T48ay -- PERF-3's Go leg recognised a page cap only by the NAME of a helper
+# (clampLimit/parseLimitOffset), and glossary-service and statistics-service have
+# no such helper: every one of their list routes clamps INLINE and read as
+# unbounded. Six sat in the lint's own BASELINE with the note "clearing these
+# properly means teaching the lint to find the clamp". The inline detector is
+# two regexes and a function-scope resolver, each one character wide when broken,
+# so the four NEGATIVE cases are what this pins -- notably that the guard assigns
+# the SAME variable it tests. A hand-bite of that backreference is invisible here.
+"$PY" "$ROOT/scripts/pagination-cap-lint.py" --selftest
+
 # ── The 12-phase workflow gate — UNIVERSAL as of 2026-08-03 ────────────────────
 #
 # Until today this ran ONLY from `.claude/settings.json`'s PreToolUse hook, so it
