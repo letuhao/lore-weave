@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -112,6 +113,39 @@ func TestFoldLoop(t *testing.T) {
 	canon := doGET("/internal/books/" + bookID + "/entities/" + entityID + "/canonical-snapshot")
 	if canon["content"] != "李四，金丹期修士。" || canon["source"] != "snapshot" || canon["canonical_status"] != "current" {
 		t.Fatalf("canonical = %v, want the folded snapshot (source=snapshot, current)", canon)
+	}
+
+	// T48ah -- the snapshot must not answer a question it was not asked.
+	//
+	// This handler read only the two path ids and took ORDER BY as_of_ordinal DESC LIMIT 1,
+	// so a caller asking for a position BELOW the fold head got the head fold back with
+	// as_of_ordinal stamped on it as though it had answered. Measured live: a reader held at
+	// chapter 1 was served the chapter-3 canonical. translation-service's build_context_brief
+	// asks for exactly this per chapter (X5/6B, spoiler-free), so the leak had a real consumer.
+	// The fixture's snapshot sits at head_ordinal; ask for a position strictly BELOW it.
+	head, _ := headOrdinal.(float64)
+	if head < 2 {
+		t.Fatalf("fixture head_ordinal=%v is too low to have a position below it", headOrdinal)
+	}
+	belowPos := int64(head) - 1
+	below := doGET(fmt.Sprintf("/internal/books/%s/entities/%s/canonical-snapshot?as_of=%d",
+		bookID, entityID, belowPos))
+	atHead := doGET(fmt.Sprintf("/internal/books/%s/entities/%s/canonical-snapshot?as_of=%d",
+		bookID, entityID, int64(head)))
+	// The DISCRIMINATOR: below the head must not return the head's own content. Asserting
+	// `source != snapshot` alone was vacuous -- it held whether or not the position was
+	// honoured, which is exactly the green-by-construction shape rule 3 names.
+	if below["content"] == atHead["content"] {
+		t.Fatalf("as_of=%d is BELOW the fold head %d and returned the head's content: %v",
+			belowPos, int64(head), below)
+	}
+	if atHead["source"] != "snapshot" || atHead["canonical_status"] != "current" {
+		t.Fatalf("as_of AT the head should still serve the snapshot, got %v", atHead)
+	}
+	// ...and omitting the position is byte-identical to before: the head.
+	noPos := doGET("/internal/books/" + bookID + "/entities/" + entityID + "/canonical-snapshot")
+	if noPos["content"] != atHead["content"] {
+		t.Fatalf("no as_of must equal the head read; got %v vs %v", noPos, atHead)
 	}
 
 	// KAL fold_canonical trigger (internalTriggerFold): POST .../fold re-flags the entity dirty

@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 41 of 43 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 42 of 44 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (34/35) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (35/36) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,86 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ah 2026-08-30 — **the canonical snapshot never read `as_of` at all: a reader held at chapter 1 was served the chapter-3 fold**
+
+  ```
+  BEFORE  as_of=head -> snapshot@3 (401 chars)
+          as_of=1    -> snapshot@3 (401 chars)   <- the FOLD FROM THE FUTURE
+          as_of=10   -> snapshot@3
+  AFTER   as_of=1,2  -> canon-content, no snapshot (108 chars)
+          as_of=3    -> snapshot@3   (inclusive boundary)
+          as_of=10   -> snapshot@3   (newest at-or-before)
+          head       -> snapshot@3   (byte-identical to before)
+  ```
+
+  🎯 **T48s's shape, third substrate, and this one had never been asked.** The KAL advertises
+  `temporal_capability` for TWO substrates and T48s/T48ad/T48ae verified only `kg`.
+  `internalGetCanonical` parses the two path ids and runs `ORDER BY cs.as_of_ordinal DESC LIMIT
+  1` — **the newest snapshot, unconditionally.** There is no `Query().Get("as_of")` in it, while
+  the sibling handler in the same package reads `lang` from the query, so this was not a
+  framework quirk. The response then stamps `as_of_ordinal` on the answer as though it had
+  honoured the question.
+
+  🔴 **AND THE KAL'S OWN COMMENT PROMISED OTHERWISE:** *"`as_of` below the fold head projects
+  from facts (get_facts) — the snapshot is the head cache."* Measured: at `as_of=1` the facts
+  route correctly returns **0 rows** while canonical returned the full chapter-3 fold.
+
+  🔬 **DIAGNOSED, NOT ASSUMED (rule 13).** Probed through the KAL and then straight off
+  glossary-service on `:28211` — identical answers, so the gateway was never the cause. The same
+  two-arm probe T48s used.
+
+  ⚖️ **The consumer is the one T48ad already fixed the other half of.**
+  `build_context_brief` calls `get_canonical_cached(…, as_of=as_of, …)` per chapter, under a
+  docstring that says *"the story state at chapter N, not the latest head (spoiler-free, §6B)"*.
+  T48ad noted the canonical half was "already threaded" — **it is threaded, to an endpoint that
+  ignored it.** Same brief, same translator, second leak.
+
+  📐 **The fix is as-of semantics, not refusal:** the newest snapshot at or before the requested
+  position, degrading to the existing `canon-content` path when none exists. `0` means *no
+  position asked* and keeps the head behaviour exactly, so every caller that never asks is
+  byte-identical.
+
+  🧪 **BITE T48ah-1 — line 250, the position stops constraining.** Under it the Go test fails by
+  name:
+
+  ```
+  fold_handler_test.go:139: as_of=4 is BELOW the fold head 5 and returned the head's content:
+    map[as_of_ordinal:5 canonical_status:current content:李四，金丹期修士。 source:snapshot]
+  ```
+
+  ⚠️ **AND GETTING THAT BITE TO MEAN ANYTHING TOOK THREE CORRECTIONS, EACH A KNOWN TRAP.**
+
+  ```
+  1  `AND ($2 = $2)`   pgx cannot infer the type, the QUERY errors, the handler degrades —
+                       so it degraded for the WRONG reason and proved nothing. T48t's lesson:
+                       a bite that breaks the syntax has not bitten the behaviour.
+  2  the assertion     `below["source"] != "snapshot"` held whether or not the position was
+                       honoured — vacuous, green by construction. Replaced with a
+                       DISCRIMINATOR: below-head content must DIFFER from the head read.
+  3  the test SKIPPED  `GLOSSARY_TEST_DB_URL not set` — every `ok` above was a skip. The whole
+                       bite exercise had been measuring nothing.
+  ```
+
+  The third is the one worth keeping: **`ok` and `skip` print almost the same, and I read three
+  of them as passes.** Fixed by running the suite against a throwaway Postgres (rule 6) on the
+  stack's own `postgres:18-alpine` — stock `postgres:16` fails the migration chain on
+  `uuidv7()`, which is its own small trap.
+
+  **QC (a) gates:** `go test ./internal/api/` **PASS in 71s against a real DB** (not a skip —
+  the same suite that skipped in 0.4s), `go build ./...` clean; `glossary-ordinal-axis-gate`,
+  `kal-read-surface-live-smoke`, `bitemporal-window-live-smoke`, `architecture-live-proof`,
+  `kal-surface-census-gate` selftests, `gate-wiring-gate`, `plan-final-verification` — all 0 by
+  direct exit code.
+  **QC (b) live smoke vs a REBUILT image:** three `iso.sh build glossary-service` cycles — the
+  fix, the bite, the restore. Every row of both tables above is an HTTP response from that
+  container through the KAL.
+  **QC (c) real data:** the two-sided fixture T48af found — book `019f9f2d-…`, entity
+  `019fee56-…` with 8 facts all at ordinal 3 and a fold head at 3 — which is the only reason a
+  below-head position existed to ask for.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ag 2026-08-30 — **one fact in 48,611 sits six orders of magnitude off-axis: present in every head read, unreachable by every windowed one**
 
