@@ -123,8 +123,9 @@ def _sample(payload: object, as_of: int | None) -> dict:
 #: touched. This smoke had validated the window on `neighborhood` alone: **the route it was
 #: derived from**, which is rule 3's definition of green by construction.
 #:
-#: Derived 2026-08-30: **11 of the 16 swept KAL routes take a temporal parameter**, 5 of them
-#: graph-backed. This smoke covered ONE. `timeline` and `fact-for-check` were then checked BY
+#: Derived 2026-08-30: **9 of the 16 swept KAL routes take a temporal parameter** (T48aj —
+#: it read 11 until a route's doc comment stopped counting for its predecessor), 5 of them
+#: graph-backed. This smoke covered ONE. `timeline` and `fact-for-check` were checked BY
 #: HAND — and a hand-check is invisible to CI, which is the same rule that requires a gate to
 #: carry a `--selftest`.
 #:
@@ -183,6 +184,26 @@ _ROUTE_DECL = re.compile(r"@(Get|Post)\('([^']*)'\)")
 _GRAPH_CALL = re.compile(r"\bknowledge\.\w+\(")
 
 
+def route_body(span: str) -> str:
+    """One route's body, WITHOUT the next route's leading doc comment.
+
+    T48aj. Slicing decorator-to-decorator hands a route every comment line written above the
+    NEXT one, and this controller documents its routes in exactly that position. `cast/by-ids`
+    and `search` were both reported as taking a story position because `state`'s doc block —
+    which says `as_of` three times — sat inside their spans. The published census read
+    "11 of the 16 swept KAL routes take a temporal parameter"; it is 9.
+
+    The ratchet survived by luck: both false positives are glossary-backed, and
+    `temporal_graph_routes` also requires a knowledge call. A knowledge-backed neighbour would
+    have demanded a recipe for a route that has no position to drive.
+    """
+    lines = span.split(chr(10))
+    while lines and (not lines[-1].strip()
+                     or lines[-1].lstrip().startswith(("//", "/*", "*", "*/"))):
+        lines.pop()
+    return chr(10).join(lines)
+
+
 def temporal_graph_routes(sources: list[str]) -> list[str]:
     """Every GRAPH-BACKED route that accepts a story position, derived from the controllers.
 
@@ -195,7 +216,7 @@ def temporal_graph_routes(sources: list[str]) -> list[str]:
         hits = list(_ROUTE_DECL.finditer(src))
         for i, m in enumerate(hits):
             end = hits[i + 1].start() if i + 1 < len(hits) else len(src)
-            body = src[m.end():end]
+            body = route_body(src[m.end():end])
             if _TEMPORAL_PARAM.search(body) and _GRAPH_CALL.search(body):
                 found.append(m.group(2))
     return sorted(set(found))
@@ -344,6 +365,18 @@ def _selftest() -> int:
         "@Post('plain')", "async c() { return knowledge.post('/p', {}); }",
     ])
     for label, got, want in [
+        ("T48aj — the NEXT route's doc comment must not count for THIS route",
+         temporal_graph_routes([chr(10).join([
+             "@Post('plain')", "async a() { return knowledge.post('/p', {}); }",
+             "// the next route takes as_of and documents it up here",
+             "@Post('windowed')", "async b() { return knowledge.post('/w', {as_of}); }",
+         ])]), ["windowed"]),
+        ("...the trimmer keeps a body that ENDS in code",
+         route_body("async a() { return knowledge.post('/p', {as_of}); }").strip().endswith("}"),
+         True),
+        ("...and drops a trailing comment block entirely",
+         route_body("code()" + chr(10) + "// doc for the next one" + chr(10)), "code()"),
+        ("...leaving a comment-only span empty rather than crashing", route_body("// only"), ""),
         ("a graph-backed route taking a position is derived",
          temporal_graph_routes([_ctrl]), ["wiki-neighborhood"]),
         ("a GLOSSARY route taking a position is NOT — it reads the projection, not the graph",

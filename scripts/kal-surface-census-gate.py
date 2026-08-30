@@ -79,6 +79,15 @@ _HELPER = re.compile(r"this\.(\w+)\(")
 USER_GUARD = "KalAuthGuard"
 
 
+def _route_body(span: str) -> str:
+    """One route's body, minus the trailing comment block that documents the NEXT route."""
+    lines = span.split(chr(10))
+    while lines and (not lines[-1].strip()
+                     or lines[-1].lstrip().startswith(("//", "/*", "*", "*/"))):
+        lines.pop()
+    return chr(10).join(lines)
+
+
 def routes_in(src: str) -> list[dict]:
     """Every decorated route in one controller, with the downstream its body calls.
 
@@ -91,7 +100,12 @@ def routes_in(src: str) -> list[dict]:
     hits = list(_ROUTE.finditer(src))
     for i, m in enumerate(hits):
         end = hits[i + 1].start() if i + 1 < len(hits) else len(src)
-        body = src[m.end(): end]
+        # T48aj — the next route's leading doc comment is NOT this route's body. Slicing
+        # decorator-to-decorator gave `cast/by-ids` and `search` a temporal parameter they do
+        # not have, because `state`'s doc block sat in their spans. Downstream attribution
+        # happened to be unaffected (the same service is named either way), which is exactly
+        # why it went unnoticed here and was caught in the sibling derivation.
+        body = _route_body(src[m.end(): end])
         downs = set(_DOWNSTREAM.findall(body))
         # ONE hop through a private helper. Every write route forwards via `this.forward(...)`,
         # and reporting those as calling nothing reads as "these routes reach no service".

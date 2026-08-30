@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 43 of 45 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 44 of 46 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (36/37) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (37/38) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,85 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48aj 2026-08-30 — **a route's doc comment counted for the route ABOVE it: the census said 11 temporal routes, it is 9**
+
+  ```
+  before  routes counted as temporal: 11   (cast/by-ids and search among them)
+  after   routes counted as temporal:  9
+  graph-backed temporal: 5, uncovered 0    unchanged
+  graph_backed_swept: 6                    unchanged
+  ```
+
+  🎯 **Found by checking the LAST unchecked temporal route and discovering it was never
+  temporal.** `cast/by-ids` was on my derived list, so I probed it: 1 item, 0 facts, at every
+  position — the shape of an ignored window. Reading the handler instead of the output showed
+  its body type is `{ entity_ids?, language?, include_attributes? }` and it forwards exactly
+  those. **There is no `as_of` in it.**
+
+  🔴 **THE DERIVATION WAS WRONG, NOT THE ROUTE.** Spans are sliced decorator-to-decorator, and
+  this controller documents each route in the lines ABOVE its decorator — so every route
+  inherits the NEXT one's doc block. `state`'s comment says `as_of` three times, and it sits
+  inside the spans of both `cast/by-ids` and `search`:
+
+  ```
+  --- tail of the cast/by-ids SPAN ---
+  // no domain logic. Forwarding an empty `as_of` reaches the same refusal as omitting it —
+  // glossary treats both as "no story position".
+  ```
+
+  📐 **The ratchet survived by luck, and that is the part worth writing down.** Both false
+  positives are glossary-backed, and `temporal_graph_routes` also requires a `knowledge.*` call,
+  so `uncovered` stayed empty and the sweep stayed honest. **A knowledge-backed neighbour would
+  have demanded a recipe for a route with no position to drive** — the ratchet would have gone
+  red for a defect that did not exist, which is the failure mode that gets a gate switched off.
+
+  ✅ **The downstream half was never affected, checked rather than hoped:** re-deriving with the
+  corrected span changes `temporal` for two routes and `downstream` for none — the neighbouring
+  comment names the same service the body calls. That is why the same bug in
+  `kal-surface-census-gate` went unnoticed there, and `graph_backed_swept: 6` needs no
+  correction. Both derivations are fixed anyway; one bug, two copies, and T48ai is the row about
+  fixing only one.
+
+  🔬 **The corrected list, in full** — the nine that genuinely take a position:
+
+  ```
+  glossary   canonical · canonical-translation · facts · state
+  knowledge  neighborhood · retrieve · wiki-neighborhood · timeline · fact-for-check
+  ```
+
+  Every one of those nine has now been driven live across positions this session: four fixed
+  (T48ad, T48ah, T48ai) or measured correct (facts, state, timeline, fact-for-check), one
+  `NO-ROUTE` by design (retrieve, T55b).
+
+  🧪 **BITE T48aj-1 — line 200, the trimmer returns the span untouched.**
+
+  ```
+  FAIL  the NEXT route's doc comment must not count for THIS route:
+        expected ['windowed'], got ['plain', 'windowed']
+  FAIL  ...and drops a trailing comment block entirely
+  FAIL  ...leaving a comment-only span empty rather than crashing
+  routes counted as temporal: 11        <- the wrong number, reproduced         exit 1
+  ```
+
+  Restored: 9, and the live sweep still `PASS — 5 route(s) swept, 0 not holding their position`.
+
+  ⚖️ **Rule 5, on a number I published myself.** "11 of the 16 swept KAL routes take a temporal
+  parameter" appears in this smoke's own recipe docstring; it moves to 9 in this commit, with
+  the reason next to it rather than a silent edit.
+
+  **QC (a) gates:** `bitemporal-window-live-smoke --selftest` **23/23** (4 new span cases);
+  `kal-surface-census-gate` selftest and live (`DECLARED`, 6 graph-backed — unchanged),
+  `kal-read-surface-live-smoke`, `architecture-live-proof`, `glossary-ordinal-axis-gate`,
+  `graph-store-migrated-gate` selftests, `gate-wiring-gate`, `plan-final-verification` — all 0
+  by direct exit code.
+  **QC (b) live smoke:** the 5-route window sweep re-run against the running iso KAL, PASS. No
+  image rebuild — no service code changed this cycle, only two derivations.
+  **QC (c) real data:** the KAL controllers themselves, re-derived before and after: 11 → 9
+  temporal, 5 → 5 graph-backed, 6 → 6 graph-backed swept.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ai 2026-08-30 — **T48ah fixed ONE of two copies of the same query, and the copy it missed is the one a reader sees**
 
