@@ -44,6 +44,12 @@
    "evidence": "docs/eval/toolloop/2026-08-28/c-authorsource1-raw.json",
    "tool": "glossary_extract_entities_from_doc",
    "called": "5/5"
+  },
+  "scenarios-c-bindarc2.json::an-arc-request-reaches-the-tool-and-is-refused-naming-chapters": {
+   "reason": "🔴 THE GATE IS RIGHT ABOUT R1 AND WRONG ABOUT THE SURFACE. `answerable_tools` returns the EMPTY SET on this prompt even with the arc synonyms declared, because R1 matches a CONTIGUOUS phrase and the motif's NAME splits the sentence — 'Attach **Emberfall Seam** to the opening arc'. But the tool reaches the turn anyway, through the DOMAIN HOT SET: measured on this batch's own sessions, composition_motif_bind_edit was advertised on 5 of 5 turns. It was also advertised 5 of 5 BEFORE the synonyms existed, which is how DQ-T58's premise came to be refuted.",
+   "evidence": "docs/eval/toolloop/2026-08-28/c-bindarc2-raw.json",
+   "tool": "composition_list_outline",
+   "called": "5/5"
   }
  },
  "_override_rule": "An override is only admissible with a raw batch on disk showing the tool ACTUALLY CALLED. The test re-reads that file and re-counts; an override whose evidence stops supporting it fails. Without that, this section is just the escape hatch that lets any inconvenient flag be waved away — which is what the shrink-only rule exists to prevent.",

@@ -5000,8 +5000,38 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     node_id = _uuid(args.node_id, "node_id")
     # IDOR #1: the chapter node is in the gated Work's project.
     node = await outline.get_node(node_id)
-    if node is None or node.project_id != pid:
+    # ── DQ-T58 (owner 2026-08-28) — AN ARC IS NOT A CHAPTER, AND THE REFUSAL MUST SAY SO ─────
+    # OWNER: "DECLARE THE ARC PHRASING ... so the turn reaches the tool and the author gets an
+    # EXPLICIT refusal naming chapters. The tool is not taught to accept an arc." The owner
+    # declined inventing the semantic (is a motif on an arc a property of the arc, or a shortcut
+    # for its chapters? nothing in the model defines it) and declined leaving it unreachable, and
+    # set the bar: "a refusal that does not name chapters leaves the author exactly as stuck."
+    #
+    # Arcs live in `structure_node` (arc/part/saga) and chapters in `outline_node`
+    # (chapter/scene). Measured: ZERO ids appear in both tables, so an arc id here resolves to
+    # None and took the uniform not-accessible path — a refusal that says "not found or not
+    # accessible" and leaves the author with no idea the tool binds to chapters at all.
+    if node is None:
+        _structures = StructureRepo(get_pool())
+        _sn = await _structures.get(node_id)
+        if _sn is not None and getattr(_sn, "project_id", None) == pid:
+            raise ValueError(
+                f"node_id {args.node_id} is a {_sn.kind}, and this tool binds a motif to a "
+                "CHAPTER. Whether a motif on a whole arc means a property of the arc or a "
+                "shortcut for every chapter under it is not something this platform defines, so "
+                "it is not guessed here. To bind the motif, list the arc's chapters "
+                "(composition_list_outline) and call this again with a chapter's node_id — one "
+                "call per chapter."
+            )
         raise uniform_not_accessible()
+    if node.project_id != pid:
+        raise uniform_not_accessible()
+    if node.kind != "chapter":
+        raise ValueError(
+            f"node_id {args.node_id} is a {node.kind}, and this tool binds a motif to a CHAPTER. "
+            "Pass the node_id of the chapter itself — composition_list_outline lists them."
+        )
+
     # IDOR #2: the motif is caller-visible (you can only bind a motif you can see).
     repo = MotifRepo(get_pool())
     motif = await repo.get_visible(tc.user_id, _uuid(args.motif_id, "motif_id"))
@@ -5367,10 +5397,15 @@ class _MotifBindEditArgs(ForbidExtra):
     ),
     meta=require_meta(
         "A", "book",
+        # DQ-T58: the ARC phrasings are declared so the turn REACHES this tool and the author
+        # gets the explicit refusal above, instead of the request going nowhere. They are
+        # deliberately arc-shaped and do not overlap the chapter phrasings beside them.
         synonyms=["bind motif", "apply motif", "attach pattern to chapter", "set chapter motif",
                   "unbind motif", "remove motif", "clear chapter motif", "swap motif",
                   "bind", "bind it to", "attach the motif", "use this motif here",
-                  "tie the motif to"],
+                  "tie the motif to",
+                  "attach motif to arc", "bind motif to arc", "set the arc's motif",
+                  "motif for this arc", "apply motif to the arc"],
         tool_name="composition_motif_bind_edit",
     ),
 )

@@ -9747,7 +9747,12 @@
         "bind it to",
         "attach the motif",
         "use this motif here",
-        "tie the motif to"
+        "tie the motif to",
+        "attach motif to arc",
+        "bind motif to arc",
+        "set the arc's motif",
+        "motif for this arc",
+        "apply motif to the arc"
       ],
       "tier": "A"
     }
