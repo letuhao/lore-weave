@@ -52,7 +52,9 @@ ci-local: lint
 	bash scripts/eventgen-validate.sh
 	@echo "=== cargo check workspace ==="
 	cargo check --workspace
-	@echo "All local CI gates PASS"
+	@echo "ci-local PASS: 15 lints + 4 Go contract suites + eventgen + cargo check."
+	@echo "  NOT the gate suite: the repo has 117 gates and CI runs them via"
+	@echo "  scripts/gate-wiring-gate.py --run-all (415s). This target does not."
 
 # L2.G — regenerate L2.F event registry into contracts/events/generated/ for
 # all four polyglot targets (Go + Rust + TS + Python). Idempotent. CI gate is

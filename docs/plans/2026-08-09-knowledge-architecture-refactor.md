@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 52 of 54 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 53 of 55 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (45/46) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (46/47) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,80 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48as 2026-08-30 — **`make ci-local` printed "All local CI gates PASS" while running 15 lints and none of the repo's 117 gates**
+
+  ```
+  before  @echo "All local CI gates PASS"        <- 15 lints + 4 Go suites + cargo check
+  after   @echo "ci-local PASS: 15 lints + 4 Go contract suites + eventgen + cargo check."
+          @echo "  NOT the gate suite: the repo has 117 gates and CI runs them via"
+          @echo "  scripts/gate-wiring-gate.py --run-all (415s). This target does not."
+  ```
+
+  🎯 **T48k's defect, one directory up.** That row found `plan-final-verification` claiming
+  *"every gate is green"* while running 6 of 113, and fixed it by making the sentence say what it
+  ran. **The identical sentence was sitting in the Makefile the whole time** — in the target a
+  developer runs before pushing, and `--run-all` was red on two gates while it said so.
+
+  📐 **Two halves, and both are needed.** A message can carry a true number and still overclaim
+  its subject:
+
+  ```
+  COUNTED    "All 15 L1.K lints PASS" — 15 is TYPED IN. Add a lint and the line is wrong on
+             the commit that adds it.
+  SCOPED     "All local CI gates PASS" — 15 is a true count of LINTS, and none of them is a
+             gate. The noun is the lie.
+  ```
+
+  🔴 **AND MY OWN FIX DEFEATED MY OWN CHECK — found by biting, not by reading.** The gate asked
+  `RUNNER not in src`, and the honesty note I had just added to `ci-local` **contains that exact
+  string**:
+
+  ```
+  "CI runs them via scripts/gate-wiring-gate.py --run-all (415s). This target does not."
+  ```
+
+  So bite A passed silently: a sentence saying *"this target does not run the runner"* satisfied
+  a check for *"does this target run the runner"*. `invokes_runner()` now distinguishes a recipe
+  line from an `@echo` — **mentioning is not invoking** — and the case that bit is pinned in the
+  selftest. Same mentions-vs-uses class as T48aj, inverted.
+
+  🔴 **AND THE GATE CRASHED ON ITS OWN SUCCESS PATH.** The OK branch returned `claims` as an int
+  while the failing branches fill that key with a list, and `main()` iterates it —
+  `TypeError: 'int' object is not iterable`, on every green run. **The selftest drove
+  `verdict()` and never `main()`**, which is T48ac's shape exactly. Fixed, and a case now runs
+  `main()` on the real Makefile so the success path is exercised rather than assumed.
+
+  🧪 **TWO BITES, one of which had to be earned twice.**
+
+  ```
+  T48as-1  the overclaim restored
+           first attempt   OK, exit 0   <- the check was defeated by the note
+           after the fix   FAIL — OVERCLAIMED: a PASS line promises the GATE suite while the
+                           Makefile never invokes the runner                        exit 1
+  T48as-2  "All 15 L1.K lints PASS" -> "All 14"
+           FAIL — MISCOUNTED: a PASS line names a count that is not the 15 lint(s) the
+           target iterates                                                          exit 1
+  ```
+
+  Restored; `git diff` on the Makefile shows only the three honest lines.
+
+  ⚖️ **Scope, stated:** `make` is not on this machine, so the target was not executed — the
+  claim was derived from the Makefile's own text and the counts it iterates (15 LINTS, 117
+  discovered gates). What the gate checks is the sentence, and the sentence is what a developer
+  reads.
+
+  **QC (a) gates:** `makefile-claim-gate --selftest` **12/12** (new, wired into
+  `.githooks/pre-commit`) and green on the real Makefile; `gate-teeth-gate`,
+  `gate-number-visibility-gate`, `gate-wiring-gate` live and `--self-test`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** N/A — no service seam crossed and no image changed; this cycle touches
+  a Makefile, a hook, and one new script. The live half is the two bites above.
+  **QC (c) real data:** N/A because this cycle produces no data. Its measurements are the two
+  counts the claim got wrong: **15 lints** iterated versus **117 gates** promised.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ar 2026-08-30 — **the two gates that police GATES were in neither hook nor my habits; CI runs them 415s away from the commit**
 

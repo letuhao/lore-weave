@@ -128,6 +128,9 @@ command -v python >/dev/null 2>&1 || PY=python3
 # gate-teeth-gate is 0s and asks the question this session kept answering by hand: can this
 # gate FAIL at all? Unconditional.
 "$PY" "$ROOT/scripts/gate-teeth-gate.py"
+# ...and the same question of the MAKEFILE: `ci-local` printed "All local CI gates PASS"
+# while running 15 lints and none of the repo's 117 gates. T48k's defect, one directory up.
+"$PY" "$ROOT/scripts/makefile-claim-gate.py"
 #
 # gate-number-visibility-gate is 24s, so it runs only when scripts/ actually changes -- the
 # same path-scoping the knowledge-gateway suite got in T48al. A ratchet that prints nothing
