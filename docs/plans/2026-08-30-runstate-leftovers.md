@@ -13,11 +13,11 @@ instead of remembered.
 the discipline is the same as the plan it follows from: a row may be unfinished; it may not be
 undecided. Decide it, spec it, keep building.
 
-RESUME: L5 — a helper test that stays green with the COUNT filter deleted.
+RESUME: L3 — event_order still collides when two jobs extract one chapter at once.
 
 ## Progress
 
-7 tasks — 1 done, 0 tracked, 6 untouched.
+7 tasks — 2 done, 0 tracked, 5 untouched.
 
 ---
 
@@ -35,7 +35,7 @@ RESUME: L5 — a helper test that stays green with the COUNT filter deleted.
   **BITE:** break the wiring (rename it, or drop its registration) → the thing that now knows
   about it goes red. If nothing goes red, it is still unwired.
 
-- [ ] **L5** — **the books' search test keeps the blind spot worlds lost.**
+- [x] **L5** — **the books' search test keeps the blind spot worlds lost.**
   `TestAppendTitleSearchFilter` drives the pure helper twice and calls that "count args are a
   prefix of the page args". Measured on the worlds equivalent: deleting the filter from the
   COUNT left every such subtest GREEN, because the helper it drives is untouched. `total`
@@ -167,4 +167,65 @@ every discovered live smoke carrying a row).
 cycle (a lint predicate and a registry), so no image rebuild was owed.
 **QC (c) real data:** the counts above, read off the tree today: 15 live smokes, 0 matched,
 0 registered; 118 → 133 discovered.
+---
+
+### ✅ L5 2026-08-30 — **the old test passed all five subtests under the exact bite it is named for**
+
+```
+bite: delete searchFilter from the books COUNT (server.go line 987)
+
+TestAppendTitleSearchFilter                              5/5 PASS
+  ...including the subtest literally called
+  "count args are a prefix of the page args"                PASS
+TestBuildBookListQueries                                    FAIL
+  "COUNT is not filtered — total would describe the library
+   while items describe the search"
+```
+
+🎯 **The code was already right; only the test was blind.** The books handler has passed
+`searchFilter` to both queries since the library-search fix. What L5 fixes is that nothing
+could tell — the old subtest demonstrates "count args are a prefix of the page args" by
+calling `appendTitleSearchFilter` **twice and comparing the results to each other**, which is
+true of the helper no matter what the handler does with it.
+
+📐 **The wiring is now the unit.** `buildBookListQueries` returns page SQL, page args, count
+SQL and count args, so the prefix property holds by CONSTRUCTION rather than by a test that
+compares a pure function with itself. Same shape as `buildWorldListQueries`, which was built
+for the same reason two commits earlier.
+
+🔴 **It pulled in a second thing that was never checked: EGRESS GUARD #7.** `accessFilter`
+carries `is_bible=false` and `kind<>'diary'`, and it was built inline in the handler and
+pasted into both queries. A guard that reached the page and not the COUNT would leak through
+`total` — a smaller leak than a row, and still a number about books the caller may not see.
+Now one string, and a test asserts it reaches the COUNT on BOTH the owned and the shared
+branch.
+
+⚠️ **My first bite hit the wrong line and I nearly kept it.** The needle matched the PAGE
+query (line 982) before the count, so the suite went red for a defect I had not injected.
+Re-aimed by line number at 987. A bite that reds for the wrong reason proves the file is
+broken, not that the check has teeth — and this file's own CYCLE says mutate BY LINE NUMBER
+for exactly this.
+
+⚠️ **A test of mine also failed on correct code**, and it was the test that was wrong: it
+asserted the lifecycle value never reaches the SQL text by searching for `trashed`, and the
+page SQL selects `b.trashed_at`. The needle is now the quoted literal `'trashed'`, plus a
+direct assertion that lifecycle is `args[1]`.
+
+**QC (a) gates:** `gate-wiring-gate --run-all` **104 GREEN, 0 RED, exit 0**; book-service
+`./internal/api` green (6 new subtests).
+**QC (b) live smoke:** seam crossed (Go handler), image REBUILT on `lw-iso` and restarted.
+Against it: unfiltered `total=77`; `q=Salt Cartographers&limit=1` → **`total=4, items=1`** —
+the COUNT is filtered, not reporting 77; `q=%` → 0 rows, so `escapeLikePattern` is applied;
+and `/v1/books/trash` (the `includeShared=false`, `lifecycle=trashed` branch) answers
+`total=205` unfiltered and `0` for a non-matching `q`, so BOTH branches of the extracted
+function ran live.
+**QC (c) real data:** iso, 77 active books and 205 trashed for the e2e owner.
+
+🧪 **BITE — three, each on a different claim.**
+
+```
+1 drop searchFilter from the COUNT (line 987)   -> "COUNT is not filtered" (old test: 5/5 PASS)
+2 drop accessFilter from the COUNT (line 986)   -> "COUNT does not hide bible containers"
+3 LIMIT/OFFSET numbered off countArgs (984)     -> "expected LIMIT $4 OFFSET $5"
+```
 ---

@@ -919,6 +919,75 @@ func appendTitleSearchFilter(q string, args []any) (string, []any) {
 	return fmt.Sprintf(" AND b.title ILIKE $%d", len(args)), args
 }
 
+// buildBookListQueries — the page query AND the count query for one library request.
+//
+// 🔴 **BOTH ARE BUILT HERE BECAUSE A TEST OF THE HELPER ALONE CANNOT SEE THEM DRIFT** (L5).
+// `TestAppendTitleSearchFilter` has a subtest called *"count args are a prefix of the page
+// args"* — and it demonstrates that by calling `appendTitleSearchFilter` twice and comparing
+// the results to each other. It never touches the handler. Measured on the worlds
+// equivalent, which had the identical shape: deleting the predicate from the COUNT left
+// every such subtest GREEN, because the pure function they drive is untouched.
+//
+// The failure that hides behind that green is not a crash. `total` describes the whole
+// library while `items` describe the search, so the UI reports "12 of 340" for a query that
+// matched 12 and the user goes hunting for 328 books that were never missing — the same
+// wrong-population defect the `q` parameter was added to fix, wearing the count's clothes.
+//
+// So the wiring is the unit. One function, one `searchFilter`, one `accessFilter`, and the
+// count args are a prefix of the page args by CONSTRUCTION rather than by a test that
+// compares a helper with itself.
+func buildBookListQueries(
+	ownerID any, lifecycle, rawQ string, includeShared bool, limit, offset int,
+) (pageSQL string, pageArgs []any, countSQL string, countArgs []any) {
+	searchFilter, args := appendTitleSearchFilter(rawQ, []any{ownerID, lifecycle})
+	countArgs = append([]any{}, args...)
+	pageArgs = append(args, limit, offset)
+
+	// accessFilter selects owned rows, plus collaborated rows when includeShared.
+	// access_level is computed per row so the FE can distinguish owned vs shared.
+	// is_bible=false excludes the auto-created hidden world-bible container books
+	// (C20) — they anchor lore but must never appear in the user's library.
+	// ── WS-1.2 · EGRESS GUARD #7: the library/catalog listing (spec 09) ──
+	//
+	// The diary is hidden from the default library grid, reusing the SAME is_bible hiding
+	// precedent immediately above. It has its own surface (the Assistant); it is not a
+	// book you browse to among your novels, and a diary tile sitting in a shared-screen
+	// library is a real-world disclosure (a demo, a colleague looking over your shoulder).
+	//
+	// This is a LIST-level guard on purpose. The repo's paged-join lesson is that
+	// per-resource checks pass while the LIST leaks — filtering here is what actually
+	// keeps it out of the grid.
+	//
+	// NOTE for the shared branch: a diary can never be shared (see the collaborator and
+	// sharing guards), so the kind filter also makes the includeShared branch honest —
+	// a diary must not appear via someone else's grant either, however that grant arose.
+	//
+	// It is built ONCE here and used by both queries for the same reason the search filter
+	// is: an egress guard that reaches the page and not the count would leak through
+	// `total`, which is a smaller leak than a row but is still a number about books the
+	// caller may not see.
+	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary'"
+	if includeShared {
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary'"
+	}
+
+	pageSQL = `
+SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
+  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
+  EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover,
+  b.genre_tags,
+  CASE WHEN b.owner_user_id=$1 THEN 'owner'
+       ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1),'none') END AS access_level
+FROM books b
+WHERE ` + accessFilter + ` AND b.lifecycle_state=$2` + searchFilter + `
+ORDER BY b.created_at DESC
+LIMIT $` + strconv.Itoa(len(pageArgs)-1) + ` OFFSET $` + strconv.Itoa(len(pageArgs)) + `
+`
+	countSQL = `SELECT COUNT(*) FROM books b WHERE ` + accessFilter +
+		` AND b.lifecycle_state=$2` + searchFilter
+	return pageSQL, pageArgs, countSQL, countArgs
+}
+
 func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, lifecycle string, includeShared bool) {
 	ownerID, ok := s.requireUserID(r)
 	if !ok {
@@ -944,43 +1013,9 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "query too long")
 		return
 	}
-	searchFilter, args := appendTitleSearchFilter(rawQ, []any{ownerID, lifecycle})
-	countArgs := append([]any{}, args...)
-	args = append(args, limit, offset)
-	// accessFilter selects owned rows, plus collaborated rows when includeShared.
-	// access_level is computed per row so the FE can distinguish owned vs shared.
-	// is_bible=false excludes the auto-created hidden world-bible container books
-	// (C20) — they anchor lore but must never appear in the user's library.
-	// ── WS-1.2 · EGRESS GUARD #7: the library/catalog listing (spec 09) ──
-	//
-	// The diary is hidden from the default library grid, reusing the SAME is_bible hiding
-	// precedent immediately above. It has its own surface (the Assistant); it is not a
-	// book you browse to among your novels, and a diary tile sitting in a shared-screen
-	// library is a real-world disclosure (a demo, a colleague looking over your shoulder).
-	//
-	// This is a LIST-level guard on purpose. The repo's paged-join lesson is that
-	// per-resource checks pass while the LIST leaks — filtering here is what actually
-	// keeps it out of the grid.
-	//
-	// NOTE for the shared branch: a diary can never be shared (see the collaborator and
-	// sharing guards), so the kind filter also makes the includeShared branch honest —
-	// a diary must not appear via someone else's grant either, however that grant arose.
-	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary'"
-	if includeShared {
-		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary'"
-	}
-	rows, err := s.pool.Query(ctx, `
-SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
-  COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover,
-  b.genre_tags,
-  CASE WHEN b.owner_user_id=$1 THEN 'owner'
-       ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1),'none') END AS access_level
-FROM books b
-WHERE `+accessFilter+` AND b.lifecycle_state=$2`+searchFilter+`
-ORDER BY b.created_at DESC
-LIMIT $` + strconv.Itoa(len(args)-1) + ` OFFSET $` + strconv.Itoa(len(args)) + `
-`, args...)
+	pageSQL, args, countSQL, countArgs := buildBookListQueries(
+		ownerID, lifecycle, rawQ, includeShared, limit, offset)
+	rows, err := s.pool.Query(ctx, pageSQL, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list books")
 		return
@@ -1021,9 +1056,7 @@ LIMIT $` + strconv.Itoa(len(args)-1) + ` OFFSET $` + strconv.Itoa(len(args)) + `
 		}
 	}
 	var total int
-	_ = s.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM books b WHERE `+accessFilter+` AND b.lifecycle_state=$2`+searchFilter,
-		countArgs...).Scan(&total)
+	_ = s.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
