@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 42 of 44 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 43 of 45 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (35/36) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (36/37) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48ai 2026-08-30 — **T48ah fixed ONE of two copies of the same query, and the copy it missed is the one a reader sees**
+
+  ```
+  BEFORE  canonical-translation  as_of=1 -> as_of_ordinal 3, 401 chars   the head fold, TRANSLATED
+          canonical              as_of=1 -> canon-content, 108 chars     (fixed by T48ah)
+  AFTER   canonical-translation  as_of=1 -> 108 chars, stale
+          canonical              as_of=1 -> 108 chars, stale             the two AGREE
+          both at as_of=3,10 and head -> 401 chars, current              unchanged
+  ```
+
+  🎯 **The held-out sibling, and it was broken for the same reason.** T48ah fixed
+  `internalGetCanonical`. The translation surface calls a HOISTED copy —
+  `getCanonicalContent(ctx, entityID, bookID)` — that took no position at all, so for one commit
+  the two surfaces answered the same question differently: canonical degraded below the fold
+  head while **canonical-translation still served the head fold, translated**.
+
+  ⚠️ **AND THE COMMENT SAID THEY COULD NOT DIVERGE.** `getCanonicalContent`'s own docstring:
+  *"the same read `internalGetCanonical` serves, hoisted so the translation surface reuses it
+  byte-for-byte."* Two queries, one comment asserting they match, and a fix applied to one of
+  them. **The comment was the reason nobody looked at the second.**
+
+  📐 **So the durable artifact is the AGREEMENT TEST, not the predicate.** Both surfaces are now
+  asked for the same position and their answers compared:
+
+  ```
+  trBelow["content"] == atHead["content"]  -> "canonical-translation served the HEAD fold
+                                              while canonical degraded"
+  trBelow["content"] != below["content"]   -> "the two canonical surfaces disagree at as_of=N"
+  ```
+
+  A predicate fix protects this commit; the comparison protects the next one. **Only a test that
+  reads both can notice a hoisted copy drifting from its original** — the same shape as a CSS
+  variable duplicated across two consumers.
+
+  ✅ **The translation cache is safe under the change, checked rather than assumed:** it is keyed
+  on `(entity_id, attr_scope, language_code, source_content_hash)` — the CONTENT hash. A
+  below-head canonical is different content, so it takes a different cache row instead of
+  colliding with the head translation.
+
+  🧪 **BITE T48ai-1 — line 56, only the HOISTED copy stops honouring the position.**
+
+  ```
+  fold_handler_test.go:163: canonical-translation at as_of=4 served the HEAD fold while
+    canonical degraded: map[as_of_ordinal:5 canonical_status:current content:李四，金丹期修士。
+    source:snapshot-translation …]                                              exit 1
+  ```
+
+  That is T48ah's divergence, reproduced exactly and caught by name. Restored; the full
+  `internal/api` suite passes in **69s against a real DB**.
+
+  ⚖️ **Why this bite is narrower than T48ah's, deliberately:** it mutates only the copy, leaving
+  `internalGetCanonical` correct — so the test that reds is the AGREEMENT one, not the position
+  one. A bite that broke both would have reddened the T48ah assertion and proven nothing new.
+
+  **QC (a) gates:** `go test ./internal/api/` **PASS, 69s against a throwaway Postgres** (rule 6,
+  the stack's own `postgres:18-alpine`; torn down after), `go build` and `go vet` clean;
+  `glossary-ordinal-axis-gate`, `kal-read-surface-live-smoke`, `bitemporal-window-live-smoke`,
+  `architecture-live-proof`, `kal-surface-census-gate` selftests, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke vs a REBUILT image:** two `iso.sh build glossary-service` cycles. Both
+  tables above are HTTP responses from that container through the KAL, including the arm showing
+  the two surfaces returning the same 108 characters at `as_of=1`.
+  **QC (c) real data:** the two-sided fixture — book `019f9f2d-…`, entity `019fee56-…`, 8 facts
+  at ordinal 3, fold head 3 — the same one T48ah used, so the two rows are directly comparable.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ah 2026-08-30 — **the canonical snapshot never read `as_of` at all: a reader held at chapter 1 was served the chapter-3 fold**
 

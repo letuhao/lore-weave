@@ -148,6 +148,26 @@ func TestFoldLoop(t *testing.T) {
 		t.Fatalf("no as_of must equal the head read; got %v vs %v", noPos, atHead)
 	}
 
+	// T48ai -- the TWO canonical surfaces must answer the same position the same way.
+	//
+	// getCanonicalContent's own comment calls itself "the same read internalGetCanonical
+	// serves, hoisted so the translation surface reuses it byte-for-byte". T48ah taught one
+	// copy to honour as_of and not the other, so for one commit canonical degraded below the
+	// fold head while canonical-translation served the head fold TRANSLATED -- the copy a
+	// reader actually sees. Two queries under one comment claiming they match is how that
+	// happens, and only a test comparing them can notice.
+	trBelow := doGET(fmt.Sprintf(
+		"/internal/books/%s/entities/%s/canonical-translation?lang=en&as_of=%d",
+		bookID, entityID, belowPos))
+	if trBelow["content"] == atHead["content"] {
+		t.Fatalf("canonical-translation at as_of=%d served the HEAD fold while canonical "+
+			"degraded: %v", belowPos, trBelow)
+	}
+	if trBelow["content"] != below["content"] {
+		t.Fatalf("the two canonical surfaces disagree at as_of=%d: translation=%v canonical=%v",
+			belowPos, trBelow["content"], below["content"])
+	}
+
 	// KAL fold_canonical trigger (internalTriggerFold): POST .../fold re-flags the entity dirty
 	// so the next worker pass re-folds, and reports the current snapshot status.
 	if code := doPOST("/internal/books/"+bookID+"/entities/"+entityID+"/fold", map[string]any{}); code != http.StatusOK {
