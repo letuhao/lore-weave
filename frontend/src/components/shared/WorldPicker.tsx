@@ -10,10 +10,13 @@ import type { World } from '@/features/world/types';
  * `world_id`; an empty selection is VALID. Used by G3 cross-linking ("Add to
  * world") and anywhere a world is chosen by name rather than a UUID.
  *
- * Worlds load once (`worldsApi.listWorlds`) and filter client-side by name —
- * the list endpoint has no `search` param, so this is the same load-once shape
- * as BookPicker. `onCreateNew` (optional) adds an inline "＋ Create new world"
- * row; creation is delegated to the consumer (which owns the modal).
+ * The name filter is the SERVER'S (`worldsApi.listWorlds({ q })`), debounced and
+ * re-fetched. It used to be a client-side `includes()` over one clamped page,
+ * so a world past the ceiling could not be found by typing its name and nothing
+ * said so; `GET /v1/worlds` had no search parameter at all, so `q` was added to
+ * the handler — applied to the page query AND the COUNT.
+ * `onCreateNew` (optional) adds an inline "＋ Create new world" row; creation is
+ * delegated to the consumer (which owns the modal).
  */
 interface Props {
   /** Selected world_id (UUID) or null. */
@@ -177,6 +180,11 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
         <input
           type="text"
           role="combobox"
+          // Its siblings (`project-picker-input`, `book-picker-input`) carry one and
+          // this did not, so the only handle on it was `role="combobox"` — which is
+          // ambiguous the moment a page renders two pickers. E2E CONVENTIONS §1:
+          // the testid is the language-agnostic contract.
+          data-testid="world-picker-input"
           aria-expanded={open}
           aria-controls="world-picker-list"
           value={query}
