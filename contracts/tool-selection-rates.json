@@ -120,6 +120,7 @@
   "dqt3-gated-tool-load-is-withheld-not-absent": "tool_load",
   "dqt30-reask-canon-rules": "composition_list_canon_rules",
   "extract-cannot-be-handed-a-model-authored-document": "glossary_extract_entities_from_doc",
+  "fresh-book-asks-for-its-first-character": "glossary_propose_entities",
   "gbuild-control-named-outright": "composition_build_cast_and_graph",
   "gbuild-control-unique-capability": "composition_build_cast_and_graph",
   "glossary-adopt-standards": "glossary_adopt_standards",
@@ -322,8 +323,7 @@
   "world-map-update-marker": "world_map_update_marker",
   "world-map-update-region": "world_map_update_region",
   "world-move-book": "world_move_book",
-  "world-update": "world_update",
-  "fresh-book-asks-for-its-first-character": "glossary_propose_entities"
+  "world-update": "world_update"
  },
  "choiceless_runs_excluded": 102,
  "_bar_derivation": "DQ-T51: p = 1-(1-0.95)**(1/5) = 0.4507 — the selection rate at which a K=5 LIVE batch has 95% chance of containing a call, so a zero is evidence about the tool rather than a lost draw. THE DERIVATION IS PRIMARY; the robustness note below is measured fresh each time and is secondary to it. No measured tool lies in [0.431, 0.457), a gap of 0.026, and the bar sits inside it — so every value in that gap classifies the identical set of tools. THAT GAP HAS NARROWED: it was [0.400, 0.500) until 2026-08-30, when a denominator defect was fixed and 117 orphaned runs returned. The bar's justification is its POWER, not the width of this gap; the gap is only evidence that the exact value is not knife-edge.",
