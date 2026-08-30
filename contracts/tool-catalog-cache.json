@@ -18182,13 +18182,17 @@
     }
   },
   "glossary_search": {
-    "description": "Search a book's glossary for entities (characters, places, items, concepts) by name, alias, or natural-language terms. Returns ranked entities with name, aliases, kind, and a short description. Use this to find what the glossary already knows before answering or proposing changes.",
+    "description": "Search a book's glossary for entities (characters, places, items, concepts) by name, alias, or natural-language terms. Returns ranked entities with name, aliases, kind, and a short description. Use this to find what the glossary already knows before answering or proposing changes. Pass deleted=true to search the RECYCLE BIN instead — deleted entities, with their ids, which is where an entity_id for glossary_entity_restore comes from.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "book_id": {
           "description": "the book whose glossary to search (UUID). Omit inside a book studio — the current book is used.",
           "type": "string"
+        },
+        "deleted": {
+          "description": "Set true to search the RECYCLE BIN instead: returns only entities that have been deleted, with their ids, so glossary_entity_restore can be given one. Default false searches the live glossary and is unchanged.",
+          "type": "boolean"
         },
         "limit": {
           "description": "max entities to return (default 20, max 50)",

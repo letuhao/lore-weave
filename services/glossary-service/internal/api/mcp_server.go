@@ -53,7 +53,9 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "Search a book's glossary for entities (characters, places, items, " +
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
 			"with name, aliases, kind, and a short description. Use this to find what the " +
-			"glossary already knows before answering or proposing changes.",
+			"glossary already knows before answering or proposing changes. " +
+			"Pass deleted=true to search the RECYCLE BIN instead — deleted entities, with " +
+			"their ids, which is where an entity_id for glossary_entity_restore comes from.",
 		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
 		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
@@ -394,6 +396,9 @@ type searchToolIn struct {
 	BookID string `json:"book_id,omitempty" jsonschema:"the book whose glossary to search (UUID). Omit inside a book studio — the current book is used."`
 	Query  string `json:"query" jsonschema:"natural-language search terms"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"max entities to return (default 20, max 50)"`
+	// DQ-T44 (owner 2026-08-28): "a `deleted=true` (soft-deleted) FILTER on each family's
+	// EXISTING list/search tool. No new tools." This is the glossary-entity family's half.
+	Deleted bool `json:"deleted,omitempty" jsonschema:"Set true to search the RECYCLE BIN instead: returns only entities that have been deleted, with their ids, so glossary_entity_restore can be given one. Default false searches the live glossary and is unchanged."`
 }
 type searchToolOut struct {
 	// RESULTS. Empty means the query matched nothing — always, with no exceptions and nothing
@@ -527,6 +532,7 @@ func (s *Server) toolSearch(ctx context.Context, _ *mcp.CallToolRequest, in sear
 	resp, err := s.selectGlossaryForContext(ctx, bookID, selectForContextRequest{
 		Query:       in.Query,
 		MaxEntities: limit,
+		Deleted:     in.Deleted,
 	})
 	if err != nil {
 		return nil, searchToolOut{}, errors.New("glossary search failed")
