@@ -63,6 +63,12 @@ import os
 import re
 import sys
 
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "plan_location", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "plan_location.py"))
+_pl = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_pl)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GLOBS = ("docs/plans/*.md",)
 
@@ -171,8 +177,7 @@ def _selftest() -> int:
         print(f"  {'PASS' if ok else 'FAIL'}  {label}: expected {want}, got {got}")
 
     # The gate must be able to see the real plan, or every reading above is about fixtures.
-    plan = os.path.join(ROOT, "docs", "plans",
-                        "2026-08-09-knowledge-architecture-refactor.md")
+    plan = _pl.plan_path()   # live or archived - see plan_location.py
     if os.path.exists(plan):
         with open(plan, encoding="utf-8") as fh:
             rows = len(ROW_RE.findall(fh.read()))

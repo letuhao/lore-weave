@@ -33,7 +33,12 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLAN = os.path.join(ROOT, "docs", "plans", "2026-08-09-knowledge-architecture-refactor.md")
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "plan_location", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "plan_location.py"))
+_pl = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_pl)
+PLAN = _pl.plan_path()
 
 ROW_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9.\-]+)\*\*")
 

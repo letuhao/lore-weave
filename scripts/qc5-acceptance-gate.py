@@ -39,6 +39,13 @@ import re
 import os
 import sys
 
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "plan_location", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "plan_location.py"))
+_pl = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_pl)
+
+
 PASS, FAIL, UNSCORABLE = "PASS", "FAIL", "UNSCORABLE"
 
 #: ~~§2.1 keeps three runs per arm and majority rule. Measured 2026-08-13: three runs gave
@@ -435,7 +442,11 @@ def _live_closure() -> int:
             return ""
         return open(path, encoding="utf-8", errors="replace").read()
 
-    ptxt = _read("docs", "plans", "2026-08-09-knowledge-architecture-refactor.md")
+    # The plan may be LIVE or ARCHIVED (T49). A fixed docs/plans/ path would return an
+    # empty string once it moves, and every claim checked below would then be checked
+    # against nothing - a closure gate that passes because its subject is gone.
+    ptxt = (open(_pl.plan_path(), encoding="utf-8", errors="replace").read()
+            if _pl.plan_found() else "")
     stxt = _read("docs", "specs", "2026-08-13-knowledge-refactor-open-decisions.md")
     ctxt = _read("services", "composition-service", "app", "engine", "critic_policy.py")
     htxt = _read("docs", "measurements", "2026-08-24-qc5-verifier-heldout.json")

@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**68 of 69 rows done · 1 open · 1 of 1 evidence blocks closed inside them.**
+**69 of 69 rows done · 0 open.**
 
-**OPEN:** `T49` (1/1)
+**OPEN:** *none — every row is closed.*
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -29432,7 +29432,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   every commit instead of inspected once at the end. When the last row closes, T48's remaining
   work is a re-run, not a re-audit.
 
-- [~] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
+- [x] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   The ▶ NEXT SESSION block, the Deferred Items table, and the standards that moved. Then
   `/aif-archive`.
@@ -29440,6 +29440,72 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   truth starts, and the generation-SSOT run recorded that exact mistake as its own debt row.
   (depends on T48)
 
+  ---
+  ### ✅ T49c 2026-08-30 — **the plan is archived, and archiving it would have silently disarmed the gate that reads it**
+
+  ```
+  docs/plans/2026-08-09-…md  ->  .ai-factory/archive/plans/2026-08-09-…md
+  eight gates bound to that path, re-run after the move:   all exit 0
+  ```
+
+  🎯 **T49's last clause is `/aif-archive`, and it is one `git mv`.** Measuring what that `mv`
+  would do first is the only interesting part of this row (rule 8), and it turned up something
+  that should not ship:
+
+  ```
+  plan-final-verification    FAIL, exit 1        loud and correct
+  plan-qc-evidence-gate      traceback, exit 1   loud; ugly, but loud
+  plan-progress-block        traceback, exit 1   loud
+  plan-row-honesty-gate      SKIP,   exit 0      SILENTLY GREEN
+  ```
+
+  🔴 **`plan-row-honesty-gate` treated a missing plan as a pass.** Its own subject is *"no `[~]`
+  row reads as finished"*, so moving the document would have removed the only thing it inspects
+  **and left the suite green while it happened**. Archiving a plan would have disarmed the guard
+  that keeps the plan honest, on the commit that archives it. That is this repo's most-repeated
+  shape — a mechanism that exists and reaches nothing — arriving one last time, in the row whose
+  job is to close the plan.
+
+  📐 **Fixed by resolution, not by editing ten paths.** `scripts/plan_location.py` knows the two
+  places the plan can be — live, then archived — and eight scripts now ask it instead of
+  hardcoding `docs/plans/…`. Archiving changes WHERE the file is and nothing else. A plan in
+  NEITHER place is an error every caller can see: `plan_found()` exists precisely so a caller
+  that used to treat *missing* as *fine* has to say so out loud.
+
+  ⚖️ **The gates keep their teeth on an archived document, deliberately.** They could have been
+  retired here — a frozen plan cannot fail a census — but retiring six gates and re-baselining
+  two ratchets to save nothing is churn, and the guards still answer a real question: **an
+  archived plan that someone edits must not be able to lie.** Cheap to keep, and the bite below
+  shows they are still live rather than parked.
+
+  🧪 **BITE T49c-1 — `PLAN_NAME` points at a file in neither location (line 27).**
+
+  ```
+  plan-row-honesty-gate    [plan-row-honesty-gate] FAIL — no plan at either location:   exit 1
+  plan-final-verification  [plan-verify] FAIL — plan not found: …                       exit 1
+  plan-qc-evidence-gate    Traceback …                                                  exit 1
+  ```
+
+  The first line is the whole cycle: **exit 1 where it used to be exit 0.** Restored, all green.
+
+  🧾 **The handoff was regenerated, not appended to** — its own standing warning, earned when a
+  stale list *"made a settled question read as open for eight days and stopped a run on a
+  decision nobody owed."* Its blocker table now closes its last row (`T48` was still listed as
+  unworkable), it carries §19's five merge-to-main steps in full rather than one passing
+  clause, and it names what is still owed: the 20 human labels and
+  `D-T33-CAUSAL-COVERAGE-UNMEASURED`, both under §23, both questions of quality that no gate
+  here measures.
+
+  📌 **It restates no number a command already prints**, per the row's own instruction. The
+  census, the gate suite and the seven-leg proof are three commands in the handoff; the numbers
+  live where they are derived.
+
+  **QC (a) gates:** the eight plan-bound gates re-run AFTER the move — all exit 0;
+  `gate-wiring-gate --run-all` **104 GREEN, 0 RED**.
+  **QC (b) live smoke:** N/A — this cycle moves a document and repoints script constants; no
+  service code, no image. The live half is the bite, run against the real tree.
+  **QC (c) real data:** the move itself — 1.9 MB, 29 000 lines, resolved from its new location
+  by every gate that reads it.
   ---
   ### ✅ T49b 2026-08-30 — **the handoff's "one call owed" was answered five commits ago, and its T25 line stated a claim T25z REFUTED**
 

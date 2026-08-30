@@ -26,31 +26,59 @@ Read the state from the commands, not from here — `python scripts/plan-final-v
 for the row census and `sed -n 46p` on the plan for the progress block. What this section is
 for is the part no command prints: **why** the open rows are open.
 
-🔴 **UPDATED 2026-08-23 — the list below said "four things" and THREE had already closed.**
+🔴 **UPDATED 2026-08-30 — every row in this table has now closed.** It is kept, struck through by its own right-hand column, because the LIST is the lesson: on 2026-08-23 it said "four things" and three were already done.
 
 | listed as owed | actual state |
 |---|---|
 | `T25` ③ — a write grant to drop the Neo4j vector indexes | **③ LANDED 2026-08-22** (T25o): dev cut over, passage DDL deleted |
 | `D-QC5-ROLE-JUDGE-PRECISION` — a spend call | **CLOSED 2026-08-21**, adjudicated SUPERSEDED |
 | `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call | **CLOSED**, and the plan records it was closed **twice** |
-| `T48` cannot be worked at all | **still true** |
+| `T48` cannot be worked at all | **CLOSED 2026-08-30** (T48ba). Its blocker was reading *"every task fully implemented"* as including the row doing the reading — a deadlock by construction. §23 separated T33's bite from the accuracy question and the row closed on clauses that are each a command. |
 
 ⚠️ The third row is the warning worth keeping. The plan's own note on that duplicate: *"it is the
 mechanism that made a settled question read as open for eight days and stopped a run on a decision
 nobody owed."* A stale blocker list does not merely age — it sends the next session at work that
 does not exist. Regenerate this list; do not append to it.
 
-**What is genuinely owed: 20 LABELS, and nothing else.**
+🏁 **THE PLAN IS COMPLETE — 2026-08-30.** Every row is ticked and the plan is archived; the
+census and the proof are commands, not numbers copied here:
+
+```bash
+python scripts/plan-final-verification.py       # the row census
+python scripts/gate-wiring-gate.py --run-all    # every CI gate, ~7 min
+bash   scripts/architecture-live-proof-iso.sh   # the GOAL's own sentence, 7 legs, needs lw-iso
+```
+
+**What is still OWED, and it is two questions of QUALITY — neither blocks anything:**
+
+Both live in [`§23`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) and both ask
+*is this pass any good*, which no gate here measures. T33 closed on its own bite — *edge count
+non-zero and the graph acyclic*, measured live — and that bite never asked about accuracy.
 
 - **`T33`'s causal labelling sheet** —
   [`2026-08-24-t33-causal-labelling-sheet.md`](../measurements/2026-08-24-t33-causal-labelling-sheet.md).
-  20 event pairs from two real chapters, `causal_pass_ran: true`, the extractor asserting an
-  ordered edge on 2 of them, every `LABEL:` blank. Fill `labelled_by:` with a name and each
-  `LABEL:` with `causes` / `precedes` / `unknown`, then
+  20 event pairs, every `LABEL:` blank. Fill `labelled_by:` with a name and each `LABEL:` with
+  `causes` / `precedes` / `unknown`, then
   `python scripts/t33-causal-labelling-sheet.py --score <sheet>`.
   **`--score` REFUSES a sheet signed by an assistant** — a detector graded against labels its
   own author wrote is green by construction, so this one input cannot be automated away.
-  It settles stop condition 3, which has been *unfalsifiable* (not failing) since 2026-08-11.
+  A PLANTED arm exists (`--score-planted`, bound to its design by SHA-256) and is explicitly
+  **not** a substitute: same agent wrote the prose and the ground truth.
+- **`D-T33-CAUSAL-COVERAGE-UNMEASURED`** — ACCEPTED under §23, not discharged. *Does the
+  causal pass work across the whole corpus, not just where it was pointed.* Nothing measured
+  it; striking it would assert a measurement that does not exist.
+
+🔻 **OWED AT MERGE-TO-MAIN (§19), and it is a list, not a gesture.** Kept here because the
+plan that carried it is archived:
+
+1. Retire the sibling `infra` compose project; stand dev up from this checkout.
+2. `backfill-passages` per project so the Postgres secondary is non-empty — **measure passage
+   search BEFORE and AFTER**, because an empty secondary fails SILENTLY (§9.1 option 2 — the
+   shape this plan caught five times).
+3. `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres` in `infra/.env.example` and the compose default.
+4. Delete `passage_embeddings_1024` from `neo4j_schema.cypher` — only once
+   `port-adoption-gate` reports `passage read-primary declarations 0/0`.
+5. Re-run `architecture-live-proof-iso.sh` against the new dev; leg 2's censuses come from it.
 
 ⛔ **~~What is genuinely owed: ONE call — `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`~~ —
 DECIDED AND BUILT 2026-08-30, and the deferral is CLOSED.** Kept struck because the retraction

@@ -53,7 +53,12 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PLAN = os.path.join(ROOT, "docs", "plans", "2026-08-09-knowledge-architecture-refactor.md")
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "plan_location", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "plan_location.py"))
+_pl = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_pl)
+PLAN = _pl.plan_path()
 
 #: Phrases that mean "this shipped". Evidence-shaped, not mood-shaped: a green suite count and
 #: a struck deferral are facts, whereas "looks good" is not.
@@ -384,9 +389,15 @@ def main() -> int:
         return selftest()
     if "--staged" in sys.argv:
         return staged_mode()
-    if not os.path.exists(PLAN):
-        print(f"[plan-row-honesty-gate] SKIP — no plan at {PLAN}")
-        return 0
+    if not _pl.plan_found():
+        # NOT a skip. This branch printed `SKIP` and returned 0, so archiving the plan —
+        # T49's own last clause — would have turned this gate silently green while removing
+        # the only document it inspects. A gate whose subject has vanished has not passed;
+        # it has stopped looking, which is the failure this repo keeps paying for.
+        print("[plan-row-honesty-gate] FAIL — no plan at either location:")
+        for _p in _pl.PLAN_SEARCH:
+            print(f"    {_p}")
+        return 1
     with open(PLAN, encoding="utf-8") as fh:
         text = fh.read()
     suspects = scan(text)
