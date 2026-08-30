@@ -73,6 +73,11 @@ const RENAMES: Record<string, string> = {
     'targets knowledge-service, not glossary, and its parameter is named `as_of_chapter` — the ' +
     'rename forces a parse, so T48g/§11 makes that parse REFUSE what it cannot read rather ' +
     'than drop it',
+  wikiNeighborhood:
+    'T48ad gave it a window and T48ae made that window a CHAPTER, matching `neighborhood`; ' +
+    'the owning endpoint takes `as_of_chapter`, so this route renames too. It renames in the ' +
+    'BODY and forwards the value VERBATIM -- no parse, so there is no parse to drop -- and ' +
+    'the assertion below pins that rather than trusting the note',
 };
 
 describe('KAL read as_of discipline (T48h)', () => {
@@ -133,6 +138,34 @@ describe('KAL read as_of discipline (T48h)', () => {
     await c.retrieve(BOOK, body, req());
     const posted = f.mock.calls.find((call) => String(call[0]).includes('/retrieve'));
     expect(JSON.parse((posted?.[1] as { body: string }).body)).toEqual(body);
+  });
+
+  it('wikiNeighborhood renames as_of to as_of_chapter in the BODY and does not parse it',
+    async () => {
+    /* T48al. The RENAMES note is a claim; this is the check. `neighborhood` shows what a
+       rename costs -- it forced a parse, and T48g found that parse turning an unreadable
+       window into NO window, a 200 with the spoiler gate open. This route renames in the
+       body instead, so the guard is that an UNPARSEABLE value still arrives downstream: if a
+       future edit adds a parse here, the malformed value stops arriving and the window
+       silently becomes `latest`. Registration in RENAMES alone would have satisfied the
+       census while proving nothing. */
+    const f = okFetch({ relations: [] });
+    global.fetch = f as unknown as typeof fetch;
+    await c.wikiNeighborhood(BOOK, { glossary_entity_id: ENT, as_of: OPAQUE as never },
+      req()).catch(() => undefined);
+    const posted = f.mock.calls.find((call) => String(call[0]).includes('wiki-neighborhood'));
+    const sent = JSON.parse((posted?.[1] as { body: string }).body);
+    expect(sent.as_of_chapter).toBe(OPAQUE);
+    expect(sent.as_of).toBeUndefined();
+  });
+
+  it('...and omitting it sends NO position, so the head read is unchanged', async () => {
+    const f = okFetch({ relations: [] });
+    global.fetch = f as unknown as typeof fetch;
+    await c.wikiNeighborhood(BOOK, { glossary_entity_id: ENT }, req()).catch(() => undefined);
+    const posted = f.mock.calls.find((call) => String(call[0]).includes('wiki-neighborhood'));
+    const sent = JSON.parse((posted?.[1] as { body: string }).body);
+    expect('as_of_chapter' in sent).toBe(false);
   });
 
   describe.each(VERBATIM)('%s', (_name, invoke) => {

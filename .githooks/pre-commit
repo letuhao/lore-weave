@@ -119,6 +119,24 @@ command -v python >/dev/null 2>&1 || PY=python3
 # facts, ONE at stride scale -- present in a head read and unreachable by every as-of read a
 # real position can make. A ratchet on that number, census-driven so CI runs it offline.
 "$PY" "$ROOT/scripts/glossary-ordinal-axis-gate.py" --selftest
+
+# THE KAL GATEWAY'S OWN SUITE. Nothing ran it: not this hook, and no CI workflow -- the only
+# `npm test` in .github belongs to the game subtree. Its 144 tests include the `as_of`
+# forwarding discipline (T48h), which had been RED for four commits after T48ad gave
+# `wiki-neighborhood` a window without registering it. A guard nobody runs is a guard that
+# does not exist, and this one had already caught the defect it was written for.
+#
+# Path-scoped: 3s on a gateway change, nothing otherwise. A missing node_modules SKIPS with
+# a stated reason rather than passing quietly -- an unrunnable check must never read green.
+if git diff --cached --name-only | grep -q "^services/knowledge-gateway/"; then
+  if [ -d "$ROOT/services/knowledge-gateway/node_modules" ]; then
+    echo "knowledge-gateway suite: running (staged change under services/knowledge-gateway/)"
+    ( cd "$ROOT/services/knowledge-gateway" && npm test --silent ) || {
+      echo "FAIL: knowledge-gateway test suite is RED"; exit 1; }
+  else
+    echo "knowledge-gateway suite: SKIPPED — node_modules absent (run npm ci there)"
+  fi
+fi
 # T54i: the KAL exposes 14 read routes and nothing swept them. `knowledge-graph-backend-live-
 # smoke` proves ONE engine on data it writes itself; this asks which of the ROUTES answer, with
 # the list DERIVED from the controller so a route added tomorrow is swept tomorrow. The live

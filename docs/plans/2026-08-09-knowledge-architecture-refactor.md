@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). ~~**Phases 6–9 have not started** — ever
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**66 of 69 rows done · 3 open · 45 of 47 evidence blocks closed inside them.**
+**66 of 69 rows done · 3 open · 46 of 48 evidence blocks closed inside them.**
 
-**OPEN:** `T33` (6/7) · `T48` (38/39) · `T49` (1/1)
+**OPEN:** `T33` (6/7) · `T48` (39/40) · `T49` (1/1)
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -24572,6 +24572,80 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T47)
   ---
   ---
+  ---
+  ### ✅ T48al 2026-08-30 — **the KAL gateway's suite was RED for four commits, and nothing anywhere runs it**
+
+  ```
+  before  Test Suites: 1 failed, 11 passed   ·   Tests: 1 failed, 141 passed
+          × covers EVERY read that carries an as_of — a new one is unguarded until it is here
+            Received: ["wikiNeighborhood"]
+  after   Test Suites: 12 passed             ·   Tests: 144 passed
+  ```
+
+  🔴 **I pushed T48ad, T48ae, T48aj and T48ak on a red suite I never ran.** T48ad gave
+  `wiki-neighborhood` an `as_of`; `kal-read-as-of-discipline.spec.ts` exists precisely to catch a
+  new `as_of`-carrying read that has not been registered, and it did — immediately, and then sat
+  there for four commits because **nothing runs it**.
+
+  ⚠️ **Measured, not assumed: no hook and no workflow runs this suite.** `.githooks/pre-commit`
+  never mentions it, and the only `npm test` under `.github/workflows/` belongs to the game
+  subtree. **A guard nobody runs is a guard that does not exist** — and this one had already
+  caught the defect it was written for. Same shape as this repo's "no CI builds the service
+  images" finding, one layer up.
+
+  📐 **So it is wired, path-scoped**: a staged change under `services/knowledge-gateway/` runs
+  the suite (~3s) and a red fails the commit. A missing `node_modules` **SKIPS with a stated
+  reason** rather than passing quietly — an unrunnable check must never read green, which is the
+  lesson T48ah paid for when `GLOSSARY_TEST_DB_URL` turned three `ok`s into skips.
+
+  ⚖️ **Registration alone would have been green by construction, so it is registered AND
+  pinned.** `RENAMES` carries only a membership check and a stale-name check; adding
+  `wikiNeighborhood` to it would have turned the suite green while proving nothing about the
+  behaviour. The note now has a test under it:
+
+  ```
+  as_of: "not-a-number"  ->  body.as_of_chapter === "not-a-number"   (forwarded, not judged)
+  as_of omitted          ->  `as_of_chapter` absent                  (head read unchanged)
+  ```
+
+  🧪 **BITE T48al-1 — line 399, the rename grows a `parseInt`.**
+
+  ```
+  × wikiNeighborhood renames as_of to as_of_chapter in the BODY and does not parse it
+    Expected: "not-a-number"
+    Received: null                                                              exit 1
+  ```
+
+  **That is T48g's defect reproduced exactly**: a rename forces a parse, the parse turns an
+  unreadable window into NO window, and the read still returns 200 with the spoiler gate open.
+  The spec's own header says a rename is what creates the parse and the parse is what creates
+  the drop — this route renames in the BODY and forwards verbatim, and now that is checked
+  rather than claimed. Restored: 144 passed.
+
+  🔬 **AND THE SPEC ALREADY KNEW THE BUG I "FOUND" IN T48aj.** Its derivation comment:
+
+  > *"Splitting on the decorator carries the NEXT route's leading comment block into this one,
+  > and `castByIds` — which has no `as_of` at all — was pulled in by a trailing note that merely
+  > mentioned one. Same false positive T25u found in the Cypher DDL guard, same cure."*
+
+  Two prior rows had diagnosed it; my two derivations reimplemented the same slice without the
+  cure, and T48aj rediscovered it from scratch. Their fix is also stronger than mine — they strip
+  comment lines everywhere, I trim only the trailing block — so a leading comment inside a route
+  body would still fool mine. **The knowledge was in the repo; the new code did not inherit it.**
+
+  **QC (a) gates:** `npm test` in knowledge-gateway **12 suites / 144 tests, exit 0** (was 1
+  failed / 142), now wired into `.githooks/pre-commit`; `bitemporal-window-live-smoke`,
+  `architecture-live-proof`, `kal-surface-census-gate`, `kal-read-surface-live-smoke`,
+  `glossary-ordinal-axis-gate` selftests, census live, `gate-wiring-gate`,
+  `plan-final-verification` — all 0 by direct exit code.
+  **QC (b) live smoke:** the five-leg proof re-run against the running iso stack, `PROVEN`,
+  exit 0. No image rebuild — the controller ends this cycle byte-identical to how it started
+  (bite restored), and the only shipped changes are a test and a hook.
+  **QC (c) real data:** N/A because this cycle produces no data — it runs a suite that already
+  existed and wires it. The defect it caught was measured live in T48ad/T48ae.
+
+  ⛔ **T48 stays `[~]`** — *every task fully implemented* waits on T33's labels; the sheet still
+  scores `REFUSED — labelled_by: (blank) is not a person`.
   ---
   ### ✅ T48ak 2026-08-30 — **all nine temporal routes swept, both substrates — and the sweep was judging a SLIDING WINDOW as a prefix**
 
