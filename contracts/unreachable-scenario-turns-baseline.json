@@ -59,6 +59,12 @@
    "tool": "glossary_propose_entities",
    "evidence": "docs/eval/toolloop/2026-08-14/c-gbuild8-raw.json",
    "called": "15 of 15"
+  },
+  "scenarios-t64-does-the-protocol-continue.json::t64-the-worklist-is-approved-does-the-build-follow": {
+   "reason": "🔴 THE GATE PREDATES THE MECHANISM THAT MAKES ITS PREDICTION FALSE. It says the tool 'will surface 0/N before a run is spent' because the MEASURED turn is a bare approval — 'Yes, that worklist is right — go ahead and build them.' — which no declared vocabulary answers. That was true until 2026-08-31, when D-R1-IS-KEYED-ON-THIS-TURN shipped the R1 LOOK-BACK: when a turn answers nothing and the previous assistant turn left a pending action, R1 also considers the EARLIER request. The tool reaches the wire through the setup turn's words, not the affirmative's.\n\nMEASURED, twice: on the wire 68/68 then 64/64 passes, called 5/5, zero errors.\n\nTHE GATE'S SUGGESTED REMEDY WOULD BE ACTIVELY WRONG HERE. It says 'widen the tool's synonyms'. Declaring 'yes', 'go ahead' or 'build them' on composition_build_cast_and_graph would fire it on every bare affirmative in the platform — the manufactured answerability tie DQ-T70 measured the cost of — and the prompt cannot be rewritten either: a bare approval is what the protocol's own `next` field asks for, so naming the op would measure the prompt instead of the protocol.",
+   "evidence": "docs/eval/toolloop/2026-08-31/t64-protocol3.json",
+   "tool": "composition_build_cast_and_graph",
+   "called": "5/5"
   }
  },
  "_override_rule": "An override is only admissible with a raw batch on disk showing the tool ACTUALLY CALLED. The test re-reads that file and re-counts; an override whose evidence stops supporting it fails. Without that, this section is just the escape hatch that lets any inconvenient flag be waved away — which is what the shrink-only rule exists to prevent.",

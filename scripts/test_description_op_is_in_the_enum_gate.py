@@ -55,6 +55,20 @@ sys.path.insert(0, str(ROOT / "scripts" / "toolloop"))
 _DETERMINER = r"(?:the|this|that|its|a|an|[a-z]+'s)"
 _NAMED_OP = re.compile(rf"\b{_DETERMINER}\s+([a-z][a-z0-9_]{{2,}})\s+op\b", re.IGNORECASE)
 
+#: 🔴 ENGLISH, NOT OP NAMES. The pattern above cannot tell "the archive op" (an
+#: op called `archive`) from "CALL THE NEXT OP" (the op that comes next), and on
+#: 2026-09-01 it read the second as composition_build_cast_and_graph declaring an op
+#: named `next`. That sentence is the protocol instruction the DQ-T64 description fix
+#: added on purpose; the gate was wrong, not the description.
+#:
+#: The exemption CANNOT hide a real op: test_no_positional_word_is_actually_an_op_somewhere
+#: asserts none of these appears in ANY tool's op enum, so the day a tool ships an op
+#: named `next` this list stops being safe and says so.
+_POSITIONAL_WORDS = frozenset({
+    "next", "same", "first", "last", "other", "previous", "following", "second",
+    "third", "final", "right", "wrong", "correct", "chosen", "matching", "relevant",
+})
+
 
 def _catalog() -> dict:
     try:
@@ -77,10 +91,22 @@ def _offenders(cat: dict) -> dict[str, tuple[list[str], list[str]]]:
         if not enum:
             continue
         named = {m.group(1).lower() for m in _NAMED_OP.finditer(tool.get("description") or "")}
-        missing = sorted(named - enum)
+        missing = sorted(named - enum - _POSITIONAL_WORDS)
         if missing:
             out[name] = (missing, sorted(enum))
     return out
+
+
+def _all_ops(cat: dict) -> set[str]:
+    """Every value any tool declares in an `op` enum, across the whole catalogue."""
+    ops: set[str] = set()
+    for spec in cat.values():
+        props = ((spec.get("inputSchema") or {}).get("properties") or {})
+        for key in ("op", "operation"):
+            enum = (props.get(key) or {}).get("enum")
+            if isinstance(enum, list):
+                ops.update(str(v) for v in enum)
+    return ops
 
 
 @pytest.fixture(scope="module")

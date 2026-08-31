@@ -83,12 +83,39 @@ class TestTheGuardCanActuallyFail:
     """🔴 ANTI-VACUITY. Both assertions above pass trivially against an empty or absent ledger,
     and a guard that cannot go red is decoration."""
 
-    def test_the_digest_is_not_empty_and_names_real_questions(self):
+    def test_the_digest_names_EVERY_open_question_and_no_others(self):
+        """🔴 RE-POINTED AT THE RULE, 2026-09-01, after the absolute floor went red for the RIGHT
+        reason. It asserted `>= 10` sections, and the owner ruled on TWELVE questions in one
+        round: the open set legitimately fell to four, so the floor started reporting healthy
+        progress as a broken generator.
+
+        A number that only holds while the backlog is large is not the invariant. The invariant
+        is that the digest and the ledger agree — which stays sharp at four open questions and
+        at forty, and still goes red if the generator emits nothing."""
+        import json
+
         body = _norm(DIGEST.read_text(encoding="utf-8"))
         assert "## All open questions" in body
-        assert body.count("### DQ-T") >= 10, (
-            "the digest lists almost no questions — either the generator broke or the open set "
-            "collapsed; both deserve a look rather than a green tick")
+        ledger = json.loads(
+            (pathlib.Path(__file__).resolve().parents[1]
+             / "contracts" / "tool-deep-dive-ledger.json").read_text(encoding="utf-8"))
+        # 🔴 THE SHIPPED PREDICATE, NOT A COPY OF IT. `state == "open"` is NOT what "waiting on
+        # the owner" means here: a ruling arrives in an `answer_*` field and flipping `state` is
+        # separate bookkeeping nobody is obliged to do, so a question can be state-open and
+        # already answered. Re-implementing that rule made this guard demand DQ-T53 — which is
+        # answered — and a guard that copies the logic it checks cannot fail when that logic
+        # changes.
+        import scripts.toolloop.goal_prompt_all_defects as _g
+
+        open_qs = _g._open_dq_names(ledger)
+        listed = {ln.split("###", 1)[1].split("—")[0].strip()
+                  for ln in body.splitlines() if ln.startswith("### DQ-T")}
+        assert open_qs, (
+            "the ledger has NO open questions at all — the generator has nothing to be right "
+            "about, and this guard would pass vacuously")
+        assert listed == open_qs, (
+            f"the digest and the ledger disagree. Only in the digest: {sorted(listed - open_qs)}; "
+            f"only in the ledger: {sorted(open_qs - listed)}")
 
     def test_a_changed_digest_is_detected(self, tmp_path):
         """Prove the comparison bites: perturb the content and the same check must reject it."""

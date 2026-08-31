@@ -88,10 +88,26 @@ class TestItMatchesTheREALLedger:
         dqs = LEDGER["deferred_questions"]
         unruled = [k for k, v in dqs.items()
                    if isinstance(v, dict) and v.get("state") == "open" and not G._has_ruling(v)]
-        assert len(unruled) >= 10, (
-            f"only {len(unruled)} open questions are unruled — if this collapses, the release rule "
-            "has widened past answered rulings and is freeing rows nobody decided")
-        assert set(unruled) <= G._open_dq_names(LEDGER)
+        # 🔴 RE-POINTED AT THE RULE, 2026-09-01. This asserted `>= 10` unruled questions as a
+        # proxy for "the release rule has not widened", and the owner then ruled on TWELVE in
+        # one round: four remain, so a healthy backlog collapse started reading as a widened
+        # release rule. The floor measured the BACKLOG, not the rule.
+        #
+        # The rule itself is exact and does not decay: an unruled open question blocks, and a
+        # question that blocks is unruled. Equality both ways catches a widening (something
+        # unruled stopped blocking) AND a narrowing (something ruled still blocks), at any
+        # backlog size — including zero, where the old floor could not have been satisfied at
+        # all.
+        blocking = G._open_dq_names(LEDGER)
+        assert set(unruled) <= blocking, (
+            f"unruled questions that no longer block: {sorted(set(unruled) - blocking)} — the "
+            "release rule has widened past answered rulings and is freeing rows nobody decided")
+        returned = {k for k in blocking
+                    if G._returned_corrected(dqs[k])}
+        assert blocking - returned <= set(unruled), (
+            f"questions that block despite carrying a ruling: "
+            f"{sorted(blocking - returned - set(unruled))} — the release rule has NARROWED and "
+            "the queue is hiding work the owner already decided")
 
 class TestARulingSENTBACKIsAQuestionAgain:
     """🔴 THE OTHER DIRECTION, and it bit within the hour of the first fix shipping.

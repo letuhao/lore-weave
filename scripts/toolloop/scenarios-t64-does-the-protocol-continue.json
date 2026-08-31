@@ -10,7 +10,7 @@
    "scope": "book",
    "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
    "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
-   "prompt_source": "VERBATIM from the 2026-08 recording, via scenarios-c-gbuild-restored.json. Kept word for word because this row's whole measurement history is on this prompt — an identical prompt routing differently before and after 2026-08-24 is one of the row's own findings, and re-wording it would break the comparison.",
+   "prompt_source": "🔴 THE MEASURED TURN IS THE FOLLOW-UP, NOT `prompt`. This scenario declares follow_ups, so the turn under test is the LAST one: \"Yes, that worklist is right — go ahead and build them.\" That sentence is the right one because it is the APPROVAL the protocol's own `next` field asks for — op=start returns 'Show the user this worklist; call op=approve_plan when they agree', so the measured turn has to be the moment they agree. It is a bare approval on purpose: anything more specific would name the op for the model and measure the prompt instead of the protocol.\n\n`prompt` IS SETUP and no bar reads it. Its own provenance, kept because the row's measurement history rests on it: VERBATIM from the 2026-08 recording, via scenarios-c-gbuild-restored.json. Kept word for word because this row's whole measurement history is on this prompt — an identical prompt routing differently before and after 2026-08-24 is one of the row's own findings, and re-wording it would break the comparison.",
    "follow_ups": [
     "Yes, that worklist is right — go ahead and build them."
    ],
@@ -22,7 +22,15 @@
       "domain": "glossary",
       "method": "POST",
       "path": "/v1/glossary/books/{book_id}/adopt",
-      "json": { "genres": ["universal"], "kinds": ["character", "place"] }
+      "json": {
+       "genres": [
+        "universal"
+       ],
+       "kinds": [
+        "character",
+        "place"
+       ]
+      }
      },
      "why": "The book must hold the kinds before a cast can be filed. Identical to the restored arm, so the only difference between this scenario and that one is the follow-up turn."
     }

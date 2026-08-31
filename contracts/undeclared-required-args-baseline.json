@@ -1,7 +1,7 @@
 {
  "_note": "FROZEN BASELINE 2026-08-21. Every REQUIRED tool argument that ships with NO description in its advertised schema — the model has to guess what to put there. This list may only SHRINK: scripts/test_required_args_are_declared_gate.py fails if a tool not listed here gains an undeclared required argument, and fails if an entry here is stale (already fixed) so the baseline cannot rot upward.\nWHY IT EXISTS, measured: 502 of 1314 advertised properties (38%) carry no description at all, composition alone accounting for 451. Two defects in this loop trace straight to it — composition_generate's `model_ref` was filled with the placeholder 'default' on 5/5 runs, and composition_motif_search's `q` was invented as `name` on 10/10 runs across two scenarios, a retry loop that ended in a provider stream error and read as a flaky rig for two batches.\nThe prose in a TOOL description is not a declaration on the ARGUMENT, and the argument is what the model fills in. SHRUNK 2026-08-21 (pm): 68 tools / 120 args -> 56 tools / 105 args. The 15 `op` DISPATCH DISCRIMINATORS in composition-service were declared, each from the tool's OWN description — checked first, and all fifteen already enumerated every member of their enum, so the argument text quotes the tool rather than a guess about what an op does. That is why the pass stopped there: the remaining entries (project_id, book_id, run_id, node_id, expected_version and friends) need a declaration derived from something equally solid, and inventing text for an argument I have not read is the failure this baseline exists to avoid. CORRECTED 2026-08-22: lore_enrichment_auto_enrich.args was removed as a FALSE POSITIVE. It is typed as a nested object, so it arrives as a `$ref` with no description of its own while the schema it points at opens 'Every field carries a Field(description=...) on purpose' and describes every field inside. The model sees all of that. The detector now follows a $ref before calling an argument undeclared; measured across the whole baseline, this was the ONLY entry of that shape — 1 in 105.",
  "count_tools": 55,
- "count_args": 99,
+ "count_args": 98,
  "tools": {
   "composition_arc_apply": [
    "arc_template_id",
@@ -128,7 +128,6 @@
    "project_id"
   ],
   "composition_generate": [
-   "model_source",
    "project_id"
   ],
   "composition_library_translate": [
@@ -213,5 +212,6 @@
    "items"
   ]
  },
- "_refrozen_2026_08_25": "55 tools / 104 args -> 55 / 99. The five composition_authoring_run_* tools' `run_id` is DECLARED now (4af064764, d288305b3) and its description names the supplier: 'list the book's runs with composition_authoring_run_list and pass the id it returns'. The declarations shipped and the baseline was never re-frozen, so the gate had been RED at HEAD - caught only by running the whole scripts suite. A shrink-only list that nobody shrinks is a list that stops meaning anything."
+ "_refrozen_2026_08_25": "55 tools / 104 args -> 55 / 99. The five composition_authoring_run_* tools' `run_id` is DECLARED now (4af064764, d288305b3) and its description names the supplier: 'list the book's runs with composition_authoring_run_list and pass the id it returns'. The declarations shipped and the baseline was never re-frozen, so the gate had been RED at HEAD - caught only by running the whole scripts suite. A shrink-only list that nobody shrinks is a list that stops meaning anything.",
+ "_shrunk_2026_09_01": "composition_generate.model_source left the list because DQ-T35 made the model_ref/model_source PAIR optional with a server-resolved default, so it is no longer a REQUIRED argument at all and cannot be a required-but-undeclared one. Its partner model_ref was never here (it gained a description on 2026-08-14, after the placeholder defect). project_id stays: still required, still undeclared. count_args 99 -> 98; the list only shrank."
 }

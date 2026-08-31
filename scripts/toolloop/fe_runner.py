@@ -1370,8 +1370,26 @@ def report(results, scenarios, repeats):
             # that asked to LOOK must not change anything. Measured 2026-08-13: five read
             # turns took outline_node from 3 to 6 while the reply called it "your current
             # plan".
+            # 🔴 DQ-T43 (owner 2026-08-31): NAME WHAT WROTE. This line used to end at "a defect
+            # whatever it said", and a reader had no way to tell a tool's write from the turn's
+            # own bookkeeping without opening the raw JSON. The exclusion half of the ruling was
+            # already built — the platform's per-turn lifecycle table is in
+            # TURN_BOOKKEEPING_TABLES, so `chat.turn_completed` no longer trips the flag at all —
+            # but the FIRING path stayed mute, which is the half a reader actually meets.
+            _tables = sorted({t for r in _real
+                              for t, d in (r.get("store_diff") or {}).items()
+                              if t not in (TURN_BOOKKEEPING_TABLES | READ_AUDIT_TABLES
+                                           | UNATTRIBUTABLE_GLOBAL_COUNTS)
+                              and _changed_during_the_turn(r, d)})
             print(f"    ^ READ-INTENT TURN WROTE TO THE STORE in {len(_real)}/{len(rs)} runs "
-                  f"— a defect whatever it said")
+                  f"— a defect whatever it said: {', '.join(_tables) or '(table unnamed)'}")
+            _also = sorted({t for r in _real for t in (r.get("store_diff") or {})
+                            if t in TURN_BOOKKEEPING_TABLES})
+            if _also:
+                # Named and EXCUSED in the same breath, so the reader is not left wondering
+                # whether it counted: it did not.
+                print(f"      (also touched, and NOT part of this flag: {', '.join(_also)} — "
+                      f"written for every turn by chat.turn_completed whatever tool ran)")
         elif wrote and sc.get("intent") == "read":
             # 🔴 NAME THE TABLES THAT WERE ACTUALLY TOUCHED, AND THE RIGHT REASON FOR EACH.
             # This line used to print the bookkeeping set unconditionally — so a batch whose
