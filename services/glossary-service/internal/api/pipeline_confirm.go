@@ -55,7 +55,7 @@ func (s *Server) effectStatusChange(w http.ResponseWriter, ctx context.Context, 
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "invalid status — propose again")
 		return
 	}
-	updated, err := s.bulkSetEntityStatusCore(ctx, claims.BookID, p.Status, parseEntityIDs(p.EntityIDs))
+	updated, err := s.bulkSetEntityStatusCore(ctx, claims.BookID, p.Status, parseEntityIDs(p.EntityIDs), claims.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "status update failed")
 		return

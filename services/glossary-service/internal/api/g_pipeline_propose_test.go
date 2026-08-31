@@ -88,7 +88,7 @@ func TestPipelineCores_BookScoped(t *testing.T) {
 	otherBook := uuid.New() // a book the entity does NOT belong to
 
 	// status_change: a wrong-book scope must update 0 and leave the entity untouched.
-	n, err := f.srv.bulkSetEntityStatusCore(ctx, otherBook, "active", []uuid.UUID{entityID})
+	n, err := f.srv.bulkSetEntityStatusCore(ctx, otherBook, "active", []uuid.UUID{entityID}, uuid.New())
 	if err != nil {
 		t.Fatalf("bulkSetEntityStatusCore: %v", err)
 	}

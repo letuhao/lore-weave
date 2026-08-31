@@ -1339,7 +1339,7 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids)
+	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
 		return
@@ -1352,18 +1352,63 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 // concern; book-scoping (book_id = $2) is enforced here so a confirm-token effect can
 // never touch another book's rows. Single source of truth for the HTTP bulk handler
 // and the glossary_propose_status_change confirm effect.
-func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID) (int, error) {
+func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID, actorID uuid.UUID) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities SET status = $1, updated_at = now()
-		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-		status, bookID, ids)
+	// \U0001f534 DQ-T1 (owner 2026-08-31): "EVERY STATUS TRANSITION APPENDS a row to
+	// entity_lifecycle_ledger, making it the audit trail its columns describe."
+	//
+	// WHAT WAS MEASURED, 2026-08-13 and re-derived 2026-09-01: the table ships with an
+	// append-only trigger guard and the columns op, prior_status, new_status, actor_type,
+	// actor_id, reason — the exact vocabulary of a curation status change — and held THREE rows,
+	// all from a single day in August, all op='deleted'/'restored' with both status columns
+	// NULL. A repo-wide search found NO writer in source; the only database object referencing
+	// it was the guard. Four entities went draft -> active live in that cycle and the ledger
+	// gained nothing.
+	//
+	// The deciding fact, in the ruling's words: somebody PAID FOR AN APPEND-ONLY TRIGGER. That
+	// is a deliberate integrity guarantee, and a guarded table nothing writes is the worse of
+	// the two failures — it is the shape that later gets read as an audit trail it never was.
+	//
+	// ONE STATEMENT, not two. The ledger row and the status change are the same fact, so they
+	// commit together or not at all; a follow-up INSERT could fail and leave a transition with
+	// no record, which is exactly the gap being closed. `prior` is read FOR UPDATE so a
+	// concurrent writer cannot slip a different prior_status between the read and the write.
+	//
+	// ONLY REAL TRANSITIONS ARE APPENDED (`IS DISTINCT FROM`). Setting `active` on a row that is
+	// already `active` changes nothing, and an audit trail that records non-events teaches its
+	// reader to distrust it. The RowsAffected count is deliberately unchanged — it still counts
+	// rows the UPDATE touched, which is what both callers report to the author.
+	// 🔴 QueryRow, NOT Exec. The statement now ENDS IN A SELECT, and `RowsAffected` on a
+	// select is the number of rows RETURNED — one, always, for a `count(*)`. Measured: a
+	// pre-existing test that activates TWO drafts read "want 2, got 1". My own new test could
+	// not see it, because it used a single entity, where the two numbers are equal. The count
+	// is scanned explicitly now, so it cannot silently become "did the statement return a row".
+	var updated int
+	err := s.pool.QueryRow(ctx,
+		`WITH prior AS (
+		     SELECT entity_id, status FROM glossary_entities
+		     WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL
+		     FOR UPDATE
+		 ), upd AS (
+		     UPDATE glossary_entities e SET status = $1, updated_at = now()
+		     FROM prior p
+		     WHERE e.entity_id = p.entity_id AND e.book_id = $2
+		     RETURNING e.entity_id, p.status AS prior_status
+		 ), ledger AS (
+		     INSERT INTO entity_lifecycle_ledger
+		         (entity_id, book_id, op, prior_status, new_status, actor_type, actor_id)
+		     SELECT u.entity_id, $2, 'status_change', u.prior_status, $1, 'user', $4
+		     FROM upd u
+		     WHERE u.prior_status IS DISTINCT FROM $1
+		 )
+		 SELECT count(*) FROM upd`,
+		status, bookID, ids, actorID).Scan(&updated)
 	if err != nil {
 		return 0, err
 	}
-	return int(tag.RowsAffected()), nil
+	return updated, nil
 }
 
 // countLiveEntitiesInBook returns how many of `ids` are live entities in the book — used
