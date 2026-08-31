@@ -10,6 +10,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -339,6 +340,17 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 		slog.Warn("responses stream failed — outbound request shape",
 			"model", modelName, "shape", describeResponsesBody(body).String(),
 			"err", fmt.Sprint(err))
+		// OPT-IN, off by default: the TOOLS array verbatim. Tool schemas are platform
+		// metadata and carry no author prose, but they are ~100KB, so this is gated behind
+		// an env var and exists for one purpose — replaying the exact failing request
+		// offline. Twenty hypotheses on D-UPSTREAM-ERROR-WITH-NO-MESSAGE were tested against
+		// reconstructions, and 9 of the 65 tools in the failing turn are consumer-local, so
+		// no probe built from the federated catalogue can even send them.
+		if os.Getenv("LW_DUMP_FAILED_TOOLS") == "1" {
+			if b, mErr := json.Marshal(body["tools"]); mErr == nil {
+				slog.Warn("responses stream failed — outbound tools", "tools", string(b))
+			}
+		}
 	}
 	return err
 }

@@ -36,6 +36,43 @@ type responsesBodyShape struct {
 	Reasoning     string         `json:"reasoning_effort,omitempty"`
 	TotalBytes    int            `json:"total_bytes"`
 	ToolsNoParams []string       `json:"tools_without_properties,omitempty"`
+	// Per-tool JSON Schema constructs beyond a plain object-with-properties, as
+	// "toolName:construct". A provider that rejects a request without saying why gives no
+	// index to bisect on, and 9 of the 65 tools in the failing turn are consumer-local and
+	// absent from the federated catalogue, so no offline probe can even send them. This is
+	// how an unusual schema anywhere in the surface becomes visible without logging schemas.
+	ToolsUnusual []string `json:"tools_unusual_schema,omitempty"`
+}
+
+// unusualSchemaConstructs walks a JSON Schema and names the constructs a strict validator is
+// most likely to reject. It reports; it decides nothing. Bounded in depth so a pathological
+// schema cannot make a diagnostic expensive.
+func unusualSchemaConstructs(v any, depth int, found map[string]bool) {
+	if depth > 8 {
+		return
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		for _, k := range []string{"$ref", "$defs", "definitions", "oneOf", "anyOf", "allOf",
+			"not", "patternProperties", "additionalItems", "if", "then", "else",
+			"prefixItems", "const", "dependentSchemas"} {
+			if _, has := t[k]; has {
+				found[k] = true
+			}
+		}
+		// A `type` given as a LIST ("type": ["string","null"]) is valid JSON Schema and is
+		// exactly the shape a provider's stricter validator tends to refuse.
+		if _, isList := t["type"].([]any); isList {
+			found["type-as-list"] = true
+		}
+		for _, sub := range t {
+			unusualSchemaConstructs(sub, depth+1, found)
+		}
+	case []any:
+		for _, sub := range t {
+			unusualSchemaConstructs(sub, depth+1, found)
+		}
+	}
 }
 
 // describeResponsesBody summarises the body. Never returns an error and never panics on a shape
@@ -77,9 +114,14 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 			if !ok || p["type"] != "object" {
 				continue
 			}
+			name, _ := tm["name"].(string)
 			if _, has := p["properties"]; !has {
-				name, _ := tm["name"].(string)
 				s.ToolsNoParams = append(s.ToolsNoParams, name)
+			}
+			found := map[string]bool{}
+			unusualSchemaConstructs(p, 0, found)
+			for k := range found {
+				s.ToolsUnusual = append(s.ToolsUnusual, name+":"+k)
 			}
 		}
 	}
@@ -110,6 +152,7 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 		}
 	}
 	sort.Strings(s.ToolsNoParams)
+	sort.Strings(s.ToolsUnusual)
 	return s
 }
 
