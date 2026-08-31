@@ -6242,6 +6242,18 @@
    "status": "OPEN. Filed on the evidence, not fixed.",
    "what": "`_require_derivative(works, tc, project_id)` in the MCP server is documented as 'Gate EDIT + resolve the derivative Work (source_work_id set) ... or a sentinel dict via raise for the not-accessible / NOT-A-DERIVATIVE cases'. Its body resolves the book, fetches the Work, and raises only when the Work is missing. It NEVER READS `source_work_id`.\n\nSo every caller that trusts the name is trusting a check that does not run. The write ops survive because each re-checks `work.source_work_id is None` itself immediately afterwards — which is evidence the authors knew the helper did not do it. A READ op has no such second line: op=list on composition_entity_override_edit returned `{'overrides': [], ok: true}` for a canonical Work on 5 of 5 live runs before its own check was added.",
    "why_it_is_its_own_row": "Not a split: it is a shared helper with other callers, and the fix is either to make it check or to rename it. Folding it into the entity-override row would hide a trap that is set for everyone who calls it next."
+  },
+  "D-THE-WORKFLOW-SURFACE-ENUM-DISAGREES-WITH-ITS-OWN-VALIDATOR": {
+   "state": "open",
+   "found": "2026-09-01, by direct probe while building DQ-T37",
+   "defect_class": "contract",
+   "queue_group": 4,
+   "service": "agent-registry-service",
+   "invariant": "A published schema and the validator behind it must accept the same values.",
+   "status": "OPEN. Filed on the evidence, not fixed.",
+   "what": "`registry_propose_workflow` cannot be called with ANY `surfaces` value.\n\n    the PUBLISHED schema   enum: [book, editor, studio]\n    the RUNTIME validator  \"invalid surface 'book' — must be one of: chat, compose, translate, admin\"\n\nA caller obeying the schema is refused by the validator; a caller obeying the validator is refused by the schema. Measured live 2026-09-01 against the deployed service: surfaces=['book'] (schema-valid) refused on all four probe cases. The field is optional, so OMITTING it is the only way to call the tool at all.\n\nTHE PLATFORM HAS SEEN THIS EXACT SHAPE BEFORE and believes it fixed: TestEveryWorkflowToolUsesTheWorkflowSurfaceEnum documents that after #287 'the three workflow tools disagreed on the wire' and pins all three to `enumWorkflowSurfaces`. That test PASSES, because it asserts over the SCHEMA side only — it reads mcp_server.go and never exercises `validWorkflowSurfaces`, which is the list the validator uses. So the guard written for this defect cannot see the half that is still wrong.",
+   "why_it_is_its_own_row": "Found while building DQ-T37 and unrelated to it: one is step tools, this is the workflow's own surfaces. Folding it in would bury a tool-level contract break inside a row about tool names.",
+   "what_is_NOT_established": "WHICH list is correct. {book, editor, studio} matches the filter side the #287 note describes; {chat, compose, translate, admin} is what the writer validates. Choosing means deciding where workflows are advertised, so the remedy is a ruling, not a guess. No recommendation is offered yet because the two lists are not obviously a superset and a subset — they share no members at all."
   }
  },
  "deferred_questions": {
@@ -6419,7 +6431,8 @@
    "recommendation_status": "RECOMMENDATION ONLY - the owner decides. Added 2026-08-23.",
    "not_blocking_anything_2026_08_30": "TRIAGED 2026-08-30: NOTHING IS CURRENTLY BLOCKED ON THIS. No OPEN defect row names it in `blocked_by_dq`. It is a standing question, not a gate on today's queue — answer it when convenient, and no defect waits on the answer.\n\n🔴 THAT IS NOT THE SAME AS STALE, and the distinction is why these were not swept. Of the 11 questions in this position, ZERO are moot: each carries evidence and, in most cases, a written recommendation. Four have citing rows that were since fixed, proven or withdrawn — the work moved past the question without anyone closing it — and six were never attached to a defect row at all. Withdrawing them in bulk would have destroyed real analysis to make a counter look better.",
    "parked_2026_08_31": "OWNER 2026-08-31: `park=yes`. PARKED, NOT ANSWERED AND NOT WITHDRAWN. No open defect names this question in `blocked_by_dq`, so it gates nothing; it is a standing question kept as a record rather than a queue item. The state stays `open` on purpose -- marking it `answered` would claim a ruling nobody made, and `withdrawn` would claim the question was wrong. What changes is that the digest lists it separately from the questions that hold work.",
-   "answer_2026_08_31_round4": "OWNER 2026-08-31: YES — registry_propose_workflow validates that a step's `tool` names a tool that exists. A cheap check at the one place the name enters the system; the alternative is a workflow that cannot run."
+   "answer_2026_08_31_round4": "OWNER 2026-08-31: YES — registry_propose_workflow validates that a step's `tool` names a tool that exists. A cheap check at the one place the name enters the system; the alternative is a workflow that cannot run.",
+   "built_2026_09_01": "BUILT and proven by the SAME direct probe that established the before.\n\n    FABRICATED  totally_not_a_real_tool           REFUSED, naming step and contract\n    HALLUCINATED chapter_compose (the instance)   REFUSED\n    MIXED one real + one fabricated               REFUSED, correctly at step 2\n    CONTROL every step a REAL tool                ACCEPTED\n\nWHERE, since the ruling settled WHETHER and not WHERE: option (c), a generated contract both services read. Not a preference — the registry ALREADY uses exactly this pattern for the sibling concern (contracts/tool-liveness.json, embedded and drift-locked by a test), and option (a) is precluded by the platform's own note in probe.go about the agent-registry -> ai-gateway dependency cycle.\n\n🔴 THE CONTROL THAT KILLED THE OBVIOUS IMPLEMENTATION. 'Reject anything absent from the liveness manifest' is the one-line version and it is wrong: that manifest carries 223 tools, the live catalogue carries 316, and 94 REAL tools are in the catalogue and not the manifest. It would have blocked steps naming any of them. So contracts/tool-names.json is the UNION of both sources, and `toolUnknown` takes the union again AT CHECK TIME so a probed-but-not-yet-snapshotted tool is still known.\n\n🔴 AND MY PROBE WAS WRONG TWICE BEFORE IT MEASURED ANYTHING, both caught by the all-real CONTROL rather than by me. First it sent surfaces=['chat'] and all FOUR cases were refused on the enum — three refusals that looked exactly like the gate working. Then it omitted the required per-step `gate` and all four were refused again. A probe whose cases all fail for the same unrelated reason reads as a clean pass, which is why the control is not optional.\n\nDEGRADE-SAFE, the rule loadLiveness already follows: an unreadable contract makes the gate INERT, never hostile. A snapshot that fails to parse must not brick workflow authoring platform-wide by rejecting every step.\n\nFALSIFIER: services/agent-registry-service/internal/api/tool_names_test.go (8 tests) including the drift lock mirroring TestLivenessManifestMatchesContract, the real-tools-absent-from-liveness control, and the inert-when-empty case. Proven red by disabling the gate at the chokepoint. Whole agent-registry-service module green.\n\n🔴 A REGRESSION I CAUSED AND FIXED PROPERLY RATHER THAN BY EDITING THE BAR: five pre-existing tests went red because they used FAKE tool names as placeholders while asserting gate/repeat/liveness behaviour — legitimate before existence was checked. Their assertions are unchanged; only the incidental names are now real. The one case that deliberately tested 'a tool with NO liveness evidence is admitted' keeps that exact intent using a real tool the fixture manifest does not mention.\n\nALSO REVERTED: a stray `gofmt -w internal/api/` reformatted twelve files I never touched and broke TestEveryWorkflowToolUsesTheWorkflowSurfaceEnum, which reads mcp_server.go's source ALIGNMENT. Confirmed mine by testing a clean tree, then reverted; the committed diff is 63 lines across the two files the change belongs in."
   },
   "DQ-T38": {
    "state": "open",
@@ -7515,7 +7528,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 0,
-  "defects_open": 16,
+  "defects_open": 17,
   "deferred_questions": 65,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -7530,7 +7543,7 @@
   "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it.",
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
-  "defects_total": 217,
+  "defects_total": 218,
   "defects_fixed": 174,
   "defects_withdrawn": 23,
   "defects_superseded": 1,

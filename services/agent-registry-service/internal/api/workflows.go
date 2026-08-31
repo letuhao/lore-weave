@@ -178,6 +178,17 @@ func validateWorkflow(in *workflowInput) (string, bool) {
 		// such a tool guarantees a broken run. An *unproven* tool only warns (see
 		// livenessWarnings). A tool the model merely fails to SELECT is fine here, because
 		// a workflow step names its tool directly — no selection is involved. See liveness.go.
+		// DQ-T37 (owner 2026-08-31) — reject a name the platform has never heard of, BEFORE
+		// the known-broken check: "does not exist" is a more basic answer than "is broken",
+		// and a hallucinated name would otherwise fall through both gates into the store as
+		// a recipe nobody can run. Measured: 3 of 10 proposed steps named `chapter_compose`.
+		if toolUnknown(st.Tool) {
+			return where + " ('" + st.ID + "'): tool '" + st.Tool + "' does not exist. No " +
+				"federated tool has that name (checked against contracts/tool-names.json). " +
+				"List the real names with tool_list, or registry_list_workflows to copy a " +
+				"step from a workflow that runs. If the tool is NEW, regenerate the contract " +
+				"with scripts/toolloop/tool_names.py.", false
+		}
 		if toolBlocked(st.Tool) {
 			return where + " ('" + st.ID + "'): tool '" + st.Tool + "' is known-broken — it " +
 				"fails when called with valid arguments (liveness gate G3/capability). " +
