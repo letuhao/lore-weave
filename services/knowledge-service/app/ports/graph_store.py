@@ -328,6 +328,12 @@ class GraphStore(Protocol):
         participants: list[str] | None = None,
         source_type: str = "book_content",
         confidence: float = 0.0,
+        # RESTORED 2026-08-31. `merge_entity` and `merge_fact` have carried this since
+        # T68 and the underlying `graph_repos.events.merge_event` has too; only THIS
+        # signature (and every adapter's) omitted it, so the create-event route raised
+        # TypeError on every backend. Same name, same default, same `provenances`
+        # array semantics as its two siblings.
+        provenance: str = "human_authored",
     ) -> Event:
         """Idempotent upsert keyed on (user, project, chapter, title).
 

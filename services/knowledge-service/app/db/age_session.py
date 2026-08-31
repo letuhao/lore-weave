@@ -221,27 +221,94 @@ class AgeVertex(dict):
         self.graph_id = envelope.get("id")
 
 
+#: Every `::vertex` / `::edge` / `::path` annotation, wherever it appears -- NOT just the
+#: trailing one `_TYPED` matches.
+_TYPED_ANY = re.compile(r"::(vertex|edge|path)" + chr(92) + "b")
+
+
+def _strip_type_annotations(text: str) -> str:
+    """Remove agtype type annotations that are OUTSIDE JSON string literals.
+
+    Quote-aware because a property VALUE may legitimately contain the text `::vertex`
+    (a title, a summary, a quoted Cypher fragment in a note), and a blind
+    `_TYPED_ANY.sub("", text)` would silently corrupt the row it was trying to read.
+    """
+    out: list[str] = []
+    i, n, in_str = 0, len(text), False
+    while i < n:
+        ch = text[i]
+        if in_str:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        m = _TYPED_ANY.match(text, i)
+        if m:
+            i = m.end()
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _wrap_vertices(value: Any) -> Any:
+    """Recursively turn every vertex/edge-shaped dict into an `AgeVertex`.
+
+    The old code wrapped only the TOP level and one level into a list, which was enough
+    while every query returned `RETURN e` or `RETURN collect(e)`. It is not enough for
+    `collect({r: r, subj: subj, obj: obj})`: the vertices sit one level deeper, inside a
+    plain map, and came back as bare dicts whose `.get("name")` is None because the
+    properties live under `["properties"]`.
+    """
+    if isinstance(value, list):
+        return [_wrap_vertices(v) for v in value]
+    if isinstance(value, dict):
+        if _looks_like_vertex(value):
+            return AgeVertex(value)
+        return {k: _wrap_vertices(v) for k, v in value.items()}
+    return value
+
+
 def decode_agtype(raw: Any) -> Any:
-    """Turn one agtype column value into a Python value."""
+    """Turn one agtype column value into a Python value.
+
+    🔴 A NESTED ANNOTATION USED TO MAKE THE WHOLE ROW UNDECODABLE, and the row came back
+    as the RAW STRING rather than raising. `GET /v1/knowledge/entities/{id}` returns
+    `collect({r: r, subj: subj, obj: obj}) AS edges`, and AGE annotates the INNER values:
+
+        [{"a": {"id": 1125…, "label": "Event", "properties": {…}}::vertex}]
+
+    `_TYPED` is anchored with `$`, so it matched none of those; `json.loads` then failed on
+    the bare `::vertex` and the `except JSONDecodeError` handed the caller the string it
+    had been given. The caller did `edge["r"]` and got
+    `TypeError: string indices must be integers` -- a 500 on the entity-detail route,
+    found by a browser e2e whose relation edge never rendered. A decoder that returns its
+    input on failure turns "I could not read this" into "here is your data".
+    """
     if raw is None:
         return None
     if not isinstance(raw, str):
         return raw
     text = raw.strip()
-    typed = _TYPED.search(text)
-    if typed:
-        text = text[: typed.start()].strip()
+    trailing = _TYPED.search(text) is not None
+    text = _strip_type_annotations(text).strip()
     try:
         value = json.loads(text)
     except json.JSONDecodeError:
         return raw
-    if typed and isinstance(value, dict):
+    if trailing and isinstance(value, dict):
         return AgeVertex(value)
-    if isinstance(value, list):
-        return [AgeVertex(v) if _looks_like_vertex(v) else v for v in value]
-    if _looks_like_vertex(value):
-        return AgeVertex(value)
-    return value
+    return _wrap_vertices(value)
 
 
 def _looks_like_vertex(value: Any) -> bool:

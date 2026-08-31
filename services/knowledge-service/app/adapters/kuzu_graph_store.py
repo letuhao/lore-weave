@@ -457,7 +457,7 @@ class KuzuGraphStore:
         event_order: int | None = None, chronological_order: int | None = None,
         event_date_iso: str | None = None, time_cue: str | None = None,
         participants: list[str] | None = None, source_type: str = "book_content",
-        confidence: float = 0.0,
+        confidence: float = 0.0, provenance: str = "human_authored",
     ) -> Any:
         """Idempotent upsert keyed on (user, project, chapter, title).
 

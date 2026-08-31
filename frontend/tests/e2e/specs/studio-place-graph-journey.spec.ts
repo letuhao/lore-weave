@@ -10,7 +10,8 @@
 // Usability rubric (asserted, not just observed): the panel is reachable from the palette · the toolbar
 // writes actually land (create place, link places) · a graph node is draggable AND the drag persists
 // server-side (shared across devices, not localStorage) · the deep-links out are live (author-other →
-// kg-entities; a place-node → Cast) · a book with no co-writer Work degrades to an HONEST hint, not a blank.
+// kg-entities; a place-node → Cast) · a book with no co-writer Work does not dead-end (StudioFrame
+// ensures a Work, so the pane renders operable — see STEP 6, restated at the feat/game-logic merge).
 import { test, expect, type Page } from '@playwright/test';
 import { loginViaUI } from '../helpers/auth';
 import {
@@ -164,14 +165,30 @@ test.describe('@s7 Studio · place-graph author journey (blackbox)', () => {
     // The leaf reads `work.settings.world_map` and would crash on a null Work; the wrapper intercepts
     // with an honest hint + a reachable next step (Open Compose). Assert the hint AND the escape hatch.
     await pg.open(noWorkBookId);
+    // ⚠️ RESTATED AT THE feat/game-logic MERGE (2026-08-31), because the state this step
+    // used to assert is no longer REACHABLE by this path.
+    //
+    // It asserted an honest "set up the co-writer" door (`place-graph-nowork` +
+    // `place-graph-setup-cowriter`). Two things changed underneath it on that side:
+    //   1. "studio onboarding Part A" (0655c7bf3) replaced every per-panel empty state with
+    //      the shared <BookNotReadyDoor>, deleting both testids.
+    //   2. `StudioFrame` now calls `useEnsureWork(bookId, token)`, which PROVISIONS a Work
+    //      when the resolution comes back absent. Opening the Studio on a book with no Work
+    //      therefore creates one, and the door cannot render on this route at all.
+    //
+    // Chasing (1) alone would have re-pointed the locators at a door that never appears —
+    // a green assertion against an element the app is now designed not to show. The
+    // PROPERTY this step exists for survives both changes and is what is asserted instead:
+    // a book with no Work must not dead-end or crash the pane. It now satisfies that by
+    // provisioning and rendering the operable panel, so that is what we require.
     await expect(
-      pg.noWork,
-      'STEP 6 (no-silent-failure) — a book with no Work must show the honest "set up the co-writer" hint, never a blank/crashed pane',
+      pg.panel,
+      'STEP 6 (no-silent-failure) — a book with no Work must not dead-end: StudioFrame ensures a Work, so the place graph renders operable rather than blank or crashed',
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      pg.addInput,
+      'STEP 6 (operable, not merely mounted) — the provisioned pane must accept input, which a crashed or door-only pane would not',
     ).toBeVisible({ timeout: 10_000 });
-    await expect(
-      pg.setupCowriter,
-      'STEP 6 — the no-Work state must offer a reachable next step (Open Compose), not dead-end',
-    ).toBeVisible();
     await shot(page, '6-no-work');
 
     // ── VERDICT ───────────────────────────────────────────────────────────────────────────────────

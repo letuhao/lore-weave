@@ -268,13 +268,17 @@ class Neo4jGraphStore:
         participants: list[str] | None = None,
         source_type: str = "book_content",
         confidence: float = 0.0,
+        provenance: str = "human_authored",
     ) -> Event:
+        # `provenance` is FORWARDED, not accepted-and-ignored. The repo has always
+        # taken it; this adapter simply did not pass it, so every event written
+        # through the port got the repo default instead of the caller's value.
         return await _event_repo.merge_event(
             self._session, user_id=user_id, project_id=project_id, title=title,
             summary=summary, chapter_id=chapter_id, event_order=event_order,
             chronological_order=chronological_order, event_date_iso=event_date_iso,
             time_cue=time_cue, participants=participants, source_type=source_type,
-            confidence=confidence)
+            confidence=confidence, provenance=provenance)
 
     async def update_event_fields(
         self,

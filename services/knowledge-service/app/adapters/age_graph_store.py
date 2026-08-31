@@ -1155,6 +1155,7 @@ class AgeGraphStore:
         participants: list[str] | None = None,
         source_type: str = "book_content",
         confidence: float = 0.0,
+        provenance: str = "human_authored",
     ) -> Event:
         """Idempotent upsert, keyed exactly as the Neo4j arm keys it.
 
@@ -1227,6 +1228,10 @@ class AgeGraphStore:
                 WHEN e.source_types IS NULL THEN [{_lit(source_type)}]
                 WHEN {_lit(source_type)} IN e.source_types THEN e.source_types
                 ELSE e.source_types + [{_lit(source_type)}] END,
+            e.provenances = CASE
+                WHEN e.provenances IS NULL THEN [{_lit(provenance)}]
+                WHEN {_lit(provenance)} IN e.provenances THEN e.provenances
+                ELSE e.provenances + [{_lit(provenance)}] END,
             e.confidence = CASE
                 WHEN e.confidence IS NULL THEN {_lit(confidence)}
                 WHEN {_lit(confidence)} > e.confidence THEN {_lit(confidence)}

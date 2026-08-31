@@ -509,6 +509,7 @@ class FakeGraphStore:
         participants: list[str] | None = None,
         source_type: str = "book_content",
         confidence: float = 0.0,
+        provenance: str = "human_authored",
     ) -> Event:
         """Idempotent on (user, project, chapter, title). The MERGE semantics are copied
         from the real Cypher rather than guessed — a fake that overwrote instead of

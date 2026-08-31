@@ -1406,6 +1406,15 @@ _UNCONFORMABLE: dict[str, str] = {
         "accumulates into `e.provenances`, which is NOT a field on the Entity model",
     "merge_fact.provenance":
         "same: written to the graph, absent from the Fact model",
+    # The THIRD of the same family, restored to the port 2026-08-31. `merge_event` had
+    # silently lacked `provenance` while its two siblings carried it since T68 and the
+    # underlying `graph_repos.events.merge_event` took it all along; the create-event route
+    # passed it and every backend raised TypeError. Unconformable for the identical reason
+    # as the two above, and NOT for want of trying: the write was verified against the live
+    # AGE store instead — an event authored through `POST /v1/knowledge/events` reads back
+    # from `g_shared` as `provenances = ["human_authored"]`.
+    "merge_event.provenance":
+        "same family: accumulates into `e.provenances`, absent from the Event model",
     "add_evidence.quote":
         "`EvidenceWriteResult` carries only created/evidence_count/mention_count",
     "status_at_order.min_evidence":
@@ -1413,7 +1422,19 @@ _UNCONFORMABLE: dict[str, str] = {
         "create the precondition it filters on (`set_status` is a fake-only helper)",
 }
 
-MAX_UNCONFORMED_PORT_PARAMS = 4
+# 4 -> 5 on 2026-08-31, and the direction is worth stating: this ratchet RISING normally
+# means coverage got worse. Here the port got BIGGER. `merge_event.provenance` was missing
+# from the contract entirely — the caller passed it, no adapter accepted it, and
+# `POST /v1/knowledge/events` answered 500 on every backend. Restoring the parameter adds a
+# fifth member to a family whose other four are unconformable for the same structural
+# reason: they accumulate into graph arrays the port's return models do not carry.
+#
+# A gate cannot tell "a new hole" from "a hole that was always there and is now visible",
+# so the distinction is recorded rather than implied. The write itself is NOT unverified —
+# it was read back from the live AGE store, and `tests/unit/
+# test_graph_store_callers_match_the_port.py` now fails if any caller passes a keyword the
+# port does not declare, which is the defect that produced this entry.
+MAX_UNCONFORMED_PORT_PARAMS = 5
 
 
 def scan_port_params(port_src: str | None = None, suite_src: str | None = None):
