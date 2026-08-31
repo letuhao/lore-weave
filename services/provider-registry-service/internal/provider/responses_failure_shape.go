@@ -42,6 +42,12 @@ type responsesBodyShape struct {
 	// absent from the federated catalogue, so no offline probe can even send them. This is
 	// how an unusual schema anywhere in the surface becomes visible without logging schemas.
 	ToolsUnusual []string `json:"tools_unusual_schema,omitempty"`
+	// Every top-level key of the outbound body, sorted. A reconstruction can only send the
+	// keys its author knows about, and a probe that sends 63 real tools, the real chain, the
+	// real content and the real magnitudes still SUCCEEDS where this request fails — so what
+	// separates them is something the reconstruction never included. This names it without
+	// logging a byte of it.
+	BodyKeys []string `json:"body_keys"`
 }
 
 // unusualSchemaConstructs walks a JSON Schema and names the constructs a strict validator is
@@ -151,6 +157,10 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 			s.InputKinds[kind]++
 		}
 	}
+	for k := range body {
+		s.BodyKeys = append(s.BodyKeys, k)
+	}
+	sort.Strings(s.BodyKeys)
 	sort.Strings(s.ToolsNoParams)
 	sort.Strings(s.ToolsUnusual)
 	return s
