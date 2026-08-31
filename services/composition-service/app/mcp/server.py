@@ -9104,14 +9104,27 @@ class _GlossaryBuildArgs(ForbidExtra):
         # the old description opened with a category tag before reaching their words. Both now
         # lead with the caller's phrasing and with the one thing no sibling can claim: this is
         # the WHOLE chain in a single call.
-        "Build the KNOWLEDGE GRAPH and the CAST for a book from a story you have been given — "
-        "in ONE call. USE THIS WHEN the user gives you their story, notes or premise and wants "
+        # 🔴 "in ONE call" DELETED 2026-08-31 — owner ruling DQ-T64 (a). It was false, and the
+        # falsehood explains every number on this row's defect. Driven directly the protocol is
+        # FIVE CALLS AND TWO HUMAN GATES (start -> approve_plan -> status xN -> project_kg ->
+        # approve_edges), and across 93 recorded sessions op=approve_plan has been called ZERO
+        # times: every recorded call is `start` or a confirm card. A model told the work takes
+        # one call has no reason to come back for the second, so it reports the worklist and the
+        # turn ends — which is the tool doing what it said and the author getting no cast.
+        "Build the KNOWLEDGE GRAPH and the CAST for a book from a story you have been given. "
+        "USE THIS WHEN the user gives you their story, notes or premise and wants "
         "the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from "
         "my story', 'set up my world'. That includes when they paste the prose inline: this tool "
         "takes it as source_text. You do NOT pick per-entity tools: this ONE tool runs the whole "
         "pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused "
         "step (rich attributes; major entities get a deep multi-section profile), files them as "
         "review drafts, then projects them into the graph and proposes their relationships. "
+        "🔴 IT IS A MULTI-STEP BUILD, NOT A SINGLE CALL: op='start' WRITES NOTHING — it returns "
+        "a worklist for the user to approve. The cast does not exist until op='approve_plan' "
+        "has run, and the graph does not exist until op='approve_edges' has. Each op returns a "
+        "`next` field naming the call that follows; follow it. When the user approves, CALL THE "
+        "NEXT OP — do not stop at the worklist and do not report the build as finished before "
+        "op='status' says so. "
         "Ops: 'start' (needs source_text + model_ref — returns the proposed worklist for the "
         "user to approve), 'approve_plan' (the user approved — begins building; pass a trimmed "
         "worklist if they cut items), 'status' (poll progress: per-item built/skipped), "

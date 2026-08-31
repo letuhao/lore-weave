@@ -6084,7 +6084,7 @@
     }
   },
   "composition_build_cast_and_graph": {
-    "description": "Build the KNOWLEDGE GRAPH and the CAST for a book from a story you have been given — in ONE call. USE THIS WHEN the user gives you their story, notes or premise and wants the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from my story', 'set up my world'. That includes when they paste the prose inline: this tool takes it as source_text. You do NOT pick per-entity tools: this ONE tool runs the whole pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused step (rich attributes; major entities get a deep multi-section profile), files them as review drafts, then projects them into the graph and proposes their relationships. Ops: 'start' (needs source_text + model_ref — returns the proposed worklist for the user to approve), 'approve_plan' (the user approved — begins building; pass a trimmed worklist if they cut items), 'status' (poll progress: per-item built/skipped), 'project_kg' (after the user reviews the drafts), 'approve_edges' (the user approved the relationships — writes them), 'cancel'. Always show the user the worklist before approving it, and report per-item results honestly (some items may be skipped).",
+    "description": "Build the KNOWLEDGE GRAPH and the CAST for a book from a story you have been given. USE THIS WHEN the user gives you their story, notes or premise and wants the CAST or the GRAPH built — 'build the knowledge graph', 'extract the cast from my story', 'set up my world'. That includes when they paste the prose inline: this tool takes it as source_text. You do NOT pick per-entity tools: this ONE tool runs the whole pipeline — it plans WHAT to build (a worklist), builds each entity in its own focused step (rich attributes; major entities get a deep multi-section profile), files them as review drafts, then projects them into the graph and proposes their relationships. 🔴 IT IS A MULTI-STEP BUILD, NOT A SINGLE CALL: op='start' WRITES NOTHING — it returns a worklist for the user to approve. The cast does not exist until op='approve_plan' has run, and the graph does not exist until op='approve_edges' has. Each op returns a `next` field naming the call that follows; follow it. When the user approves, CALL THE NEXT OP — do not stop at the worklist and do not report the build as finished before op='status' says so. Ops: 'start' (needs source_text + model_ref — returns the proposed worklist for the user to approve), 'approve_plan' (the user approved — begins building; pass a trimmed worklist if they cut items), 'status' (poll progress: per-item built/skipped), 'project_kg' (after the user reviews the drafts), 'approve_edges' (the user approved the relationships — writes them), 'cancel'. Always show the user the worklist before approving it, and report per-item results honestly (some items may be skipped).",
     "inputSchema": {
       "$defs": {
         "_GlossaryBuildArgs": {
@@ -9278,7 +9278,7 @@
         },
         "include_archived": {
           "default": false,
-          "description": "Include soft-archived nodes.",
+          "description": "Include soft-archived nodes AND their scene-links — this is how you find what composition_scene_link_edit's `restore` op can restore.",
           "title": "Include Archived",
           "type": "boolean"
         },
@@ -9315,7 +9315,9 @@
         "story structure",
         "chapters",
         "beats",
-        "list outline"
+        "list outline",
+        "deleted scene links",
+        "archived scene links"
       ],
       "tier": "R"
     }
@@ -17040,7 +17042,6 @@
     "description": "List the SYSTEM standards catalogue — the entity kinds a book can adopt, by CODE. Use once to learn what exists BEFORE scaffolding a book, then pass the codes you want to glossary_adopt_standards; each kind's attributes come down with it. Calling this twice returns the identical list. For what a specific book ALREADY has, use glossary_book_ontology_read.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23111,7 +23112,6 @@
     "description": "Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23129,7 +23129,6 @@
     "description": "Get the signed-in user's account profile: display name, locale, avatar URL, bio, languages, email, and email-verified status. Read-only.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
@@ -23193,7 +23192,6 @@
     "description": "List the user's configured AI provider credentials (e.g. OpenAI, Anthropic, a local LM Studio). Returns provider kind, display name, endpoint, status, and whether a secret is set — but NEVER the secret itself. Use to see which providers exist before registering a model.",
     "inputSchema": {
       "additionalProperties": false,
-      "properties": {},
       "type": "object"
     },
     "meta": {
