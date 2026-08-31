@@ -10,7 +10,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -310,6 +309,7 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 	if realOpenAICloud(base) && !openaiIsReasoningModel(modelName) {
 		delete(body, "reasoning")
 	}
+	dumpEveryResponsesBody(body)
 	resp, err := openResponsesStream(ctx, client, strings.TrimRight(base, "/"), secret, body)
 	if err != nil {
 		if isChainNotFound(err) {
@@ -346,11 +346,7 @@ func streamViaResponses(ctx context.Context, client *http.Client, base, secret, 
 		// offline. Twenty hypotheses on D-UPSTREAM-ERROR-WITH-NO-MESSAGE were tested against
 		// reconstructions, and 9 of the 65 tools in the failing turn are consumer-local, so
 		// no probe built from the federated catalogue can even send them.
-		if os.Getenv("LW_DUMP_FAILED_TOOLS") == "1" {
-			if b, mErr := json.Marshal(body["tools"]); mErr == nil {
-				slog.Warn("responses stream failed — outbound tools", "tools", string(b))
-			}
-		}
+		dumpFailedResponsesBody(body)
 	}
 	return err
 }

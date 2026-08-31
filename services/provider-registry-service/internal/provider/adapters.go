@@ -729,8 +729,8 @@ const openaiBaseURL = "https://api.openai.com"
 // normalizeOpenAICompatibleBase accepts both common forms of an
 // OpenAI-compatible base URL:
 //
-//   https://provider.example
-//   https://provider.example/v1
+//	https://provider.example
+//	https://provider.example/v1
 //
 // Adapters append canonical /v1/... paths themselves. Stripping one trailing
 // /v1 prevents requests such as /v1/v1/models and /v1/v1/chat/completions.

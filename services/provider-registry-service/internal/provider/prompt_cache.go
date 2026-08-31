@@ -91,4 +91,3 @@ func applyAnthropicPromptCache(body map[string]any) {
 	// prefix up to each breakpoint). System is left to chat-service (see above).
 	tools[len(tools)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
 }
-

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"unicode/utf8"
 )
 
 // responsesBodyShape describes an outbound /v1/responses body WITHOUT its content, for logging
@@ -48,6 +49,56 @@ type responsesBodyShape struct {
 	// separates them is something the reconstruction never included. This names it without
 	// logging a byte of it.
 	BodyKeys []string `json:"body_keys"`
+	// The tool_choice VALUE, not merely its presence. It is a control field — "auto",
+	// "required", or {type:function,name:...} — and carries no author content, so it can be
+	// logged whole. The key list showed it was one of only two fields no reconstruction had
+	// ever sent; knowing which two is not the same as knowing what it said.
+	ToolChoice string `json:"tool_choice,omitempty"`
+	// The instructions' CHARACTER COMPOSITION, not its text. A complete reconstruction — all
+	// 65 real tool schemas, the real tool_choice, the real prompt, the real tool call and its
+	// real result, chained with store=true — SUCCEEDS, and the only thing it does not carry is
+	// the real instructions block: probes use filler of the same byte length. Filler is plain
+	// ASCII with no control characters, so if the real block holds a lone surrogate, a stray
+	// control byte or an unpaired escape, that is a difference the byte count cannot show and
+	// this can, without logging a word of it.
+	InstrNonASCII int `json:"instructions_non_ascii"`
+	InstrControl  int `json:"instructions_control_chars"`
+	InstrRunes    int `json:"instructions_runes"`
+	InstrInvalid  int `json:"instructions_invalid_utf8"`
+	InputNonASCII int `json:"input_non_ascii"`
+	InputControl  int `json:"input_control_chars"`
+	InputInvalid  int `json:"input_invalid_utf8"`
+}
+
+// textComposition counts what a byte length cannot show: non-ASCII runes, C0/C1 control
+// characters other than tab/newline/carriage-return, and bytes that are not valid UTF-8.
+// A provider that refuses a request without saying why gives nothing to bisect on, and an
+// encoding fault is invisible to every structural measurement.
+// isControlRune reports a C0/C1 control character other than the three whitespace runes
+// that appear legitimately in a prompt. Split out because writing the rune literals inline
+// through a generator mangled them into the literal characters they name.
+func isControlRune(r rune) bool {
+	if r == 0x09 || r == 0x0a || r == 0x0d {
+		return false
+	}
+	return r < 0x20 || (r >= 0x7f && r <= 0x9f)
+}
+
+func textComposition(s string) (nonASCII, control, runes, invalid int) {
+	for _, r := range s {
+		runes++
+		if r == utf8.RuneError {
+			invalid++
+			continue
+		}
+		if r > 127 {
+			nonASCII++
+		}
+		if isControlRune(r) {
+			control++
+		}
+	}
+	return
 }
 
 // unusualSchemaConstructs walks a JSON Schema and names the constructs a strict validator is
@@ -102,6 +153,7 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 	}
 	if v, ok := body["instructions"].(string); ok {
 		s.InstrBytes = len(v)
+		s.InstrNonASCII, s.InstrControl, s.InstrRunes, s.InstrInvalid = textComposition(v)
 	}
 	if tools, ok := body["tools"].([]any); ok {
 		s.Tools = len(tools)
@@ -135,6 +187,7 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 		s.InputItems = len(in)
 		if b, err := json.Marshal(in); err == nil {
 			s.InputBytes = len(b)
+			s.InputNonASCII, s.InputControl, _, s.InputInvalid = textComposition(string(b))
 		}
 		for _, it := range in {
 			im, ok := it.(map[string]any)
@@ -159,6 +212,11 @@ func describeResponsesBody(body map[string]any) responsesBodyShape {
 	}
 	for k := range body {
 		s.BodyKeys = append(s.BodyKeys, k)
+	}
+	if tc, has := body["tool_choice"]; has {
+		if b, err := json.Marshal(tc); err == nil {
+			s.ToolChoice = string(b)
+		}
 	}
 	sort.Strings(s.BodyKeys)
 	sort.Strings(s.ToolsNoParams)
