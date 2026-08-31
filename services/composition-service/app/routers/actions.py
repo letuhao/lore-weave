@@ -43,7 +43,8 @@ from loreweave_mcp import (
 from app.config import settings
 from app.middleware.jwt_auth import get_optional_current_user
 from app.grant_client import GrantClient, GrantLevel
-from app.grant_deps import InsufficientGrant, authorize_book
+from app.grant_deps import (GrantAuthorityUnavailable, InsufficientGrant,
+                            authorize_book)
 from app.deps import (
     get_grant_client_dep,
     get_outline_repo,
@@ -299,6 +300,18 @@ async def confirm_action(
                 raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_uuid, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_adopt(payload, envelope_user, token=token, claims=claims)
@@ -315,6 +328,18 @@ async def confirm_action(
             raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_decompile(payload, book_id, envelope_user, token=token, claims=claims)
@@ -329,6 +354,18 @@ async def confirm_action(
             raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_derive(payload, envelope_user, works=works, book=book)
@@ -345,6 +382,18 @@ async def confirm_action(
                 raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_mine(payload, envelope_user, token=token, claims=claims)
@@ -362,6 +411,18 @@ async def confirm_action(
                 raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
             try:
                 await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+            # so the 63 existing handlers keep working unchanged, and catching the base first here
+            # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+            # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+            except GrantAuthorityUnavailable as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "grant_authority_unavailable",
+                            "detail": "Access could not be checked: the permission service is "
+                                      "unreachable. This is temporary — retry shortly."},
+                    headers={"Retry-After": "5"},
+                ) from exc
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_library_translate(payload, envelope_user, token=token, claims=claims)
@@ -376,6 +437,18 @@ async def confirm_action(
             raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         if claims.descriptor == _AUTHORING_RUN_CREATE_DESCRIPTOR:
@@ -396,6 +469,18 @@ async def confirm_action(
             raise HTTPException(status_code=400, detail={"code": "action_error", "detail": str(exc)}) from exc
         try:
             await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+        # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+        # so the 63 existing handlers keep working unchanged, and catching the base first here
+        # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+        # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+        except GrantAuthorityUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "grant_authority_unavailable",
+                        "detail": "Access could not be checked: the permission service is "
+                                  "unreachable. This is temporary — retry shortly."},
+                headers={"Retry-After": "5"},
+            ) from exc
         except (OwnershipError, InsufficientGrant) as exc:
             raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_bootstrap_apply(payload, book_id, envelope_user)
@@ -413,6 +498,18 @@ async def confirm_action(
         raise HTTPException(status_code=400, detail={"code": "action_error"})
     try:
         await authorize_book(grant, work.book_id, envelope_user, GrantLevel.EDIT)
+    # CAUGHT BEFORE ITS OWN BASE CLASS — GrantAuthorityUnavailable subclasses OwnershipError
+    # so the 63 existing handlers keep working unchanged, and catching the base first here
+    # would swallow it silently. 503 + Retry-After, not 403: the authority was down, so the
+    # deny says NOTHING about this caller's access. No oracle — nobody could be resolved.
+    except GrantAuthorityUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "grant_authority_unavailable",
+                    "detail": "Access could not be checked: the permission service is "
+                              "unreachable. This is temporary — retry shortly."},
+            headers={"Retry-After": "5"},
+        ) from exc
     except (OwnershipError, InsufficientGrant) as exc:
         raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
 

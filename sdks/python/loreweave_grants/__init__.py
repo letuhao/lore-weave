@@ -56,6 +56,13 @@ DEFAULT_TIMEOUT_S = 10.0
 REVOKE_STREAM = "loreweave:events:grant_revoke"
 
 
+#: Cap on remembered "the authority was down for this pair" keys. An unbounded set is a
+#: memory leak on a service whose authority is down — precisely when it fills fastest —
+#: so it is cleared wholesale rather than grown. Losing the flag degrades to today's
+#: behaviour (a bare deny), never to a WRONG answer.
+_UNAVAILABLE_MAX = 4096
+
+
 class GrantLevel(IntEnum):
     """Ordered permission a user holds on a book: none<view<edit<manage<owner."""
 
@@ -107,6 +114,10 @@ class GrantClient:
         )
         # key "user_id:book_id" -> (GrantLevel, lifecycle, owner_user_id|None, expiry_monotonic)
         self._cache: dict[str, tuple[GrantLevel, str, UUID | None, float]] = {}
+        # Pairs whose LAST resolve denied because the authority was unreachable rather
+        # than because the grant is absent (DQ-T66 (a) — the Python mirror of the Go
+        # SDK's ErrUnavailable). Never consulted unless a caller asks.
+        self._unavailable: set[str] = set()
         self._now = time.monotonic  # injectable for tests
         self._revoke_task: asyncio.Task | None = None
 
@@ -219,9 +230,31 @@ class GrantClient:
         if self.invalidate(book_id, user_id):
             logger.debug("grant-revoke: invalidated grant user=%s book=%s", user_id, book_id)
 
-    async def _fetch(self, book_id: UUID, user_id: UUID) -> tuple[GrantLevel, str, UUID | None]:
+    async def _fetch(
+        self, book_id: UUID, user_id: UUID,
+    ) -> tuple[GrantLevel, str, UUID | None]:
+        """Resolve one (user, book) grant from the authority. Fail-closed on any failure.
+
+        🔴 IT ALSO RECORDS *WHY* IT DENIED, and until 2026-08-31 it did not. Both failure arms
+        returned `(NONE, "", None)` — the same value as "this user genuinely has no grant" — so
+        every consumer answered a permission denial to an OUTAGE. Measured live: a confirm token
+        redeemed against an instance whose book-service was unreachable produced
+
+            403 {"detail": {"code": "action_error"}}
+
+        a bare refusal naming no precondition, while the SDK's own log line one frame away said
+        "grant authority unavailable (fail-closed deny): All connection attempts failed". The
+        reason was known and discarded.
+
+        THE GO SDK HAS CARRIED THE DISTINCTION ALL ALONG — `grantclient.ErrUnavailable`, "so the
+        grant is UNKNOWN and the caller must fail closed (deny)", and agent-registry already
+        branches on it. Owner ruling 2026-08-31 (DQ-T66 (a)): bring this SDK up to its sibling.
+        So the DENY is byte-identical and only the caller's ability to ASK is new — see
+        `last_denial_was_unavailable`.
+        """
         url = f"{self._base_url}/internal/books/{book_id}/access"
         tid = self._trace_id_provider() if self._trace_id_provider else None
+        self._unavailable.discard(_cache_key(user_id, book_id))
         try:
             resp = await self._http.get(
                 url,
@@ -233,6 +266,7 @@ class GrantClient:
                     "grant authority %s returned %d (fail-closed deny), trace_id=%s",
                     url, resp.status_code, tid,
                 )
+                self._mark_unavailable(book_id, user_id)
                 return GrantLevel.NONE, "", None
             data = resp.json()
             # owner_user_id is returned by book-service ONLY to a grantee (grant != none),
@@ -248,7 +282,38 @@ class GrantClient:
             logger.warning(
                 "grant authority unavailable (fail-closed deny): %s, trace_id=%s", exc, tid,
             )
+            self._mark_unavailable(book_id, user_id)
             return GrantLevel.NONE, "", None
+
+    def _mark_unavailable(self, book_id: UUID, user_id: UUID) -> None:
+        """Remember that THIS pair's last resolve failed on the AUTHORITY, not on the grant.
+
+        Bounded on purpose: an unbounded set keyed by (user, book) is a memory leak on a service
+        whose authority is down, which is exactly when it fills fastest.
+        """
+        key = _cache_key(user_id, book_id)
+        if len(self._unavailable) >= _UNAVAILABLE_MAX:
+            self._unavailable.clear()
+        self._unavailable.add(key)
+
+    def last_denial_was_unavailable(self, book_id: UUID, user_id: UUID) -> bool:
+        """True when this pair's most recent resolve denied because the AUTHORITY was unreachable.
+
+        The Python mirror of `grantclient.ErrUnavailable`. It is a QUESTION rather than an
+        exception deliberately: 18 `GrantLevel.NONE` branch sites across nine services read the
+        existing return, and raising by default would change all of them at once. A caller that
+        does not ask keeps the behaviour it has, byte for byte.
+
+        🔴 A DENIAL STAYS A DENIAL. This never softens fail-closed — it says only that the deny
+        carries no information about the caller's data, so a route may answer a RETRYABLE
+        upstream failure instead of a bare permission error. That is the same principle the
+        platform already accepted one layer up, where composition's confirm route names its
+        BookClientError 502 because an upstream failure is not a fact about the caller's data.
+
+        Cleared on the next successful resolve of the same pair, so a recovered authority does
+        not keep reporting an outage that is over.
+        """
+        return _cache_key(user_id, book_id) in self._unavailable
 
     async def resolve_owner(self, book_id: UUID, user_id: UUID) -> UUID | None:
         """Return the book-OWNER's user_id when `user_id` holds a grant on the book,
