@@ -14,6 +14,14 @@ appended to `full_content` before `_persist_terminal_assistant`, so the store is
 is falsifiable; a batch file records what the harness observed, and the two disagreeing would
 itself be a finding.
 
+🔴 AND IT SKIPS `finish_reason='streaming'`, WHICH IT LEARNED THE EXPENSIVE WAY. Run against a
+batch still in flight it reported one violation — a turn holding a failed call whose content was
+EMPTY — and the row was a mid-turn CHECKPOINT that `_persist_terminal_assistant` upserts by
+msg_id at every tool boundary. The brief is appended at the FINISH, so a checkpoint legitimately
+has none, and re-probing that same session after the batch ended showed the brief present. A
+probe that reads a row the turn has not finished writing measures the clock, and this one would
+have reported a defect in the fix it exists to verify.
+
 Usage:  python scripts/toolloop/turn_brief_probe.py --since 30m
         python scripts/toolloop/turn_brief_probe.py --sessions <id> <id> ...
 """
@@ -45,6 +53,7 @@ SELECT jsonb_build_object(
 FROM chat_messages m
 WHERE m.role='assistant' AND jsonb_typeof(m.tool_calls)='array'
   AND jsonb_array_length(m.tool_calls) > 0
+  AND m.finish_reason <> 'streaming'
   AND {where}
 ORDER BY m.created_at;
 """
