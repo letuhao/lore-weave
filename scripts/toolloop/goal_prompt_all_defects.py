@@ -47,6 +47,18 @@ DQ_NAMED = 8   # blocking questions named inline; the rest are counted and linke
 #: row may leave `open`, and bars re-blocking a ruled row) and the condition landed at 4187/4000.
 #: QUEUE is the elastic section precisely so an overflow is paid HERE: NEXT still names the resume
 #: pointer, and every open row is counted in the header, so nothing is dropped — only unnamed.
+#: A ruled-but-unbuilt question gets a SHORT excerpt: it is a pointer to the ruling,
+#: which is the spec. The full text is on the question.
+#: 🔴 SCOPED TO THIS ROUND, BECAUSE THE FIRST VERSION MEASURED ITSELF. Without this the
+#: stream reported THIRTY questions "ruled but unbuilt" -- every ruling ever answered, including
+#: two dozen whose remedies shipped weeks ago. They lacked a `built_*` stamp only because the
+#: stamp convention was invented the same hour as this function. Backfilling it across history
+#: would have asserted two dozen builds nobody re-verified, which is the ledger defect this whole
+#: goal exists to avoid. So the stream carries the rulings THIS round commissioned; earlier ones
+#: are out of scope for this goal and stay that way until someone checks them one at a time.
+ROUND_KEY = "answer_2026_08_31_round4"
+DQ_EXCERPT = 58
+RULED_NAMED = 2   # ruled-unbuilt shown inline; the rest counted
 NAMED = 1
 #: Characters of each named row's invariant to show. Enough to RECOGNISE the row, not to
 #: understand it — a row needing more than this has narration where its invariant should be.
@@ -56,61 +68,61 @@ EXCERPT = 24
 CLASS_ORDER = ("contract", "platform", "infra", "model", "instrument")
 
 DURABLE = """\
-BUILD THE REMEDY EACH OPEN ROW HAS ALREADY BEEN RULED, in contracts/tool-deep-dive-ledger.json.
+BUILD THE REMEDY EACH OPEN ROW HAS BEEN RULED, in contracts/tool-deep-dive-ledger.json.
 
-OBJECTIVE. Every open row carries an owner ruling under `answer_*` on its question — nothing \
-waits on a decision. A defect is DONE when its invariant is NAMED, enforced at ONE chokepoint, a \
-falsifier is proven RED on an ORIGINAL instance, the WHOLE owning suite is green, and the fix is \
-shown by a LIVE run through the real chat path. Then `state: fixed` with evidence.
+OBJECTIVE. Every open row carries an owner ruling; nothing waits on a \
+decision. DONE = invariant NAMED, fixed at ONE chokepoint, a falsifier RED on an \
+ORIGINAL instance, the WHOLE owning suite green, and a LIVE run through the real chat path. \
+Then `fixed`, with evidence.
 
-THE RULING IS THE SPEC. Read it BEFORE building and build it AS WORDED. If it cannot be built, \
-the question goes BACK CORRECTED with the measurement showing why — never substitute a mechanism \
-quietly, and never re-open a settled question to dodge the work.
+THE RULING IS THE SPEC: read it BEFORE building, build it AS WORDED. If it cannot be, \
+the question goes BACK CORRECTED with the measurement showing why — never substitute a \
+mechanism quietly, nor re-open a settled question to dodge the work.
 
-THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports no open defect AND `gate.py \
-audit` is clean. NOTHING ELSE ENDS IT. One defect fixed is ONE CYCLE, never the run: the moment a \
-row reaches `fixed`, open the next one IN THE SAME TURN.
+THE RUN ENDS ONLY WHEN `goal_prompt_all_defects.py --check` reports NO OPEN DEFECT and \
+NOTHING RULED-BUT-UNBUILT, and `gate.py audit` is clean. NOTHING ELSE ENDS IT. One fix \
+is ONE CYCLE, never the run: when a row reaches `fixed`, open the next IN THE SAME TURN.
 
-A ROW LEAVES `open` FOUR WAYS AND THREE ARE NOT `fixed`: `withdrawn` (never a defect), \
-`superseded` (folded into a row that names its mechanism), `cannot_reproduce` (real, no longer \
-happens — the row must carry the ORIGINAL INSTANCE, the re-run WITH ITS COUNT, and what was never \
-demonstrated; audit refuses it otherwise). Blocking is an ESCAPE HATCH, not a route: only on a \
-question filed IN THIS RUN with the measurement that forced it. Re-blocking a ruled row is how a \
-finishable run becomes endless.
+A ROW LEAVES `open` FOUR WAYS, THREE NOT `fixed`: `withdrawn` (never a defect), \
+`superseded` (folded into a row naming its mechanism), `cannot_reproduce` (gone — \
+needs the ORIGINAL INSTANCE, the re-run WITH ITS COUNT, and what was never shown; \
+audit refuses it otherwise). Blocking is an ESCAPE HATCH: only on a question \
+filed IN THIS RUN with the measurement that forced it.
 
-NEVER STOP FOR — asking whether to go on; a finished cycle; a green suite; a long report. Any \
-turn that has not moved a row to `fixed` MUST END IN A TOOL CALL. Reporting is not progress.
+NEVER STOP FOR: asking whether to go on; a finished cycle; a green suite; a long report. \
+A turn that has not moved a row MUST END IN A TOOL CALL. Reporting is not progress.
 
-UNIT. ONE defect per cycle — a floor on rigour, not a cap on effort. DO NOT BATCH ON A BROKEN \
-PLATFORM: the batch then measures the platform.
+UNIT. ONE defect per cycle — a floor on rigour, not a cap on effort. DO NOT BATCH ON A \
+BROKEN PLATFORM: the batch then measures the platform.
 
-METHOD, in order. 1 INVESTIGATE BEFORE THEORISING: service logs, chat_messages \
-tool_calls/advertised/withheld, batch JSON, store diffs. Read, then reason. 2 NAME THE INVARIANT \
-AND FIX THE CLASS at ONE chokepoint — prefer the place that DESTROYS the information; check FIRST \
-whether the mechanism exists and is merely EMPTY. 3 RUN THE CONTROL THAT COULD REFUTE YOU before writing the fix — measure cost and RECALL, \
-record what you rejected. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the container; \
-restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, K>=5, throwaway \
-fixture.
+METHOD. 1 INVESTIGATE BEFORE THEORISING: service logs, chat_messages \
+tool_calls/advertised/withheld, batch JSON, store diffs. Read, then reason. 2 NAME THE \
+INVARIANT, FIX THE CLASS at ONE chokepoint — prefer where the information DIES; \
+check FIRST if the mechanism exists and is merely EMPTY. 3 RUN THE CONTROL THAT REFUTES \
+YOU before writing the fix. 4 DEPLOY AND VERIFY BY CONTENT: sha256 from INSIDE the \
+container; restart ai-gateway on a description change. 5 PROVE IT LIVE: real provider, \
+K>=5, throwaway fixture, CONCURRENCY 1 (parallel batches starve the local GPU and every \
+run dies of no_output_timeout, which reads like a refuted remedy).
 
-EVIDENCE. Proven by a RUN, never by the code looking right, never by a helper test alone — assert \
-the CALL SITE. A CLEAN ARM PROVES NOTHING UNTIL YOU SHOW IT REACHED THE PATH. VERIFY THE VARIED \
-INPUT REACHED THE MODEL. Run the whole owning suite SERIALLY. A failed attempt is RECORDED, not \
-quietly retried. Every fix states what it does NOT cover.
+EVIDENCE. Proven by a RUN, never by code looking right, never by a helper test — \
+ASSERT EVERY CALL SITE, not the one you edited. A CLEAN ARM PROVES \
+NOTHING UNTIL YOU SHOW IT REACHED THE PATH. Run the whole owning suite. A failed attempt is \
+RECORDED. Every fix states what it does NOT cover.
 
-CHECK YOUR OWN INSTRUMENT BEFORE REPORTING ITS ANSWER: a census with a shocking number is \
+CHECK YOUR INSTRUMENT BEFORE REPORTING IT: a census with a shocking number is \
 usually measuring itself.
 
-ANTI-CHEAT. Never weaken a bar, a scenario or an expectation to fit; a wrong bar stays RED and \
-you say so. A baseline may only SHRINK. Never split a defect to inflate the count. Never write \
-`fixed` when the live run exercised only part of the fix — say which part is unproven. When your \
-own control refutes your own row, WITHDRAW IT and record what misled you. Re-derive every number; \
-a ledger claim is a lead, not a fact.
+ANTI-CHEAT. Never weaken a bar, scenario or expectation to fit; a wrong bar stays RED \
+and you say so. A baseline may only SHRINK. Never split a defect to inflate the count. \
+Never write `fixed` when the live run exercised only part of it — say which part is \
+unproven. When your own control refutes your row, WITHDRAW IT and record what misled \
+you. Re-derive every number; a ledger claim is a lead, not a fact.
 
 SAFETY. Never write to the dogfood book: one throwaway fixture per scenario, torn down. A \
-read-only TOOL does not make a read-only TURN. Auth only via /v1/auth/login using git-ignored \
-docs/dev/LOCAL_TEST_ENV.md; never scrape a token or invent a credential. SELECT before any DML. \
-Every open DQ gets a RECOMMENDATION and is DECIDED BY THE OWNER — never decide or close one \
-yourself to unblock a defect."""
+read-only TOOL is not a read-only TURN. Auth only via /v1/auth/login using the \
+git-ignored docs/dev/LOCAL_TEST_ENV.md; never scrape a token or invent one. SELECT \
+before any DML. Every open DQ gets a RECOMMENDATION and is DECIDED BY THE OWNER — never \
+decide or close one yourself to unblock a defect."""
 
 
 #: A deferred question NAME, matched whole. `DQ-T4` and `DQ-T45` are different questions and one
@@ -165,6 +177,38 @@ def _returned_corrected(q: dict) -> bool:
     reading. What changed is whether it is actionable.
     """
     return any(str(k).startswith("returned_corrected") for k in q)
+
+
+def ruled_unbuilt(led: dict) -> list[tuple[str, str]]:
+    """Questions the owner has RULED that no open defect row represents.
+
+    🔴 THE GAP THIS CLOSES, FOUND 2026-08-31 THE DAY IT WOULD HAVE COST A WHOLE STREAM.
+    The queue was derived from `defects` alone, so a ruling whose remedy has no defect row was
+    invisible to it: twelve questions were answered that morning and SIX of them
+    (DQ-T1, T34, T35, T37, T40, T43) had no open row anywhere. The generator would have reported
+    a queue of fifteen, the run would have finished it, and `--check` would have said DONE while
+    six ruled remedies had never been built. A queue that cannot see a work stream reports the
+    run complete when it is not.
+
+    A ruling counts as OUTSTANDING until the cycle that builds it stamps a `built_*` (or
+    `shipped_*`) key on the question. That stamp is the ONLY thing that retires it here — not
+    the answer, which is what commissioned the work in the first place.
+    """
+    out: list[tuple[str, str]] = []
+    open_rows = {k: json.dumps(v, ensure_ascii=False)
+                 for k, v in (led.get("defects") or {}).items()
+                 if isinstance(v, dict) and v.get("state") in gate.DEFECT_OPEN_STATES}
+    for name, q in (led.get("deferred_questions") or {}).items():
+        if not isinstance(q, dict) or q.get("state") != "answered":
+            continue
+        if ROUND_KEY not in q:
+            continue
+        if any(k.startswith(("built", "shipped")) for k in q):
+            continue
+        if any(name in blob for blob in open_rows.values()):
+            continue  # an open row already carries this work; it is queued as that row
+        out.append((name, " ".join(str(q[ROUND_KEY]).split())[:DQ_EXCERPT]))
+    return sorted(out)
 
 
 def rows() -> tuple[list[tuple], collections.Counter]:
@@ -257,7 +301,22 @@ def build() -> tuple[str, list[tuple], collections.Counter]:
                       "with recommendations, in docs/sessions/OPEN_DECISIONS.md")
         nxt = ("NEXT. No unblocked work. Every open row waits on a decision above; "
                "take those first.")
-    return f"/goal {DURABLE}\n\n{head}\n{named}\n\n{nxt}\n", all_rows, counts
+    # RULED, NOT YET BUILT — the second work stream. Emitted after the defect queue because
+    # a defect row is the more specific unit, but counted by `check` exactly the same: the run
+    # is not finished while either stream has entries.
+    ruled = ruled_unbuilt(json.loads(LEDGER.read_text(encoding="utf-8")))
+    tail = ""
+    if ruled:
+        shown, rest = ruled[:RULED_NAMED], ruled[RULED_NAMED:]
+        tail = ("\n\nRULED, NOT YET BUILT — no open row carries these; the ruling IS the spec. "
+                f"{len(ruled)} left. Stamp `built_*` on the question when done.\n"
+                + "\n".join(f"  {q} — {a}" for q, a in shown))
+        if rest:
+            tail += "\n  +" + ", ".join(q for q, _ in rest)
+        if not free:
+            nxt = f"NEXT. {ruled[0][0]} (ruled, unbuilt)"
+    return (f"/goal {DURABLE}\n\n{head}\n{named}{tail}\n\n{nxt}\n",
+            all_rows, counts)
 
 
 def check(text: str, all_rows: list, counts: collections.Counter) -> int:
@@ -269,8 +328,15 @@ def check(text: str, all_rows: list, counts: collections.Counter) -> int:
         bad.append(f"{counts['unclassified']} open defect(s) have no `defect_class`. They are "
                    f"still QUEUED (this goal excludes nothing) but they sort last and their "
                    f"class should be set in the ledger, not here.")
-    if not all_rows:
-        bad.append("no defect is open at all — is that true, or did the state field drift?")
+    _ruled = ruled_unbuilt(json.loads(LEDGER.read_text(encoding="utf-8")))
+    if not all_rows and not _ruled:
+        bad.append("no defect is open and nothing is ruled-unbuilt — is that true, or did the "
+                   "state field drift?")
+    if not all_rows and _ruled:
+        # NOT a failure: the defect queue is empty and the other stream is not. Said out loud
+        # because "no open defect" used to read as "done".
+        print(f"CHECK: 0 open defects, but {len(_ruled)} ruled remedies are unbuilt: "
+              + ", ".join(q for q, _ in _ruled), file=sys.stderr)
     if all_rows and all(r[0] for r in all_rows):
         bad.append("every open defect is DQ-blocked; NEXT would point at a decision, not work.")
     for w in bad:
