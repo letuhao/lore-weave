@@ -406,7 +406,9 @@ func buildChatStreamInput(in streamRequest) map[string]any {
 		input["max_tokens"] = *in.MaxTokens
 	}
 	if in.Tools != nil {
-		input["tools"] = in.Tools
+		// A no-argument tool's schema must carry `properties: {}` or LM Studio rejects the
+		// WHOLE request. See tool_schema_normalize.go for the measurement.
+		input["tools"] = normalizeToolParameters(in.Tools)
 	}
 	if in.ToolChoice != nil {
 		input["tool_choice"] = in.ToolChoice
