@@ -52,7 +52,8 @@ from __future__ import annotations
 
 import logging
 
-from app.db.neo4j_helpers import CypherSession, assert_user_id_param
+from app.db.neo4j_helpers import CypherSession
+from app.db.graph_repos import maintenance
 from app.metrics import quarantine_auto_invalidated_total
 
 logger = logging.getLogger(__name__)
@@ -64,19 +65,6 @@ __all__ = [
 
 
 DEFAULT_TTL_HOURS = 24
-
-
-_CLEANUP_CYPHER = """
-MATCH (f:Fact)
-WHERE coalesce(f.pending_validation, false) = true
-  AND f.valid_until IS NULL
-  AND f.updated_at < datetime() - duration({hours: $ttl_hours})
-  AND ($user_id IS NULL OR f.user_id = $user_id)
-WITH f
-LIMIT COALESCE($limit, 2147483647)
-SET f.valid_until = datetime()
-RETURN count(f) AS invalidated
-"""
 
 
 async def run_quarantine_cleanup(
@@ -112,20 +100,12 @@ async def run_quarantine_cleanup(
     if limit is not None and limit <= 0:
         raise ValueError(f"limit must be positive when set, got {limit}")
 
-    # Bypass run_write because it types user_id as str; this is the
-    # one caller that legitimately passes None (admin global sweep).
-    # The $user_id reference safety check still applies — the Cypher
-    # above handles the NULL branch explicitly via
-    # `($user_id IS NULL OR f.user_id = $user_id)`.
-    assert_user_id_param(_CLEANUP_CYPHER)
-    result = await session.run(
-        _CLEANUP_CYPHER,
-        user_id=user_id,
-        ttl_hours=ttl_hours,
-        limit=limit,
+    # The query moved to `graph_repos/maintenance.py` (plan T17), including its deliberate
+    # `run_write` bypass: this is the one caller that legitimately passes user_id=None
+    # (the admin global sweep), which run_write cannot type.
+    invalidated = await maintenance.invalidate_stale_quarantined_facts(
+        session, user_id=user_id, ttl_hours=ttl_hours, limit=limit,
     )
-    record = await result.single()
-    invalidated = int(record["invalidated"]) if record else 0
 
     if invalidated:
         quarantine_auto_invalidated_total.inc(invalidated)

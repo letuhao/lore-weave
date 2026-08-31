@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.extraction.passage_ingester import ingest_chapter_passages
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ async def backfill_project_passages(
         published_rev = ch.get("published_revision_id")
         canon = bool(published_rev) and str(published_rev) == str(rev)
         try:
-            async with neo4j_session() as session:
+            async with graph_session() as session:
                 res = await ingest_chapter_passages(
                     session, book_client, embedding_client,
                     user_id=user_id, project_id=project_id, book_id=book_id,

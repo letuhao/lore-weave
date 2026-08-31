@@ -31,9 +31,12 @@ import json
 import logging
 from typing import Any
 
+from app.adapters.vector_store_provider import get_vector_store
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS, upsert_passage
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
+from app.db.graph_repos.passages import get_passage_content_hash
+from app.ports.vector_store import PassageVectorRecord
 
 __all__ = ["render_glossary_passage", "sync_glossary_entity_passage"]
 
@@ -119,19 +122,18 @@ async def _current_hash(
 ) -> str | None:
     """The stored content hash, so a re-delivered event or a full backfill doesn't
     re-embed unchanged lore. glossary.entity_updated is at-least-once and a backfill
-    walks every entity — without this, both pay a provider call per entity per run."""
-    result = await session.run(
-        """
-        MATCH (p:Passage {user_id: $user_id, project_id: $project_id,
-                          source_type: 'glossary', source_id: $source_id,
-                          chunk_index: $chunk})
-        RETURN p.content_hash AS h
-        """,
-        user_id=user_id, project_id=project_id, source_id=source_id,
-        chunk=GLOSSARY_PASSAGE_CHUNK,
+    walks every entity — without this, both pay a provider call per entity per run.
+
+    The Cypher moved into the passages repo (plan T12); this stays as the thin
+    binding that knows THIS module's source_type and chunk index."""
+    return await get_passage_content_hash(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        source_type="glossary",
+        source_id=source_id,
+        chunk_index=GLOSSARY_PASSAGE_CHUNK,
     )
-    record = await result.single()
-    return record["h"] if record else None
 
 
 async def sync_glossary_entity_passage(
@@ -200,8 +202,11 @@ async def sync_glossary_entity_passage(
         )
         return "unsupported_dim"
 
-    await upsert_passage(
-        session,
+    # T25a — through the VectorStore port. With KNOWLEDGE_VECTOR_DB_URL unset this is the
+    # same `upsert_passage` as before, one method call deeper; set, it also writes the
+    # pgvector secondary.
+    store = await get_vector_store(session)
+    await store.upsert(PassageVectorRecord(
         user_id=user_id,
         project_id=project_id,
         source_type="glossary",
@@ -216,5 +221,5 @@ async def sync_glossary_entity_passage(
         canon=True,
         source_lang=source_lang or "unknown",
         content_hash=content_hash,
-    )
+    ))
     return "indexed"

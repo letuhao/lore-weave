@@ -7,7 +7,9 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.facts import (
+from app.db.graph_repos.facts import (
+    MEMORY_FACT_TYPES,
+    STORY_FACT_TYPES,
     FACT_TYPES,
     delete_facts_with_zero_evidence,
     fact_id,
@@ -69,20 +71,26 @@ def test_k11_7_fact_id_rejects_empty_inputs():
 
 
 def test_k11_7_fact_types_constant_matches_literal():
-    # Deliberate change-detector: the vocabulary lives in THREE places that must move
-    # together — the FactType Literal (models.py), this constant, and the pending-facts
-    # CHECK in migrate.py (test_migrate_ddl pins that one). Widening it here without the
-    # DDL would let an unknown type reach merge_fact and 500.
-    # WS-2.1 added 'statement' (the diary's coarse fact kind);
-    # WS-5.7 added 'commitment' (a promised action + due date).
-    assert set(FACT_TYPES) == {
-        "decision",
-        "preference",
-        "milestone",
-        "negation",
-        "statement",
-        "commitment",
+    # Deliberate change-detector across the vocabulary's registries.
+    #
+    # 2026-08-11 — `:Fact` carries TWO families and they have DIFFERENT lockstep rules,
+    # which is the whole point of naming them:
+    #   MEMORY -> also the PendingFactType Literal (models.py) + the pending-facts CHECK
+    #             in migrate.py (test_migrate_ddl pins that one) + kg_fact_types. Widening
+    #             it here without the DDL lets an unknown type reach merge_fact and 500.
+    #   STORY  -> `:Fact` ONLY. It never queues (pass2_writer calls merge_fact directly),
+    #             so widening it must NOT touch the CHECK — a queue that accepts what the
+    #             confirm path cannot promote is the same drift pointing the other way.
+    # WS-2.1 added 'statement'; WS-5.7 added 'commitment'.
+    assert set(MEMORY_FACT_TYPES) == {
+        "decision", "preference", "milestone", "negation", "statement", "commitment",
     }
+    # The story extractor's own vocabulary. Before the split these were dropped at
+    # pass2_writer and story extraction could only ever write 'negation'.
+    assert set(STORY_FACT_TYPES) == {"description", "attribute", "temporal", "causal"}
+    assert set(FACT_TYPES) == set(MEMORY_FACT_TYPES) | set(STORY_FACT_TYPES)
+    # 'negation' is shared, and shared means ONCE.
+    assert len(FACT_TYPES) == len(set(FACT_TYPES))
 
 
 # ── merge_fact ────────────────────────────────────────────────────────
@@ -367,7 +375,7 @@ async def test_k11_7_invalidate_fact_returns_none_for_missing(
 async def test_ws26a_invalidate_facts_for_day_retires_only_that_day(neo4j_driver, test_user):
     """D17 leg 3: correcting one diary day invalidates ALL that day's CONFIRMED facts (so the superseded
     fact can't resurrect) while leaving other days / other projects / pending facts untouched."""
-    from app.db.neo4j_repos.facts import invalidate_facts_for_day
+    from app.db.graph_repos.facts import invalidate_facts_for_day
 
     proj = "p-assist"
     async with neo4j_driver.session() as session:
@@ -425,8 +433,8 @@ async def test_ws26b_recall_surfaces_a_supersession_not_two_truths(neo4j_driver,
     """spec 07 §Q5: a claim that changed over time (launch Friday → Tuesday) recalls as ONE supersession
     with an ordered chain, not two independent facts. Proves predicate/object PERSIST on the :Fact node
     and that recall carries the :ABOUT subject for grouping."""
-    from app.db.neo4j_repos.entities import merge_entity
-    from app.db.neo4j_repos.facts import days_since_epoch, group_supersessions, recall_facts
+    from app.db.graph_repos.entities import merge_entity
+    from app.db.graph_repos.facts import days_since_epoch, group_supersessions, recall_facts
 
     proj = "p-assist"
     async with neo4j_driver.session() as session:
@@ -462,8 +470,8 @@ async def test_ws26b_recall_surfaces_a_supersession_not_two_truths(neo4j_driver,
 async def test_ws26d_merge_renamed_entity_repoints_facts_to_the_winner(neo4j_driver, test_user):
     """D17 merge-a-renamed-entity: 'Minh' and 'Minh Nguyen' are the same person. After merge_entities, the
     loser's facts re-point to the winner (recall attributes BOTH to one) and the loser :Entity is gone."""
-    from app.db.neo4j_repos.entities import find_entities_by_name, merge_entities, merge_entity
-    from app.db.neo4j_repos.facts import list_facts_for_entity
+    from app.db.graph_repos.entities import find_entities_by_name, merge_entities, merge_entity
+    from app.db.graph_repos.facts import list_facts_for_entity
 
     proj = "p-assist"
     async with neo4j_driver.session() as session:
@@ -496,8 +504,8 @@ async def test_ws26d_merge_renamed_entity_repoints_facts_to_the_winner(neo4j_dri
 async def test_ws26c_erase_entity_subgraph_removes_entity_and_its_facts(neo4j_driver, test_user):
     """D17 forget-a-person (KG leg): DETACH DELETE the :Entity + every :Fact ABOUT it, scoped to the
     assistant project. A DIFFERENT person's facts survive. Idempotent re-forget deletes nothing more."""
-    from app.db.neo4j_repos.entities import erase_entity_subgraph, find_entities_by_name, merge_entity
-    from app.db.neo4j_repos.facts import list_facts_for_entity, recall_facts
+    from app.db.graph_repos.entities import erase_entity_subgraph, find_entities_by_name, merge_entity
+    from app.db.graph_repos.facts import list_facts_for_entity, recall_facts
 
     proj = "p-assist"
     async with neo4j_driver.session() as session:
@@ -535,7 +543,7 @@ async def test_ws26c_erase_entity_subgraph_removes_entity_and_its_facts(neo4j_dr
 async def test_ws210_close_epoch_invalidates_but_export_still_reads(neo4j_driver, test_user):
     """T18: closing an epoch bulk-invalidates its facts so DEFAULT recall (valid_until IS NULL) returns
     none, while the EXPORT read still dumps them (incl. invalidated) for the export-then-purge boundary."""
-    from app.db.neo4j_repos.facts import (
+    from app.db.graph_repos.facts import (
         export_facts_for_project,
         invalidate_all_facts_for_project,
         recall_facts,
@@ -564,7 +572,7 @@ async def test_ws210_close_epoch_invalidates_but_export_still_reads(neo4j_driver
 async def test_ws210_recall_is_epoch_scoped_by_project(neo4j_driver, test_user):
     """T18 recall-defaults-to-current: each epoch is its own project, and recall is project-scoped, so the
     ex-employer's (old-epoch) facts never blend into the new job's recall."""
-    from app.db.neo4j_repos.facts import recall_facts
+    from app.db.graph_repos.facts import recall_facts
 
     old_epoch, new_epoch = "p-acme", "p-globex"
     async with neo4j_driver.session() as session:

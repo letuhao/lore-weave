@@ -184,4 +184,45 @@ describe('CompositionSettingsView — critic model (S6)', () => {
     render(<CompositionSettingsView {...base} settings={{}} />);
     expect(screen.queryByTestId('composition-settings-critic-same-as-drafter')).toBeNull();
   });
+
+  // ── critic ON/OFF (QC-5 C32) — the toggle that existed and no user could reach ──────────
+
+  it('is CHECKED for a book that has never set it, matching the server default', () => {
+    // The control arm. `critic_enabled` has defaulted TRUE server-side since D5, so a book
+    // saved before this control existed must not read as "off" the moment the control appears.
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(screen.getByTestId('composition-settings-critic-enabled')).toBeChecked();
+  });
+
+  it('is UNCHECKED only when the book explicitly turned it off', () => {
+    render(<CompositionSettingsView {...base} settings={{ critic_enabled: false }} />);
+    expect(screen.getByTestId('composition-settings-critic-enabled')).not.toBeChecked();
+  });
+
+  it('WRITES critic_enabled when toggled — an affordance that patches nothing is not a setting', () => {
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    fireEvent.click(screen.getByTestId('composition-settings-critic-enabled'));
+    expect(mockSet.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ patch: { critic_enabled: false } }),
+    );
+  });
+
+  // ── critic VERIFIER model (QC-5 C33) ────────────────────────────────────────────────────
+
+  it('defaults to "use the critic itself", which is what every existing book does', () => {
+    // The control arm for the picker: a book that never set a verifier must render EMPTY, not
+    // pre-selected, or saving any other setting would silently pin a verifier it never chose.
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(screen.getByTestId('composition-settings-critic-verifier')).toHaveValue('');
+  });
+
+  it('writes the critic_verifier ROLE, not a scalar', () => {
+    // Roles live in `model_roles`; only `chat` and `critic` have legacy scalar pairs. Writing a
+    // scalar here would be a key no reader looks at.
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    fireEvent.change(screen.getByTestId('composition-settings-critic-verifier'), { target: { value: 'm2' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { model_roles: { critic_verifier: { model_ref: 'm2', model_source: 'user_model' } } },
+    }));
+  });
 });

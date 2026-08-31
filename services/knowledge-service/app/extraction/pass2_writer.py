@@ -55,21 +55,25 @@ import re
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.entities import resolve_participant_anchors
-from app.db.neo4j_repos.entity_status import merge_entity_status
-from app.db.neo4j_repos.events import (
+from loreweave_extraction.canonical import canonicalize_entity_name
+from app.db.graph_repos.entities import (
+    get_glossary_anchor_id,
+    resolve_participant_anchors,
+)
+from app.db.graph_repos.entity_status import merge_entity_status
+from app.db.graph_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
+    max_event_order_in_band,
     merge_event,
     rerank_chronological_order,
 )
-from app.db.neo4j_repos.facts import FACT_TYPES, merge_fact
+from app.db.graph_repos.facts import FACT_TYPES, merge_fact
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
-from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
-from app.db.neo4j_repos.relations import create_relation
+from app.db.graph_repos.provenance import add_evidence, upsert_extraction_source
+from app.db.graph_repos.relations import create_relation
 from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_resolver import (
     AnchorIndex,
@@ -90,6 +94,7 @@ from loreweave_extraction.schema_projection import ExtractionSchema
 
 __all__ = [
     "Pass2WriteResult",
+    "StatusTransition",
     "write_pass2_extraction",
 ]
 
@@ -233,6 +238,21 @@ def _bump_autocreate_metric(role: Literal["subject", "object"], outcome: str) ->
     ).inc()
 
 
+class StatusTransition(BaseModel):
+    """One life-status change, addressed in GLOSSARY terms.
+
+    `chapter_ordinal`, not `event_order`: `entity_facts.valid_from_ordinal` is a chapter
+    ordinal (3, 4, 5 …) while the graph's status axis is `event_order`
+    (chapter x EVENT_ORDER_CHAPTER_STRIDE + idx). Converting here rather than at the
+    emit site keeps the two scales from meeting in a place that has no way to tell
+    them apart — they are both plain ints, so a mix-up is silent and permanent.
+    """
+
+    glossary_entity_id: str
+    status: str
+    chapter_ordinal: int
+
+
 class Pass2WriteResult(BaseModel):
     """Summary of what the Pass 2 writer persisted."""
 
@@ -253,6 +273,20 @@ class Pass2WriteResult(BaseModel):
     skipped_missing_endpoint: int = 0
     # A2-S1b — :EntityStatus transitions written from event status_effects.
     statuses_merged: int = 0
+    # D-T32-ALIVE-NO-FACTS — the same transitions, projected for the glossary fact
+    # SSOT. REPORTED, not written, and the split is the point: this writer owns a
+    # Neo4j session and nothing else, while `entity_facts` lives behind an HTTP
+    # boundary in another service. Doing the POST from inside a graph transaction
+    # would put a network call in a place that cannot roll back with it. The caller
+    # (`internal_extraction`) already holds the glossary client and the book_id, so
+    # it emits; this only says WHAT happened.
+    #
+    # Only ANCHORED entities appear: `entity_facts.entity_id` is an FK to
+    # `glossary_entities`, so a discovered-but-unanchored node has nothing to hang a
+    # fact on. Measured 2026-08-11: 0 of the graph's 21 status rows were anchored,
+    # which is exactly why a backfill of the existing ones was impossible and why
+    # this producer had to be built at the write moment instead.
+    status_transitions: list["StatusTransition"] = Field(default_factory=list)
 
 
 def _evidence_quote(candidate: object, project_id: str | None) -> str | None:
@@ -774,8 +808,30 @@ async def write_pass2_extraction(
     # before Step 3 so the relation chain can also stamp valid_from_ordinal).
     events_merged = 0
     statuses_merged = 0  # A2-S1b — :EntityStatus transitions written
+    status_transitions: list[StatusTransition] = []  # D-T32 — projected for glossary
     dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
+    # 🔴 `idx` MUST NOT RESTART AT 0 FOR A CHAPTER THAT ALREADY HAS EVENTS.
+    # It used to, while `chapter_base` depends only on the chapter — so a chapter extracted
+    # by a second job numbered its events over the top of the first job's. Measured on
+    # 封神演義 ch.1: 3 jobs, 20 events, 7 duplicate `event_order` values, every collision
+    # cross-job. `event_order` is the reading axis (spoiler cutoff, timeline, the causal
+    # pass's forward-only guard), and duplicates make every consumer's ordering fall through
+    # to the store's row order, so the axis stops being an order without anything failing.
+    # Continuing from the band's current maximum keeps merges stable — an event that already
+    # exists keeps its original number via merge_event's MIN rule — and gives genuinely new
+    # events slots nobody holds. See `max_event_order_in_band` for the concurrency limit
+    # this does NOT close.
     idx = 0
+    if chapter_base is not None:
+        highest = await max_event_order_in_band(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            lo=chapter_base,
+            hi=chapter_base + EVENT_ORDER_CHAPTER_STRIDE,
+        )
+        if highest is not None:
+            idx = highest - chapter_base + 1
     # A2-S1b — chapter handle stamped on each status for retract-by-source +
     # FE display. Prefer the hierarchy chapter_id; fall back to the source_id.
     status_source_chapter = (
@@ -787,6 +843,17 @@ async def write_pass2_extraction(
         if not name_clean.strip():
             continue
 
+        if chapter_base is not None and idx >= EVENT_ORDER_CHAPTER_STRIDE:
+            # The chapter's band is full. Continuing would write into the NEXT chapter's
+            # band and corrupt the reading order of every chapter after this one, so this
+            # raises rather than degrading. Unreachable in practice (a band holds
+            # EVENT_ORDER_CHAPTER_STRIDE slots and re-extraction consumes one per event) —
+            # and "unreachable, so no guard" is how a silent global corruption ships.
+            raise ValueError(
+                f"event_order band for chapter ordinal {_chapter_ordinal} is exhausted "
+                f"(idx={idx} >= stride {EVENT_ORDER_CHAPTER_STRIDE}); writing on would "
+                f"overflow into the next chapter's reading-order band"
+            )
         event_order = chapter_base + idx if chapter_base is not None else None
         idx += 1
 
@@ -897,6 +964,24 @@ async def write_pass2_extraction(
             knowledge_extraction_status_effect_total.labels(
                 outcome="persisted",
             ).inc()
+            # D-T32-ALIVE-NO-FACTS — project this transition into glossary terms for
+            # the caller to emit as an `entity_facts` row. Anchored nodes only: the
+            # fact table's FK is `glossary_entities(entity_id)`, so an unanchored
+            # discovery has nothing to attach to and is counted rather than dropped
+            # silently — the count is what tells "no deaths" from "no anchors".
+            gid = await get_glossary_anchor_id(
+                session, user_id=user_id, entity_id=entity_id)
+            if gid:
+                status_transitions.append(StatusTransition(
+                    glossary_entity_id=gid,
+                    status=eff.status,
+                    # event_order → chapter ordinal. entity_facts is chapter-scaled.
+                    chapter_ordinal=event_order // EVENT_ORDER_CHAPTER_STRIDE,
+                ))
+            else:
+                knowledge_extraction_status_effect_total.labels(
+                    outcome="no_glossary_anchor",
+                ).inc()
             status_ev = await add_evidence(
                 session,
                 user_id=user_id,
@@ -925,9 +1010,17 @@ async def write_pass2_extraction(
     facts_merged = 0
     for fact in fact_list:
         if fact.type not in FACT_TYPES:
+            # `FACT_TYPES` is now MEMORY_FACT_TYPES + STORY_FACT_TYPES. Until
+            # 2026-08-11 it was the memory half alone, and this branch dropped
+            # every `description`/`attribute`/`temporal`/`causal` fact the story
+            # extractor produced — a warning per fact and `facts=0` in the run
+            # summary, for the life of the feature. What reaches this branch now
+            # is a genuinely unrecognised type (an SDK the writer has not caught
+            # up with), which is worth saying loudly rather than counting.
             logger.warning(
-                "pass2_writer: skipping fact with unknown type %r (content=%.40r)",
-                fact.type, fact.content,
+                "pass2_writer: skipping fact with unknown type %r — not in %r "
+                "(content=%.40r)",
+                fact.type, FACT_TYPES, fact.content,
             )
             continue
         # PP-5 (spec 08 R7) — in a WORK/assistant extraction, coerce a `preference` fact to `statement`.
@@ -1009,4 +1102,5 @@ async def write_pass2_extraction(
         evidence_edges=evidence_edges,
         skipped_missing_endpoint=skipped,
         statuses_merged=statuses_merged,
+        status_transitions=status_transitions,
     )

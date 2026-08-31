@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     # C12c-a: glossary-service URL for the paginated entity list the
     # scope='glossary_sync' worker branch iterates.
     glossary_service_url: str = "http://glossary-service:8082"
+
+    # T38 B6 — the KAL base URL. Entity knowledge is read through the KAL (INV-KAL), not
+    # glossary /internal. NON-EMPTY DEFAULT on purpose: translation-service defaults this to
+    # "" and its client treats unset as "feature off, return nothing", which turns a missing
+    # env var into a silently disabled read. Here an unset var would instead mean a pin list
+    # resolving to no names, which reads as "these entities have no name" — so the default
+    # points at the gateway and the compose entry is belt-and-braces.
+    knowledge_gateway_url: str = "http://knowledge-gateway:3000"
     # Phase 4b-γ: provider-registry's internal LLM gateway. Worker-ai
     # calls submit_job through the loreweave_llm SDK; the SDK posts
     # to this base URL with the X-Internal-Token header.

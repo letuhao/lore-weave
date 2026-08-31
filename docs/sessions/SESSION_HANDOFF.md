@@ -1,6 +1,432 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `34810c12a` + DB-guard sweep · **Branch:** `main` · 2026-08-09
+**Branch:** `refactor/entity-lifecycle` · 2026-08-09 — the knowledge-architecture refactor is
+**in flight**. Sealed design: [`ARCHITECTURE-OVERVIEW`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-ARCHITECTURE-OVERVIEW.md)
+§9 (31 decisions). Plan: [`2026-08-09-knowledge-architecture-refactor.md`](../plans/2026-08-09-knowledge-architecture-refactor.md)
+— 53 implementation + 8 QC tasks, 10 phases, 14 commit checkpoints.
+
+> ⚠️ **The plan is discovered by an explicit path, not by branch slug:**
+> `/aif-implement @docs/plans/2026-08-09-knowledge-architecture-refactor.md`
+
+## ⏸ 2026-08-21 — the run STOPPED on four decisions, and they are the whole remaining list
+
+**The GOAL's own sentence is one command, and it needs the `lw-iso` stack up:**
+
+```bash
+bash scripts/architecture-live-proof-iso.sh          # -> "verdict": "PROVEN", "ran": 7
+```
+
+It derives all nine inputs the proof takes — the subject book/project/entity, the internal
+token and a freshly minted stranger JWT, and three censuses — then runs the seven legs. Do
+**not** run `architecture-live-proof.py --run` bare: five legs SKIP for want of inputs and
+the floor answers `TOO-FEW-LEGS`. The wrapper refuses rather than skipping, so a run that
+cannot derive an input exits non-zero naming which one.
+
+Read the state from the commands, not from here — `python scripts/plan-final-verification.py`
+for the row census and `sed -n 46p` on the plan for the progress block. What this section is
+for is the part no command prints: **why** the open rows are open.
+
+🔴 **UPDATED 2026-08-30 — every row in this table has now closed.** It is kept, struck through by its own right-hand column, because the LIST is the lesson: on 2026-08-23 it said "four things" and three were already done.
+
+| listed as owed | actual state |
+|---|---|
+| `T25` ③ — a write grant to drop the Neo4j vector indexes | **③ LANDED 2026-08-22** (T25o): dev cut over, passage DDL deleted |
+| `D-QC5-ROLE-JUDGE-PRECISION` — a spend call | **CLOSED 2026-08-21**, adjudicated SUPERSEDED |
+| `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call | **CLOSED**, and the plan records it was closed **twice** |
+| `T48` cannot be worked at all | **CLOSED 2026-08-30** (T48ba). Its blocker was reading *"every task fully implemented"* as including the row doing the reading — a deadlock by construction. §23 separated T33's bite from the accuracy question and the row closed on clauses that are each a command. |
+
+⚠️ The third row is the warning worth keeping. The plan's own note on that duplicate: *"it is the
+mechanism that made a settled question read as open for eight days and stopped a run on a decision
+nobody owed."* A stale blocker list does not merely age — it sends the next session at work that
+does not exist. Regenerate this list; do not append to it.
+
+🏁 **THE PLAN IS COMPLETE — 2026-08-30.** Every row is ticked and the plan is archived; the
+census and the proof are commands, not numbers copied here:
+
+```bash
+python scripts/plan-final-verification.py       # the row census
+python scripts/gate-wiring-gate.py --run-all    # every CI gate, ~7 min
+bash   scripts/architecture-live-proof-iso.sh   # the GOAL's own sentence, 7 legs, needs lw-iso
+```
+
+**What is still OWED, and it is two questions of QUALITY — neither blocks anything:**
+
+Both live in [`§23`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) and both ask
+*is this pass any good*, which no gate here measures. T33 closed on its own bite — *edge count
+non-zero and the graph acyclic*, measured live — and that bite never asked about accuracy.
+
+- **`T33`'s causal labelling sheet** —
+  [`2026-08-24-t33-causal-labelling-sheet.md`](../measurements/2026-08-24-t33-causal-labelling-sheet.md).
+  **REBUILT 2026-08-30 (`t33k`), and the shape changed.** 32 pairs, every `LABEL:` blank.
+  Each pair is **A** and **B** in no particular order, and the label carries the DIRECTION:
+  `A causes B` / `B causes A` / `A precedes B` / `B precedes A` / `unknown`. Fill
+  `labelled_by:` with a name, then
+  `python scripts/t33-causal-labelling-sheet.py --score <sheet>`.
+  **`--score` REFUSES a sheet signed by an assistant** — a detector graded against labels its
+  own author wrote is green by construction, so this one input cannot be automated away.
+  A PLANTED arm exists (`--score-planted`, bound to its design by SHA-256) and is explicitly
+  **not** a substitute: same agent wrote the prose and the ground truth.
+
+  🔴 *Why it changed:* the old sheet ordered pairs by `Event.event_order` and presented them
+  as `earlier`/`later`. That field is the extractor's EMISSION index and it COLLIDED across
+  jobs, so 8 of 20 pairs were backwards — and with only `causes/precedes/unknown` available
+  every one collapsed to `unknown`, the same answer as "unrelated". The sheet destroyed the
+  distinction it existed to measure. It also carried **2 of the system's 20 in-scope claims**;
+  it now carries all 20 plus 12 pairs the system stayed silent on, so precision and recall
+  are both answerable. Re-emit with:
+  `python scripts/t33-causal-labelling-sheet.py --emit --axis prose --project-id <p> --chapter-ids <c1> <c2> --pairs 32`
+- **`D-T33-CAUSAL-COVERAGE-UNMEASURED`** — ACCEPTED under §23, not discharged. *Does the
+  causal pass work across the whole corpus, not just where it was pointed.* Nothing measured
+  it; striking it would assert a measurement that does not exist.
+
+**Also open, and NOT a quality question — a known race left unclosed on purpose (2026-08-30):**
+
+- **`event_order` under CONCURRENT extraction of one chapter.** `pass2_writer` used to restart
+  its within-chapter index at 0 on every job, so a chapter extracted twice numbered its events
+  twice — measured on 封神演義 ch.1 as 7 duplicate values across 20 events, every collision
+  cross-job. Fixed at `b6c8fde13`: the index continues from the highest slot already used in
+  the chapter's band. **Two jobs running at the same time still both read that maximum and
+  both write above it.** Narrower and rarer than the deterministic bug, which fired on every
+  re-extraction, and closing it needs a reservation the graph does not offer. Stated in
+  `max_event_order_in_band`'s docstring so it is found by the next person to touch it.
+  Note the fix stops NEW collisions; it does not renumber the ones already in the store.
+
+🔻 **OWED AT MERGE-TO-MAIN (§19), and it is a list, not a gesture.** Kept here because the
+plan that carried it is archived:
+
+1. Retire the sibling `infra` compose project; stand dev up from this checkout.
+2. `backfill-passages` per project so the Postgres secondary is non-empty — **measure passage
+   search BEFORE and AFTER**, because an empty secondary fails SILENTLY (§9.1 option 2 — the
+   shape this plan caught five times).
+3. `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres` in `infra/.env.example` and the compose default.
+4. Delete `passage_embeddings_1024` from `neo4j_schema.cypher` — only once
+   `port-adoption-gate` reports `passage read-primary declarations 0/0`.
+5. Re-run `architecture-live-proof-iso.sh` against the new dev; leg 2's censuses come from it.
+
+⛔ **~~What is genuinely owed: ONE call — `D-QC5-PROSE-JUDGE-FIRES-ON-CONFORMING-PROSE`~~ —
+DECIDED AND BUILT 2026-08-30, and the deferral is CLOSED.** Kept struck because the retraction
+is the record. The PO chose *spend on precision first*; C45 then measured that precision on
+cases it was NOT derived from — **14/14 in-sample against 0/5 held out** — so C46 gated the
+attribution channel OFF by default (`canon_violations_enabled`, per-book, params override),
+leaving the four dimension scores and the craft notes untouched. `QC-5` closed on that basis at
+C48, and the basis is CHECKED rather than asserted: `qc5-acceptance-gate --closure` reds if the
+channel is turned back on without a `HELD-OUT-HOLDS` run.
+
+📐 **What 2026-08-30 added AFTER T48s, and why the row list grew by 24.** The session ran one
+method: **ask the proof what it does not cover, then measure rather than reason.** It produced
+three real spoiler leaks and a long tail of instruments that could not fail.
+
+* **Three leaks, all feeding the SAME consumer** — translation-service's `build_context_brief`,
+  which asks for the story state at chapter N. `wiki-neighborhood` advertised a window it did
+  not have (**T48ad**); `canonical` never read `as_of` at all and served the chapter-3 fold to a
+  reader held at chapter 1 (**T48ah**); and `canonical-translation` called a HOISTED copy of the
+  same read, so T48ah fixed one of two and the copy it missed is the one a reader sees
+  (**T48ai**). Each was diagnosed at the seam — through the KAL and again straight off the
+  owning service — never by analogy.
+* **The proof went from 4 legs to 7**: `TEMPORAL` now sweeps all nine temporal routes across
+  both substrates (T48ae/T48ak), `AXIS` checks the SSOT stores positions on one reading axis
+  (T48ao), `AUTH` checks the KAL's guard DISCRIMINATES rather than merely answers (T48ap,
+  reversing T48u's exclusion — open-decisions §21). Run it with all inputs and it reports
+  `"verdict": "PROVEN", "ran": 7`.
+* **Four floors, one control.** `--min-legs`, `--min-data`, `--min-routes` and a floor on a
+  gate CENSUS all exist because *zero of zero failed* kept reading as success (T48t, T48aa,
+  T48am, T48at).
+* **Guards that ran nowhere.** The knowledge-gateway suite was RED for four commits because
+  nothing ran it (T48al); `gate-number-visibility-gate` was red for ELEVEN because `--run-all`
+  is CI-only and takes 415s (T48aq); `plan-final-verification` — one of the four plan gates the
+  goal names — was invoked by nobody, and its "is this DECIDED" test was satisfied by the word
+  **UNDECIDED** (T48au). All four are wired now, path-scoped.
+
+⚠️ **The recurring shape, stated once so the next session recognises it:** *a mechanism that
+  exists, is tested, and reaches nothing.* It appeared in the product (a computed window
+  discarded), in the gates (a ratchet defined and never printed), in a Makefile ("All local CI
+  gates PASS" over 15 lints and 117 gates), and repeatedly in work written that same day to
+  catch it. **A bite that fails to bite is a finding**, and three of this session's rows exist
+  only because one did.
+**And two rows that are a re-run, not a task.** `T48`'s first criterion is *"every task fully
+implemented"*, and `plan-final-verification` refuses a QC row that certifies open work — so T48
+unblocks the moment T33 is scored. `T49` is ⛔ and depends on it: its remaining half is
+`/aif-archive`; the handoff half is this section, rewritten 2026-08-30.
+
+**Read the census from the commands, never from here** — `python scripts/plan-final-verification.py`
+and `sed -n 46p` on the plan. On 2026-08-30 those read **66 of 69 rows done, 3 open**
+(`T33`, `T48`, `T49`), with `T17`, `T25` and `QC-5` closed this week. This paragraph will age;
+those two commands will not.
+
+⛔ **The superseded 2026-08-21 list, kept because the retraction is the point:**
+
+**Four things need a person, and none of them is more effort:**
+
+1. ~~**`T25` ③ — a write grant.**~~ ~~**LANDED 2026-08-22 (T25o).**~~ ⚠️ **CORRECTED 2026-08-30
+   (T25z): the passage DDL deletion's premise was FALSE, and the DDL is RESTORED.** T25o deleted
+   it as *"no reader left"*; the index's own counter read **4090 reads, lastRead 08-23**, and dev
+   declares no `KNOWLEDGE_VECTOR_READ_PRIMARY`, so it serves passages from Neo4j. Dev was one
+   rebuild away from a 500. The exit is now a mechanical predicate — `port-adoption-gate`'s
+   `passage read-primary declarations` — and `T25` closed on that coupling (§19). The dev cutover
+   moves to MERGE-TO-MAIN, where the sibling `infra` stack is retired rather than worked around.
+   Original note kept: dropping the Neo4j vector indexes is a destructive write to the
+   dev graph that the 2026-08-21 GRANTS do not cover. Same shape as the recanon grant.
+   Before granting it, note the soak has **disarmed itself twice** (T25c-2, T25f) and the dev
+   `passage` scope has never landed a write — the content-hash skip-gate refuses to re-embed
+   unchanged text, so it needs new chapter content, not another backfill run.
+2. ~~**`D-QC5-ROLE-JUDGE-PRECISION` — a spend call.**~~ **CLOSED 2026-08-21, SUPERSEDED.** Two experiments and a mechanism say the
+   judge model is the limit. It costs a stronger model or it stays `[~]`.
+3. ~~**`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call**~~ **CLOSED — and the plan records
+   this id was closed TWICE, which is what made it read as open for eight days.** on the rule source, plus bounded
+   nondeterminism.
+4. **`T48` cannot be worked at all.** Its first criterion is *"every task fully implemented"*
+   and `plan-final-verification` refuses a QC row that certifies open work. It is a **re-run**
+   once the last row closes, not a task. `T49` is ⛔ and depends on it.
+
+**What the live runs proved**, each with its evidence block in the plan: identity holds across
+rename → re-kind → real re-extraction with zero forks (QC-6b); the vector soak reaches SOAKING
+on both scopes with primary/secondary parity **on `lw-iso`** (T25d, T25g) — measured
+2026-08-23, iso holds **552** `passage_vectors_1024` rows and the REAL stack holds **0**
+against 1051 embedded passages in Neo4j, which is the state §9.1 sent to the PO and the PO
+accepted. A soak claim that does not name its stack reads as a claim about the deployment;
+`soak-armed-gate --primary-rows N` now folds the durable count into the verdict, because the
+write counter is PROCESS-LOCAL and `ARMED_IDLE` alone cannot tell 'no writes yet' from 'the
+process restarted'; the canon loop closes on a chapter
+that did **not** motivate the criterion (QC-5 C17); the causal partial order writes non-zero and
+acyclic (T33c); `bitemporal-parity-gate` is at **0** asymmetries after pin-aware supersession
+landed (T46f).
+
+⚠️ **Three claims made during this run were RETRACTED, and the retractions are the useful part.**
+A "live reproduction" of T46's asymmetry was a mirror write reconverging on its SSOT (T46e); a
+request for a dev-write grant turned out to need two more published chapters instead (T33c); and
+a name-grounding fix shipped in a first version that accused the book's own authored alias, which
+the existing suite caught (T46n). Each was recorded in place rather than quietly patched — if a
+block in the plan reads as a correction of an earlier block, that is deliberate.
+
+🔔 **Three new gates, all wired:** `soak-armed-gate` (DISARMED/INDETERMINATE/ARMED_IDLE/SOAKING/
+FAILING — and FAILING outranks arming, because a failure count proves construction),
+`qc5-acceptance-gate` (clause 1a/1b, where 1b is UNSCORABLE without 1a), and
+`stale-deferral-gate` (a deferral whose heading says open while its own `Retry when` says
+closed — it found three on its first run that five hand passes had missed).
+
+**Phase 0 has landed (Commit 1).** The three lifecycle guards that the debt register recorded as
+closed and that were re-verified open. What makes this closure different from the last one is that
+each row cites a test that fails without the fix *and* a live smoke against a rebuilt binary:
+`scripts/entity-lifecycle-guards-live-smoke.sh` runs **11/11 green** with the fix and **7/11** without
+it, and the failing half is not theoretical — the pre-fix binary bought a paid machine-translation
+call on author-deleted content and put two frames on `loreweave:events:glossary` re-anchoring a
+deleted entity in a consumer's index.
+
+**Phase 1 has landed (Commit 2) — the reported defect is fixed.** `state@as_of` exists end to end:
+the glossary read (T5), its KAL exposure (T6), and composition's canon bible reading it at the
+chapter being written instead of at the end of the book (T7). `scripts/state-asof-live-smoke.sh`
+runs **9/9** on rebuilt images, driven through the gateway by composition's own client. Two things
+worth knowing before touching this area:
+
+- **A second defect fell out of T7.** `render_canon` renders `role`/`description`/`relationships`,
+  but `roster` is projection-restricted to id+name *by contract* — so those branches were dead code
+  and every canon bible ever rendered was a bare list of names. It now carries what each character
+  *was* at that chapter.
+- **The KAL hop costs ×1.5** (p50 34.8 → 51.0 ms on a 26 192-fact book). No stop condition fires.
+  [`docs/measurements/2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md)
+
+**T9/T10 landed too — and T9 shipped a different index than the plan asked for, on evidence.**
+Ledger step `0062_entity_facts_asof_index`. The plan's rationale was wrong in both halves: the sort
+does **not** grow with book length (2 175 kB at 108 k facts *and* at 1.08 M), and the key-only index
+does not remove it (the `glossary_entities` join destroys the ordering). The real cost is ~558 k
+random heap fetches, so the shipped index `INCLUDE`s `value`/`fact_kind` and the scan is index-only:
+**16.2 ms vs 50.2 ms (×3.1)** for a normal book in a large table. `state@as_of` survives a
+4 000-chapter book at 65–87 ms either way — book length grows the rows *scanned*, never the rows
+*returned*. Measurements: [`2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md) §R-4/R-5.
+
+**Phase 2 slice 1 landed (Commit 4) — T11·T12·T13.** Cypher moved back behind the repository
+layer in knowledge-service, and the moves found two real defects, both fixed with bites:
+
+- **A tenancy bypass.** `selectors/salience.py` called `session.run(...)` directly, so its Cypher
+  never carried `$user_id` — the bypass `neo4j_repos/__init__.py` calls *"the single
+  highest-severity bug class in this service."* It matched on `project_id` alone.
+- **A deleted chapter did not retract its own canon.** `handle_chapter_deleted` detach-deleted the
+  `ExtractionSource` without decrementing the `evidence_count` its `EVIDENCED_BY` edges maintain,
+  so every entity/event/fact it evidenced stayed visible to the `evidence_count >= 1` reads and
+  could never reach zero for the sweeper. The sibling `chapter.kg_excluded` handler already did it
+  right — **deleting was doing strictly less than excluding.**
+
+⚠️ **Commit 4 did NOT make the service Cypher-free.** 16 files outside `app/db/` still carry it
+(`extraction/glossary_sync.py`, `extraction/hierarchy_writer.py`, 6 jobs, 5 routers, `tools/kg_unify.py`,
+`benchmark/runner.py`). T16 builds the gate, T17 sweeps.
+
+⚠️ **Bite discipline:** several knowledge-service files are **CRLF**, and a `perl -0pi` pattern
+containing `\n` silently no-matches. A bite that never applied looks exactly like a guard with no
+teeth. Verify the mutation landed before trusting a green run.
+
+**Phase 2 slice 2 landed too — T14·T15·T16.** Two ports (`VectorStore` over Neo4j, `OntologyStore`
+over Postgres — different backends on purpose, so "the pattern works" is a claim about the pattern),
+two fakes that enforce the RULES rather than the signatures, and `scripts/graph-port-gate.py`.
+
+🐞 **The gate caught a selector T11 missed** on its first run: `summary_blend.py` runs
+`CALL db.index.vector.queryNodes`, and T11's scope came from a grep for `MATCH`/`MERGE`/`CREATE`.
+A hand-written search decided a task's scope; the gate decided it correctly.
+⚠️ Its other first finding was a **false positive** — `CREATE INDEX` is SQL too, so it reported the
+Postgres DDL runner. Both ambiguous tokens removed. A gate whose first finding is wrong is one
+people learn to skip.
+
+**Note on fakes:** `isinstance(x, SomePort)` proves almost nothing — a `runtime_checkable` Protocol
+checks method NAMES only. Conformance is asserted by comparing **signatures** (names, kinds,
+defaults), with a positive control proving the comparison can fail.
+
+**T17 is parked at 6-of-21, deliberately.** Six runtime paths moved into adapter territory
+(gate baseline **21 → 15**). The remaining 15 carry GRAPH and TRUTH queries and cannot move onto
+"the two shipped ports" — neither covers a traversal. `GraphStore` (T18) and `TruthStore` (T19)
+are the unblock.
+
+🐞 **One "just a move" was not.** `regenerate_summaries` had two near-identical queries differing
+only in the project predicate, and only one had been updated when the source-type filter was
+added. Collapsed into one — but the NAIVE collapse
+(`$project_id IS NULL OR p.project_id = $project_id`) matches every passage when the scope is
+global, so a global summary would be built from every project's passages. That is the
+cross-contamination KSA §7.6 rule 5 forbids, and it would read as a slightly-too-good summary
+rather than a bug. Pinned by a test that also asserts the naive form is absent.
+
+⚠️ A closed label set was guessed from memory and checking caught it: `RECONCILE_LABELS` is
+`("Entity", "Event", "Fact")`, not four — Relations and EntityStatus carry no `evidence_count`.
+
+**T18 landed — `GraphStore`, the third port.** The one that unblocks T17's remaining 15 files.
+
+🔨 **`relations_for(entity, as_of)` did not exist and now does.** The substrate supported it —
+relations carry the F3 `valid_from_ordinal`/`valid_to_ordinal` and the locked as-of fragment is
+right there — but no relation read applied it; they all read the HEAD. Added to all three 1-hop
+templates ADDITIVELY: omit `as_of` and the read is byte-identical. A **positionless** edge is
+excluded by an as-of read (Cypher gets that from three-valued logic; the fake says it explicitly).
+
+⚠️ Three sketch parameters were wrong and reality won: `upsert_relation` has no `project_id` (an
+edge inherits scope from its endpoints), takes singular `source_event_id`, and direction values are
+`outgoing`/`incoming`. Checking before encoding is what caught all three.
+
+⚠️ The fake set two fields the real models don't have — caught because it is built against the real
+Pydantic models, not dicts. And one bite didn't bite: "resolve mints a duplicate" survived matching
+ids and a count of one, so the test now asserts **source types accumulate**, which only holds if
+the existing entity was returned.
+
+**T19 landed — `TruthStore`, the fourth and last port of Phase 2.** Two real adapters (glossary
+book-scoped, memory project/global), a `ScopedTruthStore` router that is the ONLY thing consumers
+hold, and a fake. Phase 8 merges the two stores, so a consumer holding a concrete adapter would be
+a rewrite.
+
+🔀 **The two time axes are the design risk and they are made loud.** Book truth sits on story
+ordinals, memory truth on wall clock — T45 owns reconciling them. `as_of` is `int | datetime` and
+**the wrong one raises**: Python compares two ints or two datetimes happily, so a mixed axis does
+not crash, it returns a confidently wrong set of facts.
+
+⚠️ `GlossaryTruthAdapter.search_facts` raises rather than returning `[]` — glossary has no
+free-text fact search, and an empty list is indistinguishable from "this book has no facts".
+⚠️ It reads glossary's `/internal/…/facts` directly. It cannot use the KAL (the gateway calls
+knowledge-service — a cycle), the HTTP-surface gate already exempts this service, and the hop
+disappears in Phase 8. Stated in the adapter rather than left implicit.
+
+**T20 landed — the integration suite went 67 passing → 338.** But not the way the task assumed,
+and both corrections mattered:
+
+⚠️ **They were not all Neo4j.** Measured: 272 Neo4j skips, **282 Postgres** skips. Those 282 are
+still skipping — a separate `TEST_KNOWLEDGE_DB_URL` slice, same "env-gated tests skip and the suite
+lies" problem one backend over.
+
+⚠️ **"Repoint at the fakes" would have destroyed coverage.** All 24 Neo4j-gated files are
+REPOSITORY tests — they verify the Cypher. Pointing them at `FakeGraphStore` makes the fake grade
+itself and deletes the ground truth QC-2 compares against. They were made to RUN instead.
+
+🔒 **The Neo4j fixture had no throwaway guard** (the Postgres one has had since the
+truncate-the-dev-DB incident). Anyone setting `TEST_NEO4J_URI` to the dev graph would have had 272
+tests writing into real books. It now refuses ports 7687/7688 unless `TEST_NEO4J_ALLOW_SHARED=1`.
+
+🐞 **Three defects, all from my own T17/T18 work, none caught by 4000+ unit tests:** a dropped
+metric increment; an as-of clause in a template that never binds the parameter; and — the quiet one
+— the same clause MISSING from two templates and from one UNION branch, so
+`relations_for(direction="outgoing", as_of=40)` returned a plausible answer that ignored the
+position. Lesson: I verified the mutation APPLIED, not that it applied ONLY where intended.
+
+**QC-2 landed — and found fake drift on its first run.** `FakeGraphStore` was returning a
+well-formed entity that was NOT the one the real store produces: `aliases` never seeded or
+accumulated, `version` stuck at 1, and the confidence high-water rule unasserted. Every unit test
+touching those had been agreeing with the fake.
+
+⚠️ **T20 made QC-2 the fakes' ONLY check.** Since the repo tests deliberately were not repointed,
+nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
+`tests/integration/db/test_graph_adapter_parity.py` as load-bearing, not as a nice-to-have.
+
+⚠️ It is a PORT-LEVEL diff, not the rendered-block diff the task asked for — no consumer holds a
+port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
+recorded as owed.
+
+**EVERY RUNTIME PATH IN knowledge-service IS NOW CYPHER-FREE** (gate baseline 8 → 6). The six
+files left are ALL `db/migrations/` backfills — admin one-shots reachable through
+`internal_backfill.py`. Deliberately last, and **Phase 7 must port or retire them**: they run
+against whatever engine is bound, so an engine swap breaks them silently.
+
+⚠️ **A guard that exists to be an injection barrier is precisely the guard nothing exercises**,
+because the happy path never touches it. Untested closed-set guards turned up in T17 batch 1 and
+again in batch 5, in different modules — worth checking for on sight rather than waiting for a bite.
+
+**Phase 3 started — T21's gate is CLEAR.** StreamingDiskANN has **no dimension ceiling of its
+own**: it indexed every `SUPPORTED_PASSAGE_DIM` (including the 2560/3072 that pgvector's HNSW
+refuses) and kept going to 16 000, where pgvector's `vector` TYPE stops it. Positive control: HNSW
+failed at 2560/3072 with the exact documented message at the exact documented boundary.
+[`2026-08-10-pgvectorscale-dimension-ceiling.md`](../measurements/2026-08-10-pgvectorscale-dimension-ceiling.md)
+⚠️ Measured on PG17 (the available image); the design targets PG18 — T22 is where that becomes a build.
+
+**T22 landed — `loreweave/postgres-knowledge:18`** (PG **18.4** + pgvector **0.8.6** +
+pgvectorscale **0.9.0**), `scripts/postgres-knowledge-image-smoke.sh` 5/5.
+
+🎯 **The M4 operability risk is much smaller than feared: pgvectorscale ships PREBUILT pg18
+packages** (amd64 + arm64), so there is no Rust toolchain in the build and no compiler in the
+shipped layer — **631 MB vs a 629 MB base, +2 MB.** A self-hoster's `docker compose up` does not
+become a compile. The CVE obligation is real and unchanged, and is stated at the top of the
+Dockerfile.
+
+✅ **T21's PG17 caveat is discharged** — all five supported dims index on PG18, on the shipped image.
+
+🐞 The build-time verification caught a real failure on its first run: the release ZIP holds
+**`.deb` packages**, not loose `.so`/`.control` files, so the install matched nothing — and the
+`test -f` guards turned that into a failed build instead of an image that breaks at
+`CREATE EXTENSION` in production.
+
+⚠️ `infra/docker-compose.knowledge-pg.yml` is a **layer, not part of the default stack**. It joins
+at T25 with the Neo4j vector indexes dropped in the same change.
+
+**▶ Resume at T23** — the `PgVectorStore` adapter: per-dim partitioned tables over the closed
+`SUPPORTED_PASSAGE_DIMS`, with the tenant filter **in the planner** (the thing Neo4j cannot do, and
+why `oversample_factor` was kept off the port in T14).
+
+🔒 **Enrichment's safety properties were unasserted.** Its write-back can corrupt canon in five
+distinct ways and only a live graph ever exercised them; six guards now read the Cypher directly.
+Note WHY they had to be hand-written: none of those statements go through `run_write` — the anchor
+MERGE keys on `id`, so `$user_id` is a MERGE PROPERTY rather than a filter and
+`assert_user_id_param` would pass for the wrong reason. Where the standard check is structurally
+unable to help, the assertion gets written by hand or does not exist.
+
+⚠️ **A seam can change SHAPE, not just address.** `run_read` + `_records` collapsed into one repo
+call that returns rows, so tests patching `run_read` would have kept passing while their central
+assertion (the `limit+1` over-fetch) stopped being evaluated. Repointing a mock is not mechanical —
+check whether the thing being mocked still exists in the same form, then re-bite.
+
+⚠️ **The bite harness has a first-match bug.** `str.replace(old, new, 1)` takes the FIRST
+occurrence, and a Cypher line can appear in more than one template in a file — so a bite can report
+"mutation applied" while mutating something else. Target by line offset inside the named template
+when the pattern is not unique, and treat a silent bite as a FINDING.
+
+⚠️ **The bite harness has the bug it exists to catch.** `str.replace(old, new, 1)` takes the FIRST
+occurrence, and a Cypher line can appear in more than one template in the same file — so a bite can
+report "mutation applied" while mutating something else entirely, and the resulting green reads as
+"the guard is redundant". Target by line offset inside the named template when a pattern is not
+unique. Treat a silent bite as a FINDING, never as reassurance — that has now paid out four times.
+
+Live parity: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
+then `TEST_NEO4J_URI=bolt://localhost:7999 pytest tests/integration/db`.
+
+⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
+`api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports
+~30 false reds (measured at HEAD too). CI runs the `api` form.
+
+**Carried forward, deliberately:**
+- `apply-edit` has no liveness guard — it commits an edit to a trashed entity, then 500s on its own
+  post-commit read-back. Pre-existing (measured with Phase 0 stashed), routed to **T27**.
+- Two PO decisions taken mid-flight are recorded in the plan as **X1** (Phase 7 builds *both* graph
+  adapters; T6's tripwires reading zero is *not* grounds to pre-narrow) and **X2** (the four gate
+  measurements stay at their scheduled slices).
 
 ## 📦 2026-08-08 — PR #184 merged: contributed features in, contributed process out
 

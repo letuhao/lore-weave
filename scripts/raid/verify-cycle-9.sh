@@ -28,7 +28,7 @@ have() { grep -Fq "$2" "$1" || fail "$3"; }
 echo "[verify-cycle-9] running CI gate"
 
 ROUTER="$KS/app/routers/public/entities.py"
-REPO="$KS/app/db/neo4j_repos/entities.py"
+REPO="$KS/app/db/graph_repos/entities.py"
 BETEST="$KS/tests/unit/test_promote_entity_c9.py"
 APIFE="$FE/src/features/knowledge/api.ts"
 PANEL="$FE/src/features/knowledge/components/EntityDetailPanel.tsx"

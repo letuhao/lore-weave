@@ -903,14 +903,46 @@ func (s *Server) listTrashedBooks(w http.ResponseWriter, r *http.Request) {
 	s.listBooksByLifecycle(w, r, "trashed", false)
 }
 
-func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, lifecycle string, includeShared bool) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
+// appendTitleSearchFilter builds the library search's SQL fragment and its args.
+//
+// Extracted rather than inlined so the placeholder arithmetic is testable: the
+// fragment's `$N` must equal the position the pattern actually lands at, and the
+// SAME fragment has to be handed to both the page query and the COUNT. Getting
+// the second half wrong is not a crash — it is a `total` that describes the
+// whole library while `items` describes the search, which is the exact shape the
+// library page shipped (83 shown, 20 searched, a book at rank 32 unfindable).
+func appendTitleSearchFilter(q string, args []any) (string, []any) {
+	if q == "" {
+		return "", args
 	}
-	limit, offset := parseLimitOffset(r)
-	ctx := r.Context()
+	args = append(args, escapeLikePattern(q))
+	return fmt.Sprintf(" AND b.title ILIKE $%d", len(args)), args
+}
+
+// buildBookListQueries — the page query AND the count query for one library request.
+//
+// 🔴 **BOTH ARE BUILT HERE BECAUSE A TEST OF THE HELPER ALONE CANNOT SEE THEM DRIFT** (L5).
+// `TestAppendTitleSearchFilter` has a subtest called *"count args are a prefix of the page
+// args"* — and it demonstrates that by calling `appendTitleSearchFilter` twice and comparing
+// the results to each other. It never touches the handler. Measured on the worlds
+// equivalent, which had the identical shape: deleting the predicate from the COUNT left
+// every such subtest GREEN, because the pure function they drive is untouched.
+//
+// The failure that hides behind that green is not a crash. `total` describes the whole
+// library while `items` describe the search, so the UI reports "12 of 340" for a query that
+// matched 12 and the user goes hunting for 328 books that were never missing — the same
+// wrong-population defect the `q` parameter was added to fix, wearing the count's clothes.
+//
+// So the wiring is the unit. One function, one `searchFilter`, one `accessFilter`, and the
+// count args are a prefix of the page args by CONSTRUCTION rather than by a test that
+// compares a helper with itself.
+func buildBookListQueries(
+	ownerID any, lifecycle, rawQ string, includeShared bool, limit, offset int,
+) (pageSQL string, pageArgs []any, countSQL string, countArgs []any) {
+	searchFilter, args := appendTitleSearchFilter(rawQ, []any{ownerID, lifecycle})
+	countArgs = append([]any{}, args...)
+	pageArgs = append(args, limit, offset)
+
 	// accessFilter selects owned rows, plus collaborated rows when includeShared.
 	// access_level is computed per row so the FE can distinguish owned vs shared.
 	// is_bible=false excludes the auto-created hidden world-bible container books
@@ -929,11 +961,17 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	// NOTE for the shared branch: a diary can never be shared (see the collaborator and
 	// sharing guards), so the kind filter also makes the includeShared branch honest —
 	// a diary must not appear via someone else's grant either, however that grant arose.
+	//
+	// It is built ONCE here and used by both queries for the same reason the search filter
+	// is: an egress guard that reaches the page and not the count would leak through
+	// `total`, which is a smaller leak than a row but is still a number about books the
+	// caller may not see.
 	accessFilter := "b.owner_user_id=$1 AND b.is_bible=false AND b.kind<>'diary'"
 	if includeShared {
 		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1)) AND b.is_bible=false AND b.kind<>'diary'"
 	}
-	rows, err := s.pool.Query(ctx, `
+
+	pageSQL = `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
   EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover,
@@ -941,10 +979,43 @@ SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,
   CASE WHEN b.owner_user_id=$1 THEN 'owner'
        ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1),'none') END AS access_level
 FROM books b
-WHERE `+accessFilter+` AND b.lifecycle_state=$2
+WHERE ` + accessFilter + ` AND b.lifecycle_state=$2` + searchFilter + `
 ORDER BY b.created_at DESC
-LIMIT $3 OFFSET $4
-`, ownerID, lifecycle, limit, offset)
+LIMIT $` + strconv.Itoa(len(pageArgs)-1) + ` OFFSET $` + strconv.Itoa(len(pageArgs)) + `
+`
+	countSQL = `SELECT COUNT(*) FROM books b WHERE ` + accessFilter +
+		` AND b.lifecycle_state=$2` + searchFilter
+	return pageSQL, pageArgs, countSQL, countArgs
+}
+
+func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, lifecycle string, includeShared bool) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	limit, offset := parseLimitOffset(r)
+	ctx := r.Context()
+	// q — case-insensitive substring over the title (the library's own search box).
+	//
+	// SERVER-side, and applied to BOTH the list and the count. It was neither: the page
+	// called listBooks with no limit, took the default 20, and then filtered those 20 in
+	// the browser while displaying `total` from this endpoint. A user with 83 books was
+	// shown "83" and searched twenty of them, so a book past the first page could not be
+	// found by name at all — measured 2026-08-30, `Mị Đế` at rank 32 of 83. It read as a // doc-language-gate: ok -- the corpus span the bug was reported against
+	// Vietnamese/diacritic defect for six days; the encoding was never involved.
+	//
+	// Filtering the COUNT too is the half that keeps this honest, and it is the same rule
+	// the chapter listing already states: `total` must describe the rows actually returned,
+	// or the UI is back to reporting a population it did not search.
+	rawQ := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len([]rune(rawQ)) > maxSearchQueryRunes {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "query too long")
+		return
+	}
+	pageSQL, args, countSQL, countArgs := buildBookListQueries(
+		ownerID, lifecycle, rawQ, includeShared, limit, offset)
+	rows, err := s.pool.Query(ctx, pageSQL, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list books")
 		return
@@ -985,7 +1056,7 @@ LIMIT $3 OFFSET $4
 		}
 	}
 	var total int
-	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books b WHERE `+accessFilter+` AND b.lifecycle_state=$2`, ownerID, lifecycle).Scan(&total)
+	_ = s.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 

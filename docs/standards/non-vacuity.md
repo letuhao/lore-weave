@@ -33,9 +33,9 @@ The asymmetry that makes this urgent, and the reason it outranks "add more tests
 
 ---
 
-## 2. NV-2..NV-5 — the four shapes, each with a real occurrence
+## 2. NV-2..NV-7 — the shapes, each with a real occurrence
 
-Every instance in §4 is one of these four. They are listed in order of how hard they are to see.
+Every instance in §4 is one of NV-2..NV-5. They are listed in order of how hard they are to see.
 
 ### NV-2 — the subject cannot vary
 
@@ -94,6 +94,34 @@ pragma silently does nothing and the finding is reported **with and without it**
 
 **Tell:** the window is measured in lines. A reason worth exempting for is longer than one line, and a
 narrow window pushes authors toward a terse pragma or toward `--no-verify`.
+
+### NV-7 — the check fires on EVERYTHING, so firing means nothing
+
+The mirror of NV-2..NV-5. Those four are a check that cannot fire; this is a check that fires
+regardless of the thing it claims to detect. It is harder to see because it looks like success:
+the detector flags the planted case, the criterion is met, and the number is real.
+
+The cure is a **CONTROL ARM** — the same measurement run with nothing planted. A pass the
+control also earns is not a pass.
+
+> **Occurrence.** QC-5's clause 1a scored a critic on five runs with a planted canon violation:
+> **5/5 flagged.** The matched control — the same draft, differing only in the antagonist's name
+> being canon-correct — also scored **5/5**. The criterion was measuring the draft, not the
+> plant. That is a vacuous acceptance criterion sitting inside the gate written to enforce rule
+> 3, and it was found only because someone ran the control. `qc5-acceptance-gate` now scores 1a
+> as **UNSCORABLE** without a control, and UNSCORABLE rather than PASS when the control flags as
+> often as the plant.
+
+**Tell:** you can state what a positive result looks like but not what a negative one looks
+like — or the "negative" case was never run.
+
+**Where this is mechanical, and where it is not.** `qc5-acceptance-gate` enforces it for the one
+criterion whose runs are machine-readable. It does not generalise to the 37 gates carrying a
+`--selftest`: measured 2026-08-22, their selftests share no output format — 26 of 37 print
+neither `expected PASS` nor `expected FAIL` in any parseable form while plainly asserting both
+arms in prose. Detecting the control arm mechanically would mean standardising selftest output
+across all of them, which trades a real check for a lint. Carried by review, and stated here
+rather than claimed.
 
 ---
 
@@ -258,6 +286,17 @@ them."
 **Discipline, not yet mechanical** — and that is stated rather than hidden, per this document's own
 rule. No script detects a vacuous check today; NV-6's obligation is carried by review, by the
 `--self-test` convention every gate in `scripts/` now follows, and by `/review-impl`.
+
+Three narrow slices ARE mechanical as of 2026-08-22, each covering one shape rather than the
+rule:
+
+| gate | the slice it covers |
+|---|---|
+| `gate-teeth-gate` | a gate wired into CI must contain a reachable non-zero exit, and should carry a proof it goes red (ratchet) |
+| `adapter-selectability-gate` | an adapter a conformance suite exercises must be reachable from a provider — the suite constructs it itself, so no suite can see this (NV-3) |
+| `gate-number-visibility-gate` | a ratchet's threshold must reach the output on a GREEN run, or drift is invisible until it breaks |
+
+`qc5-acceptance-gate` covers NV-7 for the one criterion whose runs are machine-readable.
 
 The honest gap: a gate that never fires looks identical to a gate with nothing to find. The cheapest
 mechanical step would be requiring every `scripts/*-gate.py` to expose `--self-test` and running them

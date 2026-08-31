@@ -26,7 +26,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 
 logger = logging.getLogger(__name__)
@@ -134,7 +134,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     tested because it touches real I/O — coverage is on run_backfill.
     """
     from app.config import settings  # noqa: F401  (init validation)
-    from app.db.neo4j import get_neo4j_driver, neo4j_session
+    from app.db.neo4j import get_neo4j_driver, graph_session
     from app.db.pool import get_knowledge_pool, init_knowledge_pool
 
     logging.basicConfig(level=logging.INFO)
@@ -143,7 +143,7 @@ async def _cli_main() -> None:  # pragma: no cover (integration-only)
     get_neo4j_driver()
     pool = get_knowledge_pool()
     repo = EntityAliasMapRepo(pool)
-    async with neo4j_session() as session:
+    async with graph_session(engine="neo4j") as session:
         result = await run_backfill(repo, session)
     logger.info(
         "C17 backfill complete: total=%d inserted=%d skipped_canonical=%d "

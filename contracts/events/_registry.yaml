@@ -220,3 +220,78 @@ events:
     description: APPEND-ONLY per-attribute change history entry. Author-UI change timeline source-of-truth; emitted after canon.entry.* + admin.canon.override.compensating events. NEVER edited or deleted.
     shipped_cycle: 27
     owner: meta-worker
+
+  # ────────────────────────────────────────────────────────────────────
+  # glossary.* — T30 registry adoption (OD-1, PO 2026-08-12).
+  #
+  # `D-GLOSSARY-EVENTS-NO-SOT`: these seven names were a Go `const` block inside
+  # glossary-service, hand-mirrored by five consumers across four services. The
+  # producer and every consumer now import them (Go from contracts/events, Python
+  # from the generated bindings) instead of re-declaring their own literal.
+  #
+  # There is deliberately NO `glossary.entity_created`: creation is announced as
+  # `glossary.entity_updated` with payload `op: "created"`. Three negative tests
+  # still name one, which is legitimate — but the name is not on the wire.
+  # ────────────────────────────────────────────────────────────────────
+  - name: glossary.entity_updated
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityUpdatedV1
+    description: A glossary entity was created or updated; payload `op` ("created"/"updated") distinguishes them. Self-sufficient so knowledge-service's glossary_sync never round-trips back.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.entity_merged
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityMergedV1
+    description: Two glossary entities were merged, or a merge was undone; payload `op` ("merged"/"unmerged") distinguishes them. Empty actor_id means a system/auto merge, not a user one.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.name_confirmed
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryNameConfirmedV1
+    description: A human confirmed the target-language rendering of an entity name. Always actor_type "user" — these are JWT endpoints, so it is a human action by construction.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.entity_deleted
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityDeletedV1
+    description: A glossary entity was soft-deleted (moved to trash). Reversible via glossary.entity_restored; downstream stores should hide the entity, not erase it.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.entity_restored
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityRestoredV1
+    description: A soft-deleted glossary entity was restored from the trash.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.entity_purged
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityPurgedV1
+    description: A glossary entity was permanently removed after its retention window. Irreversible - a consumer that merely hides on this event keeps data the author asked to be destroyed.
+    shipped_cycle: 30
+    owner: glossary-service
+
+  - name: glossary.entity_status_changed
+    aggregate: glossary
+    versions: [1]
+    active_version: 1
+    go_struct: GlossaryEntityStatusChangedV1
+    description: A glossary entity's curation status moved. Carries both the new and the prior status so a consumer can act on the transition rather than re-deriving it.
+    shipped_cycle: 30
+    owner: glossary-service

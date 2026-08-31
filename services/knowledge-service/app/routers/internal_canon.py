@@ -19,8 +19,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.fact_for_check import FactForCheck, get_fact_for_check
+from app.db.neo4j import graph_session
+from app.db.graph_repos.fact_for_check import FactForCheck, get_fact_for_check
 from app.db.pool import get_knowledge_pool
 from app.middleware.internal_auth import require_internal_token
 
@@ -67,7 +67,7 @@ async def fact_for_check(project_id: UUID, body: FactForCheckRequest) -> FactFor
         # Track 1 (no graph) — empty snapshot, the guard degrades to advisory.
         return FactForCheck(at_order=body.at_order)
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         result = await get_fact_for_check(
             session,
             user_id=str(user_id),

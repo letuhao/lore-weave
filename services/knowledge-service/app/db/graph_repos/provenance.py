@@ -1,0 +1,805 @@
+"""K11.8 — provenance repository (`ExtractionSource` + `EVIDENCED_BY`).
+
+The bookkeeping layer that makes partial extraction operations
+safe and composable. KSA §3.4.C invariant:
+
+  > An entity/fact is deleted if and only if its EVIDENCED_BY
+  > edge count reaches zero.
+
+That invariant gives every extraction operation (append,
+partial overwrite, partial delete, stop, disable) the same
+shape: mutate edges, then sweep zero-evidence orphans. K11.5a /
+K11.7 ship the per-label sweepers; K11.8 ships the edge writer
++ the cascade cleanup orchestration.
+
+Atomicity contract per the K11.7/K11.8 plan:
+  - `add_evidence` increments `target.evidence_count` and
+    `target.mention_count` ONLY when the EVIDENCED_BY edge is
+    actually created (ON CREATE branch). Re-running the same
+    extraction with the same `(target, source, job_id)` is a
+    no-op — the edge exists, no increment, no double-count.
+  - `remove_evidence_for_source` decrements the counter for
+    each removed edge in the same statement. The counter never
+    drifts as long as no caller bypasses these helpers.
+
+The K11.9 reconciler (out of K11.8 scope) is the safety net
+that runs offline and catches any drift between the counter
+and the actual edge count.
+
+Reference: KSA §3.4.C provenance edges, §3.8.5 partial
+extraction cascade, K11.3 schema constraints
+extraction_source_id_unique + indexes extraction_source_user_*.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.graph_repos.entities import delete_entities_with_zero_evidence
+from app.db.graph_repos.entity_status import (
+    delete_entity_status_with_zero_evidence,
+)
+from app.db.graph_repos.events import delete_events_with_zero_evidence
+from app.db.graph_repos.facts import delete_facts_with_zero_evidence
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "ExtractionSource",
+    "SourceType",
+    "TargetLabel",
+    "SOURCE_TYPES",
+    "TARGET_LABELS",
+    "extraction_source_id",
+    "upsert_extraction_source",
+    "get_extraction_source",
+    "add_evidence",
+    "EvidenceCitation",
+    "list_evidence_for_target",
+    "remove_evidence_for_source",
+    "remove_evidence_for_natural_key",
+    "delete_source_cascade",
+    "cleanup_zero_evidence_nodes",
+]
+
+
+# Closed enum per KSA §3.4.C. New source types require both an
+# extraction-side handler and a code change here.
+SourceType = Literal["chapter", "chat_message", "glossary_entity", "manual"]
+SOURCE_TYPES: tuple[str, ...] = (
+    "chapter",
+    "chat_message",
+    "glossary_entity",
+    "manual",
+)
+
+# Targets of EVIDENCED_BY edges. K11.5a/K11.6/K11.7 ship the
+# three writeable node types. Relations carry their own evidence
+# via source_event_ids on the edge — they do NOT receive
+# EVIDENCED_BY edges directly.
+#
+# A2-S1b — `EntityStatus` is the fourth evidence-backed label. It uses the
+# same EVIDENCED_BY machinery so retract-before-reextract (CM3b) decrements
+# its evidence on re-publish and zero-evidence cleanup sweeps moved/removed
+# status transitions, preserving the canon=published invariant.
+TargetLabel = Literal["Entity", "Event", "Fact", "EntityStatus"]
+TARGET_LABELS: tuple[str, ...] = ("Entity", "Event", "Fact", "EntityStatus")
+
+
+def extraction_source_id(
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+) -> str:
+    """Deterministic id for an `:ExtractionSource` node.
+
+    Same `(user_id, project_id, source_type, source_id)` tuple
+    produces the same id, forever. `upsert_extraction_source`
+    keys MERGE on this so re-running an extraction job on the
+    same chapter is a no-op against the source node.
+
+    `source_id` here is the EXTRACTOR-side identifier (a chapter
+    UUID, a message id, a glossary entry id) — distinct from the
+    32-hex hash this function returns.
+    """
+    if not user_id:
+        raise ValueError("user_id is required for extraction_source_id")
+    if not source_type:
+        raise ValueError("source_type is required for extraction_source_id")
+    if source_type not in SOURCE_TYPES:
+        raise ValueError(
+            f"source_type must be one of {SOURCE_TYPES}, got {source_type!r}"
+        )
+    if not source_id:
+        raise ValueError("source_id is required for extraction_source_id")
+    key = (
+        f"v1:{user_id}:{project_id or 'global'}:{source_type}:{source_id}"
+    )
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+class ExtractionSource(BaseModel):
+    """Pydantic projection of an `:ExtractionSource` node."""
+
+    id: str
+    user_id: str
+    project_id: str | None = None
+    source_type: str
+    source_id: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+def _node_to_source(node: Any) -> ExtractionSource:
+    if hasattr(node, "items"):
+        data = dict(node.items())
+    else:
+        data = dict(node)
+    for key, val in list(data.items()):
+        if val is not None and hasattr(val, "to_native"):
+            data[key] = val.to_native()
+    return ExtractionSource.model_validate(data)
+
+
+# ── upsert_extraction_source ──────────────────────────────────────────
+
+
+_UPSERT_SOURCE_CYPHER = """
+// §10.1/§10.2 — engine-neutral. AGE has no ON CREATE / ON MATCH, so each assignment is
+// ONE expression that degenerates correctly on create: `coalesce` for create-only fields,
+// unconditional for the ones both branches set. `updated_at` was in BOTH branches, so it is
+// simply unconditional and nothing about it changed.
+//
+// ⚠️ `user_id` moved into the MERGE KEY and the trailing `WITH s WHERE s.user_id` is gone.
+// Two reasons, and the second is a latent bug this fixes:
+//   1. On AGE a `WITH … WHERE` after `SET` SILENTLY DISCARDS the write (measured, T58).
+//   2. On NEO4J the old form MATCHED a colliding node, mutated its `updated_at`, and then
+//      filtered it out of the result — so a cross-tenant id collision would have written to
+//      another tenant's node and reported nothing. `extraction_source_id` hashes `user_id`,
+//      so the pair cannot disagree and no collision is reachable today; keying on it makes
+//      that structural instead of incidental.
+MERGE (s:ExtractionSource {id: $id, user_id: $user_id})
+SET s.project_id  = coalesce(s.project_id, $project_id),
+    s.source_type = coalesce(s.source_type, $source_type),
+    s.source_id   = coalesce(s.source_id, $source_id),
+    s.created_at  = coalesce(s.created_at, {NOW}),
+    s.updated_at  = {NOW}
+RETURN s
+"""
+
+
+async def upsert_extraction_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+) -> ExtractionSource:
+    """Idempotent upsert for an extraction source.
+
+    Returns the source so the caller can use its `id` field on
+    subsequent `add_evidence` calls. Re-running with the same
+    (user, project, source_type, source_id) tuple returns the
+    same node — no duplicates.
+    """
+    sid = extraction_source_id(
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    result = await run_write(
+        session,
+        _UPSERT_SOURCE_CYPHER,
+        user_id=user_id,
+        id=sid,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    record = await result.single()
+    if record is None:
+        raise RuntimeError(
+            f"upsert_extraction_source returned no row for id={sid!r}"
+        )
+    return _node_to_source(record["s"])
+
+
+# ── get_extraction_source ─────────────────────────────────────────────
+
+
+_GET_SOURCE_BY_NATURAL_KEY_CYPHER = """
+MATCH (s:ExtractionSource)
+WHERE s.user_id = $user_id
+  AND s.source_type = $source_type
+  AND s.source_id = $source_id
+  AND ($project_id IS NULL OR s.project_id = $project_id)
+RETURN s
+"""
+
+
+async def get_extraction_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    project_id: str | None = None,
+) -> ExtractionSource | None:
+    """Look up an extraction source by its natural key.
+
+    K11.8-R1/R1: optional `project_id` filter. The
+    `extraction_source_id` hash includes project_id, so two
+    `:ExtractionSource` nodes with the same
+    `(user, source_type, source_id)` but different project_ids
+    have **different ids** and both can exist. Without the
+    project filter, `result.single()` would raise
+    `ResultNotSingleError` when a user has imported the same
+    chapter id into two projects. Pass `project_id` whenever
+    you know which project owns the source.
+
+    Uses the `extraction_source_user_source` K11.3 index. With
+    `project_id` set, the planner can additionally narrow via
+    `extraction_source_user_project` — both indexes start with
+    `user_id`, so the planner picks whichever is more selective.
+    """
+    if not source_type or not source_id:
+        raise ValueError("source_type and source_id are required")
+    result = await run_read(
+        session,
+        _GET_SOURCE_BY_NATURAL_KEY_CYPHER,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_source(record["s"])
+
+
+# ── add_evidence ──────────────────────────────────────────────────────
+
+
+# Three templates, one per target label, so the planner uses
+# the per-label uniqueness constraint (entity_id_unique /
+# event_id_unique / fact_id_unique) on the target lookup.
+# Cypher labels can't be parameterised in a way that uses an
+# index, so the dispatch lives in Python.
+#
+# The MERGE on the edge structurally matches `(target)-
+# [e:EVIDENCED_BY {job_id: $job_id}]->(src)`. ON CREATE sets the
+# edge metadata AND increments target.evidence_count +
+# target.mention_count atomically. ON MATCH only refreshes the
+# extracted_at timestamp — the counts stay accurate because the
+# edge already exists.
+#
+# coalesce(target.mention_count, 0) handles legacy nodes that
+# pre-date the K11.5b mention_count field.
+#
+# `_just_created` marker property: ON CREATE sets it true, ON
+# MATCH sets it false. We read it into the result via
+# coalesce(.., false), then REMOVE it so the property never
+# persists. This is the cleanest way to surface "was this a
+# no-op?" to the caller without a separate pre-read.
+def _build_add_evidence_cypher(label: str) -> str:
+    # K11.8-R1/R3: this f-string is the ONE deliberate violation
+    # of the "no f-strings in Cypher" rule (K11.4 §3.6). Safety
+    # argument:
+    #   1. `label` comes from TARGET_LABELS, a closed Literal
+    #      enum hardcoded at module load time — never from
+    #      caller input.
+    #   2. The function is called exactly three times at module
+    #      load (`{label: _build... for label in TARGET_LABELS}`).
+    #   3. `add_evidence` validates the caller's `target_label`
+    #      against TARGET_LABELS BEFORE picking the prebuilt
+    #      template, so user input never reaches this f-string.
+    # Cypher labels can't be parameterised in a way that uses
+    # the per-label uniqueness constraint, so the dispatch must
+    # live in Python. Reviewers: if you add a fourth label,
+    # extend TARGET_LABELS — do NOT pass user input through.
+    return f"""
+MATCH (target:{label} {{id: $target_id}})
+WHERE target.user_id = $user_id
+MATCH (src:ExtractionSource {{id: $source_id}})
+WHERE src.user_id = $user_id
+MERGE (target)-[e:EVIDENCED_BY {{job_id: $job_id}}]->(src)
+SET
+  // Always: the extraction stamp, and the model/confidence of whoever wrote it. These were
+  // ON CREATE ONLY for `extraction_model`/`confidence`, so they take `coalesce` — a
+  // re-extraction must not relabel which model produced the original citation.
+  e.extracted_at = {{NOW}},
+  e.extraction_model = coalesce(e.extraction_model, $extraction_model),
+  e.confidence = coalesce(e.confidence, $confidence),
+  // F3 — the EXACT supporting quote (verbatim span from the source chapter), so a KG
+  // fact/edge is evidence-grounded like the glossary `evidences` table. `coalesce($quote,
+  // e.quote)` covers BOTH old arms: on create the stored side is null so the parameter
+  // wins, and on match a quoteless re-run never wipes an existing quote.
+  e.quote = coalesce($quote, e.quote),
+  // 🔴 THE COUNTERS ARE THE WHOLE DIFFICULTY. They were ON CREATE ONLY, and the old query
+  // learned "was this new?" from a `_just_created` marker it set on one branch, read, and
+  // REMOVEd. Merging the branches naively makes the increment unconditional and inflates
+  // `evidence_count` on EVERY re-extraction — silently, and the zero-evidence sweeper reads
+  // this number to decide what to delete.
+  //
+  // `$created` is computed by a pre-MATCH count in the SAME TRANSACTION, which is exactly
+  // the `__was_created` form the 2026-08-11 construct probe established for AGE (a
+  // single-statement CTE there has no guaranteed evaluation order). One parameter replaces
+  // the marker, and nothing has to be written then removed.
+  target.evidence_count = coalesce(target.evidence_count, 0)
+                          + CASE WHEN $created THEN 1 ELSE 0 END,
+  target.mention_count  = coalesce(target.mention_count, 0)
+                          + CASE WHEN $created THEN 1 ELSE 0 END,
+  target.updated_at = {{NOW}}
+RETURN target.evidence_count AS evidence_count,
+       target.mention_count AS mention_count,
+       $created AS created
+"""
+
+
+_ADD_EVIDENCE_CYPHER: dict[str, str] = {
+    label: _build_add_evidence_cypher(label) for label in TARGET_LABELS
+}
+
+
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import EvidenceWriteResult  # noqa: F401
+
+
+def _evidence_exists_cypher(label: str) -> str:
+    """Does this exact `(target, source, job_id)` citation already exist?
+
+    Read in the SAME TRANSACTION as the write below. `label` comes from the same closed
+    `TARGET_LABELS` set the write uses — never from user input.
+    """
+    return f"""
+MATCH (target:{label} {{id: $target_id}})-[e:EVIDENCED_BY {{job_id: $job_id}}]->(
+      src:ExtractionSource {{id: $source_id}})
+WHERE target.user_id = $user_id AND src.user_id = $user_id
+RETURN count(e) AS n
+"""
+
+
+async def add_evidence(
+    session: CypherSession,
+    *,
+    user_id: str,
+    target_label: str,
+    target_id: str,
+    source_id: str,
+    extraction_model: str,
+    confidence: float,
+    job_id: str,
+    quote: str | None = None,
+) -> EvidenceWriteResult | None:
+    """Attach an EVIDENCED_BY edge from `target` to the
+    extraction source. Idempotent on `(target, source, job_id)`
+    — re-running the same extraction job is a no-op against the
+    counters.
+
+    F3 — `quote` is the EXACT supporting span (verbatim from the source
+    chapter) stored on the citation edge so a KG fact/edge is evidence-grounded
+    like the glossary `evidences.original_text`. `None` (default) keeps today's
+    behaviour (no quote); a quote-bearing re-extraction backfills a previously
+    quoteless edge (coalesce, never wipes an existing quote).
+
+    The atomic counter increment is the K11.8 critical primitive.
+    Bypassing this function (e.g., writing the edge directly via
+    raw Cypher) would let the counter drift; the K11.9 reconciler
+    is the offline safety net that catches drift, but the cheaper
+    path is to never produce drift in the first place.
+
+    Returns `None` if either the target or the source does not
+    exist under the calling user. Caller should treat that as
+    "no evidence to record" and either create the missing endpoint
+    or log + skip.
+    """
+    if target_label not in _ADD_EVIDENCE_CYPHER:
+        raise ValueError(
+            f"target_label must be one of {TARGET_LABELS}, got {target_label!r}"
+        )
+    if not target_id:
+        raise ValueError("target_id must be a non-empty string")
+    if not source_id:
+        raise ValueError("source_id must be a non-empty string")
+    if not extraction_model:
+        raise ValueError("extraction_model must be a non-empty string")
+    if not job_id:
+        raise ValueError("job_id must be a non-empty string")
+    if confidence < 0.0 or confidence > 1.0:
+        raise ValueError(f"confidence must be in [0,1], got {confidence}")
+
+    # §10.2/§10.3 — the pre-MATCH count that replaces the `_just_created` marker. Same
+    # transaction as the write, per the 2026-08-11 probe: a one-statement CTE has no
+    # guaranteed evaluation order on AGE and returned `was_created=false` for an absent node.
+    probe = await run_read(
+        session, _evidence_exists_cypher(target_label),
+        user_id=user_id, target_id=target_id, source_id=source_id, job_id=job_id,
+    )
+    probe_row = await probe.single()
+    created = (probe_row is None) or int(probe_row["n"]) == 0
+
+    cypher = _ADD_EVIDENCE_CYPHER[target_label]
+    result = await run_write(
+        session,
+        cypher,
+        created=created,
+        user_id=user_id,
+        target_id=target_id,
+        source_id=source_id,
+        extraction_model=extraction_model,
+        confidence=confidence,
+        job_id=job_id,
+        # F3 — empty string normalizes to None so a blank quote isn't stored as ""
+        # (keeps coalesce backfill semantics clean).
+        quote=(quote or None),
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return EvidenceWriteResult(
+        evidence_count=int(record["evidence_count"]),
+        mention_count=int(record["mention_count"]),
+        created=bool(record["created"]),
+    )
+
+
+# ── list_evidence_for_target (F3 — exact-quote citations read) ─────────
+
+
+class EvidenceCitation(BaseModel):
+    """One EVIDENCED_BY citation for a target node — the source it was extracted
+    from plus the F3 exact quote (verbatim supporting span), so a consumer can
+    render an evidence-grounded citation (chapter + quote), like the glossary
+    `evidences` table. `quote` is None for legacy / quoteless evidence."""
+
+    source_id: str
+    source_type: str
+    raw_source_id: str
+    job_id: str | None = None
+    extraction_model: str | None = None
+    confidence: float | None = None
+    quote: str | None = None
+
+
+def _build_list_evidence_cypher(label: str) -> str:
+    # Same closed-label safety argument as `_build_add_evidence_cypher`: `label`
+    # is from TARGET_LABELS (closed Literal), validated before dispatch, never
+    # caller input. A label parameter can't use the per-label index.
+    return f"""
+MATCH (target:{label} {{id: $target_id}})-[e:EVIDENCED_BY]->(src:ExtractionSource)
+WHERE target.user_id = $user_id
+  AND src.user_id = $user_id
+RETURN src.id AS source_id,
+       src.source_type AS source_type,
+       src.source_id AS raw_source_id,
+       e.job_id AS job_id,
+       e.extraction_model AS extraction_model,
+       e.confidence AS confidence,
+       e.quote AS quote
+ORDER BY e.extracted_at DESC
+LIMIT $limit
+"""
+
+
+_LIST_EVIDENCE_CYPHER: dict[str, str] = {
+    label: _build_list_evidence_cypher(label) for label in TARGET_LABELS
+}
+
+
+async def list_evidence_for_target(
+    session: CypherSession,
+    *,
+    user_id: str,
+    target_label: str,
+    target_id: str,
+    limit: int = 50,
+) -> list[EvidenceCitation]:
+    """F3 — list the citations (source + exact quote) backing a target node.
+
+    Makes the exact-quote evidence-grounding READABLE: the moment an extractor
+    surfaces a quote it is persisted on the EVIDENCED_BY edge (`add_evidence`,
+    `quote=`) and surfaced here. Tenant-scoped on both target and source. Bounded
+    by `limit`. `quote` is None for legacy / quoteless evidence.
+    """
+    if target_label not in _LIST_EVIDENCE_CYPHER:
+        raise ValueError(
+            f"target_label must be one of {TARGET_LABELS}, got {target_label!r}"
+        )
+    if not target_id:
+        raise ValueError("target_id must be a non-empty string")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _LIST_EVIDENCE_CYPHER[target_label],
+        user_id=user_id,
+        target_id=target_id,
+        limit=limit,
+    )
+    return [
+        EvidenceCitation(
+            source_id=str(record["source_id"]),
+            source_type=str(record["source_type"]),
+            raw_source_id=str(record["raw_source_id"]),
+            job_id=record["job_id"],
+            extraction_model=record["extraction_model"],
+            confidence=record["confidence"],
+            quote=record["quote"],
+        )
+        async for record in result
+    ]
+
+
+# ── remove_evidence_for_source ────────────────────────────────────────
+
+
+# Single statement: find every EVIDENCED_BY edge into a given
+# source, decrement the target counter for each one, then DELETE
+# the edge. The decrement uses `coalesce(.., 1) - 1` so a counter
+# that's somehow already at NULL doesn't underflow.
+#
+# `count(*)` AFTER the DELETE aggregates over the processed rows
+# and returns one row with the total. Putting `e` into the WITH
+# projection BEFORE counting would group by edge and return one
+# row per edge, not the total — that was an early bug in this
+# query, fixed by deferring the aggregate to the RETURN.
+_REMOVE_EVIDENCE_FOR_SOURCE_CYPHER = """
+MATCH (target)-[e:EVIDENCED_BY]->(src:ExtractionSource {id: $source_id})
+WHERE target.user_id = $user_id
+  AND src.user_id = $user_id
+SET target.evidence_count = coalesce(target.evidence_count, 1) - 1,
+    target.updated_at = {NOW}
+DELETE e
+RETURN count(*) AS removed
+"""
+
+
+async def remove_evidence_for_source(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_id: str,
+) -> int:
+    """Remove every EVIDENCED_BY edge into the given source,
+    decrementing the target counter for each one. Returns the
+    number of edges removed.
+
+    Used by partial-extraction cascade: when re-extracting a
+    chapter, the orchestrator calls this on the chapter's
+    extraction source, then re-runs extraction (which calls
+    `add_evidence` again, re-creating the edges with updated
+    metadata).
+
+    Note that this does NOT delete the ExtractionSource node
+    itself — `delete_source_cascade` does that. Splitting the
+    two operations lets the orchestrator re-extract into the
+    same source node without re-creating it.
+
+    `mention_count` is intentionally NOT decremented. It
+    represents "times observed", a monotonic counter for
+    anchor-score recompute, not a live edge count.
+    """
+    if not source_id:
+        raise ValueError("source_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _REMOVE_EVIDENCE_FOR_SOURCE_CYPHER,
+        user_id=user_id,
+        source_id=source_id,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["removed"])
+
+
+# ── remove_evidence_for_natural_key ───────────────────────────────────
+
+
+async def remove_evidence_for_natural_key(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+) -> int:
+    """Retract evidence for a source identified by its **natural key**.
+
+    `remove_evidence_for_source` matches the `:ExtractionSource` node on its
+    **hashed** `id`, NOT the raw `source_id` (which is stored as a property).
+    Callers that hold only the natural key (a chapter UUID, etc.) — the
+    re-publish persist path and the chapter.unpublished handler — were passing
+    the raw `source_id` straight through, so the MATCH found nothing and ZERO
+    edges were removed: the CM3b retract-before-reextract was a silent no-op,
+    leaving stale canon on every re-publish and a non-retracting unpublish.
+
+    This helper computes the same hashed id `upsert_extraction_source` used at
+    write time (`extraction_source_id(user, project, source_type, source_id)`)
+    and delegates, so the retract actually targets the right source. Callers
+    MUST pass the same `(user_id, project_id, source_type, source_id)` tuple
+    the extraction wrote with (e.g. `project_id` stringified the same way).
+
+    Returns the number of EVIDENCED_BY edges removed (0 when the source has
+    never been extracted — first-time extraction).
+    """
+    src_id = extraction_source_id(
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    return await remove_evidence_for_source(
+        session, user_id=user_id, source_id=src_id,
+    )
+
+
+# ── delete_source_cascade ─────────────────────────────────────────────
+
+
+# Delete the bare ExtractionSource node by its hash id. Used
+# by `delete_source_cascade` AFTER `remove_evidence_for_source`
+# has already detached every EVIDENCED_BY edge. Splitting the
+# two operations keeps each Cypher trivially correct — packing
+# the decrement + delete + aggregate into one statement got
+# tangled up in per-row vs. per-target SET semantics that were
+# hard to prove correct.
+_DELETE_SOURCE_NODE_CYPHER = """
+MATCH (s:ExtractionSource {id: $id})
+WHERE s.user_id = $user_id
+DETACH DELETE s
+"""
+
+
+async def delete_source_cascade(
+    session: CypherSession,
+    *,
+    user_id: str,
+    source_type: str,
+    source_id: str,
+    project_id: str | None = None,
+) -> int:
+    """Decrement counters for every EVIDENCED_BY edge into the
+    source, then DETACH DELETE the source node. Returns the
+    number of edges removed (0 if the source did not exist).
+
+    After this call, the orchestrator should call
+    `cleanup_zero_evidence_nodes` to sweep any orphans whose
+    counter just hit zero.
+
+    Composed from `get_extraction_source` +
+    `remove_evidence_for_source` + a bare node delete instead
+    of one packed Cypher statement. An earlier draft tried to
+    do the cascade in one query but the per-row-SET semantics
+    for "decrement the counter for each removed edge" were
+    tangled when a target had multiple edges to the same source
+    (compound vs. non-compound depending on Cypher's
+    row-iteration model). Three round-trips per step is provably
+    correct.
+
+    **Atomicity caveat (K11.8-R1/R2).** This composition is
+    **NOT atomic across the three round-trips**. Each
+    `run_read`/`run_write` opens its own auto-commit
+    transaction. If the second call (decrement + remove edges)
+    succeeds but the third (delete source node) fails — network
+    blip, OOM — the source node remains with zero incident
+    edges. A subsequent `delete_source_cascade` call recovers
+    cleanly: `remove_evidence_for_source` no-ops on the empty
+    source, then the node delete completes. Proper exactly-once
+    semantics need explicit transaction wrapping at the K11.9
+    reconciler layer; out of K11.8 scope.
+
+    K11.8-R1/R1: `project_id` filter is forwarded to
+    `get_extraction_source` so a user with the same source_id
+    across two projects gets the right cascade target.
+
+    Idempotent on missing sources — calling on an already-
+    deleted source returns 0 and does nothing.
+    """
+    if not source_type or not source_id:
+        raise ValueError("source_type and source_id are required")
+    src = await get_extraction_source(
+        session,
+        user_id=user_id,
+        source_type=source_type,
+        source_id=source_id,
+        project_id=project_id,
+    )
+    if src is None:
+        return 0
+    removed = await remove_evidence_for_source(
+        session,
+        user_id=user_id,
+        source_id=src.id,
+    )
+    await run_write(
+        session,
+        _DELETE_SOURCE_NODE_CYPHER,
+        user_id=user_id,
+        id=src.id,
+    )
+    return removed
+
+
+# ── cleanup_zero_evidence_nodes ───────────────────────────────────────
+
+
+class CleanupResult(BaseModel):
+    """Per-label deletion counts from `cleanup_zero_evidence_nodes`."""
+
+    entities: int = 0
+    events: int = 0
+    facts: int = 0
+    # A2-S1b — :EntityStatus orphans (moved/removed status transitions).
+    entity_statuses: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.entities + self.events + self.facts + self.entity_statuses
+
+
+async def cleanup_zero_evidence_nodes(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None = None,
+) -> CleanupResult:
+    """Sweep zero-evidence orphans across all three node types.
+
+    Delegates to the per-label sweepers from K11.5a (entities)
+    and K11.7 (events + facts). Each uses its own
+    `(user_id, evidence_count)` composite index so the query
+    cost is bounded by the calling user's churn, not the global
+    graph.
+
+    **DO NOT run concurrently with extraction.** Same race
+    window as the per-label sweepers: a freshly-merged node has
+    `evidence_count = 0` and there is a window before the first
+    `add_evidence` call where the cleanup would mistakenly
+    delete it. The K11.8 orchestrator must call this only from
+    a paused / completed extraction-job state, never mid-run.
+    """
+    entities = await delete_entities_with_zero_evidence(
+        session, user_id=user_id, project_id=project_id
+    )
+    events = await delete_events_with_zero_evidence(
+        session, user_id=user_id, project_id=project_id
+    )
+    facts = await delete_facts_with_zero_evidence(
+        session, user_id=user_id, project_id=project_id
+    )
+    # A2-S1b — sweep moved/removed :EntityStatus transitions whose evidence
+    # the retract dropped to zero. Reads already gate on evidence_count >= 1
+    # so this is GC, not correctness — but it keeps the graph from accruing
+    # orphaned status nodes across re-publishes.
+    entity_statuses = await delete_entity_status_with_zero_evidence(
+        session, user_id=user_id, project_id=project_id
+    )
+    logger.info(
+        "K11.8: cleanup_zero_evidence_nodes user=%s project=%s "
+        "entities=%d events=%d facts=%d entity_statuses=%d",
+        user_id,
+        project_id,
+        entities,
+        events,
+        facts,
+        entity_statuses,
+    )
+    return CleanupResult(
+        entities=entities,
+        events=events,
+        facts=facts,
+        entity_statuses=entity_statuses,
+    )

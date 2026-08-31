@@ -36,7 +36,7 @@ async def _run(args: Any) -> int:
 
     from app.clients.book_client import get_book_client
     from app.clients.embedding_client import init_embedding_client
-    from app.db.neo4j import init_neo4j_driver, neo4j_session
+    from app.db.neo4j import init_neo4j_driver, graph_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
     _logging.basicConfig(level=_logging.INFO)
@@ -59,7 +59,7 @@ async def _run(args: Any) -> int:
     ingested = 0
     passages_total = 0
     errors: list[str] = []
-    async with neo4j_session() as session:
+    async with graph_session(engine="neo4j") as session:
         for ch in chapters:
             cid = ch["chapter_id"]
             idx = ch.get("chapter_index")

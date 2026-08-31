@@ -22,8 +22,12 @@ export function FilterToolbar({
       {onSearchChange && (
         <div className="relative min-w-[200px] max-w-sm flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          {/* The library search is a persona-journey target. The placeholder is
+              translated, so matching on it breaks the moment the UI language does
+              (E2E CONVENTIONS §1: testids are the language-agnostic contract). */}
           <input
             type="text"
+            data-testid="filter-search-input"
             value={search ?? ''}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}

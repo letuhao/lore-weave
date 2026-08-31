@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,10 +28,20 @@ import (
 //
 // Statuses (FE polls while `translating`): ready | translating | failed | unbuildable.
 
-// getCanonicalContent returns the entity's current canonical prose (fresh head snapshot, else the
-// degrade-to-canon-content fallback) — the same read internalGetCanonical serves, hoisted so the
-// translation surface reuses it byte-for-byte. content is "" only when nothing is buildable.
-func (s *Server) getCanonicalContent(ctx context.Context, entityID, bookID uuid.UUID) (content string, asOf int64, canonStatus string) {
+// getCanonicalContent returns the entity's canonical prose AS OF a story position (fresh
+// snapshot at or before it, else the degrade-to-canon-content fallback) -- the same read
+// internalGetCanonical serves, hoisted so the translation surface reuses it byte-for-byte.
+// content is "" only when nothing is buildable.
+//
+// T48ai -- `asOfReq` exists because "byte-for-byte" stopped being true. T48ah taught
+// internalGetCanonical to honour the position and did NOT touch this copy, so the two
+// surfaces answered the same question differently for one commit: canonical degraded below
+// the fold head while canonical-translation still served the head fold TRANSLATED, which is
+// the copy a reader actually sees. Two queries with one comment claiming they match is how
+// that happened; the test asserts they agree at the same position.
+//
+// 0 means no position asked and keeps the head behaviour exactly.
+func (s *Server) getCanonicalContent(ctx context.Context, entityID, bookID uuid.UUID, asOfReq int64) (content string, asOf int64, canonStatus string) {
 	err := s.pool.QueryRow(ctx, `
 		SELECT cs.content, cs.as_of_ordinal, cs.canonical_status
 		FROM canonical_snapshot cs
@@ -41,8 +52,10 @@ func (s *Server) getCanonicalContent(ctx context.Context, entityID, bookID uuid.
 		    WHERE ef.entity_id = cs.entity_id AND ef.invalidated_at IS NULL
 		      AND ef.coverage_xid > cs.fact_coverage_xid
 		  )
+		  -- T48ai -- the SAME position predicate internalGetCanonical carries (T48ah).
+		  AND ($2 = 0 OR cs.as_of_ordinal <= $2)
 		ORDER BY cs.as_of_ordinal DESC, cs.built_at DESC
-		LIMIT 1`, entityID).Scan(&content, &asOf, &canonStatus)
+		LIMIT 1`, entityID, asOfReq).Scan(&content, &asOf, &canonStatus)
 	if err == nil {
 		return content, asOf, canonStatus
 	}
@@ -97,10 +110,17 @@ func (s *Server) internalGetCanonicalTranslation(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "lang query param is required")
 		return
 	}
+	// T48ai -- the story position, same contract as canonical: absent => 0 => the head.
+	var asOfReq int64
+	if raw := strings.TrimSpace(r.URL.Query().Get("as_of")); raw != "" {
+		if v, err := strconv.ParseInt(raw, 10, 64); err == nil && v > 0 {
+			asOfReq = v
+		}
+	}
 	userID := strings.TrimSpace(r.Header.Get("X-User-Id"))
 
 	ctx := r.Context()
-	content, asOf, canonStatus := s.getCanonicalContent(ctx, entityID, bookID)
+	content, asOf, canonStatus := s.getCanonicalContent(ctx, entityID, bookID, asOfReq)
 	content = strings.TrimSpace(content)
 	if content == "" {
 		writeCanonicalTranslation(w, entityID, lang, "", false, "unbuildable", "", asOf, canonStatus, false)

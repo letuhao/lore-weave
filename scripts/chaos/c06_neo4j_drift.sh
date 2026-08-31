@@ -112,17 +112,17 @@ log_step "invoking reconcile_evidence_count inside knowledge-service"
 # FastAPI app has the driver init'd via lifespan, but a fresh
 # `docker exec python -c` spawns a new process with empty module
 # globals — we MUST call init_neo4j_driver() explicitly before the
-# reconciler's `neo4j_session()` context manager will work. Same
+# reconciler's `graph_session()` context manager will work. Same
 # for close on the way out.
 docker exec "$KNOWLEDGE_CONTAINER" python -c "
 import asyncio
-from app.db.neo4j import init_neo4j_driver, close_neo4j_driver, neo4j_session
+from app.db.neo4j import init_neo4j_driver, close_neo4j_driver, graph_session
 from app.jobs.reconcile_evidence_count import reconcile_evidence_count
 
 async def main():
     await init_neo4j_driver()
     try:
-        async with neo4j_session() as s:
+        async with graph_session() as s:
             result = await reconcile_evidence_count(
                 s, user_id='$TEST_USER', project_id='$TEST_PROJECT',
             )

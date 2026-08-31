@@ -84,6 +84,7 @@ from .extraction_prompt import (
 )
 from .glossary_client import (
     fetch_known_entities,
+    fetch_live_entity_ids,
     post_extracted_entities,
 )
 from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
@@ -96,6 +97,10 @@ log = logging.getLogger(__name__)
 # emit must never fail the job; the reconcile UNION in internal_dispatch.py backstops).
 _JOB_SERVICE = "translation"
 _JOB_KIND = "glossary_extraction"
+
+# Ceiling on the entities carried into the extraction prompt as "already known" context —
+# unbounded growth would eat the chapter's own budget (design §7: ~50 entities ≈ 250 tok).
+_KNOWN_ENTITIES_CAP = 200
 
 # Context-aware chapter windowing (D-EXTRACTION-CONTEXT-WINDOW). A chapter can be
 # larger than the model's context window; we split it into sub-chapter windows that
@@ -470,14 +475,74 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
         "payload": {"status": "running", "completed_chapters": len(done_ids)},
     })
 
-    # Fetch initial known entities (smart-filtered)
-    known_entities = await fetch_known_entities(
-        book_id,
-        alive=context_filters.get("alive", True),
-        min_frequency=context_filters.get("min_frequency", 2),
-        recency_window=context_filters.get("recency_window", 100),
-        limit=context_filters.get("limit", 50),
-    )
+    # ── known entities: re-resolved at EVERY chapter boundary ────────────────────
+    #
+    # D-KNOWN-ENTITIES-PER-JOB. This list used to be fetched ONCE, here, and held for
+    # the lifetime of a job that runs for hours over a whole book. So an entity the
+    # author trashed mid-run stayed in the extractor's "you already know these" context
+    # for every remaining chapter — got re-proposed, got written back, and the delete was
+    # effectively undone one chapter at a time. `fetch_known_entities` is server-filtered
+    # on `deleted_at IS NULL`, so re-asking is the authoritative answer; the cost is one
+    # cheap internal GET per chapter against many LLM calls per chapter.
+    #
+    # `session_created` carries the entities THIS run created. They sit below the
+    # server's `min_frequency` floor until a second chapter mentions them, so a plain
+    # refetch would drop them and lose the prompt continuity the old in-loop append was
+    # there to provide. They are pruned on the same boundary — first of anything the
+    # server now returns itself, then of anything no longer live — so a mid-run delete
+    # reaches them too, which a refetch alone could not do.
+    _known_filters = {
+        "alive": context_filters.get("alive", True),
+        "min_frequency": context_filters.get("min_frequency", 2),
+        "recency_window": context_filters.get("recency_window", 100),
+        "limit": context_filters.get("limit", 50),
+    }
+    session_created: dict[str, dict] = {}  # entity_id → known-entity dict, oldest first
+    known_entities: list[dict] = []
+    _known_count_prev: int | None = None
+
+    async def _refresh_known_entities(chapter_idx: int) -> list[dict]:
+        nonlocal known_entities, _known_count_prev
+        raw = await fetch_known_entities(book_id, **_known_filters)
+        # Normalise before touching it. This call sits OUTSIDE the per-chapter try, so an
+        # AttributeError/TypeError here would abort the whole JOB — where the old
+        # fetch-once code could at worst fail one chapter. `fetch_known_entities` returns
+        # `resp.json()` unvalidated, so a malformed glossary response must not be able to
+        # reach the arithmetic below.
+        server = [e for e in raw if isinstance(e, dict)] if isinstance(raw, list) else []
+        if not isinstance(raw, list) or len(server) != len(raw):
+            log.warning(
+                "extraction: known-entities response was not a list of objects at chapter "
+                "%d (book %s) — using the %d usable rows",
+                chapter_idx, book_id, len(server),
+            )
+        server_ids = {str(e["entity_id"]) for e in server if e.get("entity_id")}
+        for eid in [e for e in session_created if e in server_ids]:
+            del session_created[eid]  # the server owns it now (it crossed min_frequency)
+        if session_created:
+            live = await fetch_live_entity_ids(book_id, list(session_created))
+            for eid in [e for e in session_created if e not in live]:
+                log.info(
+                    "extraction: known entity %s disappeared mid-job (deleted) — "
+                    "dropping from context at chapter %d of book %s",
+                    eid, chapter_idx, book_id,
+                )
+                del session_created[eid]
+        merged = (server + list(session_created.values()))[:_KNOWN_ENTITIES_CAP]
+        log.debug(
+            "extraction: known-entity set at chapter %d — %d total (%d server, %d session)",
+            chapter_idx, len(merged), len(server), len(session_created),
+        )
+        if _known_count_prev is not None and len(merged) != _known_count_prev:
+            # The count moving mid-job is the bug becoming visible: before this fix the
+            # set could only grow, so a shrink here IS a delete propagating.
+            log.info(
+                "extraction: known-entity count changed mid-job at chapter %d — %d → %d",
+                chapter_idx, _known_count_prev, len(merged),
+            )
+        _known_count_prev = len(merged)
+        known_entities = merged
+        return merged
 
     total_created = 0
     total_updated = 0
@@ -625,6 +690,10 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 job_id, chapter_id,
             )
 
+        # D-KNOWN-ENTITIES-PER-JOB — resolve the known set for THIS chapter, after the
+        # cancellation check so a cancelled job pays nothing for it.
+        await _refresh_known_entities(idx)
+
         try:
             result = await _process_extraction_chapter(
                 job_id=job_id,
@@ -648,17 +717,23 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 llm_client=llm_client,
                 on_batch_progress=_emit_batch_progress,
             )
-            # Update known entities with newly created entities (capped at 200 to prevent
-            # unbounded prompt growth — design §7 says ~50 entities ≈ 250 tokens)
-            _KNOWN_ENTITIES_CAP = 200
+            # Carry newly created entities forward as prompt context. They are held by
+            # entity_id (not appended blind) so the next chapter boundary can prune the
+            # ones the author deleted meanwhile — see _refresh_known_entities. Capped to
+            # prevent unbounded prompt growth (design §7: ~50 entities ≈ 250 tokens).
             for ent in result.get("entities", []):
-                if ent.get("status") == "created" and len(known_entities) < _KNOWN_ENTITIES_CAP:
-                    known_entities.append({
-                        "name": ent["name"],
-                        "kind_code": ent["kind_code"],
-                        "aliases": [],
-                        "frequency": 1,
-                    })
+                if ent.get("status") != "created":
+                    continue
+                eid = ent.get("entity_id")
+                if not eid or len(session_created) >= _KNOWN_ENTITIES_CAP:
+                    continue
+                session_created[str(eid)] = {
+                    "entity_id": str(eid),
+                    "name": ent["name"],
+                    "kind_code": ent["kind_code"],
+                    "aliases": [],
+                    "frequency": 1,
+                }
 
             ch_created = result.get("created", 0)
             ch_updated = result.get("updated", 0)

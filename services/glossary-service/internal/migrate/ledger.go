@@ -170,6 +170,29 @@ var chain = []Step{
 	// apply after either history: the migration itself is CREATE INDEX IF NOT
 	// EXISTS, so an existing index is a no-op.
 	{"0061_attr_lookup_index", UpAttrLookupIndex},
+	// D9 / plan T9 — the covering index behind the book-wide `state@as_of` read. Partial on
+	// the slice that read wants (current belief, single-valued) and INCLUDEs value+fact_kind
+	// so the scan is index-ONLY: 281 ms → 79 ms at the 4 000-chapter ceiling. The build is
+	// write-blocking for ~2.8 s at 2.16 M facts because CREATE INDEX CONCURRENTLY cannot run
+	// inside execGuarded's transaction; see entity_facts_asof_index.go for the measurements
+	// and the operator escape hatch.
+	{"0062_entity_facts_asof_index", UpEntityFactsAsOfIndex},
+	// T31 / design D5 — the physical lifecycle ledger. `deleted_at` alone cannot say when,
+	// by whom, or from what: a delete-then-restore leaves it NULL, identical to an entity
+	// nobody touched. See entity_lifecycle_ledger.go.
+	{"0063_entity_lifecycle_ledger", UpEntityLifecycleLedger},
+	// T32 / design D1 — liveness becomes a FACT, not a column. Widens the closed fact-kind
+	// set to admit 'status'. See entity_facts_status_kind.go for why this is a separate step
+	// rather than an edit to the CREATE TABLE block.
+	{"0064_entity_facts_status_kind", UpEntityFactsStatusKind},
+	// T34 / design D7 — write-time dedupe needs somewhere to put the re-assertion. 11.7% of
+	// fact rows carried no new information; they become citations on the open fact instead.
+	{"0065_entity_fact_evidence", UpEntityFactEvidence},
+	// T37c / SPEC §4.2b — roles got two producers (the studio and planforge), and the
+	// plan-time one owes a retraction path. `entity_facts` had no authorship column, so
+	// "close what this plan no longer implies" would have closed the AUTHOR's declarations
+	// too. A producer may only retract facts it can prove it wrote.
+	{"0066_entity_facts_origin", UpEntityFactsOrigin},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

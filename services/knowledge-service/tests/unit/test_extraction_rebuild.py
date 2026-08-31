@@ -134,7 +134,7 @@ def _body(**overrides):
 # ── Tests ────────────────────────────────────────────────────────────
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_rebuild_success(mock_settings, mock_neo4j):
     mock_settings.neo4j_uri = "bolt://localhost:7687"
@@ -156,7 +156,7 @@ def test_rebuild_success(mock_settings, mock_neo4j):
     assert mock_session.run.call_count == 4  # 4 labels
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_rebuild_without_confirm_returns_warning_and_deletes_nothing(mock_settings, mock_neo4j):
     """bug #14 — a rebuild without ?confirm=true must NOT delete; it returns a
@@ -217,7 +217,7 @@ def test_rebuild_empty_model_rejected():
 # ── bug #42 — incremental "update" mode (accumulate, no wipe) ─────────
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_rebuild_update_mode_is_nondestructive_and_needs_no_confirm(mock_settings, mock_neo4j):
     """bug #42 — mode=update starts a job WITHOUT a confirm and WITHOUT touching

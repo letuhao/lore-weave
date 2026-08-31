@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
 
 from app.clients.llm_client import LLMClient
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.summaries import SummariesRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
@@ -116,7 +116,7 @@ async def summarize(
             model_source=req.model_source,
             model_ref=req.model_ref,
             pool=pool,
-            session_factory=neo4j_session,
+            session_factory=graph_session,
             llm_client=llm_client,
             summaries_repo=summaries_repo,
             summary_spending_repo=summary_spending_repo,
@@ -129,7 +129,7 @@ async def summarize(
         model_source=req.model_source,
         model_ref=req.model_ref,
         pool=pool,
-        session_factory=neo4j_session,
+        session_factory=graph_session,
         llm_client=llm_client,
         summaries_repo=summaries_repo,
         summary_spending_repo=summary_spending_repo,

@@ -34,13 +34,12 @@ from dataclasses import dataclass, field
 from app.context.intent.classifier import Intent, IntentResult
 from app.context.selectors.glossary import extract_candidates
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import find_entities_by_name
-from app.db.neo4j_repos.facts import list_facts_by_type
-from app.db.neo4j_repos.relations import (
+from app.adapters.graph_store_provider import get_graph_store
+from app.db.graph_repos.facts import list_facts_by_type
+from app.db.graph_repos.relations import (
     Relation,
     RelationHop,
     find_relations_2hop,
-    find_relations_for_entity,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,8 +142,10 @@ async def _resolve_entity_ids(
     """
     resolved: list[tuple[str, str]] = []
     for name in entity_names:
-        matches = await find_entities_by_name(
-            session,
+        # T17 — through the port. `Neo4jGraphStore.find_entities_by_name` is a passthrough
+        # with the same defaults, so the "anchored > discovered" ordering the next line
+        # depends on is unchanged.
+        matches = await get_graph_store(session).find_entities_by_name(
             user_id=user_id,
             project_id=project_id,
             name=name,
@@ -278,8 +279,7 @@ async def select_l2_facts(
 
     for _name, entity_id in resolved:
         # 1-hop (always).
-        one_hop = await find_relations_for_entity(
-            session,
+        one_hop = await get_graph_store(session).relations_for(   # T17 — through the port
             user_id=user_id,
             project_id=project_id,
             entity_id=entity_id,
@@ -492,8 +492,8 @@ async def expand_facts_from_passages(
     for name in anchor_names:
         if len(new_facts) >= max_new_facts or resolved_anchors >= max_anchors:
             break
-        matches = await find_entities_by_name(
-            session, user_id=user_id, project_id=project_id, name=name
+        matches = await get_graph_store(session).find_entities_by_name(  # T17
+            user_id=user_id, project_id=project_id, name=name
         )
         if not matches:
             continue
@@ -504,8 +504,7 @@ async def expand_facts_from_passages(
             continue
         seen_ids.add(eid)
         resolved_anchors += 1
-        rels = await find_relations_for_entity(
-            session,
+        rels = await get_graph_store(session).relations_for(   # T17 — through the port
             user_id=user_id,
             project_id=project_id,
             entity_id=eid,

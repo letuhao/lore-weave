@@ -55,9 +55,9 @@ from app.clients.embedding_client import get_embedding_client
 from app.clients.reranker_client import get_reranker_client
 from app.clients.grant_client import get_grant_client
 from app.config import settings
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import AuthorableKind, list_entities_filtered
-from app.db.neo4j_repos.facts import FactType
+from app.db.neo4j import graph_session
+from app.db.graph_repos.entities import AuthorableKind, list_entities_filtered
+from app.db.graph_repos.facts import FactType
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
 from app.db.repositories.graph_views import GraphViewsRepo
@@ -2020,7 +2020,7 @@ async def project_entities_resource(project_id: str, ctx: MCPContext) -> str:
     # anchor_score ordering surfaces the strongest anchors first. Repo params
     # are str ids (the Neo4j property space), unlike the UUID-typed Postgres
     # repos above.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         rows, total = await list_entities_filtered(
             session,
             user_id=str(user_id),
@@ -2038,7 +2038,7 @@ async def project_entities_resource(project_id: str, ctx: MCPContext) -> str:
         "total": total,
         "entities": [
             # NOTE: :Entity nodes carry no description property (name / kind /
-            # aliases only — see app/db/neo4j_repos/entities.py Entity); the
+            # aliases only — see app/db/graph_repos/entities.py Entity); the
             # aliases stand in as the compact per-entity context.
             {"name": e.name, "kind": e.kind, "aliases": e.aliases[:5]}
             for e in rows

@@ -145,11 +145,11 @@ def _patch_mode3_pieces(
         AsyncMock(return_value=l3_passages or []),
     )
 
-    # neo4j_session context-manager factory.
+    # graph_session context-manager factory.
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
-    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+    monkeypatch.setattr("app.context.modes.full.graph_session", fake_session)
 
 
 @pytest.mark.asyncio
@@ -800,7 +800,7 @@ def _patch_l3_with_hits(monkeypatch, n: int = 3):
     return in-memory hits. Used by the rerank propagation tests
     where we need build_full_mode → selector → rerank_passages →
     provider.chat_completion to actually fire."""
-    from app.db.neo4j_repos.passages import Passage, PassageSearchHit
+    from app.db.graph_repos.passages import Passage, PassageSearchHit
 
     # Undo the AsyncMock that _patch_mode3_pieces installed for
     # select_l3_passages so the real function runs. Use the module-
@@ -825,7 +825,7 @@ def _patch_l3_with_hits(monkeypatch, n: int = 3):
         for i in range(n)
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 
@@ -1460,7 +1460,7 @@ def _fake_neo4j_session(monkeypatch):
     @asynccontextmanager
     async def fake_session():
         yield MagicMock()
-    monkeypatch.setattr("app.context.modes.full.neo4j_session", fake_session)
+    monkeypatch.setattr("app.context.modes.full.graph_session", fake_session)
 
 
 @pytest.mark.asyncio
@@ -1473,7 +1473,7 @@ async def test_safe_l3_resolves_chapter_and_threads_boost(monkeypatch):
     _fake_neo4j_session(monkeypatch)
     resolve = AsyncMock(return_value=7)
     monkeypatch.setattr(
-        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+        "app.db.graph_repos.passages.get_chapter_index_for_source", resolve,
     )
     spy = AsyncMock(return_value=[])
     monkeypatch.setattr(
@@ -1512,7 +1512,7 @@ async def test_safe_l3_killswitch_skips_resolution(monkeypatch):
     _fake_neo4j_session(monkeypatch)
     resolve = AsyncMock(return_value=7)
     monkeypatch.setattr(
-        "app.db.neo4j_repos.passages.get_chapter_index_for_source", resolve,
+        "app.db.graph_repos.passages.get_chapter_index_for_source", resolve,
     )
     spy = AsyncMock(return_value=[])
     monkeypatch.setattr(

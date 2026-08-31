@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 from app.extraction.anchor_loader import Anchor
 from app.extraction.entity_resolver import (
     build_anchor_index,
@@ -79,7 +79,7 @@ async def test_resolve_hits_anchor_and_skips_merge(monkeypatch):
         raise AssertionError("merge_entity must not run on anchor hit")
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", must_not_call,
+        "app.adapters.neo4j_graph_store.merge_entity", must_not_call,
     )
 
     ent = await resolve_or_merge_entity(
@@ -104,7 +104,7 @@ async def test_resolve_alias_hit(monkeypatch):
         raise AssertionError("alias hit must skip merge")
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", must_not_call,
+        "app.adapters.neo4j_graph_store.merge_entity", must_not_call,
     )
 
     ent = await resolve_or_merge_entity(
@@ -134,7 +134,7 @@ async def test_resolve_miss_calls_merge(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", fake_merge,
+        "app.adapters.neo4j_graph_store.merge_entity", fake_merge,
     )
 
     ent = await resolve_or_merge_entity(
@@ -168,7 +168,7 @@ async def test_resolve_kind_miss_calls_merge(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", fake_merge,
+        "app.adapters.neo4j_graph_store.merge_entity", fake_merge,
     )
 
     await resolve_or_merge_entity(
@@ -220,7 +220,7 @@ async def test_resolve_pass2_person_hits_character_anchor(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", must_not_call,
+        "app.adapters.neo4j_graph_store.merge_entity", must_not_call,
     )
 
     # LLM-style surface form + LLM kind vocabulary.
@@ -243,7 +243,7 @@ async def test_resolve_pass2_place_hits_location_anchor(monkeypatch):
         raise AssertionError("place must normalize to location")
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", must_not_call,
+        "app.adapters.neo4j_graph_store.merge_entity", must_not_call,
     )
 
     ent = await resolve_or_merge_entity(
@@ -270,7 +270,7 @@ async def test_resolve_increments_hit_counter_on_anchor_hit(monkeypatch):
         raise AssertionError("miss path should not fire on hit")
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", fake_merge,
+        "app.adapters.neo4j_graph_store.merge_entity", fake_merge,
     )
 
     before = anchor_resolver_hits_total.labels(kind="character")._value.get()
@@ -301,7 +301,7 @@ async def test_resolve_increments_miss_counter_on_no_match(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", fake_merge,
+        "app.adapters.neo4j_graph_store.merge_entity", fake_merge,
     )
 
     # No anchor for "Lancelot" → miss. Lookup kind is "character" (normalized
@@ -340,7 +340,7 @@ async def test_resolve_does_not_bump_miss_counter_when_index_empty(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity", fake_merge,
+        "app.adapters.neo4j_graph_store.merge_entity", fake_merge,
     )
 
     before = anchor_resolver_misses_total.labels(kind="character")._value.get()
@@ -390,7 +390,7 @@ async def test_resolver_alias_map_hit_redirects_to_target(monkeypatch):
     )
     merge_mock = AsyncMock()
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity",
+        "app.adapters.neo4j_graph_store.merge_entity",
         merge_mock,
     )
 
@@ -444,7 +444,7 @@ async def test_resolver_alias_map_miss_falls_through_to_sha_hash(
     )
     merge_mock = AsyncMock(return_value=fresh_entity)
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity",
+        "app.adapters.neo4j_graph_store.merge_entity",
         merge_mock,
     )
 
@@ -496,7 +496,7 @@ async def test_resolver_stale_alias_row_logs_warning_and_falls_through(
     )
     merge_mock = AsyncMock(return_value=fresh_entity)
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity",
+        "app.adapters.neo4j_graph_store.merge_entity",
         merge_mock,
     )
 
@@ -543,7 +543,7 @@ async def test_resolver_none_alias_map_repo_keeps_pre_c17_behavior(
     )
     merge_mock = AsyncMock(return_value=fresh_entity)
     monkeypatch.setattr(
-        "app.extraction.entity_resolver.merge_entity",
+        "app.adapters.neo4j_graph_store.merge_entity",
         merge_mock,
     )
 
@@ -613,7 +613,7 @@ async def test_anchor_matches_when_the_extractor_CANNOT_express_its_kind(monkeyp
     async def boom(*a, **k):  # merge_entity must NOT be reached
         raise AssertionError("forked a new node instead of matching the anchor")
 
-    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", boom)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", boom)
 
     out = await resolve_or_merge_entity(
         MagicMock(), idx, user_id="u", project_id="p",
@@ -637,7 +637,7 @@ async def test_a_kind_the_extractor_COULD_have_said_still_forks(monkeypatch):
                       project_id=kwargs["project_id"], name=kwargs["name"],
                       canonical_name=kwargs["name"].lower(), kind=kwargs["kind"])
 
-    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", fake_merge)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", fake_merge)
     await resolve_or_merge_entity(
         MagicMock(), idx, user_id="u", project_id="p",
         name="Phoenix", kind="place", source_type="chapter",
@@ -663,7 +663,7 @@ async def test_an_AMBIGUOUS_name_never_takes_the_fallback(monkeypatch):
                       project_id=kwargs["project_id"], name=kwargs["name"],
                       canonical_name=kwargs["name"].lower(), kind=kwargs["kind"])
 
-    monkeypatch.setattr("app.extraction.entity_resolver.merge_entity", fake_merge)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", fake_merge)
     await resolve_or_merge_entity(
         MagicMock(), idx, user_id="u", project_id="p",
         name="Vô Cấu", kind="person", source_type="chapter",

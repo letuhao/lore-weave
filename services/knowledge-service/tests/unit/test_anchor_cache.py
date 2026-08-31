@@ -57,7 +57,7 @@ async def test_p_k13_0_01_second_call_is_cache_hit_no_db_work():
     project_id = uuid4()
     book_id = uuid4()
 
-    # Mock the DB pool + neo4j_session + glossary_client paths so
+    # Mock the DB pool + graph_session + glossary_client paths so
     # we can assert the second call hits the cache (not the DB).
     pool_mock = MagicMock()
     acquire_ctx = MagicMock()
@@ -76,7 +76,7 @@ async def test_p_k13_0_01_second_call_is_cache_hit_no_db_work():
 
     with (
         patch.object(mod, "get_knowledge_pool", return_value=pool_mock),
-        patch.object(mod, "neo4j_session", return_value=neo4j_ctx),
+        patch.object(mod, "graph_session", return_value=neo4j_ctx),
         patch.object(mod, "get_glossary_client", return_value=MagicMock()),
         patch.object(
             mod, "load_glossary_anchors",

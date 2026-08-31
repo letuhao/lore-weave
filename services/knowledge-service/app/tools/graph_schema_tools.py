@@ -64,14 +64,17 @@ from app.ontology.confirm import (
     ActionClaims,
     mint_action_token,
 )
-from app.db.neo4j import neo4j_session
+from app.adapters.graph_store_provider import get_graph_store
+from app.db.neo4j import graph_session
+from app.db.graph_repos.graph_views import (
+    read_entity_edge_timeline,
+    read_project_graph_edges,
+)
 from app.db.neo4j_helpers import run_read
 from app.db.ontology_models import GraphView
 from app.extraction.injection_defense import neutralize_injection
 from app.ontology.validation import validate_edge
 from app.routers.public.graph_views import (
-    _GRAPH_READ_CYPHER,
-    _TIMELINE_CYPHER,
     _deprecated_edge_codes,
     _records,
     _resolve_entity_project_grant,
@@ -138,7 +141,10 @@ _NAME_MAX = 200
 # drifted (cold review: it was missing 'statement' AND 'commitment'), so a well-behaved LLM
 # reading kg_propose_fact's advertised enum would never emit them though the validator accepts
 # them. Same lockstep discipline as memory_remember (which already uses list(FACT_TYPES)).
-from app.db.neo4j_repos.facts import FACT_TYPES as _FACT_TYPES
+# 2026-08-11: MEMORY_FACT_TYPES specifically. `:Fact` gained the story extractor's
+# vocabulary, but this enum advertises what the pending-facts INBOX accepts, and that
+# path stayed memory-only — see PendingFactType in app/db/models.py.
+from app.db.graph_repos.facts import MEMORY_FACT_TYPES as _FACT_TYPES
 _PROPOSE_FACT_TYPES = tuple(_FACT_TYPES)
 
 # B1(4) — cross-partition unification mode for the multi-KG read tools
@@ -583,9 +589,9 @@ class KgCreateNodeArgs(ProjectScopedArgs):
     def _gate_kind(self) -> "KgCreateNodeArgs":
         # S7-1 (INV-parity): close the free-string agent path so the agent can
         # only mint the same closed set the human REST create accepts. ONE home
-        # for the set: neo4j_repos.entities.AUTHORABLE_KINDS (imported lazily to
+        # for the set: graph_repos.entities.AUTHORABLE_KINDS (imported lazily to
         # keep the tools layer free of an eager data-layer import at class-def).
-        from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+        from app.db.graph_repos.entities import AUTHORABLE_KINDS
 
         if self.kind.strip() not in AUTHORABLE_KINDS:
             raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
@@ -611,11 +617,11 @@ class KgAddNodesArgs(ProjectScopedArgs):
     @model_validator(mode="after")
     def _gate_manual_kind(self) -> "KgAddNodesArgs":
         # mode=manual mirrors kg_create_node's closed-set kind gate (ONE home:
-        # neo4j_repos.entities.AUTHORABLE_KINDS, lazily imported). from_glossary needs no kind.
+        # graph_repos.entities.AUTHORABLE_KINDS, lazily imported). from_glossary needs no kind.
         if self.mode == "manual":
             if not self.name or not self.kind:
                 raise ValueError("mode=manual requires name and kind")
-            from app.db.neo4j_repos.entities import AUTHORABLE_KINDS
+            from app.db.graph_repos.entities import AUTHORABLE_KINDS
             if self.kind.strip() not in AUTHORABLE_KINDS:
                 raise ValueError(f"kind must be one of {sorted(AUTHORABLE_KINDS)}")
         return self
@@ -1527,18 +1533,16 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
 
             raise ToolExecutionError(f"view not found: {args.view!r}")
 
-    async with neo4j_session() as session:
-        result = await run_read(
+    async with graph_session() as session:
+        records = await read_project_graph_edges(
             session,
-            _GRAPH_READ_CYPHER,
             user_id=str(owner),
             project_id=project_str,
             # OUT-5 (K37): over-fetch ONE edge past the cap so we can tell the agent the
             # graph had MORE (the Cypher LIMIT was a silent cap before). Isolated to this
-            # MCP handler — the shared _GRAPH_READ_CYPHER + the REST caller are untouched.
+            # MCP handler — the shared read and the REST caller are untouched.
             limit=args.limit + 1,
         )
-        records = await _records(result)
 
     edges_truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
@@ -1568,7 +1572,7 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
     REPORTED via ``partitions_unreadable`` — never dropped silently. EC-B5: a bad world /
     a book-service outage return a self-correcting error string, not a 500."""
     from app.clients.book_client import BookServiceUnavailable, WorldNotFound
-    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.db.graph_repos.relations import get_world_subgraph
     from app.tools.executor import ToolExecutionError
     from app.world_rollup import resolve_world_partitions
 
@@ -1611,7 +1615,7 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             "note": note + ".",
         }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_world_subgraph(
             session,
             user_id=str(ctx.user_id),
@@ -1661,7 +1665,7 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
     silently. Reuses the same per-partition union as kg_world_query
     (``get_world_subgraph`` binds user_id + project_id per read, so an unowned id would
     contribute nothing anyway — the ownership resolve here makes the report accurate)."""
-    from app.db.neo4j_repos.relations import get_world_subgraph
+    from app.db.graph_repos.relations import get_world_subgraph
     from app.tools.executor import ToolExecutionError
 
     # Validate + order-preserving dedup (a duplicate id must not double-count coverage).
@@ -1698,7 +1702,7 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             "note": note + ".",
         }
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         subgraph = await get_world_subgraph(
             session,
             user_id=str(ctx.user_id),
@@ -1759,10 +1763,9 @@ async def _handle_kg_entity_edge_timeline(
         # error — no existence oracle, uniform with the HTTP route.
         raise ToolExecutionError(str(exc.detail))
 
-    async with neo4j_session() as session:
-        result = await run_read(
+    async with graph_session() as session:
+        records = await read_entity_edge_timeline(
             session,
-            _TIMELINE_CYPHER,
             user_id=str(ctx.user_id),
             entity_id=args.entity_id,
             edge_type=args.edge_type,
@@ -1770,7 +1773,6 @@ async def _handle_kg_entity_edge_timeline(
             # MORE (the Cypher LIMIT was a silent cap). Mirrors kg_graph_query.
             limit=args.limit + 1,
         )
-        records = await _records(result)
     truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
     out = build_timeline(args.entity_id, args.edge_type, records).model_dump(mode="json")
@@ -1908,7 +1910,7 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # instead of parking then failing two steps later at confirm — this reads
     # Neo4j but never writes it, so the human-gated-write invariant is intact.
     from app.tools.executor import ToolExecutionError
-    from app.db.neo4j_repos.entities import existing_entity_node_ids
+    from app.db.graph_repos.entities import existing_entity_node_ids
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     project_str = str(ctx.project_id)
@@ -1963,7 +1965,7 @@ async def _handle_kg_propose_edge(ctx: "ToolContext", args: KgProposeEdgeArgs) -
     # This READS Neo4j (INV-K1 is about not WRITING it — the write stays human-
     # gated), the one stateful check worth a round-trip to avoid the dead-end.
     endpoint_ids = [args.source_entity_id, args.target_entity_id]
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         present = await existing_entity_node_ids(
             session, user_id=str(owner), ids=endpoint_ids,
         )
@@ -2020,7 +2022,7 @@ async def _handle_kg_project_entities_to_nodes(
         )
 
     entity_ids = [e.strip() for e in (args.entity_ids or []) if e and e.strip()]
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         res = await project_glossary_entities_to_nodes(
             session,
             get_glossary_client(),
@@ -2041,8 +2043,8 @@ async def _handle_kg_project_entities_to_nodes(
         try:
             from app.jobs.stats_updater import reconcile_project_stats
 
-            await reconcile_project_stats(
-                ctx.projects_repo._pool, session, owner, ctx.project_id
+            await reconcile_project_stats(  # T17 A10 — through the port
+                ctx.projects_repo._pool, get_graph_store(session), owner, ctx.project_id
             )
         except Exception:  # pragma: no cover - advisory cache, never blocks the projection
             logger.warning(
@@ -2087,17 +2089,16 @@ async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> 
     parked, then fails). Runs under the project OWNER (resolve-to-owner, EDIT grant),
     so a collaborator resolves the grant but the write is still owner-scoped."""
     from app.tools.executor import ToolExecutionError
-    from app.db.neo4j_repos.entities import merge_entity
+    from app.db.graph_repos.entities import merge_entity
 
     owner = await _resolve_project_owner(ctx, GrantLevel.EDIT)
     name = args.name.strip()
     kind = args.kind.strip()
     if not name or not kind:
         raise ToolExecutionError("name and kind must both be non-empty")
-    async with neo4j_session() as session:
-        entity = await merge_entity(
-            session,
-            user_id=str(owner),
+    async with graph_session() as session:
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(owner),
             project_id=str(ctx.project_id),
             name=name,
             kind=kind,

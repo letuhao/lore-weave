@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.db.neo4j_repos.events import rerank_chronological_order
+from app.db.graph_repos.events import rerank_chronological_order
 
 _USER = "11111111-1111-1111-1111-111111111111"
 _PROJECT = "22222222-2222-2222-2222-222222222222"

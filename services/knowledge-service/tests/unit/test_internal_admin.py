@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_helpers import (
+from app.db.graph_repos.vector_indexes import (
     drop_summary_index,
     parse_summary_index_name,
     summary_index_name,
@@ -112,7 +112,7 @@ async def test_drop_summary_index_uses_if_exists():
 
 
 def _make_neo4j_session_with_indexes(index_rows: list[dict]):
-    """Build a MagicMock that behaves like neo4j_session() context manager
+    """Build a MagicMock that behaves like graph_session() context manager
     returning a session whose `run()` returns an async-iterable of records.
 
     `index_rows` is the list of {name: str, ...} dicts SHOW VECTOR INDEXES
@@ -138,7 +138,7 @@ def _make_neo4j_session_with_indexes(index_rows: list[dict]):
     session = MagicMock()
     session.run = AsyncMock(side_effect=_run)
 
-    # neo4j_session() is an async context manager.
+    # graph_session() is an async context manager.
     class _Ctx:
         async def __aenter__(self):
             return session
@@ -165,7 +165,7 @@ def test_prune_endpoint_empty_neo4j_returns_zero(client: TestClient):
     """No summary indexes at all → empty response, no pool call."""
     ctx, _ = _make_neo4j_session_with_indexes([])
     with patch(
-        "app.routers.internal_admin.neo4j_session",
+        "app.routers.internal_admin.graph_session",
         return_value=ctx,
     ):
         resp = client.post(
@@ -210,7 +210,7 @@ def test_prune_dry_run_lists_orphans_without_dropping(client: TestClient):
     ])
 
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -245,7 +245,7 @@ def test_prune_non_dry_run_drops_orphans(client: TestClient):
     pool = _patch_pool_with_projects([])  # project deleted
 
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -282,7 +282,7 @@ def test_prune_classifies_unset_embedding_model_distinctly(client: TestClient):
         {"proj_hex": proj, "emb_hex": None},  # column is NULL
     ])
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -312,7 +312,7 @@ def test_prune_ignores_non_summary_indexes(client: TestClient):
         {"proj_hex": proj, "emb_hex": emb},
     ])
     with patch(
-        "app.routers.internal_admin.neo4j_session", return_value=ctx,
+        "app.routers.internal_admin.graph_session", return_value=ctx,
     ), patch(
         "app.routers.internal_admin.get_knowledge_pool", return_value=pool,
     ):
@@ -621,7 +621,7 @@ def test_parse_iso_date_tolerates_garbage_and_none():
 def test_erasure_kg_node_delete_cypher_targets_fact_entity_event():
     # E2E erase smoke caught this: the erase deleted :Passage but not the :Fact/:Entity nodes WS-2.4's
     # promote creates, so a confirmed diary fact + the colleague it names survived "erase my account".
-    from app.db.neo4j_repos import passages as pm
+    from app.db.graph_repos import passages as pm
     q = pm._DELETE_ALL_KG_NODES_FOR_PROJECT_CYPHER
     assert "n:Fact" in q and "n:Entity" in q and "n:Event" in q  # all confirmed-fact node types
     assert "DETACH DELETE n" in q                                 # removes the nodes + every edge

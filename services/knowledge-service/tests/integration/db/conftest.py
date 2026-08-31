@@ -87,10 +87,110 @@ async def pool():
         await p.close()
 
 
+# ── the vector Postgres (plan T23) ───────────────────────────────────────────
+#
+# A SECOND Postgres, not the one above: `PgVectorStore` runs on the T22 image
+# (PG18 + pgvector + pgvectorscale), which the knowledge DB is not. It gets its own env var
+# for the same reason `TEST_KNOWLEDGE_DB_URL` never falls back to `KNOWLEDGE_DB_URL` — a
+# fallback is how a test suite finds a real database. The fixture lives HERE rather than in
+# the test module because this file's contract is that no test opens its own pool: the
+# throwaway guard has to be unavoidable, and one that a test file could route around is
+# decoration.
+
+
+def _vector_dsn() -> str | None:
+    return os.environ.get("TEST_VECTOR_DB_URL")
+
+
+@pytest_asyncio.fixture
+async def vector_pool():
+    """Pool on a disposable pgvector Postgres, with its tables dropped before each test.
+
+    Start one with:
+
+        docker run -d --name lw-vec-test -e POSTGRES_PASSWORD=… \\
+          -e POSTGRES_DB=loreweave_vectors_test -p 7995:5432 \\
+          loreweave/postgres-knowledge:18
+        export TEST_VECTOR_DB_URL=postgresql://postgres:…@localhost:7995/loreweave_vectors_test
+    """
+    dsn = _vector_dsn()
+    if not dsn:
+        pytest.skip("TEST_VECTOR_DB_URL not set — skipping live pgvector test")
+    _guard_throwaway(dsn)  # refuse a real DB BEFORE any DROP
+    try:
+        p = await asyncpg.create_pool(dsn, min_size=1, max_size=4, command_timeout=30)
+    except (OSError, asyncpg.PostgresError) as exc:
+        pytest.skip(f"vector DB unreachable: {exc}")
+    try:
+        from app.adapters.pg_vector_store import entity_table, passage_table
+        from app.db.graph_repos.passages import SUPPORTED_PASSAGE_DIMS
+
+        async with p.acquire() as conn:
+            # DROP, not TRUNCATE: these tests also assert on the SCHEMA (which indexes
+            # exist, what the planner does with them), so a leftover index from a previous
+            # run would let a test pass on somebody else's DDL.
+            for dim in SUPPORTED_PASSAGE_DIMS:
+                for table in (passage_table(dim), entity_table(dim)):
+                    await conn.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        yield p
+    finally:
+        await p.close()
+
+
+# The dev graph runs on 7687 inside the compose network and 7688 on the host, and it holds
+# REAL data. These tests create and DETACH DELETE nodes, so pointing TEST_NEO4J_URI at it
+# would write into somebody's book. The Postgres fixture above has refused a non-throwaway
+# DSN since the kg-integration-tests-truncate-shared-dev-db incident; this one never did —
+# closed in plan T20.
+#
+# Neo4j Community has no multi-database, so "throwaway" cannot be a database NAME here the
+# way it is for Postgres. The equivalent is a DEDICATED INSTANCE: an explicit opt-in, plus a
+# refusal of the ports the dev stack publishes.
+# 7687/7688 are the base stack's; 27687/27688 are the SAME graphs republished by the
+# isolated stack (`infra/docker-compose.isolated.yml`, base + 20000). T42a found the gap the
+# hard way: the guard matched `f":{port}" in uri` as a SUBSTRING, and ":7688" is not a
+# substring of "localhost:27688" — so the isolated dev graph sailed straight through a check
+# written to refuse it, and a conformance run wrote into it. A port map added months after
+# the guard silently widened what the guard was blind to.
+_DEV_NEO4J_PORTS = ("7687", "7688", "27687", "27688")
+
+
+def _neo4j_port(uri: str) -> str | None:
+    """The PORT component, not a substring of the URI. See `_DEV_NEO4J_PORTS`."""
+    from urllib.parse import urlsplit
+
+    try:
+        # `bolt://host:7688` parses; a bare `host:7688` does not, so give it a scheme.
+        parsed = urlsplit(uri if "://" in uri else f"bolt://{uri}")
+        return str(parsed.port) if parsed.port else None
+    except ValueError:
+        return None
+
+
+def _guard_throwaway_neo4j(uri: str) -> None:
+    if os.environ.get("TEST_NEO4J_ALLOW_SHARED") == "1":
+        # Escape hatch for CI, where the graph IS disposable and its port is whatever the
+        # service container published. Explicit, so nobody reaches it by accident.
+        return
+    if _neo4j_port(uri) in _DEV_NEO4J_PORTS:
+        raise RuntimeError(
+            f"REFUSING: TEST_NEO4J_URI {uri!r} looks like the shared DEV graph "
+            f"(ports {'/'.join(_DEV_NEO4J_PORTS)} — the base stack's and the isolated "
+            "stack's republication of them). These tests CREATE and DETACH DELETE nodes — "
+            "point them at a disposable Neo4j instance of their own, or set "
+            "TEST_NEO4J_ALLOW_SHARED=1 if the target really is disposable."
+        )
+
+
+from app.db.graph_repos.vector_indexes import ensure_passage_vector_index
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
+
+
 def _neo4j_dsn() -> tuple[str, str, str] | None:
     uri = os.environ.get("TEST_NEO4J_URI")
     if not uri:
         return None
+    _guard_throwaway_neo4j(uri)
     user = os.environ.get("TEST_NEO4J_USER", "neo4j")
     password = os.environ.get("TEST_NEO4J_PASSWORD", "loreweave_dev_neo4j")
     return uri, user, password
@@ -140,3 +240,21 @@ async def neo4j_driver():
             _neo4j_mod._driver = _prev
     finally:
         await driver.close()
+
+@pytest_asyncio.fixture
+async def passage_vector_index(neo4j_driver):
+    """T65 — these reads need `passage_embeddings_<dim>`, and NOTHING creates it any more.
+
+    T25 ③ deleted the passage vector DDL from `neo4j_schema.cypher` because §3.3 cut the
+    passage scope over to Postgres. That was correct and it left a third consumer nobody
+    named: T25j/T25n found the two BENCHMARKS and gave them
+    `ensure_passage_vector_index`; this suite reads the same index and was missed. It went
+    unnoticed because dev and iso still hold the index PHYSICALLY — removing a declaration
+    does not drop what exists — so only a FRESH Neo4j shows it, and the unit suite cannot.
+
+    Same remedy as the benchmarks: the reader owns its index.
+    """
+    async with neo4j_driver.session() as session:
+        for dim in SUPPORTED_PASSAGE_DIMS:
+            await ensure_passage_vector_index(session, dim)
+    yield

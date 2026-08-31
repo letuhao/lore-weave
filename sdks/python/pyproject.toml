@@ -88,6 +88,13 @@ test = [
 # + via /internal/parse by worker-infra + book-service .txt sync path.
 [tool.setuptools.packages.find]
 include = [
+  # T30 / OD-1 (2026-08-12) — `loreweave_events`: GENERATED event-name constants
+  # (`make eventgen`, from contracts/events/_registry.yaml). It ships here because the
+  # generated tree under contracts/events/generated/ is on no service's import path, so
+  # the three Python consumers of glossary.* had no way to import the names and each
+  # hand-declared its own literal instead — D-GLOSSARY-EVENTS-NO-SOT, one language over.
+  # Dependency-free by construction: services install the SDK, not the contracts tree.
+  "loreweave_events*",
   "loreweave_llm*",
   "loreweave_extraction*",
   "loreweave_obs*",

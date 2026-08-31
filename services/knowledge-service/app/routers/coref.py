@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_glossary_client, get_llm_client, get_projects_repo
 from app.extraction import coref_detect
@@ -66,7 +66,7 @@ async def detect(
 
     uid = str(req.user_id)
     pid = str(req.project_id)
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         kinds = req.kinds or await coref_detect.load_anchored_kinds(
             session, user_id=uid, project_id=pid
         )

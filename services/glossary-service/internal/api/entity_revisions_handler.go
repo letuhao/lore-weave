@@ -197,8 +197,35 @@ func (s *Server) restoreEntityRevisionCore(ctx context.Context, bookID, entityID
 	bn, bk, ba, bsd, _ := loadEntityEventFields(ctx, tx, entityID)
 	before := &EntitySnapshot{Name: bn, Kind: bk, Aliases: ba, ShortDescription: bsd}
 
+	// T28: `reconcileEntityFromSnapshot` also restores `status`, and `entity_updated` carries
+	// no status field — so a restore that reinstated a rejected entity, or retired a live one,
+	// was invisible to every consumer that gates on `status = 'active'`. `FOR UPDATE` takes the
+	// row lock BEFORE the reconcile rather than relying on it: without it a concurrent status
+	// change could land between this read and the reconcile, and `prior_status` in the event
+	// would be a confident lie.
+	var priorStatus string
+	if err := tx.QueryRow(ctx,
+		`SELECT status FROM glossary_entities WHERE entity_id=$1 FOR UPDATE`,
+		entityID).Scan(&priorStatus); err != nil {
+		return 0, err
+	}
+
 	if err := reconcileEntityFromSnapshot(ctx, tx, entityID, string(snapshot)); err != nil {
 		return 0, err
+	}
+
+	var newStatus string
+	if err := tx.QueryRow(ctx,
+		`SELECT status FROM glossary_entities WHERE entity_id=$1`, entityID).Scan(&newStatus); err != nil {
+		return 0, err
+	}
+	if newStatus != priorStatus {
+		actorType, actor := actorFor(userID)
+		if err := emitEntityStatusChangedTx(
+			ctx, tx, bookID, entityID, newStatus, priorStatus, actorType, actor,
+		); err != nil {
+			return 0, err
+		}
 	}
 
 	// Emit as a USER change so VG-1 captures a KEPT revision (reversible restore)

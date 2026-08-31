@@ -17,7 +17,11 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.passages import (
+from app.db.graph_repos.vector_indexes import (
+    ensure_passage_vector_index,
+    passage_index_name,
+)
+from app.db.graph_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     delete_passages_for_source,
     find_passages_by_fulltext,
@@ -206,7 +210,7 @@ async def test_delete_passages_for_source_canon_scoping_keeps_both(
 
 
 @pytest.mark.asyncio
-async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user):
+async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user, passage_vector_index):
     other_user = f"u-other-{uuid.uuid4().hex[:8]}"
     async with neo4j_driver.session() as session:
         await upsert_passage(
@@ -240,7 +244,7 @@ async def test_find_passages_by_vector_respects_tenant(neo4j_driver, test_user):
 
 
 @pytest.mark.asyncio
-async def test_find_passages_by_vector_canon_filter(neo4j_driver, test_user):
+async def test_find_passages_by_vector_canon_filter(neo4j_driver, test_user, passage_vector_index):
     """D-RAWSEARCH-CANON-WIRING — the canon gate, proven against live Neo4j:
       - include_drafts=False (default) → canon + legacy(null-canon), NOT drafts
       - include_drafts=True → everything
@@ -351,7 +355,7 @@ async def test_find_passages_by_fulltext_canon_filter(neo4j_driver, test_user):
 
 @pytest.mark.asyncio
 async def test_find_passages_by_vector_default_omits_vector(
-    neo4j_driver, test_user,
+    neo4j_driver, test_user, passage_vector_index,
 ):
     """P-K18.3-02: default call (include_vectors=False) keeps the
     existing projection — vector stays None so callers that don't
@@ -374,7 +378,7 @@ async def test_find_passages_by_vector_default_omits_vector(
 
 @pytest.mark.asyncio
 async def test_find_passages_by_vector_include_vectors_projects_embedding(
-    neo4j_driver, test_user,
+    neo4j_driver, test_user, passage_vector_index,
 ):
     """P-K18.3-02: include_vectors=True projects the stored embedding
     onto PassageSearchHit.vector so MMR can use real cosine distance."""
@@ -402,7 +406,7 @@ async def test_find_passages_by_vector_include_vectors_projects_embedding(
 
 
 @pytest.mark.asyncio
-async def test_find_passages_by_vector_bad_dim_raises():
+async def test_find_passages_by_vector_bad_dim_raises(passage_vector_index):
     # No session needed — raises at arg-validation before the query.
     from unittest.mock import MagicMock
     with pytest.raises(ValueError, match="unsupported vector dim"):
@@ -414,14 +418,19 @@ async def test_find_passages_by_vector_bad_dim_raises():
 
 
 def test_supported_dims_match_schema_indexes():
-    """Sanity: the dims the repo claims to support must each have a
-    CREATE VECTOR INDEX line in the Cypher schema. Caught drift once
-    during K11.5b; kept as a guard."""
-    import pathlib
-    schema = pathlib.Path("app/db/neo4j_schema.cypher").read_text(
-        encoding="utf-8"
-    )
+    """Every supported dim must have an index SOMETHING can create.
+
+    ⚠️ INVERTED 2026-08-22 (T65). It used to require a `CREATE VECTOR INDEX` line in
+    `neo4j_schema.cypher`; T25 ③ deleted those, because §3.3 moved passage vectors to
+    Postgres and no production reader is left. The drift it guards against is real and did
+    not go away — it moved: `ensure_passage_vector_index` is now the only definition of
+    these names, so THAT is what must cover every dim the repo claims to support.
+    """
     for dim in SUPPORTED_PASSAGE_DIMS:
-        assert f"passage_embeddings_{dim}" in schema, (
-            f"dim {dim} missing CREATE VECTOR INDEX in neo4j_schema.cypher"
+        assert passage_index_name(dim) == f"passage_embeddings_{dim}", (
+            f"dim {dim} does not map to the index name the readers query"
         )
+    # The dimension GUARD lives on `ensure_passage_vector_index`, not on the name helper —
+    # `passage_index_name` is pure string-building. Its refusal is pinned in
+    # tests/unit/test_passage_vector_index.py, which runs without a database; asserting it
+    # here too would be a second reader of one rule.

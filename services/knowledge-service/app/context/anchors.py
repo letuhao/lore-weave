@@ -37,8 +37,8 @@ except Exception:  # dep missing in a stripped env — degrade to no dict-anchor
         "(select_l2_facts falls back to classifier-only anchors)."
     )
 
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import (
+from app.db.neo4j import graph_session
+from app.db.graph_repos.entities import (
     get_most_connected_entity,
     list_project_entity_names,
 )
@@ -53,6 +53,7 @@ __all__ = [
     "get_anchor_index",
     "get_project_protagonist",
     "clear_anchor_cache",
+    "invalidate_anchor_cache",
 ]
 
 
@@ -126,6 +127,28 @@ def clear_anchor_cache() -> None:
     _PROTAGONIST_CACHE.clear()
 
 
+def invalidate_anchor_cache(user_id: str, project_id: str) -> None:
+    """T39 — drop ONE project's automaton because its entity set actually changed.
+
+    The TTL above is a guess about staleness; this is knowledge. The service already
+    receives `glossary.entity_updated` / `.deleted` and syncs the node — until now it
+    did that and left the anchor dictionary describing the world as it was up to 300
+    seconds ago, so a freshly renamed entity stayed unanchorable for five minutes
+    **while the code that knew about the rename ran**.
+
+    Per-project, not `clear_anchor_cache()`: dropping every project's automaton on one
+    book's edit turns a targeted invalidation into a stampede on a busy host, which is
+    the cure being worse than the 300 seconds.
+
+    The TTL stays as the backstop. Events can be missed — a consumer restart, a dropped
+    delivery — and a cache with no expiry would then be wrong until the process dies.
+    Belt AND braces: the event makes it usually-instant, the TTL makes it eventually-right.
+    """
+    key = (str(user_id), str(project_id))
+    _CACHE.pop(key, None)
+    _PROTAGONIST_CACHE.pop(key, None)
+
+
 async def get_anchor_index(
     user_id: str,
     project_id: str,
@@ -148,7 +171,7 @@ async def get_anchor_index(
         return cached[1]
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             rows = await list_project_entity_names(
                 session, user_id=user_id, project_id=project_id
             )
@@ -199,7 +222,7 @@ async def get_project_protagonist(
     if cached is not None and (now - cached[0]) < ttl_s:
         return cached[1]
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             name = await get_most_connected_entity(
                 session, user_id=user_id, project_id=project_id
             )

@@ -669,6 +669,12 @@ services:
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # T38 B4 — the KAL base URL. translation-service defaults this to EMPTY in its own
+      # config, and its KAL client treats unset as "feature off, return nothing" — so an
+      # unconfigured var here is a silently disabled read, not an error. It was set for NO
+      # service in this file; lore-enrichment only reached the gateway because its config
+      # hard-defaults the URL. Consumers read entity knowledge through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -813,6 +819,11 @@ services:
       # Phase 4c-α: SDK install. Same host as legacy URL.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # T38 B4 — the WORKER is where mention_backfill runs, so it needs the KAL URL too.
+      # Setting it on translation-service alone would have left the migrated read refusing
+      # in the only process that calls it — the same class as "iso.sh build the service but
+      # not its worker", one layer up in the stack.
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
@@ -1175,6 +1186,8 @@ services:
       dockerfile: services/knowledge-service/Dockerfile
       labels: *build-labels
     environment:
+      # T38 B8 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary
@@ -1205,6 +1218,58 @@ services:
       NEO4J_URI: ${NEO4J_URI:-bolt://neo4j:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-loreweave_dev_neo4j}
+      # T25a / OD-2 — the vector secondary's DSN. DEFAULT-OFF ON PURPOSE, and the default
+      # is byte-identical to the old behaviour: unset, `get_vector_store()` returns a plain
+      # `Neo4jVectorStore` and the service never opens a second database. Setting it turns
+      # on DUAL-WRITE ONLY (writes both, reads the primary) — the read cutover is T25 and is
+      # a separate, evidenced decision.
+      #
+      # It stays `${...:-}` rather than hardcoded because the secondary lives in an OPT-IN
+      # compose layer (docker-compose.knowledge-pg.yml). Hardcoding a DSN for a container
+      # most `docker compose up` invocations never start would move the failure from
+      # "feature is off" to "vector writes fail at runtime" for every self-hoster.
+      #
+      #   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
+      #   KNOWLEDGE_VECTOR_DB_URL=postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors
+      KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+      # T25 ③ step 2 — the vector READ cutover, a DEPLOY CEILING (rule 4). One migration
+      # state for one deployment: per-book would make two books' results incomparable and
+      # `vector_shadow_read_overlap` meaningless, and a run param would let one request cut
+      # over and the next one back.
+      #
+      # `postgres` moves the PASSAGE scope only. Entity reads stay on Neo4j because
+      # `PgVectorStore` omits `anchor_score` by design (D-T25B-PG-ANCHOR-SCORE) and entity
+      # reads RANK by it — see vector_store_provider.py, where the scope set is built.
+      #
+      # ⚠️ `:-neo4j`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. The provider validates this
+      # against ("neo4j", "postgres") and RAISES on anything else, so the empty-string idiom
+      # would take knowledge-service down on the next restart — the failure the
+      # KNOWLEDGE_MIRROR_AUTO_REPAIR comment below records, in a field that cannot absorb it.
+      # Defaulting to the pre-cutover value also means adding this line changes no behaviour,
+      # which is the property T25c wanted and did not have: that variable defaulted to empty,
+      # a container was recreated without it two days later, and the soak stopped silently.
+      KNOWLEDGE_VECTOR_READ_PRIMARY: ${KNOWLEDGE_VECTOR_READ_PRIMARY:-neo4j}
+      # T54 — the AGE graph. SAME instance as the vector DSN above: knowledge-pg runs
+      # loreweave/postgres-knowledge:18, which T42b built to carry both `age` and `vector`.
+      KNOWLEDGE_AGE_DB_URL: ${KNOWLEDGE_AGE_DB_URL:-}
+      # §8.1 made AGE the code default; this pins it explicitly on the shared stack so the
+      # backend is STATED rather than inherited (§8.1: "code default + env pin on dev").
+      KNOWLEDGE_GRAPH_BACKEND: ${KNOWLEDGE_GRAPH_BACKEND:-age}
+      # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
+      # DETECTS (see knowledge_glossary_mirror_missing); this decides whether it also
+      # CLOSES what it finds by re-emitting through glossary-service's outbox.
+      #
+      # Default off, and not because repair is risky — it is idempotent and writes no
+      # graph. An always-on repairer MASKS the breakage that caused the drift: a handler
+      # dropping every third event looks exactly like a healthy system with a diligent
+      # janitor. Turn it on WITH `knowledge_glossary_mirror_repaired_total` watched —
+      # a healthy system converges to zero repairs per sweep, so sustained repair volume
+      # is the real alarm.
+      # ⚠️ `:-false`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. That idiom passes an
+      # EMPTY STRING when the variable is unset, which a `str` field accepts and a `bool`
+      # field does not: pydantic raises `bool_parsing` on "" and the service refuses to
+      # start. Copied blindly, this line took knowledge-service down on the next restart.
+      KNOWLEDGE_MIRROR_AUTO_REPAIR: ${KNOWLEDGE_MIRROR_AUTO_REPAIR:-false}
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
       # Was a hardcoded env UUID of one user's model, submitted as user_model scoped
       # to the request's user → 404 for every other user → decoupled fold stall (D-WX
@@ -1519,6 +1584,8 @@ services:
       # with every other service's GLOSSARY_*_URL=:8088. NOT a model backend (a
       # plain service-to-service internal URL); auth reuses X-Internal-Token.
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      # T38 B6 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
       # gateway for entity/relation/event/fact extraction jobs.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085

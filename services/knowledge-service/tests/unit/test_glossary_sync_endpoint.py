@@ -77,9 +77,9 @@ def test_wrong_token_returns_401():
 
 
 @patch("app.routers.internal_extraction.sync_glossary_entity_to_neo4j")
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 def test_create_returns_action_created(mock_sess_ctx, mock_sync):
-    # neo4j_session is an async context manager — mock both enter/exit.
+    # graph_session is an async context manager — mock both enter/exit.
     mock_session = AsyncMock()
     mock_sess_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
     mock_sess_ctx.return_value.__aexit__ = AsyncMock(return_value=None)
@@ -109,7 +109,7 @@ def test_create_returns_action_created(mock_sess_ctx, mock_sync):
 
 
 @patch("app.routers.internal_extraction.sync_glossary_entity_to_neo4j")
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 def test_update_returns_action_updated(mock_sess_ctx, mock_sync):
     mock_session = AsyncMock()
     mock_sess_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -156,7 +156,7 @@ def test_invalid_uuid_returns_422():
 
 
 @patch("app.routers.internal_extraction.sync_glossary_entity_to_neo4j")
-@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.graph_session")
 def test_neo4j_failure_returns_502(mock_sess_ctx, mock_sync):
     mock_session = AsyncMock()
     mock_sess_ctx.return_value.__aenter__ = AsyncMock(return_value=mock_session)

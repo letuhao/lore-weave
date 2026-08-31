@@ -13,10 +13,10 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import merge_entity
-from app.db.neo4j_repos.events import merge_event
-from app.db.neo4j_repos.relations import create_relation
-from app.db.neo4j_repos.flywheel import get_flywheel_delta
+from app.db.graph_repos.entities import merge_entity
+from app.db.graph_repos.events import merge_event
+from app.db.graph_repos.relations import create_relation
+from app.db.graph_repos.flywheel import get_flywheel_delta
 
 
 @pytest_asyncio.fixture

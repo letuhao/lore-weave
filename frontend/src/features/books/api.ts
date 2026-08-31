@@ -149,10 +149,13 @@ async function apiAuthedFetch(path: string, token: string): Promise<Response> {
 }
 
 export const booksApi = {
-  listBooks(token: string, params?: { limit?: number; offset?: number }) {
+  listBooks(token: string, params?: { limit?: number; offset?: number; q?: string }) {
     const qs = new URLSearchParams();
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.offset) qs.set('offset', String(params.offset));
+    // Server-side title search. Filtering in the browser searched only the rows
+    // the default page happened to contain (20), while the UI showed the true total.
+    if (params?.q) qs.set('q', params.q);
     const query = qs.toString();
     return apiJson<{ items: Book[]; total: number }>(`/v1/books${query ? `?${query}` : ''}`, { token });
   },

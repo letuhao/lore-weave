@@ -100,6 +100,34 @@ BASELINE: frozenset[str] = frozenset({
     "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = '{old}'",
     "services/knowledge-service/scripts/_smoke_a2s1b2.py::print(f'CYPHER: MATCH (s:EntityStatus) WHERE s.project_id=\"{project_id}\" RETURN s.status, count(s)')",
     "services/knowledge-service/scripts/_smoke_a2s1b2_fullchain.py::f'\"MATCH (s:EntityStatus) WHERE s.project_id=\\\\\"{proj}\\\\\" RETURN s.status AS status, count(s) AS n\"')",
+
+    # ── T48n (2026-08-30): the AGE sites, each READ before being listed ────────────────
+    #
+    # §14 filed the whole sweep's raw-sql-lint red as "other work — none names a file this
+    # plan touched." **That attribution was wrong**: five of these six files are this plan's
+    # own. Re-attributed and discharged here rather than inherited, which is what T48's
+    # "nothing silently dropped" is supposed to mean.
+    #
+    # Every one interpolates an IDENTIFIER, which SQL cannot bind as a placeholder at all —
+    # the exception this module's docstring already sanctions. Read individually:
+    #
+    #   · age_graph_store.py ×4, age_session.py, age_anchor_scores.py —
+    #     `cypher('<graph>', $tag$…$tag$)`. AGE takes the graph name as a LITERAL in the
+    #     function call; it is not bindable. The value comes from `graph_name_for()`, which
+    #     returns `g_shared` or `g_` + the project UUID's hex and RAISES on anything failing
+    #     `_VALID_GRAPH_NAME` — so the slot cannot carry user text: an illegal name is an
+    #     exception, never a query. The Cypher body is dollar-quoted with a tag
+    #     `_dollar_tag()` chooses to avoid any sequence occurring inside the body.
+    #   · age_bootstrap.py — `create_graph('<name>')`, the same validated name, and DDL
+    #     takes no binds.
+    #   · vector_backend_bench.py — `pg_total_relation_size('<table>')` over the benchmark's
+    #     OWN module-level table list. No request reaches it.
+    "services/knowledge-service/app/adapters/age_anchor_scores.py::f\"SELECT * FROM cypher('{graph}', $anchor${cypher}$anchor$) \"",
+    "services/knowledge-service/app/adapters/age_graph_store.py::sql = f\"SELECT * FROM cypher('{self._graph}', ${tag}${cypher}${tag}$) as ({columns})\"",
+    "services/knowledge-service/app/adapters/age_graph_store.py::return f\"SELECT * FROM cypher('{self._graph}', ${tag}${cy}${tag}$) as ({cols})\"",
+    "services/knowledge-service/app/benchmark/vector_backend_bench.py::f\"SELECT pg_total_relation_size('{cell.table}')\"",
+    "services/knowledge-service/app/db/age_bootstrap.py::await conn.execute(f\"SELECT ag_catalog.create_graph('{name}')\")",
+    "services/knowledge-service/app/db/age_session.py::f\"SELECT * FROM cypher('{self._graph}', $q${cypher}$q$, $1) \"",
 })
 
 # ── detection ─────────────────────────────────────────────────────────────

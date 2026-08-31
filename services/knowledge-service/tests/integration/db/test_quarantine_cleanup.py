@@ -17,7 +17,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.facts import merge_fact
+from app.db.graph_repos.facts import merge_fact
 from app.jobs.quarantine_cleanup import run_quarantine_cleanup
 from app.metrics import quarantine_auto_invalidated_total
 

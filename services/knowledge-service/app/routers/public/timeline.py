@@ -28,9 +28,9 @@ from app.clients.book_client import (
 from app.clients.chapter_title_enricher import enrich_events_with_chapter_titles
 from app.clients.glossary_client import GlossaryClient
 from app.clients.translation_client import TranslationClient
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import get_entity
-from app.db.neo4j_repos.events import (
+from app.db.neo4j import graph_session
+from app.db.graph_repos.entities import get_entity
+from app.db.graph_repos.events import (
     EVENTS_MAX_LIMIT,
     Event,
     list_events_filtered,
@@ -50,7 +50,7 @@ from app.labels.timeline_localizer import (
     localize_participants,
 )
 from app.middleware.jwt_auth import get_current_user
-from app.spoiler_window import resolve_before_order
+from app.spoiler_window import parse_reveal_at, resolve_before_order
 from app.world_rollup import resolve_world_project_ids
 
 timeline_router = APIRouter(
@@ -162,10 +162,22 @@ async def list_timeline_events(
             "``event_date_iso`` are EXCLUDED when set."
         ),
     ),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION. A book chapter UUID windows the timeline "
+            "through that chapter; `all` is the explicit unbounded read. This is the "
+            "THIRD spelling of one axis on this endpoint — `before_order` is the raw "
+            "ceiling and `before_chapter_id` resolves a chapter to one. Precedence, "
+            "most specific first: an explicit `before_order` wins (a caller that "
+            "already holds the ordinal is not guessing), then `reveal_at`, then "
+            "`before_chapter_id`."
+        ),
+    ),
     before_chapter_id: UUID | None = Query(
         default=None,
         description=(
-            "T2.1 — spoiler-window the timeline THROUGH this book chapter "
+            "DEPRECATED — use `reveal_at`. T2.1 — spoiler-window the timeline THROUGH this book chapter "
             "(resolved server-side to a ``before_order`` ceiling). An "
             "explicit ``before_order`` wins if both are given. Fail-closed: "
             "an unresolvable chapter yields an empty timeline, never a leak."
@@ -274,10 +286,18 @@ async def list_timeline_events(
         )
     # T2.1 — resolve the chapter spoiler-window to a before_order ceiling. An
     # explicit before_order wins; an unresolvable chapter fails CLOSED (-1 → empty).
-    if before_order is None and before_chapter_id is not None:
-        before_order, _available = await resolve_before_order(book_client, before_chapter_id)
+    # Q8 — three spellings of one axis on this endpoint, resolved most-specific-first.
+    # `before_order` (a raw ceiling the caller already holds) still wins: it is not a
+    # guess, and demoting it would break the pagination callers that compute it.
+    if before_order is None:
+        reveal_mode, reveal_chapter = parse_reveal_at(
+            reveal_at, before_chapter_id=before_chapter_id, curation=False)
+        if reveal_mode == "chapter":
+            before_order, _available = await resolve_before_order(book_client, reveal_chapter)
+        # REVEAL_ALL / absent → before_order stays None → unbounded, this surface's
+        # long-standing default (an author timeline is not spoiler-windowed by default).
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # C10 (D-K19e-α-01): resolve entity_id → participant candidates
         # BEFORE the list query so the repo's Cypher can filter in a
         # single round-trip via `ANY(c IN $candidates WHERE c IN
@@ -437,7 +457,7 @@ async def list_world_timeline(
     # banner never shows though more exist. Track per-project truncation so the
     # flag is honest whether the overflow is within ONE book or ACROSS the union.
     any_project_truncated = False
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for pid in project_ids:
             rows, project_total = await list_events_filtered(
                 session,

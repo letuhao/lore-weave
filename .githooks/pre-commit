@@ -28,6 +28,267 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ingress-admission-gate.py"
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
+"$PY" "$ROOT/scripts/adapter-selectability-gate.py"
+
+# T16 — Cypher belongs in an adapter. Staged-scoped: unlike the invariants above this one
+# is about the file you are touching, and the tree already carries a baselined backlog
+# (T17 shrinks it), so a repo-wide run would fail every commit until that sweep lands.
+"$PY" "$ROOT/scripts/graph-port-gate.py" --staged
+"$PY" "$ROOT/scripts/gateway-domain-logic-gate.py"
+"$PY" "$ROOT/scripts/entity-lifecycle-outbox-gate.py"
+# Repo-wide, not --staged: a producer rename breaks CONSUMERS, and those files are exactly
+# the ones NOT in the commit that renames. Scoping this to the staged set would make it blind
+# to the only failure it exists to catch (plan T30 / D-GLOSSARY-EVENTS-NO-SOT).
+"$PY" "$ROOT/scripts/glossary-events-ssot-gate.py"
+# T32 — `glossary_entities.alive` is deprecated (7345 true / 0 false) and awaiting liveness
+# facts. Repo-wide: the point is that the reader set can only SHRINK, which is a property of
+# the tree rather than of the files in one commit.
+"$PY" "$ROOT/scripts/alive-column-deprecation-gate.py"
+# T35 — the derived `Entity.id = hash(name, kind)` gains no new callers while
+# D-T35-OPAQUE-IDENTITY is open. The baseline is the migration checklist.
+"$PY" "$ROOT/scripts/derived-entity-id-gate.py"
+# Plan-row honesty — a `[~]` row whose own block reads as finished. WARNING only (exit 0):
+# ticking a box is a judgement about evidence, and a gate that failed the build over one
+# would push people to tick boxes to get green. Found 3 finished-but-unticked rows on
+# 2026-08-14 (T36, T38, T42a) that had sent a session chasing work already done.
+"$PY" "$ROOT/scripts/plan-row-honesty-gate.py"
+# ...and the SAME gate at the authoring moment, which is the one that BLOCKS (exit 1). The
+# warning above reports on a plan that is already wrong; this fires while the author is still
+# in the file. Backtested over all 183 commits that ever touched the plan: 5 fire, and all
+# five are rows that shipped and sat `[~]` (T38, T42a-d). Blocking is fair because the remedy
+# is three keystrokes and the gate prints all three options.
+"$PY" "$ROOT/scripts/plan-row-honesty-gate.py" --staged
+# The run-state progress line is DERIVED from the checkboxes, not hand-written. It replaced a
+# curated `✅ A8 · ✅ T24b · …` tail that drifted for two days -- the second copy CLAUDE.md
+# warns about ("duplicated goes stale in one copy and then actively misleads"). It lists what
+# is OPEN rather than what is done, on purpose: nobody notices an absence from a done-list,
+# which is precisely how T42b hid; a row you just finished sitting under **OPEN** is loud.
+"$PY" "$ROOT/scripts/plan-progress-block.py" --check
+# Executable acceptance: rows that CAN name a runnable command do, and the count can only rise.
+# Only the FLOOR runs here (instant) -- `--run` needs docker and a live stack, so it belongs to
+# a cycle's QC, not to every commit. This is the one signal that is not self-report: T42b's
+# smoke had been returning `passed=9 failed=0` for two days while its row said `[~]`, and no
+# amount of prose-checking reaches that. Nobody ran it.
+"$PY" "$ROOT/scripts/plan-acceptance.py" --floor
+# T37b/SPEC 4.2c -- the cast-prompt eval's OFFLINE selftest (0.7s; the model arms are opt-in
+# and are not run here). Wired because the thing it guards fails SILENTLY: the eval builds its
+# control arm by removing the `roles` spans from the LIVE prompt, so an unrelated edit to
+# `build_propose_cast_messages` makes both arms identical and the eval then reports "no shift"
+# forever -- a green that means the instrument stopped looking. The selftest asserts the spans
+# still apply, and that the verdict can still RED. A drift guard nobody runs is not a guard.
+"$PY" "$ROOT/services/composition-service/scripts/eval_cast_prompt.py" --selftest
+# T38 — the authored-catalog readers can only shrink. The two knowledge gates deliberately
+# EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
+# this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.
+"$PY" "$ROOT/scripts/authored-catalog-reader-gate.py"
+# T25 -- the soak's OFFLINE selftest. Wired because the thing it guards is the plan's own
+# named worst case, realised: T25a warned that "a gate that reads zero because nothing is
+# wired looks exactly like a gate that reads zero because nothing failed", and on 2026-08-21
+# BOTH stacks were in that state -- the dev service had the metric family absent entirely
+# (KNOWLEDGE_VECTOR_DB_URL unset since a 08-14 container recreate) while D-T25B-SOAK recorded
+# the soak as running since 08-12, and lw-iso had the family present with zero writes. The
+# live check needs a running stack, so only the selftest runs here; what it pins is that
+# DISARMED and ARMED_IDLE never collapse into SOAKING.
+"$PY" "$ROOT/scripts/soak-armed-gate.py" --selftest
+# QC-5 acceptance (PO sign-off 2026-08-21). §2.1 clause 1 was UNSATISFIABLE -- it needed the
+# DRAFTER to violate canon, which it did not in six runs across two chapters, so the row read
+# as a critic failure while the critic was fine (a planted violation attributes 3/3). Split
+# into 1a critic-capability + 1b drafter-compliance, and the offline selftest pins the part
+# that cannot be re-derived by reading it: 1b and clause 2 are BOTH unreadable unless the
+# same measurement proves the critic live, because "found nothing" and "nothing to find"
+# produce identical numbers. The live arms need a stack and local models; only the selftest
+# runs here.
+"$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --selftest
+# C48 — a TICKED QC-5 must still have the basis it closed on. The row did not close on
+# a passing 1a (spec 12 decided that unreachable); it closed because the attribution
+# channel is off, so the judge cannot reach an author. That basis lives in another
+# service, in another language — flip `canon_violations_enabled` back to True and
+# this reds, which is the tie the row had no way to assert before.
+"$PY" "$ROOT/scripts/qc5-acceptance-gate.py" --closure
+# T54d/T54e: `KNOWLEDGE_GRAPH_BACKEND=age` while dev's AGE store held ZERO entities against
+# 8033 nodes in Neo4j, and every gate in the repo was green -- each was asking about WIRING and
+# this is a question about DATA. `soak-armed-gate` verifies dual-write arming and says so;
+# `knowledge-graph-backend-live-smoke` writes a row and reads it back, so it passes perfectly
+# against a store holding nothing else. Comparing the two stores is the only thing that sees it.
+# The comparison needs two live engines, so only the selftest runs here; what it pins is that
+# EMPTY_DECLARED and BOTH_EMPTY never collapse -- a fresh deployment is legitimately empty and
+# a gate that called that MIGRATED would go green one deployment before the failure.
+"$PY" "$ROOT/scripts/graph-store-migrated-gate.py" --selftest
+# THE SSOT SIDE OF THE SAME AXIS. T48s cost two fixes for a chapter used where the axis is
+# chapter x STRIDE; this asks it of the glossary store. Measured on iso: 48610 chapter-scale
+# facts, ONE at stride scale -- present in a head read and unreachable by every as-of read a
+# real position can make. A ratchet on that number, census-driven so CI runs it offline.
+"$PY" "$ROOT/scripts/glossary-ordinal-axis-gate.py" --selftest
+
+# THE TWO META-GATES: the ones that police GATES. Neither was in this hook, and
+# `gate-wiring-gate --run-all` -- which CI runs and this hook does not -- takes 415s, so a
+# gate could be red in CI while every local commit went green. It was, for eleven commits
+# (T48aq: a ratchet defined and never printed).
+#
+# gate-teeth-gate is 0s and asks the question this session kept answering by hand: can this
+# gate FAIL at all? Unconditional.
+"$PY" "$ROOT/scripts/gate-teeth-gate.py"
+# ...and the same question of the MAKEFILE: `ci-local` printed "All local CI gates PASS"
+# while running 15 lints and none of the repo's 117 gates. T48k's defect, one directory up.
+"$PY" "$ROOT/scripts/makefile-claim-gate.py"
+
+# THE FOURTH PLAN GATE. The goal names four -- verify, row-honesty, progress-block --check,
+# acceptance --floor -- and three were wired here. `plan-final-verification` was not: its only
+# two mentions in this file are COMMENTS about what it does. It is the one that asserts every
+# task is done-with-evidence or DECIDED with a spec citation, and that no QC row certifies open
+# work -- and it ran only when a human remembered. 6s, and every plan edit should pay it.
+if git diff --cached --name-only | grep -q "^docs/plans/"; then
+  "$PY" "$ROOT/scripts/plan-final-verification.py"
+fi
+#
+# gate-number-visibility-gate is 24s, so it runs only when scripts/ actually changes -- the
+# same path-scoping the knowledge-gateway suite got in T48al. A ratchet that prints nothing
+# on a green run turns drift into history rather than a diff.
+if git diff --cached --name-only | grep -q "^scripts/"; then
+  echo "meta-gates: scripts/ changed — checking ratchet visibility (24s)"
+  "$PY" "$ROOT/scripts/gate-number-visibility-gate.py"
+fi
+
+# THE KAL GATEWAY'S OWN SUITE. Nothing ran it: not this hook, and no CI workflow -- the only
+# `npm test` in .github belongs to the game subtree. Its 144 tests include the `as_of`
+# forwarding discipline (T48h), which had been RED for four commits after T48ad gave
+# `wiki-neighborhood` a window without registering it. A guard nobody runs is a guard that
+# does not exist, and this one had already caught the defect it was written for.
+#
+# Path-scoped: 3s on a gateway change, nothing otherwise. A missing node_modules SKIPS with
+# a stated reason rather than passing quietly -- an unrunnable check must never read green.
+if git diff --cached --name-only | grep -q "^services/knowledge-gateway/"; then
+  if [ -d "$ROOT/services/knowledge-gateway/node_modules" ]; then
+    echo "knowledge-gateway suite: running (staged change under services/knowledge-gateway/)"
+    ( cd "$ROOT/services/knowledge-gateway" && npm test --silent ) || {
+      echo "FAIL: knowledge-gateway test suite is RED"; exit 1; }
+  else
+    echo "knowledge-gateway suite: SKIPPED — node_modules absent (run npm ci there)"
+  fi
+fi
+# T54i: the KAL exposes 14 read routes and nothing swept them. `knowledge-graph-backend-live-
+# smoke` proves ONE engine on data it writes itself; this asks which of the ROUTES answer, with
+# the list DERIVED from the controller so a route added tomorrow is swept tomorrow. The live
+# half needs a running gateway and a book, so only the selftest runs here; what it pins is that
+# an empty 200 can never read as DATA -- the shape that has cost this repo twice -- and that the
+# row counter knows every envelope, because an instrument that does not report the SYSTEM empty.
+"$PY" "$ROOT/scripts/kal-read-surface-live-smoke.py" --selftest
+# A deferral whose HEADING says open while its own `Retry when` says closed. Found by hand
+# five times on 2026-08-21 and it cost real confusion: `plan-final-verification` refuses a
+# `[x]` QC row whose section "records a deferral" and decides that on the heading, so four
+# finished blocks were half of everything holding QC-5 open. On its FIRST run this gate found
+# three more, in rows nobody had been reading. Only the selftest runs here; the scan needs the
+# plan files, which the repo always has, so the scan runs too.
+"$PY" "$ROOT/scripts/stale-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/stale-deferral-gate.py"
+# The SAME fact split across two documents: a spec says `Replaces `D-X``, the plan heading
+# still says OPEN, and `plan-final-verification` reads the HEADING. Measured 2026-08-21: 29
+# supersession claims, 16 headings still unstruck. NOT auto-strikable -- four of the sixteen
+# were mis-citations (a section about VectorStore claiming a GraphStore deferral), so a
+# blanket rule would have closed four LIVE rows. The gate demands a hand adjudication in
+# docs/specs/2026-08-21-deferral-supersession-ledger.md and enforces only what that records.
+"$PY" "$ROOT/scripts/superseded-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/superseded-deferral-gate.py"
+# The THIRD way a settled question reads as live, and the one the other two cannot see: an
+# OPEN deferral filed under a row the plan has TICKED. Neither sibling fires on these --
+# their `Retry when` fields name CONDITIONS ("when class (d) moves", "when the floor rises")
+# that came true while the prose sat still, and no spec claims to supersede them. Found
+# 2026-08-24 by the run-state audit, four live, three contradicted by a number their own
+# gate prints on every run. Gates ratchet; deferrals do not, so this one closes the loop.
+"$PY" "$ROOT/scripts/discharged-deferral-gate.py" --selftest
+"$PY" "$ROOT/scripts/discharged-deferral-gate.py"
+# T33's reference corpus. Only the SELFTEST runs here -- --emit needs dev Neo4j and --score
+# needs a sheet a person has filled in. What the selftest protects is the two verdicts that
+# stop a vacuous run reading as a pass: NO-PREDICTIONS (an extractor that asserts nothing
+# has no precision -- removing that branch raises ZeroDivisionError, it is not a number) and
+# PASS-NEVER-RAN (a project with no edge at all was never run over, which is the exact
+# substitution spec 4.3 retracted). Plus the guard that this script never writes a label.
+"$PY" "$ROOT/scripts/t33-causal-labelling-sheet.py" --selftest
+# QC-5 1a with the rule set restricted. Only the SELFTEST runs here -- --run needs iso,
+# a token and 8 LLM calls. What it protects is the NON-VACUITY check: without it a run
+# where the restriction never reached the critic reports SEPARATED, planted 2/2,
+# control 0/2 -- a perfect positive manufactured from an experiment that did not run.
+# Plus the guard that refuses dev by port number.
+"$PY" "$ROOT/scripts/qc5-arm1a-rule-isolation.py" --selftest
+# The precision verifier, measured on cases it was NOT derived from. Only the selftest
+# runs here. What it protects are the two vacuity verdicts: a book with NO verifier,
+# and a verifier that resolves to the CRITIC. Without the second, a model auditing
+# itself reports "the verifier dropped every false positive, so C31 generalises" --
+# the opposite conclusion, manufactured. C31 measured self-audit at 0/3.
+"$PY" "$ROOT/scripts/qc5-verifier-heldout.py" --selftest
+# The GOAL's own sentence as one command. Only the selftest runs here (--run needs a
+# live stack and two censuses). What it protects is the FLOOR: a run where every leg
+# SKIPped returns no failures, and "no leg failed" over zero legs is the vacuous pass
+# this repo keeps paying for. The floor is checked BEFORE the failure count.
+"$PY" "$ROOT/scripts/architecture-live-proof.py" --selftest
+# The BI-TEMPORAL leg. T48s found the spoiler window computed and DISCARDED: a reader
+# held at chapter 1 was served chapter 10, because the port had no parameter to put
+# the value in. It was invisible because nothing asked -- the goal's proof covered
+# backend, store, surface and port, and not the spine the architecture exists for.
+# Only the selftest runs here; --base-url needs a live stack.
+"$PY" "$ROOT/scripts/bitemporal-window-live-smoke.py" --selftest
+# The AUTH boundary. Every other live check reaches the KAL with X-Internal-Token, and
+# the guard's FIRST branch returns true for a valid internal token -- so the grant
+# check is never executed by any of them. The USER path, where the KAL is the
+# boundary because the BFF does no grant check, had no live proof at all.
+# Three arms, because a guard that refuses everything passes a refusal test.
+"$PY" "$ROOT/scripts/kal-auth-boundary-live-smoke.py" --selftest
+# TENANCY IN THE SHARED GRAPH. `g_shared` holds every project in one AGE graph and the
+# neighborhood traversal walks edges by entity id with NO project predicate. That is safe
+# only because `entity_canonical_id` hashes the project. This asserts the COUPLING, and
+# it runs the function rather than reading its source -- a key that NAMES `project_id`
+# and still collapses every project fooled the substring version.
+"$PY" "$ROOT/scripts/graph-tenancy-coupling-gate.py" --selftest
+"$PY" "$ROOT/scripts/graph-tenancy-coupling-gate.py"
+# THE KAL SURFACE, WHOLE. The live sweep derives 14 routes from ONE controller and says
+# so truthfully; the KAL has 29 across three. This holds the sweep to a declared scope
+# -- including how many swept routes actually reach the GRAPH (4 of 14; the rest read
+# the Postgres projection) and how many user-reachable routes are unswept (2, a ceiling).
+"$PY" "$ROOT/scripts/kal-surface-census-gate.py" --selftest
+"$PY" "$ROOT/scripts/kal-surface-census-gate.py"
+# A Go `replace` whose target the image build cannot resolve. This gate ALREADY EXISTED
+# and CI already ran it via `gate-wiring-gate --run-all` -- it was green on 2026-08-30
+# while alert-recorder and canary-controller could not be built at all. The wiring was
+# never the problem: its `COPY . .` exemption was unconditional, and `COPY . .` means
+# 'the build context', which for alert-recorder is the SERVICE directory. Amended to
+# derive the declared context; run here too so the answer is local and immediate.
+"$PY" "$ROOT/scripts/dockerfile-replace-copy-gate.py" --selftest
+"$PY" "$ROOT/scripts/dockerfile-replace-copy-gate.py"
+# B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
+# Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
+# call graph_repos with no Cypher of its own, pass that gate, and still break on an engine
+# swap. Also tracks GraphStore adopters as a FLOOR -- currently ZERO, which is what T43's
+# shadow comparison is blocked on.
+"$PY" "$ROOT/scripts/port-adoption-gate.py"
+# A migration that shipped is not a migration that RAN. STATIC half only here (no DB
+# in a pre-commit): every Up* func is registered, ids unique + ascending. The LIVE
+# half — the one that catches 0063/0064/0065 sitting unapplied on a running Postgres,
+# which is the incident this gate is named for — needs `--live` and a reachable DB.
+"$PY" "$ROOT/scripts/migration-drift-gate.py"
+
+# T40 — partition `entity_facts` WHEN it is worth it. STATIC half here: it asserts the
+# BLOCKER is still real (uq_entity_facts_natural still omits book_id), so the day someone
+# adds that column the gate says the price of T40 just dropped. The LIVE half — the row
+# count that reopens the task — needs `--live` and a reachable DB, same split as above.
+"$PY" "$ROOT/scripts/entity-facts-growth-gate.py"
+
+# T46 — two `maintain_chain` implementations exist (a Postgres stored proc, a Cypher
+# constant) and the merge must keep the UNION of their capabilities. Records the one known
+# asymmetry — Postgres is pin-aware, the KG has no pin concept — and fails when either side
+# moves, so a capability cannot vanish into a merge unnoticed.
+"$PY" "$ROOT/scripts/bitemporal-parity-gate.py"
+
+# T44/T47 — the claim "knowledge-service = derived fuzzy/semantic layer" was written in THREE
+# documents and was false in all three: under SCOPE-3's "regenerable with no loss" contract it
+# licenses rebuilding the KG from glossary, destroying 1184 events / 35 statuses / 567
+# unanchored entities. Fixing three files is not a mechanism.
+"$PY" "$ROOT/scripts/ssot-claim-gate.py"
+
+# T48 — a ticked QC row must carry PASTED EVIDENCE, not a claim. QC rows certify things about
+# the SYSTEM (a live smoke, a recall measurement, a contract review): the cheapest claims to
+# assert and the most expensive to be wrong about. Counts fenced output, a results table OR a
+# measured figure -- a fenced-only check reported three false positives on its first run.
+"$PY" "$ROOT/scripts/plan-qc-evidence-gate.py"
 
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a
@@ -325,6 +586,25 @@ if [ -n "$STAGED_TS" ]; then
     exit 1
   }
 fi
+
+# T48az -- the GOAL's proof takes nine inputs and its docstring documents four. The
+# `PROVEN / ran: 7` in the plan was assembled by hand and never written down, so nothing in
+# the repo could reproduce the plan's own central claim. The wrapper owns that derivation.
+# Only the selftest runs here; the derivation needs a live stack. What it pins is the
+# fail-closed property: the first version validated inside `$(...)`, so `die` exited the
+# SUBSHELL and the script sailed on with an empty --project-id, which the proof turned into
+# a SKIP. Five of the seven cases are negative, and they drive the REAL function.
+bash "$ROOT/scripts/architecture-live-proof-iso.sh" --selftest
+
+# T48ay -- PERF-3's Go leg recognised a page cap only by the NAME of a helper
+# (clampLimit/parseLimitOffset), and glossary-service and statistics-service have
+# no such helper: every one of their list routes clamps INLINE and read as
+# unbounded. Six sat in the lint's own BASELINE with the note "clearing these
+# properly means teaching the lint to find the clamp". The inline detector is
+# two regexes and a function-scope resolver, each one character wide when broken,
+# so the four NEGATIVE cases are what this pins -- notably that the guard assigns
+# the SAME variable it tests. A hand-bite of that backreference is invisible here.
+"$PY" "$ROOT/scripts/pagination-cap-lint.py" --selftest
 
 # ── The 12-phase workflow gate — UNIVERSAL as of 2026-08-03 ────────────────────
 #

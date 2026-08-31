@@ -66,6 +66,68 @@ LE_BOUND = re.compile(r"\ble\s*=")
 GO_PARAM_LIMIT = re.compile(r"LIMIT\s+(?:\$\d+|\$`|%d|%s)", re.IGNORECASE)
 GO_CLAMP_SIGNALS = ("clampLimit", "parseLimitOffset")
 
+# Go, second clamp form: the cap written INLINE rather than routed through a
+# helper. glossary-service and statistics-service have no `clampLimit` to call,
+# so every one of their list routes clamps in place — `if limit > 500 { limit =
+# 500 }` — and read to this lint as unbounded. Six such sites sat in the BASELINE
+# below with the note "clearing these properly means teaching the lint to find
+# the clamp"; this is that. The pattern requires the SAME variable on both sides,
+# so `if limit > 500 { offset = 500 }` is not a cap.
+#
+# 🔴 **THE BOUND MAY BE A NAMED CONSTANT, AND REQUIRING A DIGIT MADE A REAL CAP INVISIBLE**
+# (L6, 2026-08-30). `mcp_tools_read.go` caps in its own function:
+#
+#     const maxChapterBlocks = 300                                        // :246
+#     if limit <= 0 || limit > maxChapterBlocks { limit = maxChapterBlocks }
+#
+# The previous pattern required `\d+` on both sides AND `if <limit> >` immediately after the
+# `if`, so it failed twice over — the bound is a name, and the condition is compound. §22
+# priced its batch as "7 blind spots plus 1 real verdict"; that one verdict was this, and the
+# batch is 8 blind spots.
+#
+# ⚠️ **A VARIABLE IS STILL NOT A CAP.** The whole point of the signal is that the bound is
+# KNOWABLE at the call site: `limit = someVar` bounds nothing a reader can check, and
+# accepting it would turn this lint into one that passes whenever an assignment exists.
+# `_go_int_consts` therefore resolves only package-level `const NAME = <int>` (and the
+# `const ( … )` block form) — never a `var`, never a non-integer const.
+GO_INLINE_CAP = re.compile(
+    r"if\s+[^{}]*?\b(\w*[Ll]imit\w*)\s*>\s*(\w+)\b[^{}]*?\{[^}]*?\1\s*=\s*(\w+)\b", re.S)
+GO_MIN_CAP = re.compile(r"\bmin\s*\(\s*\w*[Ll]imit\w*\s*,\s*(\w+)\s*\)", re.I)
+
+#: `const NAME = 300` at package scope, and the same inside a `const ( … )` block. Only
+#: INTEGER literals: a `const pageSize = someOther` chains to something this cannot see, and
+#: a string const is not a bound at all.
+GO_CONST_SINGLE = re.compile(r"^\s*const\s+(\w+)(?:\s+\w+)?\s*=\s*(\d+)\s*$", re.M)
+GO_CONST_BLOCK = re.compile(r"^const\s*\(\s*$(.*?)^\)\s*$", re.M | re.S)
+GO_CONST_BLOCK_ENTRY = re.compile(r"^\s*(\w+)(?:\s+\w+)?\s*=\s*(\d+)\s*(?://.*)?$", re.M)
+
+
+def _go_int_consts(text: str) -> set[str]:
+    """Package-level integer constants — the only names allowed as a cap's bound.
+
+    Deliberately narrow. A `var` can be reassigned, a const chained to another const is not
+    resolvable by a regex, and a string const is not a bound; all three read as "unknowable
+    at the call site", which is the property this signal is actually asserting.
+    """
+    names = {m.group(1) for m in GO_CONST_SINGLE.finditer(text)}
+    for block in GO_CONST_BLOCK.finditer(text):
+        names |= {m.group(1) for m in GO_CONST_BLOCK_ENTRY.finditer(block.group(1))}
+    return names
+
+
+def _bound_is_knowable(token: str, consts: set[str]) -> bool:
+    """A literal, or a name this file declares as an integer const. Nothing else."""
+    return token.isdigit() or token in consts
+
+# Resolving a LIMIT to the function(s) that can reach it. Unlike the helper
+# signal above, which passes a whole FILE, the inline signal is scoped to the
+# enclosing function: a `clampLimit` call anywhere in a 3000-line server.go
+# should not vouch for an unrelated query, and a NEW signal has no back-compat
+# reason to inherit that looseness. A SQL string declared at file scope
+# (`const fooSQL = `...``) belongs to whichever functions name it.
+GO_FUNC = re.compile(r"^func\s+(?:\([^)]*\)\s*)?(\w+)", re.M)
+GO_SQL_CONST = re.compile(r"^\s*(?:const\s+|var\s+)?(\w+)\s*=\s*`", re.M)
+
 
 def is_excluded(rel: str) -> bool:
     """Test / script / eval / fixture files — not user-facing runtime routes."""
@@ -124,6 +186,78 @@ def scan_python(path: str, rel: str) -> list[tuple[str, int, str]]:
     return out
 
 
+def _go_funcs(text: str) -> list[tuple[str, int, int]]:
+    """(name, start, end) per top-level func; end at the next column-0 `}`."""
+    out: list[tuple[str, int, int]] = []
+    for fm in GO_FUNC.finditer(text):
+        end = text.find(chr(10) + "}", fm.start())
+        out.append((fm.group(1), fm.start(),
+                    end + 2 if end != -1 else len(text)))
+    return out
+
+
+def _go_capped_in_scope(text: str, funcs: list[tuple[str, int, int]],
+                        pos: int) -> bool:
+    """True when every function that can reach the LIMIT at `pos` caps it.
+
+    A LIMIT inside a function is judged by that function. A LIMIT in a
+    file-scope SQL constant is judged by every function naming that constant —
+    if ANY of them fails to cap, the site is still a finding, because that is
+    the caller that reaches the database unbounded. An unresolvable constant
+    (no identifier, or named by no function) is NOT quietly passed."""
+    inner = [f for f in funcs if f[1] <= pos < f[2]]
+    if inner:
+        scopes = [inner[0]]
+    else:
+        ident = None
+        for cm in GO_SQL_CONST.finditer(text[:pos]):
+            ident = cm.group(1)
+        if not ident:
+            return False
+        scopes = [f for f in funcs if ident in text[f[1]:f[2]]]
+        if not scopes:
+            return False
+    consts = _go_int_consts(text)
+    return all(_scope_caps(text[s:e], consts) for _n, s, e in scopes)
+
+
+def _scope_caps(body: str, consts: set[str]) -> bool:
+    """True when this function body bounds its limit with something KNOWABLE.
+
+    Both halves of an inline cap are checked — the comparison bound and the value assigned —
+    because `if limit > 500 { limit = someVar }` compares against a literal and then bounds
+    the query by whatever that variable happens to hold. A regex that looked only at the
+    comparison would call that capped.
+    """
+    for m in GO_INLINE_CAP.finditer(body):
+        if (_bound_is_knowable(m.group(2), consts)
+                and _bound_is_knowable(m.group(3), consts)):
+            return True
+    for m in GO_MIN_CAP.finditer(body):
+        if _bound_is_knowable(m.group(1), consts):
+            return True
+    return False
+
+
+def _in_line_comment(text: str, pos: int) -> bool:
+    """True when `pos` sits after a `//` on its own line.
+
+    🔴 A comment is not a query (L6). `search.go` documents its own placeholders —
+    `// $3 = escaped ILIKE pattern   $4 = limit` and `// per chapter, so ``LIMIT $4`` bounds
+    distinct CHAPTERS` — and the scanner counted all three as unbounded list queries. Three
+    of the five findings a stricter signal would have produced were prose ABOUT the cap,
+    which is the "hygiene grep matches a comment" defect this repo has hit before: the
+    instrument reporting on its own documentation.
+
+    Line-comments only. A `/* … */` block containing a LIMIT is rare enough that guessing at
+    it would add more failure modes than it removes, and a false POSITIVE here costs a
+    finding rather than hiding one.
+    """
+    line_start = text.rfind(chr(10), 0, pos) + 1
+    comment = text.find("//", line_start)
+    return 0 <= comment < pos
+
+
 def scan_go(path: str, rel: str) -> list[tuple[str, int, str]]:
     """Return (rel, lineno, snippet) parameterized-LIMIT-without-clamp
     violations. File-level clamp-helper presence is the pass signal.
@@ -141,10 +275,15 @@ def scan_go(path: str, rel: str) -> list[tuple[str, int, str]]:
         return out
     full = "".join(lines)
     if any(sig in full for sig in GO_CLAMP_SIGNALS):
-        return out  # file routes limits through a known clamp helper → OK
-    for n, line in enumerate(lines, 1):
-        if GO_PARAM_LIMIT.search(line):
-            out.append((rel, n, _strip(line)))
+        return out  # file routes limits through a known clamp helper
+    funcs = _go_funcs(full)
+    for m in GO_PARAM_LIMIT.finditer(full):
+        if _in_line_comment(full, m.start()):
+            continue
+        if _go_capped_in_scope(full, funcs, m.start()):
+            continue
+        n = full.count(chr(10), 0, m.start()) + 1
+        out.append((rel, n, _strip(lines[n - 1])))
     return out
 
 
@@ -183,6 +322,13 @@ def fingerprint(hit: tuple[str, int, str]) -> str:
 # ── BASELINE — today's known offenders (PERF-3 debt, tracked not fixed here).
 # Regenerate with `--regen`. Each entry is `rel::snippet`. Keep sorted.
 BASELINE: frozenset[str] = frozenset({
+    # ── PRUNED 2026-08-30 (T48ay) — 10 entries removed, none by fixing a route.
+    # The inline-cap detector below now SEES the clamp these entries were parked
+    # around, which is what their own note asked for: 'clearing these properly
+    # means teaching the lint to find the clamp'. An entry that matches no current
+    # hit is worse than none: it asserts debt that does not exist and makes the
+    # tracked count unfalsifiable. Pruned by INTERSECTION with the live scan, never
+    # by regenerating wholesale, so a genuinely new offender cannot be absorbed.
     # ── Verified 2026-07-31 (D-QC-GATES-BUILT-BUT-NOT-WIRED). This lint had never run
     # in CI; when it was first executed it reported these five, and all five are LINT
     # PRECISION false positives, checked one at a time rather than baselined on sight:
@@ -201,10 +347,7 @@ BASELINE: frozenset[str] = frozenset({
     #     call site rather than weakening the handler scan for every API file.
     "services/book-service/internal/api/epub_asset_retention.go::LIMIT $2",
     "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
-    "services/book-service/internal/api/mcp_worlds.go::LIMIT $2 OFFSET $3`, ownerID, limit, offset)",
     "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
-    "services/glossary-service/internal/api/entities_by_ids_handler.go::LIMIT $2 OFFSET $3`, bookID, limit+1, offset)",
-    "services/glossary-service/internal/api/entity_handler.go::LIMIT $3`, bookID, afterArg, limit+1)",
     # Go handler-layer list queries carrying today's PERF-3 debt. Many use a
     # server-set cap (batchSize/pipelineReadCap/*ListCap) and are safe; a few
     # (sharing listPublicInternal, statistics, usage-billing) are genuinely
@@ -231,51 +374,252 @@ BASELINE: frozenset[str] = frozenset({
     # and `book_list` answered the same over-request differently).
     "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
     "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
-    "services/glossary-service/internal/api/entity_handler.go::LIMIT $3`, bookID, afterArg, limit+1)",
 
     "services/auth-service/internal/api/handlers.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/auth-service/internal/api/mcp_audit.go::LIMIT $3 OFFSET $4`, uid, keyID, limit, offset)",
     "services/book-service/internal/api/favorites.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/book-service/internal/api/import.go::ORDER BY ts ASC LIMIT $2",
-    "services/glossary-service/internal/api/canonical_summary_handler.go::LIMIT $2`, bookID, limit)",
+    # L6 (2026-08-30) — THREE entries removed here, by intersection and never
+    # --regen: canonical_summary_handler.go, wiki_gold_pairs.go and wiki_handler.go
+    # were never defects. They cap against `maxCanonicalDirtyLimit`,
+    # `goldPairsMaxLimit` and a compound `if limit <= 0 || limit > 100`, and the
+    # old pattern required a DIGIT bound sitting immediately after the `if`. A
+    # baseline row for a non-defect is worse than none: it makes the list look
+    # like it is carrying work that does not exist.
     "services/glossary-service/internal/api/enrichment_handler.go::LIMIT $2`, bookID, limit)",
     "services/glossary-service/internal/api/evidence_handler.go::LIMIT $2`, entityID, limit)",
-    "services/glossary-service/internal/api/extraction_handler.go::LIMIT $3",
     "services/glossary-service/internal/api/facts_handler.go::LIMIT $`+strconv.Itoa(len(args)), args...)",
     "services/glossary-service/internal/api/fold_handler.go::LIMIT $2",
     "services/glossary-service/internal/api/glossary_translate_handler.go::entitySQL += ` ORDER BY e.entity_id LIMIT $` + strconv.Itoa(limitArg) +",
     "services/glossary-service/internal/api/knowledge_client.go::fmt.Sprintf(`SELECT ge.entity_id::text `+base+` ORDER BY ge.created_at LIMIT %d`, limit),",
     "services/glossary-service/internal/api/merge_candidates_handler.go::q += ` LIMIT $3`",
-    "services/glossary-service/internal/api/pipeline_read_tools.go::LIMIT $2`, bookID, pipelineReadCap)",
     "services/glossary-service/internal/api/pipeline_read_tools.go::ORDER BY revision_num DESC LIMIT $2`, entityID, entityRevisionsListCap)",
     "services/glossary-service/internal/api/plan_ops.go::q += ` LIMIT $2`",
-    "services/glossary-service/internal/api/recycle_bin_handler.go::LIMIT $2 OFFSET $3`,",
     "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $3`, selectCols)",
     "services/glossary-service/internal/api/select_for_context_handler.go::LIMIT $4`, selectCols)",
     "services/glossary-service/internal/api/server.go::LIMIT $3`",
     "services/glossary-service/internal/api/server.go::LIMIT $4",
     "services/glossary-service/internal/api/server.go::LIMIT $4`",
-    "services/glossary-service/internal/api/user_genre_handler.go::LIMIT $2 OFFSET $3`, orderClause), userID, limit, offset)",
-    "services/glossary-service/internal/api/user_genre_handler.go::LIMIT $2 OFFSET $3`, userID, limit, offset)",
-    "services/glossary-service/internal/api/user_kind_handler.go::LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/glossary-service/internal/api/wiki_contributions_handler.go::LIMIT $2 OFFSET $3`, targetUser, limit, offset)",
-    "services/glossary-service/internal/api/wiki_gold_pairs.go::LIMIT $2`,",
-    "services/glossary-service/internal/api/wiki_handler.go::LIMIT $2 OFFSET $3`, articleID, limit, offset)",
     "services/sharing-service/internal/api/server.go::rows, err := s.pool.Query(r.Context(), `SELECT book_id FROM sharing_policies WHERE visibility='public' ORDER BY updated_at DESC LIMIT $1 OFFSET $2`, limit, offset)",
-    "services/statistics-service/internal/api/server.go::ORDER BY %s DESC LIMIT $1 OFFSET $2",
     "services/usage-billing-service/internal/api/server.go::LIMIT $1 OFFSET $2",
 })
+
+
+def selftest() -> int:
+    """Drive scan_go over synthetic Go files whose verdict is known.
+
+    A hand-bite is invisible to CI, and this detector has two properties that
+    look identical when they are broken: the same-variable backreference, and
+    the function scoping. Both are one character wide. The negative cases are
+    the point — a detector validated only on code it was derived from is green
+    by construction."""
+    import tempfile
+
+    NL = chr(10)
+    Q = chr(96)   # backtick: Go raw string
+    QUOTE = chr(34)
+
+    CAP = "if limit > 500 {" + chr(10) + "        limit = 500" + chr(10) + "    }"
+    cases: list[tuple[str, str, bool]] = [
+        ("capped inline, one handler", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    limit := queryInt(r.URL.Query().Get(" + QUOTE + "limit" + QUOTE + "), 200)",
+            "    " + CAP,
+            "    rows, _ := s.pool.Query(r.Context(), " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), False),
+
+        ("capped via min()", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    limit = min(limit, 100)",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), False),
+
+        ("file-scope SQL const, referenced by a capping handler", NL.join([
+            "package api",
+            "const listSQL = " + Q + "SELECT id FROM t LIMIT $1 OFFSET $2" + Q,
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    " + CAP,
+            "    rows, _ := s.pool.Query(ctx, listSQL, limit, offset)",
+            "}"]), False),
+
+        # ── the negatives ────────────────────────────────────────────────────
+        ("NO cap at all", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    limit := queryInt(r.URL.Query().Get(" + QUOTE + "limit" + QUOTE + "), 200)",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # ── L6 · the bound may be a NAMED CONSTANT ────────────────────────────
+        #
+        # This is `mcp_tools_read.go`. §22 recorded it as "a real per-function verdict
+        # today, not a blind spot"; it is a blind spot, and it took a hand check to see it.
+        # Note the condition is COMPOUND — the old pattern needed `if limit >` immediately
+        # after the `if`, so it failed on the shape as well as on the bound.
+        ("cap against a package-level int const, compound condition", NL.join([
+            "package api",
+            "const maxChapterBlocks = 300",
+            "func getChapter(w http.ResponseWriter, r *http.Request) {",
+            "    if limit <= 0 || limit > maxChapterBlocks {",
+            "        limit = maxChapterBlocks",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), False),
+
+        # Same, declared in a `const ( … )` block rather than a single line.
+        ("cap against a const declared in a const( ) block", NL.join([
+            "package api",
+            "const (",
+            "    pageMax = 250",
+            ")",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    if limit > pageMax {",
+            "        limit = pageMax",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), False),
+
+        # THE CONTROL FOR THE WHOLE FEATURE. A VARIABLE is not a bound: nothing at the call
+        # site says what it holds, and accepting it would make this lint pass whenever an
+        # assignment exists inside an if-block. Widening a signal is exactly the change that
+        # quietly starts accepting what it should not.
+        ("a VARIABLE bound is NOT a cap", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    if limit > someVar {",
+            "        limit = someVar",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # BOTH SIDES must be knowable, and only this case can tell. The variable case
+        # above puts `someVar` on both sides, so checking the COMPARISON alone catches it
+        # — measured: deleting the check on the ASSIGNED value left the suite green.
+        # Here the comparison is a literal and the assignment is not, which is the shape
+        # that bounds a query by whatever a variable happens to hold.
+        ("compares against a literal but ASSIGNS a variable", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    if limit > 500 {",
+            "        limit = someVar",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # ...and a const that is not an INTEGER is not a bound either.
+        ("a non-integer const is NOT a cap", NL.join([
+            "package api",
+            "const pageMode = " + QUOTE + "wide" + QUOTE,
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    if limit > pageMode {",
+            "        limit = pageMode",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # A COMMENT is not a query. `search.go` documents its own placeholders, and three
+        # of the five findings a stricter signal produced were prose ABOUT the cap.
+        ("a LIMIT inside a // comment is not a query", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    // $1 = book_id   $2 = query   LIMIT $3 bounds the page",
+            "}"]), False),
+
+        # ...and the guard must not swallow a REAL query that merely follows a comment
+        # on an earlier line. Failing open here would hide findings rather than cost one.
+        ("a comment on the LINE ABOVE does not excuse the query", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    // the page is bounded below",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # The guard assigns a DIFFERENT variable, so nothing bounds `limit`.
+        # Only the backreference in GO_INLINE_CAP separates this from case 1;
+        # without it the pattern reads any `= <int>` inside the block as a cap.
+        ("guard tests limit but assigns offset", NL.join([
+            "package api",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    if limit > 500 {",
+            "        offset = 500",
+            "    }",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+
+        # One caller caps, the other does not. A file-level signal passes this;
+        # the uncapped caller is the one that reaches the database unbounded.
+        ("shared SQL const, only ONE of two callers caps", NL.join([
+            "package api",
+            "const listSQL = " + Q + "SELECT id FROM t LIMIT $1" + Q,
+            "func listSafe(w http.ResponseWriter, r *http.Request) {",
+            "    " + CAP,
+            "    rows, _ := s.pool.Query(ctx, listSQL, limit)",
+            "}",
+            "func listUnsafe(w http.ResponseWriter, r *http.Request) {",
+            "    rows, _ := s.pool.Query(ctx, listSQL, limit)",
+            "}"]), True),
+
+        # An SQL constant no function names cannot be shown to be capped. The
+        # resolver returns "not capped" rather than passing it, so a resolution
+        # failure costs a finding and never hides one. Seven of book-service
+        # search.go's eight sites land here (spec section 22).
+        ("file-scope SQL const that NO function references", NL.join([
+            "package api",
+            "const orphanSQL = " + Q + "SELECT id FROM t LIMIT $1" + Q,
+            "func unrelated(w http.ResponseWriter, r *http.Request) {",
+            "    " + CAP,
+            "}"]), True),
+
+        # The cap lives in a neighbouring handler, not the one that queries.
+        ("cap in a DIFFERENT function than the query", NL.join([
+            "package api",
+            "func other(w http.ResponseWriter, r *http.Request) {",
+            "    " + CAP,
+            "}",
+            "func listThings(w http.ResponseWriter, r *http.Request) {",
+            "    rows, _ := s.pool.Query(ctx, " + Q + "SELECT id FROM t LIMIT $1" + Q + ", limit)",
+            "}"]), True),
+    ]
+
+    failures = 0
+    with tempfile.TemporaryDirectory() as td:
+        for i, (name, src, want_flag) in enumerate(cases):
+            path = os.path.join(td, "f%d.go" % i)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(src + chr(10))
+            rel = "services/selftest-service/internal/api/f%d.go" % i
+            got_flag = bool(scan_go(path, rel))
+            ok = got_flag == want_flag
+            failures += 0 if ok else 1
+            verb = "flags" if want_flag else "passes"
+            print("  %-4s %-52s expected the lint to %s -> %s"
+                  % ("ok" if ok else "FAIL", name, verb,
+                     "flagged" if got_flag else "passed"))
+
+    if failures:
+        print(chr(10) + "pagination-cap-lint --selftest: FAIL "
+              "(%d of %d case(s) wrong)" % (failures, len(cases)))
+        return 1
+    print(chr(10) + "pagination-cap-lint --selftest: OK "
+          "(%d cases, %d of them negative)"
+          % (len(cases), sum(1 for c in cases if c[2])))
+    return 0
 
 
 def main(argv: list[str]) -> int:
     if "--help" in argv or "-h" in argv:
         print(__doc__)
         return 0
+    if "--selftest" in argv:
+        return selftest()
     regen = "--regen" in argv
-    unknown = [a for a in argv if a not in ("--regen", "--help", "-h")]
+    unknown = [a for a in argv if a not in ("--regen", "--selftest", "--help", "-h")]
     if unknown:
         print(f"pagination-cap-lint: unknown arg(s): {unknown}", file=sys.stderr)
-        print("usage: pagination-cap-lint.py [--regen] [--help]", file=sys.stderr)
+        print("usage: pagination-cap-lint.py [--regen] [--selftest] [--help]", file=sys.stderr)
         return 2
 
     hits = collect()

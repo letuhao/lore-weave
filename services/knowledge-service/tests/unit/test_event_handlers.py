@@ -305,7 +305,7 @@ async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch
             yield MagicMock()
 
         ingest_mock = AsyncMock()
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -357,7 +357,7 @@ async def test_chapter_published_passage_failure_does_not_block_graph_queue(
 
         # ingest blows up — must be swallowed, queue must survive.
         ingest_mock = AsyncMock(side_effect=RuntimeError("embed 503"))
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -613,15 +613,15 @@ async def test_chapter_unpublished_does_not_retract_the_knowledge_graph(monkeypa
         remove_mock = AsyncMock(return_value=3)
         delete_mock = AsyncMock(return_value=7)
         set_canon_mock = AsyncMock(return_value=5)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.set_canon_for_source", set_canon_mock,
+            "app.db.graph_repos.passages.set_canon_for_source", set_canon_mock,
         )
 
         await handle_chapter_unpublished(_unpublished_event(), pool=pool)
@@ -661,9 +661,9 @@ async def test_chapter_unpublished_demotion_failure_is_non_fatal(monkeypatch):
         async def fake_session():
             yield MagicMock()
 
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.set_canon_for_source",
+            "app.db.graph_repos.passages.set_canon_for_source",
             AsyncMock(side_effect=RuntimeError("neo4j transient")),
         )
 
@@ -695,20 +695,20 @@ async def test_chapter_kg_excluded_retracts_graph_and_passages(monkeypatch):
         remove_mock = AsyncMock(return_value=3)
         cleanup_mock = AsyncMock(return_value=MagicMock(total=2))
         delete_mock = AsyncMock(return_value=7)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         # Retract by NATURAL KEY (the helper hashes the ExtractionSource id) — a raw-id
         # call matches a hashed-id MATCH and removes ZERO edges.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         # NO orphan sweep here: this handler runs OUTSIDE the one-active-job-per-project
         # extraction lock, so cleanup could race a concurrent extraction and delete an
         # in-flight node. The offline reconciler GCs them safely.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", cleanup_mock,
+            "app.db.graph_repos.provenance.cleanup_zero_evidence_nodes", cleanup_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
 
         await handle_chapter_kg_excluded(_kg_excluded_event(), pool=pool)
@@ -762,12 +762,12 @@ async def test_chapter_kg_excluded_passage_retract_independent_of_graph_failure(
 
         remove_mock = AsyncMock(side_effect=RuntimeError("neo4j transient"))
         delete_mock = AsyncMock(return_value=7)
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", remove_mock,
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key", remove_mock,
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+            "app.db.graph_repos.passages.delete_passages_for_source", delete_mock,
         )
 
         # (2) A partially-failed RETRACTION must NOT be acked.
@@ -794,13 +794,13 @@ async def test_chapter_kg_excluded_success_does_not_raise(monkeypatch):
         async def fake_session():
             yield MagicMock()
 
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            "app.db.graph_repos.provenance.remove_evidence_for_natural_key",
             AsyncMock(return_value=3),
         )
         monkeypatch.setattr(
-            "app.db.neo4j_repos.passages.delete_passages_for_source",
+            "app.db.graph_repos.passages.delete_passages_for_source",
             AsyncMock(return_value=7),
         )
 
@@ -894,7 +894,7 @@ async def test_glossary_updated_triggers_sync(monkeypatch):
     )
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", _fake_neo4j_session)
         monkeypatch.setattr(
             "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
             sync_mock,
@@ -932,7 +932,7 @@ async def test_glossary_updated_idempotent_on_replay(monkeypatch):
     )
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", _fake_neo4j_session)
         monkeypatch.setattr(
             "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
             sync_mock,
@@ -1030,7 +1030,7 @@ async def test_translation_published_dual_indexes_vi(monkeypatch):
             yield MagicMock()
 
         ingest_mock = AsyncMock()
-        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr("app.db.neo4j.graph_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
@@ -1127,3 +1127,58 @@ async def test_glossary_updated_missing_ids_skips():
         _glossary_event(payload=payload, aggregate_id=""), pool=pool
     )
     pool.fetchrow.assert_not_called()
+
+
+# ── plan T12: the chapter-delete cascade goes through the provenance repo ──────
+
+
+@pytest.mark.asyncio
+async def test_chapter_deleted_decrements_evidence_instead_of_bare_detach_delete(monkeypatch):
+    """Deleting a chapter must RETRACT its canon, not merely unlink it.
+
+    The handler used to run an inline `DETACH DELETE` on the ExtractionSource. That
+    removed the EVIDENCED_BY edges without decrementing the `evidence_count` those edges
+    maintain — so every entity, event and fact the chapter evidenced kept an inflated
+    counter, stayed visible to the `evidence_count >= 1` reads, and could never reach
+    zero for `cleanup_zero_evidence_nodes` to collect. The chapter's canon survived its
+    own deletion until the offline reconciler next ran.
+
+    The sibling `chapter.kg_excluded` handler already retracted properly. Deleting is the
+    stronger action and was doing less, which is the asymmetry this test pins.
+    """
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
+
+    cascade = AsyncMock(return_value=3)
+    monkeypatch.setattr(
+        "app.db.graph_repos.provenance.delete_source_cascade", cascade
+    )
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_chapter_passages",
+        AsyncMock(return_value=2),
+    )
+
+    session = MagicMock()
+    session.run = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.db.neo4j.graph_session", lambda: ctx)
+
+    event = _event(
+        "chapter.deleted", aggregate_id=str(_CHAPTER), payload={"book_id": str(_BOOK)},
+    )
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://x"
+        await handle_chapter_deleted(event, pool=pool)
+
+    cascade.assert_awaited_once()
+    kwargs = cascade.await_args.kwargs
+    assert kwargs["source_type"] == "chapter"
+    assert kwargs["source_id"] == str(_CHAPTER)
+    assert kwargs["user_id"] == str(_USER)
+    assert kwargs["project_id"] == str(_PROJECT)
+
+    # And NOT by hand. A handler that kept its own Cypher alongside the repo call would
+    # satisfy every assertion above while still leaving the counters wrong.
+    session.run.assert_not_called()

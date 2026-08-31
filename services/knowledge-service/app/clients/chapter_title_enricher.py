@@ -29,7 +29,9 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.clients.book_client import BookClient
-from app.db.neo4j_repos.events import Event
+# T17 — the model, from the engine-neutral domain module. This file only ever wanted the
+# SHAPE of an event, never the Neo4j repository layer.
+from app.domain.graph_models import Event
 from app.db.repositories.extraction_jobs import ExtractionJob
 
 __all__ = [

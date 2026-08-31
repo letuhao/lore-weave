@@ -446,10 +446,10 @@ async def _reapply_batch(
         resolved; the live re-apply is a no-op, never a 500).
       * a single item that can't be reconstructed / whose endpoint is missing →
         log + continue (one bad park never breaks the batch)."""
-    from app.db.neo4j import Neo4jNotConfiguredError, neo4j_session
+    from app.db.neo4j import Neo4jNotConfiguredError, graph_session
 
     try:
-        session_cm = neo4j_session()
+        session_cm = graph_session()
     except Neo4jNotConfiguredError:
         logger.warning(
             "triage re-apply skipped — Neo4j not configured (Track-1); PG state "

@@ -23,10 +23,16 @@ const WORLDS = '/v1/worlds';
 const GLOSSARY = '/v1/glossary';
 
 export const worldsApi = {
-  listWorlds(token: string, params?: { limit?: number; offset?: number }): Promise<WorldListResponse> {
+  listWorlds(
+    token: string,
+    params?: { limit?: number; offset?: number; q?: string },
+  ): Promise<WorldListResponse> {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.offset != null) qs.set('offset', String(params.offset));
+    // Server-side name search. Only sent when non-empty so a cleared box
+    // reverts to the unfiltered list rather than searching for "".
+    if (params?.q) qs.set('q', params.q);
     const q = qs.toString();
     return apiJson<WorldListResponse>(`${WORLDS}${q ? `?${q}` : ''}`, { token }).then((response) => ({
       ...response,

@@ -27,7 +27,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()
@@ -89,7 +89,7 @@ def test_gaps_returns_candidates():
             new_callable=AsyncMock,
             return_value=gaps,
         ), patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -113,7 +113,7 @@ def test_gaps_empty():
             new_callable=AsyncMock,
             return_value=[],
         ), patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -139,7 +139,7 @@ def test_min_mentions_and_limit_pass_through():
             new_callable=AsyncMock,
             return_value=[],
         ) as mock_find, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()
@@ -169,7 +169,7 @@ def test_default_min_mentions_and_limit():
             new_callable=AsyncMock,
             return_value=[],
         ) as mock_find, patch(
-            "app.routers.public.entities.neo4j_session",
+            "app.routers.public.entities.graph_session",
             new=lambda: _noop_session(),
         ):
             client = _make_client()

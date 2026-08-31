@@ -95,6 +95,11 @@ func (s *Server) Router() http.Handler {
 	// the trace id in both the response body and the X-Trace-Id header.
 	r.Use(traceIDMiddleware)
 	r.Use(jsonRecovererMiddleware)
+	// T50 — default every request to the `http` transport. `/internal` re-tags itself as
+	// `internal` and the MCP handler as `mcp`; chi runs a subtree's middleware after the
+	// parent's, so the more specific tag wins. Tagging at the ROOT rather than per-route is
+	// what makes a new command route inherit a truthful transport instead of `unknown`.
+	r.Use(transportMiddleware(transportHTTP))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
@@ -139,10 +144,15 @@ func (s *Server) Router() http.Handler {
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
+		// T50 — the KAL/service transport (see command_transport.go).
+		r.Use(transportMiddleware(transportInternal))
 		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
 		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
+		// The book-wide as-of read (AC1/AC2). Unlike its per-entity sibling under
+		// /entities/{entity_id}/facts, `as_of` here is REQUIRED — see state_handler.go.
+		r.Get("/books/{book_id}/state", s.internalStateAsOf)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		// WS-4C Half A — chat's post-turn canon auto-capture. UNLIKE its siblings here,
 		// this route grant-checks the supplied owner_user_id (Edit) against the book: it
@@ -164,6 +174,14 @@ func (s *Server) Router() http.Handler {
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
 		r.Get("/books/{book_id}/entity-ids", s.internalEntityIDs)
+		// The truth side of the glossary→KG mirror anti-join. NOT entity-ids: that one
+		// filters `alive`, a story flag the emit path does not honour, so reconciling
+		// against it reports a dead-but-correctly-mirrored entity as an orphan.
+		r.Get("/books/{book_id}/mirror-truth-ids", s.internalMirrorTruthIDs)
+		// The repair. It puts LOST events back at the start of the one legitimate
+		// projection path (outbox → relay → consumer) rather than writing the graph
+		// from the other end, which would give the mirror a second writer.
+		r.Post("/books/{book_id}/mirror-reemit", s.internalMirrorReemit)
 		// KG-ML M5 (C9) — batch localized entity display names for the knowledge
 		// KG graph-view / edge-timeline (resolves name/term attr → language).
 		r.Post("/books/{book_id}/entity-display-names", s.internalEntityDisplayNames)
@@ -195,6 +213,16 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities/{entity_id}/facts", s.internalGetFacts)
 		r.Get("/books/{book_id}/entities/{entity_id}/timeline", s.internalFactTimeline)
 		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
+		// Entity-lifecycle + curation COMMANDS (plan T29). The KAL's write half: T27/T28
+		// made these five transitions safe, but every core was reachable only from the REST
+		// route a browser calls and the MCP tool an agent calls — a SERVICE had no sanctioned
+		// path at all, and INV-KAL forbids reaching around the KAL. See
+		// internal_entity_commands.go for the actor + authority model.
+		r.Post("/books/{book_id}/entities/{entity_id}/delete", s.internalEntityDelete)
+		r.Post("/books/{book_id}/entities/{entity_id}/restore", s.internalEntityRestore)
+		r.Post("/books/{book_id}/entities/{entity_id}/purge", s.internalEntityPurge)
+		r.Post("/books/{book_id}/entities/{entity_id}/reassign-kind", s.internalEntityReassignKind)
+		r.Post("/books/{book_id}/entities/status", s.internalEntityStatus)
 		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
 		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
 		r.Post("/books/{book_id}/facts/close", s.internalCloseFact)

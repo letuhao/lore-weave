@@ -58,7 +58,19 @@ async def test_report_both_ok():
         chapter="Some chapter prose.", source_language="vi")
     assert rep["critic"]["coherence"] == 4
     assert rep["critic"]["canon_consistency"] == 2
-    assert len(rep["critic"]["violations"]) == 1
+    # ⚠️ ZERO, and that is the correct answer — changed 2026-08-12 with the per-rule
+    # attribution fix (`D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`).
+    #
+    # `build_quality_report` calls `judge_prose` with `active_rules=[]` (see quality_report.py),
+    # so the judge is sent NO rules. A verdict claiming "rule R1 is violated" when no rule was
+    # ever supplied cannot be attributed to anything, and `map_rule_tokens` now drops it rather
+    # than passing the invented label through to a reader as if it named a real rule.
+    #
+    # This assertion previously read `== 1` and was passing on exactly that invented label. The
+    # deeper issue it exposes — this report's `canon_consistency` dimension is scored with no
+    # canon to check, the same defect QC-5 measured in the critique endpoint — is recorded as
+    # `D-QUALITY-REPORT-CANON-UNANCHORED`; it is a real gap, not a test artefact.
+    assert len(rep["critic"]["violations"]) == 0
     # reframed (D-QUALITY-DROPPED-FP): threads RAISED (= introduced) + RESOLVED, no "dropped"
     assert rep["threads"]["raised"] == ["the sealed grimoire", "the debt to the sect"]
     assert rep["threads"]["resolved"] == ["the sealed grimoire"]

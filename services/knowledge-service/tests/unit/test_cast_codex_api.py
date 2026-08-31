@@ -13,8 +13,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.entities import Entity
-from app.db.neo4j_repos.facts import Fact
+from app.db.graph_repos.entities import Entity
+from app.db.graph_repos.facts import Fact
 
 _TEST_USER = uuid4()
 _PROJECT_ID = uuid4()
@@ -80,7 +80,7 @@ def _teardown():
 @patch("app.routers.public.entities.statuses_detail_at_order", new_callable=AsyncMock)
 @patch("app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_statuses_happy_threads_window(mock_resolve, mock_list, mock_status):
     mock_resolve.return_value = (999, True)
     mock_list.return_value = ([_entity_stub("e1"), _entity_stub("e2", "Mira")], 2)
@@ -109,7 +109,7 @@ def test_statuses_happy_threads_window(mock_resolve, mock_list, mock_status):
 @patch("app.routers.public.entities.statuses_detail_at_order", new_callable=AsyncMock)
 @patch("app.routers.public.entities.list_entities_filtered", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_statuses_window_unavailable_propagates(mock_resolve, mock_list, mock_status):
     # fail-closed: no chapter → -1 window, all-active, window_available False.
     mock_resolve.return_value = (-1, False)
@@ -138,7 +138,7 @@ def test_statuses_requires_project_id():
 
 @patch("app.routers.public.entities.list_facts_for_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_facts_happy_threads_window(mock_resolve, mock_facts):
     mock_resolve.return_value = (50, True)
     mock_facts.return_value = [_fact_stub("broke the oath"), _fact_stub("prefers tea", "preference")]
@@ -159,7 +159,7 @@ def test_facts_happy_threads_window(mock_resolve, mock_facts):
 
 @patch("app.routers.public.entities.list_facts_for_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_facts_window_unavailable_empty(mock_resolve, mock_facts):
     mock_resolve.return_value = (-1, False)
     mock_facts.return_value = []
@@ -175,7 +175,7 @@ def test_facts_window_unavailable_empty(mock_resolve, mock_facts):
 
 @patch("app.routers.public.entities.list_facts_for_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 def test_facts_rejects_oversized_id(mock_resolve, mock_facts):
     client = _make_client()
     try:
@@ -192,7 +192,7 @@ def test_facts_rejects_oversized_id(mock_resolve, mock_facts):
 @patch("app.routers.public.timeline.enrich_events_with_chapter_titles", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_resolves_before_chapter_id(mock_resolve, mock_list, _mock_enrich):
     mock_resolve.return_value = (777, True)
     mock_list.return_value = ([], 0)
@@ -208,7 +208,7 @@ def test_timeline_resolves_before_chapter_id(mock_resolve, mock_list, _mock_enri
 @patch("app.routers.public.timeline.enrich_events_with_chapter_titles", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock)
 @patch("app.routers.public.timeline.resolve_before_order", new_callable=AsyncMock)
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_explicit_before_order_wins(mock_resolve, mock_list, _mock_enrich):
     mock_list.return_value = ([], 0)
     client = _make_client()

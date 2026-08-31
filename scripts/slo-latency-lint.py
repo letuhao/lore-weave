@@ -19,6 +19,7 @@ Cross-platform (pure Python + PyYAML), matching the repo's other .py gates.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -106,5 +107,58 @@ def main() -> int:
     return 0
 
 
+
+def _selftest() -> int:
+    """Prove this lint can go red, by running MAIN over synthetic configs.
+
+    It exercises `main()` end-to-end on real temp files rather than poking at internals,
+    because the failure this gate exists for is a config the lint ACCEPTS. A selftest that
+    called helper functions could pass while `main` returned 0 on a bad file — the same
+    "adjacent decision defeats it" shape the Non-Vacuity standard names.
+
+    Each case is a DIFFERENT rule, so a regression in one cannot be masked by another.
+    """
+    import tempfile
+
+    # ⚠️ Built from REQUIRED + a REAL service directory, not from memory. The first cut of
+    # this fixture guessed the schema (`route` instead of `path`, a fictional service) and
+    # the selftest reported FAIL on its own "good" case — which is the selftest working, and
+    # is why it asserts the passing case at all rather than only the failures.
+    good = {"endpoints": [{"id": "a", "service": "knowledge-service", "method": "GET",
+                           "path": "/x", "window": "7d", "owner": "team",
+                           "p95_ms": 100}]}
+    cases = [
+        ("a valid config passes", good, 0),
+        ("p95_ms must be positive",
+         {"endpoints": [{**good["endpoints"][0], "p95_ms": 0}]}, 1),
+        ("method must be a known verb",
+         {"endpoints": [{**good["endpoints"][0], "method": "FETCH"}]}, 1),
+        ("a required field cannot be blank",
+         {"endpoints": [{**good["endpoints"][0], "service": ""}]}, 1),
+        ("endpoints must be a non-empty list", {"endpoints": []}, 2),
+    ]
+    ok = True
+    for label, doc, want in cases:
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False,
+                                         encoding="utf-8") as fh:
+            yaml.safe_dump(doc, fh)
+            path = fh.name
+        argv = sys.argv[:]
+        sys.argv = [argv[0], path]
+        try:
+            got = main()
+        finally:
+            sys.argv = argv
+            os.unlink(path)
+        if got != want:
+            print(f"  FAIL — {label}: exit {got}, expected {want}")
+            ok = False
+    print(f"[slo-latency-lint] SELFTEST {'PASS' if ok else 'FAIL'} — a valid config passes "
+          f"and four DISTINCT rule violations each red (non-vacuous)")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
     sys.exit(main())

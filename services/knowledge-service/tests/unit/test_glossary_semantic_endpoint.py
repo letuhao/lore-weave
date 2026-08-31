@@ -1,6 +1,6 @@
 """mui #4 LOW-1 — unit tests for the POST /internal/context/glossary-semantic
 endpoint handler (project resolution + degrade-to-empty). Calls the route
-function directly with mocked deps; neo4j_session + select_glossary_semantic
+function directly with mocked deps; graph_session + select_glossary_semantic
 are patched so no Neo4j/embed is touched.
 """
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _repo(project):
 
 
 async def _call(monkeypatch, *, project, semantic_return=None):
-    monkeypatch.setattr(ctx, "neo4j_session", lambda: _FakeSession())
+    monkeypatch.setattr(ctx, "graph_session", lambda: _FakeSession())
     sem = AsyncMock(return_value=semantic_return or [])
     monkeypatch.setattr(ctx, "select_glossary_semantic", sem)
     resp = await ctx.glossary_semantic(

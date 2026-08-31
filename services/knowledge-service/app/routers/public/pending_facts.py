@@ -33,9 +33,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db.models import PendingFact
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import merge_entity
-from app.db.neo4j_repos.facts import Fact, days_since_epoch, merge_fact
+from app.adapters.graph_store_provider import get_graph_store
+from app.db.neo4j import graph_session
+from app.db.graph_repos.entities import merge_entity
+from app.db.graph_repos.facts import Fact, days_since_epoch, merge_fact
 from app.db.repositories.pending_facts import PendingFactsRepo
 from app.deps import get_pending_facts_repo
 from app.middleware.jwt_auth import get_current_user
@@ -106,7 +107,7 @@ async def confirm_pending_fact(
     if pending is None:
         raise _not_found()
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         fact = await _promote_pending_fact(session, user_id, pending)
 
     # Graph write succeeded — drop the queue row. A delete returning
@@ -136,9 +137,8 @@ async def _promote_pending_fact(session, user_id: UUID, pending: PendingFact) ->
     valid_from_ordinal: int | None = None
     event_date_iso: str | None = None
     if pending.subject and pending.project_id and pending.event_date is not None:
-        entity = await merge_entity(
-            session,
-            user_id=str(user_id),
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(user_id),
             project_id=project_id,
             name=pending.subject,
             kind=_DIARY_SUBJECT_KIND,

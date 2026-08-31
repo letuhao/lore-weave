@@ -72,7 +72,18 @@ paths:
   # In git-aware mode this is typically branch-scoped.
   # In no-git mode it stores slug-based plan files.
   # Default: .ai-factory/plans/
-  plans: .ai-factory/plans/
+  #
+  # REPO OVERRIDE (2026-08-09): pointed at docs/plans/ so /aif-plan full writes
+  # where AGENTS.md's 12-phase workflow says PLAN artifacts live
+  # ("New plans (PLAN) | docs/plans/YYYY-MM-DD-<feature>.md").
+  # Leaving the default here would put plans somewhere the repo's own workflow,
+  # gates and handoff notes do not look.
+  #
+  # DELIBERATELY NOT overridden: paths.specs and paths.archive.
+  # AI Factory's `specs` means ARCHIVED PLANS; this repo's docs/specs/ means
+  # DESIGN SPECS. Same word, different meaning — redirecting it would file
+  # archived plans into the design-spec folder.
+  plans: docs/plans/
 
   # Fix plan file
   # Default: .ai-factory/FIX_PLAN.md

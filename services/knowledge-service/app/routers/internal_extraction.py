@@ -26,7 +26,7 @@ from app.clients.default_model import resolve_user_default_model
 from app.clients.glossary_client import get_glossary_client
 from app.clients.llm_client import get_llm_client
 from app.config import settings
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.pool import get_knowledge_pool
 from app.deps import get_projects_repo
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -498,7 +498,7 @@ async def _load_anchors_for_extraction(
         if book_id is None:
             _anchor_cache[cache_key] = []
             return []
-        async with neo4j_session() as anchor_session:
+        async with graph_session() as anchor_session:
             anchors = await load_glossary_anchors(
                 anchor_session,
                 get_glossary_client(),
@@ -572,7 +572,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     # C3 (D-K19b.8-02) — stage producer for the FE JobLogsPanel.
     # Inlined like `_try_spend` elsewhere rather than Depends() since
     # the rest of this router already resolves collaborators inline
-    # (module-level neo4j_session, get_llm_client, etc.). Matches
+    # (module-level graph_session, get_llm_client, etc.). Matches
     # the "internal router, no DI" convention. Best-effort: if the
     # pool isn't initialised (unit tests that only mock the extractor
     # helpers, or a pre-migration boot), the producer is silently
@@ -623,7 +623,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
     )
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             if body.item_type == "chapter":
                 if not body.chapter_text:
                     raise HTTPException(
@@ -831,7 +831,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     except Exception:
         triage_repo = None
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
         # that disappeared from the new revision instead of leaving stale canon;
@@ -845,7 +845,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         # was a silent no-op (canon drifted on every re-publish). The natural-key
         # helper hashes (user, project, source_type, source_id) the same way
         # `upsert_extraction_source` did at write time.
-        from app.db.neo4j_repos.provenance import (
+        from app.db.graph_repos.provenance import (
             cleanup_zero_evidence_nodes,
             remove_evidence_for_natural_key,
         )
@@ -907,7 +907,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             # first-extract hot path. Best-effort: a re-stitch failure must not
             # 500 a successful write — the repair job is the INV-FACTS backstop.
             try:
-                from app.db.neo4j_repos.temporal import (
+                from app.db.graph_repos.temporal import (
                     restitch_chains_after_retract,
                 )
                 restitched = await restitch_chains_after_retract(
@@ -988,6 +988,60 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             body.embedding_model_uuid is not None,
             body.embedding_dimension is not None,
         )
+    # ── D-T32-ALIVE-NO-FACTS — the life-status producer ─────────────────────────
+    #
+    # `glossary_entities.alive` was the liveness signal and it carried NOTHING:
+    # 7361 true / 0 false, never once set by an author (it is a manual toggle, not a
+    # derived column). Meanwhile the graph DID know who had died — 21 `:EntityStatus`
+    # rows with real story positions — and `entity_facts` could hold that since T32
+    # widened its CHECK to admit `'status'`. Nothing ever wrote one: corpus-wide,
+    # `attribute` 41536 · `name` 5202 · `alias` 1869 · **status 0**.
+    #
+    # The gap was cross-pipeline, not missing code: detection lives here (the
+    # knowledge extractor's `status_effects`), while fact emission lives behind
+    # glossary's HTTP boundary. This is the seam that touches both — it already holds
+    # the glossary client and resolved the book — so it emits what pass2 reported.
+    #
+    # BEST-EFFORT, and deliberately: a persist that succeeded must not 500 because a
+    # downstream fact append failed. The transitions are already durable as
+    # `:EntityStatus`; this is the projection into the SSOT, and a failure here is a
+    # gap to re-run, not a reason to lose the extraction.
+    if result.status_transitions and body.project_id is not None:
+        # The book this project mirrors — the fact table is book-scoped, and glossary
+        # rejects a cross-book write (its own tenancy lock), so an unresolvable book
+        # means we simply have nowhere correct to put these.
+        book_id = await get_knowledge_pool().fetchval(
+            "SELECT book_id FROM knowledge_projects WHERE project_id = $1",
+            body.project_id,
+        )
+    else:
+        book_id = None
+    if result.status_transitions and book_id is not None:
+        emitted = 0
+        gclient = get_glossary_client()
+        for tr in result.status_transitions:
+            try:
+                ok = await gclient.append_fact(
+                    UUID(str(book_id)),
+                    entity_id=tr.glossary_entity_id,
+                    fact_kind="status",
+                    attr_or_predicate="life_status",
+                    value=tr.status,
+                    valid_from_ordinal=tr.chapter_ordinal,
+                    cardinality="single",
+                )
+                emitted += 1 if ok else 0
+            except Exception:  # noqa: BLE001 — see BEST-EFFORT above.
+                logger.warning(
+                    "D-T32: life_status append failed entity=%s status=%s @%d",
+                    tr.glossary_entity_id, tr.status, tr.chapter_ordinal,
+                    exc_info=True,
+                )
+        logger.info(
+            "D-T32: life_status facts emitted %d/%d source_id=%s",
+            emitted, len(result.status_transitions), body.source_id,
+        )
+
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",
@@ -1060,7 +1114,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 )
             wb_book_id = row["book_id"] if row else None
             if wb_book_id is not None:
-                async with neo4j_session() as wb_session:
+                async with graph_session() as wb_session:
                     proposed = await writeback_discovered_entities(
                         wb_session,
                         get_glossary_client(),
@@ -1098,7 +1152,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             cd_book_id = row["book_id"] if row else None
             if cd_book_id is not None:
                 uid, pid = str(body.user_id), str(body.project_id)
-                async with neo4j_session() as cd_session:
+                async with graph_session() as cd_session:
                     kinds = await coref_detect.load_anchored_kinds(
                         cd_session, user_id=uid, project_id=pid
                     )
@@ -1261,7 +1315,7 @@ async def glossary_sync_entity(
     (the helper itself doesn't catch them).
     """
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             result = await sync_glossary_entity_to_neo4j(
                 session,
                 user_id=str(body.user_id),
@@ -1564,10 +1618,10 @@ async def process_summarize_message_endpoint(
     # does multiple session.run calls but treats them as a single logical
     # work unit; a per-call session matches the existing /persist-pass2
     # pattern and avoids leaking sessions across worker-ai requests.
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         deps = SummaryProcessorDeps(
             knowledge_pool=pool,
-            neo4j_session=session,
+            graph_session=session,
             llm_client=get_llm_client(),
             # E0-3 2a-2: bind the embed provider call to the billing user when a
             # collaborator triggered the extraction (gated on billing_user_id —
@@ -1765,7 +1819,7 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
         logger.info("tag-threads: Neo4j not configured — no-op")
         return TagThreadsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_narrative_threads
+    from app.db.graph_repos.events import list_events_in_order, set_narrative_threads
     from app.extraction.motif_beat import _list_user_book_projects
     from app.extraction.thread_tag import classify_event_threads
 
@@ -1778,7 +1832,7 @@ async def tag_threads(body: TagThreadsRequest) -> TagThreadsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -1836,7 +1890,7 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
         logger.info("tag-motifs: Neo4j not configured — no-op")
         return TagMotifsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_realized_motifs
+    from app.db.graph_repos.events import list_events_in_order, set_realized_motifs
     from app.extraction.motif_beat import _list_user_book_projects
     from app.extraction.motif_tag import classify_event_motifs
 
@@ -1849,7 +1903,7 @@ async def tag_motifs(body: TagMotifsRequest) -> TagMotifsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -1912,7 +1966,7 @@ async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
         logger.info("tag-beats: Neo4j not configured — no-op")
         return TagBeatsResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, set_mined_motif_codes
+    from app.db.graph_repos.events import list_events_in_order, set_mined_motif_codes
     from app.extraction.motif_beat import _list_user_book_projects
     # Reuse the realized-motif classifier engine verbatim — same task shape (classify each
     # event into one code of a provided vocab); only the vocab source (catalog vs arc) and the
@@ -1930,7 +1984,7 @@ async def tag_beats(body: TagBeatsRequest) -> TagBeatsResponse:
     seen = 0
     tagged = 0
     counts: dict[str, int] = {}
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -1985,7 +2039,7 @@ async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
         logger.info("causal-edges: Neo4j not configured — no-op")
         return CausalEdgesResponse()
 
-    from app.db.neo4j_repos.events import list_events_in_order, merge_causal_edges
+    from app.db.graph_repos.events import list_events_in_order, merge_causal_edges
     from app.extraction.causal_edges import infer_causal_edges
     from app.extraction.motif_beat import _list_user_book_projects
 
@@ -1993,7 +2047,7 @@ async def causal_edges(body: CausalEdgesRequest) -> CausalEdgesResponse:
     containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
     considered = 0
     written = 0
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             events = await list_events_in_order(
                 session, user_id=str(body.user_id), project_id=str(project_id), limit=2000)
@@ -2036,12 +2090,12 @@ async def causal_motif_pairs(body: CausalMotifPairsRequest) -> CausalMotifPairsR
     if not settings.neo4j_uri:
         return CausalMotifPairsResponse()
 
-    from app.db.neo4j_repos.events import get_causal_motif_pairs
+    from app.db.graph_repos.events import get_causal_motif_pairs
     from app.extraction.motif_beat import _list_user_book_projects
 
     containers = await _list_user_book_projects(body.user_id, body.book_id, corpus=False)
     seen: set[tuple[str, str]] = set()
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         for project_id, _book_id in containers:
             for c, e in await get_causal_motif_pairs(
                     session, user_id=str(body.user_id), project_id=str(project_id)):
@@ -2114,8 +2168,9 @@ async def embed_entities_backfill(
     glossary_client = get_glossary_client()
     embedded = skipped = iterations = 0
     drained = False
+    embed_failed = False
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         while iterations < _EMBED_BACKFILL_MAX_ITER and embedded < body.max_entities:
             res = await embed_project_entities(
                 session,
@@ -2131,6 +2186,18 @@ async def embed_entities_backfill(
             embedded += res.embedded
             skipped += res.skipped
             iterations += 1
+            if res.embed_failed:
+                # A provider failure is NOT a drain: every candidate in this batch still
+                # needs a vector. The previous version dropped `embed_failed` on the floor
+                # and fell into the branch below, which sets `drained = True` whenever the
+                # batch was short — so an outage returned
+                # `{"embedded":0,"skipped":0,"drained":true,"reason":null}`, which an
+                # operator reads as "nothing to do". Measured live 2026-08-21: the
+                # embedding provider answered 502 with an HTML body, 25 anchored entities
+                # had no vector, and this endpoint reported a clean drain. The soak it was
+                # supposed to feed stayed at zero, and the zero looked healthy.
+                embed_failed = True
+                break
             if res.candidates < _EMBED_BACKFILL_BATCH:
                 # Fewer candidates than a full batch → the queue is drained.
                 drained = True
@@ -2144,5 +2211,15 @@ async def embed_entities_backfill(
                 break
 
     return EmbedBackfillResponse(
-        embedded=embedded, skipped=skipped, iterations=iterations, drained=drained,
+        embedded=embedded,
+        skipped=skipped,
+        iterations=iterations,
+        # `and not embed_failed` is belt-and-braces — the break above leaves `drained`
+        # False — but it is the invariant that matters, so it is stated where it is read.
+        drained=drained and not embed_failed,
+        reason=(
+            "embedding provider failed — candidates remain unembedded"
+            if embed_failed
+            else None
+        ),
     )

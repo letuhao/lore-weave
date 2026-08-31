@@ -35,9 +35,10 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 from app.config import settings
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+from app.db.neo4j import graph_session
+from app.adapters.graph_store_provider import get_graph_store
 from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
 from app.wiki.fingerprint import stable_hash
 from app.wiki.writeback import source_texts
@@ -66,9 +67,32 @@ router = APIRouter(
 class WikiNeighborhoodRequest(BaseModel):
     user_id: UUID
     glossary_entity_id: UUID
+    # T55/i — the BOOK the read is scoped to. Optional in the SCHEMA and always sent by the
+    # KAL: keeping the base permissive and closing the window in the caller is the shape this
+    # repo already uses for a legacy field, and it means an in-flight request during a deploy
+    # does not 422.
+    #
+    # ⚠️ Load-bearing when present. `KalAuthGuard` checks a grant on the book in the ROUTE
+    # path; without scoping the read by that same book, the guard would authorise book B while
+    # the answer came from whatever project holds the glossary id — a path segment that is
+    # checked but does not constrain. Resolved to a project server-side, exactly as
+    # `/internal/knowledge/timeline` resolves its own.
+    book_id: UUID | None = None
     # Cap on the relation payload. Mirrors ENTITIES_DETAIL_REL_CAP; a
     # caller that wants fewer (a compact wiki body) can lower it.
     rel_cap: int = Field(default=200, ge=1, le=200)
+    # T48ad — the STORY window, on the reading axis (`chapter x EVENT_ORDER_CHAPTER_STRIDE`).
+    #
+    # This endpoint answers `build_context_brief` in translation-service, which is building a
+    # brief for ONE chapter and already takes `as_of` for exactly that reason ("the story state
+    # at chapter N, not the latest head (spoiler-free, §6B)"). It threaded that into the
+    # canonical snapshot and NOT into this call, so the same brief carried a chapter-scoped
+    # snapshot beside an unbounded neighbourhood: measured on iso, 81 relations spanning ten
+    # chapters returned while the sibling `neighborhood` route held the same entity at 25.
+    #
+    # None = the transaction-time head, which is what every pre-T48ad caller gets. The port has
+    # honoured this since T48s and all four adapters are conformance-tested on it.
+    as_of_chapter: int | None = None
 
 
 class NeighborRelation(BaseModel):
@@ -143,12 +167,38 @@ async def get_wiki_neighborhood(
 ) -> WikiNeighborhoodResponse:
     """C5 (D4-03) — read an entity's 1-hop KG neighborhood for the
     glossary wiki renderer. Read-only; never writes Neo4j (Q2)."""
-    async with neo4j_session() as session:
-        detail = await get_neighborhood_by_glossary_id(
-            session,
+    project_id: str | None = None
+    if req.book_id is not None:
+        async with get_knowledge_pool().acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT project_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+                req.book_id,
+            )
+        if row is None:
+            # A book with no knowledge project cannot hold this entity. Empty, not an error —
+            # and NOT an unscoped read, which is the failure that would make the KAL's grant
+            # check decorative.
+            return WikiNeighborhoodResponse(glossary_entity_id=req.glossary_entity_id)
+        project_id = str(row["project_id"])
+
+    async with graph_session() as session:
+        # T17 — through the port. Same domain question as the KG-neighborhood endpoint,
+        # and it was reaching past the port to the same repo function.
+        detail = await get_graph_store(session).neighborhood(
             user_id=str(req.user_id),
             glossary_entity_id=str(req.glossary_entity_id),
+            project_id=project_id,
             rel_cap=req.rel_cap,
+            # T48ae — CONVERT. The KAL's `as_of` is a CHAPTER on every route that takes
+            # one, and its caller here (`build_context_brief`) passes
+            # `chapter_sort_order`, a raw sort_order. T48ad shipped this as a bare
+            # ordinal, so `as_of=3` compared 3 against stored values of 3_000_000
+            # and returned ZERO relations at every position — measured live, and
+            # the exact units bug `_ordinal`'s docstring on the sibling route was
+            # written to warn about. Empty is the SAFE-LOOKING direction, which is
+            # why it is the dangerous one: it reads as 'nothing yet'.
+            as_of=(None if req.as_of_chapter is None
+                   else req.as_of_chapter * EVENT_ORDER_CHAPTER_STRIDE),
         )
 
     if detail is None:

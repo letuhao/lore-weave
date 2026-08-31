@@ -41,13 +41,25 @@ looks at the result.
 
 SCOPE — WHAT IS IN, AND THE LIMIT SAID OUT LOUD
 -----------------------------------------------
-IN: files whose name ends `-gate` / `-lint` (either separator). OUT: the 9
-`*-smoke.sh` scripts. A smoke is a gate in spirit, and every one of them needs a
-live stack, so pulling them in would produce nine SKIP lines and no signal —
-a category this file is not yet built to enforce. That is a **limit, not
-coverage**: the smokes' own not-in-CI problem is tracked as
-`D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI`, and widening
-`is_gate()` to `-smoke` is the obvious next step once a stack-up CI job exists.
+IN: files whose name ends `-gate` / `-lint` / `-live-smoke` (either separator).
+
+⚠️ **The `-live-smoke` half was added on 2026-08-30 (L4), against what this
+section used to say** — and the argument it used to make was contradicted by
+this same file, twenty lines further down. It read: *"pulling them in would
+produce nine SKIP lines and no signal"*. But `NEEDS_STACK`'s own comment says
+the opposite about exactly those lines — *"Printed, never silent. A skipped gate
+that says nothing is indistinguishable from a passing one, and that is the exact
+confusion this file exists to remove."* Both cannot be right. A SKIP carrying a
+reason IS signal; **absence** is the thing that carries none, and fifteen live
+smokes were absent.
+
+The count was stale too: nine when written, fifteen when measured.
+
+What this does **not** do is put them in CI. They still cannot run on a bare
+checkout, `D-PUBLISHER-SMOKE-NOT-IN-CI` and `D-META-LIVE-SMOKE-NOT-IN-CI` are
+untouched, and a stack-up CI job is still the thing that would discharge them.
+This changes *invisible* to *skipped, with a reason, by name* — which is worth
+having on its own and is not a claim to have solved the other problem.
 
 SCOPE IS A PREDICATE, NOT A LIST
 --------------------------------
@@ -102,8 +114,22 @@ def is_gate(name: str) -> bool:
     # default-uncovered shape this file exists to close. Accepting `_` pulls the
     # pytest self-tests in too; they get EXEMPT rows, which is the visible
     # outcome rather than the silent one.
+    # 🔴 `-live-smoke` (L4, 2026-08-30). A live smoke is not a gate — it needs a running
+    # stack and can never be a CI leg — but it IS a check somebody wrote and expects to
+    # protect something, which is exactly what this file exists to keep visible.
+    #
+    # Measured before widening: FIFTEEN of them, in `scripts/` and `scripts/raid/`, and this
+    # predicate matched NONE. Every one was invisible here — not exempt, not tracked-red,
+    # not skipped-with-a-reason: absent. `picker-search-live-smoke.sh` was only the fifteenth
+    # to arrive, so the row that sent me here ("a smoke I shipped that nothing runs") was
+    # describing a category, not a mistake in one commit.
+    #
+    # They land in NEEDS_STACK, so `--run-all` prints `SKIP … needs a live stack: <reason>`
+    # for each. That is the point: a check that says nothing is indistinguishable from a
+    # passing one, and fifteen of them were saying nothing.
     return (
-        stem.endswith(("-gate", "_gate", "-lint", "_lint"))
+        stem.endswith(("-gate", "_gate", "-lint", "_lint",
+                       "-live-smoke", "_live_smoke"))
         or "-lint-" in stem
         or "_lint_" in stem
         or "-gate-" in stem
@@ -156,6 +182,55 @@ NEEDS_STACK: dict[str, str] = {
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_skill_gate.py": "an EVAL harness against a live service; same "
         "JWT_SECRET-at-import (D-GATE-ROT-ENV-AT-IMPORT)",
+
+    # ── the live smokes (L4, 2026-08-30) ────────────────────────────────────────────────
+    # Fifteen checks that were invisible to this file until `is_gate` learned the shape.
+    # Every one needs a RUNNING stack by definition, so NEEDS_STACK is the honest category
+    # rather than a parking space: none of them can ever be a CI leg on a bare checkout, and
+    # saying that once here is better than fifteen people rediscovering it.
+    #
+    # The reasons are each script's OWN, read out of its header — a boilerplate "needs a
+    # stack" fifteen times would be a row that carries no information and rots without
+    # anybody noticing.
+    "scripts/archive-worker-live-smoke.sh": "stands up foundation-dev and runs the "
+        "archive-worker against it (P1 DEFERRED 056+057)",
+    "scripts/bitemporal-window-live-smoke.py": "asks a RUNNING knowledge-service whether a "
+        "windowed read holds a reader at a position; T48s found live that it did not",
+    "scripts/entity-lifecycle-guards-live-smoke.sh": "proves the three Phase-0 lifecycle "
+        "guards on a running glossary-service (QC-0)",
+    "scripts/epoch-activation-live-smoke.sh": "drives the epoch path end to end against a "
+        "real Postgres (Q0b B3b+B3c)",
+    "scripts/glossary-lifecycle-live-smoke.sh": "the QC-4 emit-wiring proof; it catches a "
+        "BYPASS, which only exists at runtime",
+    "scripts/kal-auth-boundary-live-smoke.py": "asks whether the KAL's guard DISCRIMINATES "
+        "rather than merely answers — needs the KAL up and a real token",
+    "scripts/kal-read-surface-live-smoke.py": "drives every KAL read route, derived from the "
+        "controller, and reports which ANSWER",
+    "scripts/knowledge-graph-backend-live-smoke.py": "proves the knowledge HTTP surface on "
+        "whichever engine KNOWLEDGE_GRAPH_BACKEND selected; it writes, so it needs a stack",
+    "scripts/meta-rs-pg-live-smoke.sh": "runs crates/meta-rs/tests/pg_live.rs against a real "
+        "Postgres (Q1 B2b)",
+    "scripts/metaworker-live-smoke.sh": "stands up TWO databases for the meta-worker canon "
+        "fan-out (P1 DEFERRED 069)",
+    "scripts/picker-search-live-smoke.sh": "rebuilt images plus a browser: it asserts the "
+        "picker's typed term reaches the SERVER, which a client-side filter renders "
+        "identically (L4)",
+    "scripts/publisher-live-smoke.sh": "the event-sourcing spine's publisher wiring "
+        "(DEFERRED 054 D-PUBLISHER-LIVE-WIRING)",
+    "scripts/raid/degraded-live-smoke.sh": "orchestrates the L1.J degraded-mode flow; it "
+        "brings the stack up itself (RAID cycle 33)",
+    "scripts/retention-worker-live-smoke.sh": "runs both retention paths against live data "
+        "(P1 DEFERRED 058)",
+    "scripts/state-asof-live-smoke.sh": "proves the book-wide as-of read end to end on a "
+        "running stack and measures it (QC-1)",
+
+    # L2 — a RATCHET over live data, so it needs the graph rather than a checkout.
+    "scripts/event-order-collision-gate.py": "counts colliding (project_id, event_order) "
+        "pairs in g_shared against a frozen ceiling; needs the AGE store, not a tree scan",
+
+    # L1 — reports the causal pass's reach/yield/consistency over live data.
+    "scripts/causal-coverage-gate.py": "measures the causal pass over g_shared and asserts "
+        "every ordered edge is explained by its own window algorithm; needs the AGE store",
 }
 
 # Gates too SLOW to sit in a shared run. Skipped with the reason printed, exactly
@@ -293,7 +368,8 @@ def _is_wired(rel: str, hook: str, ci: str) -> bool:
 def wiring_report() -> tuple[list[str], list[str]]:
     """(uncovered, stale_rows)."""
     names = discovered()
-    known = set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+    known = (set(EXEMPT) | set(KNOWN_RED) | set(NEEDS_STACK) | set(TOO_SLOW)
+             | set(NEEDS_ARGS))
     stale = [n for n in sorted(known) if n not in names]
 
     if runner_in_ci():
@@ -311,7 +387,33 @@ def wiring_report() -> tuple[list[str], list[str]]:
     return uncovered, stale
 
 
-def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
+# Gates that REQUIRE an argument. `_run` invokes every gate bare, and a gate whose argparse
+# declares a required mutually-exclusive group exits 2 with a usage error — which the runner
+# recorded as RED. Both of these are healthy (`--selftest` is 15/15 and 18/18 respectively, and
+# the pre-commit hook runs them that way and has all along), so `--run-all` carried TWO
+# permanent false reds.
+#
+# 🔴 That is worse than it sounds, and this file already says why: *"a gate that is red and
+# unacknowledged is how a whole suite becomes background noise."* A red that can never be fixed
+# by fixing the code teaches a reader to skim the list, and the next REAL red arrives into an
+# audience that has learned to skim.
+#
+# DERIVED, not remembered: probing all 77 runnable Python gates bare found exactly these two
+# exiting 2 with an argparse "required" error. The rest either run bare or are already in
+# NEEDS_STACK / TOO_SLOW.
+NEEDS_ARGS: dict[str, tuple[list[str], str]] = {
+    "scripts/qc5-acceptance-gate.py": (
+        ["--selftest"], "requires --file or --selftest; the live arms need a stack and models"),
+    "scripts/soak-armed-gate.py": (
+        ["--selftest"], "requires --url, --file or --selftest; the live read needs /metrics"),
+    "scripts/glossary-ordinal-axis-gate.py": (
+        ["--selftest"],
+        "requires --census or --selftest; bare it can only answer DISARMED, which exits 0 and "
+        "proves nothing -- T48aq found it running green and vacuous in CI on every commit"),
+}
+
+
+def _run(rel: str, timeout: int = 900, bare: bool = False) -> tuple[bool, float, str]:
     # RELATIVE path + cwd=REPO, never an absolute one.
     #
     # The first draft passed `str(REPO / rel)`, which on Windows is
@@ -321,7 +423,8 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
     # A CI job would have shipped failing everything. Worth noting which way it
     # broke: the runner called them RED, not green. A harness bug that reports
     # success is the one that ends careers.
-    cmd = [sys.executable, rel] if rel.endswith(".py") else ["bash", rel]
+    extra = [] if bare else NEEDS_ARGS.get(rel, ([], ""))[0]
+    cmd = ([sys.executable, rel] if rel.endswith(".py") else ["bash", rel]) + extra
     t0 = time.time()
     try:
         # stdin=DEVNULL is load-bearing. `amaw-guardrail-gate.py` is a Claude
@@ -409,7 +512,27 @@ def run_all() -> int:
             failures.append((n, out))
             print(f"  {n:<44} RED    ({secs:5.1f}s)")
 
+    # A NEEDS_ARGS row that is no longer needed is standing permission for nothing, and the
+    # same shape this file already refuses for KNOWN_RED. Probed rather than assumed: if the
+    # gate runs clean with NO arguments, the row is stale and the next gate to acquire a
+    # required argument would be silently absolved by it.
+    stale_args = []
+    for n in sorted(NEEDS_ARGS):
+        if n not in runnable:
+            continue
+        bare_ok, _, _ = _run(n, timeout=120, bare=True)
+        if bare_ok:
+            stale_args.append(n)
+
     rc = 0
+    if stale_args:
+        print(f"\ngate-wiring-gate: {len(stale_args)} NEEDS_ARGS row(s) are STALE — "
+              f"the gate runs clean with no arguments:\n")
+        for n in stale_args:
+            print(f"  {n}  (row says: {NEEDS_ARGS[n][1]})")
+        print("\nDelete the row. A registry entry that excuses nothing still "
+              "excuses the NEXT gate that lands in the same file.")
+        rc = 1
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
@@ -455,6 +578,29 @@ def self_test() -> int:
         fails.append("treated an ordinary script as a gate")
     if is_gate("some-gate.txt"):
         fails.append("treated a non-script as a gate")
+
+    # L4 — the `-live-smoke` shape. Without this case, narrowing the predicate back would
+    # make fifteen checks invisible again and every other assertion here would stay green:
+    # the gate would report a smaller, tidier world and call it OK.
+    if not is_gate("picker-search-live-smoke.sh"):
+        fails.append("did not recognise a -live-smoke script as in scope")
+    if not is_gate("some_live_smoke.py"):
+        fails.append("did not recognise the underscore spelling of -live-smoke")
+    # ...and the shape must stay a SUFFIX. `smoke-test-helpers.sh` is not a check.
+    if is_gate("smoke-helpers.sh"):
+        fails.append("treated a merely smoke-ish filename as a check")
+
+    # Every live smoke discovered must carry a registry row. They cannot run on a bare
+    # checkout, so an unregistered one is not "wired" — it is the absence this row closed,
+    # arriving again in a file nobody has written yet.
+    unregistered = [
+        n for n in discovered()
+        if n.rsplit("/", 1)[-1].rsplit(".", 1)[0].endswith(("-live-smoke", "_live_smoke"))
+        and n not in NEEDS_STACK and n not in EXEMPT and n not in TOO_SLOW
+        and n not in KNOWN_RED
+    ]
+    if unregistered:
+        fails.append(f"live smoke(s) with no registry row: {unregistered}")
 
     # The scope must stay a PREDICATE. If someone replaces it with a list, a gate
     # created tomorrow is default-uncovered and this whole file is theatre.

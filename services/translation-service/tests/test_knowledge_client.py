@@ -102,40 +102,49 @@ def test_parse_neighborhood_bad_confidence_coerces_zero():
 
 @pytest.mark.asyncio
 async def test_fetch_null_gate_when_unconfigured(monkeypatch):
-    """No URL → empty neighbourhood, NO HTTP call (feature off)."""
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "")
+    """No GATEWAY url → empty neighbourhood, NO HTTP call.
+
+    T55/i — the owning-service knob stays SET here on purpose. If the function still read
+    that one it would sail past this gate and issue the direct call, which is the INV-KAL
+    hole §8.6 closed; a test that cleared both knobs could not tell the two apart."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "")
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
     _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))  # would succeed if called
-    nb = await fetch_wiki_neighborhood("u1", "e1")
+    nb = await fetch_wiki_neighborhood("u1", "e1", book_id="b1")
     assert nb == WikiNeighborhood.empty("e1")
     assert _FakeClient.last_call == {}  # proves no request was made
 
 
 @pytest.mark.asyncio
 async def test_fetch_success_parses(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
     _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))
-    nb = await fetch_wiki_neighborhood("u1", "e1", rel_cap=50)
+    nb = await fetch_wiki_neighborhood("u1", "e1", rel_cap=50, book_id="b1")
     assert nb.found and len(nb.relations) == 2
     # request shape: body + internal-token header
-    assert _FakeClient.last_call["json"] == {"user_id": "u1", "glossary_entity_id": "e1", "rel_cap": 50}
+    # `user_id` is NOT in the body: the KAL supplies it from the identity it pinned. Asserting
+    # its ABSENCE is the half that would otherwise rot back in.
+    assert _FakeClient.last_call["json"] == {"glossary_entity_id": "e1", "rel_cap": 50}
+    assert "user_id" not in _FakeClient.last_call["json"]
+    assert _FakeClient.last_call["headers"]["X-User-Id"] == "u1"
     assert _FakeClient.factory_kwargs["internal_token"] == "tok"
-    assert _FakeClient.last_call["url"].endswith("/internal/knowledge/wiki-neighborhood")
+    assert _FakeClient.last_call["url"] == "http://kg:3000/v1/kal/books/b1/wiki-neighborhood"
 
 
 @pytest.mark.asyncio
 async def test_fetch_non_200_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_FakeResp(503, {}))
-    nb = await fetch_wiki_neighborhood("u1", "e1")
+    nb = await fetch_wiki_neighborhood("u1", "e1", book_id="b1")
     assert nb == WikiNeighborhood.empty("e1")
 
 
 @pytest.mark.asyncio
 async def test_fetch_transport_error_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, exc=RuntimeError("connection refused"))
-    nb = await fetch_wiki_neighborhood("u1", "e1")
+    nb = await fetch_wiki_neighborhood("u1", "e1", book_id="b1")
     assert nb == WikiNeighborhood.empty("e1") and not nb.found
 
 
@@ -146,9 +155,9 @@ async def test_fetch_malformed_body_degrades(monkeypatch):
         status_code = 200
         def json(self):
             raise ValueError("not json")
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_BadResp())
-    nb = await fetch_wiki_neighborhood("u1", "e1")
+    nb = await fetch_wiki_neighborhood("u1", "e1", book_id="b1")
     assert nb == WikiNeighborhood.empty("e1")
 
 
@@ -170,44 +179,83 @@ _TL_PAYLOAD = {
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_null_gate_when_unconfigured(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "")
+    """T55/e — the knob is the GATEWAY's now, not the owning service's.
+
+    Load-bearing: `knowledge_service_internal_url` stays set here. If the function still read
+    that one it would sail past this gate and issue the direct call, which is exactly the
+    INV-KAL hole §8.6 closed — and a test that cleared BOTH knobs could not tell the two
+    apart."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "")
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
     _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))  # would succeed if called
     brief = await fetch_timeline("b1", 5)
     assert brief == TimelineBrief.empty()
-    assert _FakeClient.last_call == {}  # no request made
+    assert _FakeClient.last_call == {}  # no request made — not even the old direct one
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_success_parses(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
     _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))
     brief = await fetch_timeline("b1", 5, limit=10)
     assert brief.found and len(brief.events) == 2
     assert brief.events[0].title == "The pact" and brief.events[0].participants == ["Tirami", "Aldric"]
     assert brief.events[1].summary is None
-    assert _FakeClient.last_call["json"] == {"book_id": "b1", "chapter_order": 5, "limit": 10}
+    # `book_id` is in the PATH, not the body: the KAL scopes on the path, and a body-supplied
+    # id would let a caller read one book while authorised for another. Asserting its ABSENCE
+    # from the body is the half that would otherwise rot back in unnoticed.
+    assert _FakeClient.last_call["json"] == {"chapter_order": 5, "limit": 10}
+    assert "book_id" not in _FakeClient.last_call["json"]
     assert _FakeClient.factory_kwargs["internal_token"] == "tok"
-    assert _FakeClient.last_call["url"].endswith("/internal/knowledge/timeline")
+    assert _FakeClient.last_call["url"] == "http://kg:3000/v1/kal/books/b1/timeline"
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_non_200_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_FakeResp(503, {}))
     assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_transport_error_degrades(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, exc=RuntimeError("connection refused"))
     assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
 
 
 @pytest.mark.asyncio
 async def test_fetch_timeline_ignores_non_dict_events(monkeypatch):
-    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
     _patch_client(monkeypatch, resp=_FakeResp(200, {"found": True, "events": ["bad", 3, None]}))
     brief = await fetch_timeline("b1", 5)
     assert brief.found and brief.events == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_sends_as_of_when_given(monkeypatch):
+    """T48ad — the STORY WINDOW reaches the wire.
+
+    The route ADVERTISED `temporal_capability.kg = ordinal_valid_time` while accepting no
+    temporal parameter at all, so it returned latest-head relations to a caller translating
+    chapter 1: measured live at 81 relations spanning ten chapters, against 25 from the
+    sibling `neighborhood` route on the same entity and position."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
+    monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))
+    await fetch_wiki_neighborhood("u1", "e1", rel_cap=50, book_id="b1", as_of=3_000_000)
+    assert _FakeClient.last_call["json"] == {
+        "glossary_entity_id": "e1", "rel_cap": 50, "as_of": 3_000_000}
+
+
+@pytest.mark.asyncio
+async def test_fetch_omits_as_of_when_none(monkeypatch):
+    """No position => the body is byte-identical to pre-T48ad, so the head is what a caller
+    without a position keeps getting. Asserting the ABSENCE is the half that would otherwise
+    rot back in — the same reason `user_id`'s absence is asserted above."""
+    monkeypatch.setattr(kc.settings, "knowledge_gateway_url", "http://kg:3000")
+    monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _PAYLOAD))
+    await fetch_wiki_neighborhood("u1", "e1", rel_cap=50, book_id="b1")
+    assert "as_of" not in _FakeClient.last_call["json"]

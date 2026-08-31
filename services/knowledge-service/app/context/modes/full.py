@@ -72,7 +72,7 @@ from app.context.selectors.summary_blend import LevelSummaryHit  # select_summar
 from app.context.selectors.projects import load_project_summary
 from app.context.selectors.summaries import load_global_summary
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
+from app.db.neo4j import graph_session
 from app.db.repositories.summaries import SummariesRepo
 from app.metrics import (
     layer_timeout_total,
@@ -102,7 +102,7 @@ async def _safe_l2_facts(
     roughly Mode 2 shape plus absence-of-graph instructions.
     """
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 select_l2_facts(
                     session,
@@ -147,7 +147,7 @@ async def _safe_expand_from_passages(
     if not passage_texts:
         return []
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 expand_facts_from_passages(
                     session,
@@ -204,7 +204,7 @@ async def _safe_l3_passages(
     # a top-level import here would bind the original reference at
     # module load time, making the monkeypatch a no-op.
     from app.context.selectors.passages import select_l3_passages
-    from app.db.neo4j_repos.passages import get_chapter_index_for_source
+    from app.db.graph_repos.passages import get_chapter_index_for_source
 
     if embedding_client is None or not project.embedding_model:
         return []
@@ -227,7 +227,7 @@ async def _safe_l3_passages(
     working_window = settings.context_working_scope_window
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             working_chapter_index: int | None = None
             if working_boost > 0.0 and current_chapter_id is not None:
                 working_chapter_index = await get_chapter_index_for_source(
@@ -325,7 +325,7 @@ async def _safe_summary_blend(
         return []
 
     try:
-        async with neo4j_session() as session:
+        async with graph_session() as session:
             return await asyncio.wait_for(
                 select_summary_blend(
                     session,
@@ -340,6 +340,19 @@ async def _safe_summary_blend(
         logger.warning(
             "Mode 3 summary_blend timeout user_id=%s project_id=%s budget=%.3fs",
             user_id, project.project_id, settings.context_l3_timeout_s,
+        )
+        return []
+    except NotImplementedError as exc:
+        # A PERMANENT capability gap, not a failure. `query_summary_index` reaches
+        # `CALL db.index.vector.queryNodes`, which is Neo4j-only, and this runs on
+        # `graph_session()` — backend-following since T54c, AGE by default. Logged at INFO
+        # WITHOUT a stack trace and without the word "failed", because on a default
+        # deployment this is the expected steady state, and an every-request WARNING with a
+        # traceback trains readers to ignore the one that means something. §3.1 moves the
+        # summary indexes to Postgres, which is where this comes back.
+        logger.info(
+            "Mode 3 summary_blend unavailable on this engine user_id=%s project_id=%s: %s",
+            user_id, project.project_id, exc,
         )
         return []
     except Exception:
@@ -766,10 +779,10 @@ async def build_full_mode(
     # defaults 0.0 → no DB read, no Neo4j fetch, no re-order (byte-identical).
     # The Neo4j session is only opened when the promotion flag is on.
     if settings.salience_promote_weight > 0:
-        async with neo4j_session() as _sal_session:
+        async with graph_session() as _sal_session:
             entities = await apply_salience(
                 entity_access_repo, entities, user_id, project.project_id,
-                neo4j_session=_sal_session,
+                graph_session=_sal_session,
             )
     else:
         entities = await apply_salience(entity_access_repo, entities, user_id, project.project_id)

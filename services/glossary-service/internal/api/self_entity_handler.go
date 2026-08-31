@@ -119,13 +119,46 @@ func (s *Server) seedSelfEntityCore(ctx context.Context, bookID uuid.UUID, name 
 	if err != nil {
 		return "", false, err
 	}
-	if _, err := s.pool.Exec(ctx, `
+	//    T28: this is the THIRD entry point to a status transition, and the one the plan's
+	//    "a second entry point is how emission drifts" warning is actually about. The promotion
+	//    flips a draft (invisible to every `status = 'active'` read) into live canon, so it has
+	//    to announce itself exactly as the curated path does. It keeps its own UPDATE rather
+	//    than routing through setEntityStatusCore because the same statement also sets is_self
+	//    and strips provenance tags — splitting it would trade one silent write for two
+	//    non-atomic ones. What is shared is the EMIT, which is the part that drifted.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // no-op after a successful Commit
+
+	var priorStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT status FROM glossary_entities
+		 WHERE entity_id=$1 AND book_id=$2 AND deleted_at IS NULL
+		 FOR UPDATE`, entityID, bookID).Scan(&priorStatus); err != nil {
+		return "", false, err
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE glossary_entities
 		   SET status='active', is_self=true,
 		       tags = array_remove(array_remove(tags,'ai-suggested'),'ai-rejected'),
 		       updated_at=now()
 		 WHERE entity_id=$1 AND book_id=$2 AND deleted_at IS NULL`,
 		entityID, bookID); err != nil {
+		return "", false, err
+	}
+	if priorStatus != "active" {
+		// uuid.Nil actor: the identity entity is seeded by provisioning, not by a user
+		// sitting at a keyboard, so it must not be recorded as a user correction.
+		actorType, actor := actorFor(uuid.Nil)
+		if err := emitEntityStatusChangedTx(
+			ctx, tx, bookID, entityID, "active", priorStatus, actorType, actor,
+		); err != nil {
+			return "", false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return "", false, err
 	}
 	return entityID.String(), true, nil

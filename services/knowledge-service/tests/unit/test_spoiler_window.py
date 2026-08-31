@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.db.graph_repos.events import EVENT_ORDER_CHAPTER_STRIDE
 from app.spoiler_window import (
     FAIL_CLOSED_BEFORE_ORDER,
     FAIL_CLOSED_BEFORE_SORT_ORDER,

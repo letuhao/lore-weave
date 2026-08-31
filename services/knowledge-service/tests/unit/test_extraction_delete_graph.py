@@ -109,7 +109,7 @@ def _url():
 # ── Tests ────────────────────────────────────────────────────────────
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_delete_graph_success(mock_settings, mock_neo4j):
     mock_settings.neo4j_uri = "bolt://localhost:7687"
@@ -165,7 +165,7 @@ def test_delete_graph_neo4j_not_configured_returns_503(mock_settings):
     assert resp.status_code == 503
 
 
-@patch("app.routers.public.extraction.neo4j_session")
+@patch("app.routers.public.extraction.graph_session")
 @patch("app.routers.public.extraction.app_settings")
 def test_delete_graph_neo4j_error_returns_500_project_unchanged(mock_settings, mock_neo4j):
     """If Neo4j fails mid-delete, project state is NOT updated (fail-safe)."""

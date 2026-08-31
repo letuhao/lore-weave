@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.db.neo4j_repos.events import _retag_rows
+from app.db.graph_repos.events import _retag_rows
 
 
 # ── D-THREAD-TAG-RETAG-STALE — _retag_rows (pure) ─────────────────────────────────

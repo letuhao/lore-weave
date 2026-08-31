@@ -600,12 +600,16 @@ class EngineCriticSeam:
     else the run's params.model_ref (same-model critique is weaker but better
     than no net; the caller opts into a distinct judge via critic_model_ref).
 
+    Canon (C2, 2026-08-13) — CLOSED. Those bearer-side helpers were private to
+    `routers/plan.py`, so this seam had nothing to copy and judged with empty
+    active_rules/present_facts: `canon_consistency` was a self-consistency read
+    of the passage, and QC-5's assertion (a misattributed betrayal must not
+    score 5/5) could not fail for the right reason. The sequence now lives once
+    in `engine/canon_bible.py` and all three callers import it; the verdict
+    carries `canon_grounding` (as_of | untimed | empty) so a weakly-grounded
+    score is never mistaken for a grounded one.
+
     Honest v1 gaps (stubbed, by design not omission):
-    * canon grounding — the Quality Report endpoint renders a canon block from
-      the kal cast roster + genre convention (bearer-side helpers private to
-      that router); this headless seam passes empty active_rules/present_facts,
-      so `canon_consistency` judges from the passage alone. Wiring the roster
-      canon is a follow-up (needs those helpers extracted).
     * cost — the LLM SDK Job carries no cost field (the exact reason the
       drafting seam falls back to authoring_unit_estimate_usd), so a COMPLETED
       critique reports authoring_critic_estimate_usd and a degraded one 0.
@@ -644,24 +648,99 @@ class EngineCriticSeam:
     ) -> CriticVerdict:
         # Deferred imports (EngineDraftingSeam precedent) — keep module light.
         from app.clients.book_client import get_book_client
+        from app.clients.kal_client import get_kal_client
         from app.clients.llm_client import get_llm_client
         from app.db.pool import get_pool
         from app.db.repositories.works import WorksRepo
+        from app.db.repositories.canon_rules import CanonRulesRepo
+        from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
+        from app.engine.critic_policy import (
+            canon_violations_enabled, critic_enabled, resolve_critic_refs)
+        from app.engine.model_roles import role_ref
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
         from app.packer.profile import BookProfile, from_settings
 
-        model_ref = params.get("critic_model_ref") or params.get("model_ref")
+        # C3 — S6 decides WHO judges, and the answer is recorded. This seam used to be an
+        # EIGHTH hand-rolled copy of the anti-self-reinforcement rule (`critic_policy.py`
+        # counted seven and says why that matters: "a rule that lives in seven places gets
+        # amended in six"). It did not even implement the rule — it preferred
+        # `critic_model_ref`, silently fell back to the drafter, and told nobody which had
+        # happened, so a self-witnessed `canon_consistency` was indistinguishable from an
+        # independently judged one.
+        #
+        # The seam DELIBERATELY diverges from the routers on the consequence: they REFUSE a
+        # non-distinct critic, this one judges anyway ("same-model critique is weaker but
+        # better than no net" — an autonomous run has no human to re-ask). The difference is
+        # in what happens, never in what is known: `critic_status` rides the verdict either
+        # way.
+        # Both args are the CRITIC's own refs, un-defaulted. Passing the drafter's source as a
+        # fallback here classifies "no critic configured at all" as INCOMPLETE (a
+        # half-written critic, which is a misconfiguration with a fix) instead of
+        # NOT_CONFIGURED (nothing is wrong, the tier is simply off) — the exact two states
+        # `critic_policy` exists to keep apart. Caught by its own test, not by review.
+        # ── the Work, resolved ONCE ──────────────────────────────────────────────────────
+        # Moved above the critic resolution 2026-08-22 (C28). It used to be resolved further
+        # down, for the source-language profile only, which is why the critic never saw it.
+        marked_work = None
+        try:
+            _marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
+            if len(_marked) == 1:
+                marked_work = _marked[0]
+        except Exception:  # noqa: BLE001 — best-effort, exactly as before
+            logger.debug("critic Work resolve failed", exc_info=True)
+        work_settings = getattr(marked_work, "settings", None) or {}
+        # ── the per-book OFF switch, read where the Work's settings already are ──────────
+        #
+        # `run_driver` gates on `params.critic_enabled` before it ever calls this, which is the
+        # run-scoped override. The BOOK-scoped setting has to be read here, because this is the
+        # first point that has `work_settings` — and reading it in the driver would cost a Work
+        # load per unit for a value that almost never changes.
+        #
+        # `ok` rather than `warn`: a tier the author deliberately turned off is not a problem
+        # with the run, and a warn here would trip breakers and reports built to notice trouble.
+        if not critic_enabled(work_settings, params):
+            return CriticVerdict(
+                severity="ok",
+                summary="critic skipped (turned off for this book)",
+            )
+
+        # C28 — SETTINGS FIRST, run params as an OVERRIDE.
+        #
+        # This resolved from `params` alone, so a book with a critic configured still
+        # self-graded unless the caller repeated that critic in every request body. Measured
+        # 2026-08-22: the acceptance book carries `critic_model_ref=019eb620…` (a model
+        # DIFFERENT from its drafter) and every studio-driven run still reported
+        # `critic_status: not_configured` with the DRAFTER as critic — because the studio
+        # sends `[model_ref, model_source]` and nothing else. The API-driven QC-5 runs passed
+        # the critic explicitly and read `configured`, which is how the two paths silently
+        # disagreed while both looked fine.
+        #
+        # `resolve_critic` is the reader that knows about settings (map form first, legacy
+        # scalars second). Calling `resolve_critic_refs(params…)` instead made this an eighth
+        # copy of the rule reading a different source — the exact shape `critic_policy` was
+        # consolidated to remove.
+        #
+        # Params still WIN when present: an explicit per-run critic is a deliberate override
+        # and the acceptance harness depends on it.
+        _crit_src = params.get("critic_model_source")
+        _crit_ref = params.get("critic_model_ref")
+        if not _crit_ref and not _crit_src:
+            _crit_src, _crit_ref = role_ref(work_settings, "critic")
+        judge = resolve_critic_refs(_crit_src, _crit_ref, params.get("model_ref"))
+        # the resolved critic, whatever its source — not just the param
+        model_ref = _crit_ref or params.get("model_ref")
         if not model_ref:
             return CriticVerdict(
                 severity="warn",
                 summary="critic unavailable (params.model_ref required)",
             )
-        model_source = str(
-            params.get("critic_model_source") or params.get("model_source")
-            or "user_model"
-        )
+        model_source = str(_crit_src or params.get("model_source") or "user_model")
+        # The verifier's OWN role (C33). `role_ref` is the same reader the critic uses, so a
+        # book that never sets one resolves (None, None) and `judge_prose` falls back to the
+        # critic — today's behaviour, unchanged, for every existing book.
+        _ver_src, _ver_ref = role_ref(work_settings, "critic_verifier")
 
         bearer = mint_service_bearer(created_by, settings.jwt_secret)
         draft = await get_book_client().get_draft(book_id, chapter_id, bearer)
@@ -677,19 +756,70 @@ class EngineCriticSeam:
         # Best-effort source_language (de-bias §2.6: judge in the book's
         # language) from the book's marked Work — 'auto' when unresolvable.
         profile = BookProfile()
-        try:
-            marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
-            if len(marked) == 1:
-                profile = from_settings(marked[0].settings)
-        except Exception:  # noqa: BLE001 — language resolve is best-effort
-            logger.debug("critic source-language resolve failed (using auto)",
-                         exc_info=True)
+        # The canon rules are keyed on the WORK's knowledge project_id, not the book id — the
+        # same resolve the drafting seam does at :329. Threaded out of this block rather than
+        # re-resolved, so the rules and the language always describe the SAME Work.
+        rules_project_id = None
+        if marked_work is not None:
+            profile = from_settings(marked_work.settings)
+            rules_project_id = marked_work.project_id
+
+        # C2 — the canon the judge is graded against. Until 2026-08-13 this was two empty
+        # lists, so `canon_consistency` was a self-consistency reading of the passage: the
+        # judge could not fail QC-5's assertion (a misattributed betrayal must not score 5/5)
+        # because it was never told who betrayed whom. Same bible the quality-report endpoint
+        # builds, same `present_facts` shape `build_quality_report` uses — one home, three
+        # callers (engine/canon_bible.py).
+        bible = await canon_for_chapter(
+            kal=get_kal_client(), book=get_book_client(), book_id=book_id,
+            chapter_id=chapter_id, user_id=created_by, bearer=bearer,
+            source_language=profile.source_language,
+        )
+        # C5 (PO 2026-08-13) — the ATTRIBUTION channel. Until now `active_rules` was `[]`, so
+        # `map_rule_tokens` could attribute nothing and dropped every verdict: measured on the
+        # acceptance book, **7 raw findings across 3 chapters, 7 discarded**, while the report
+        # showed `violations: []` — byte-identical to "the passage is clean". The score could
+        # say something was wrong; nothing could say WHAT.
+        #
+        # Same source as the critique endpoint, deliberately: one definition of "an enforceable
+        # canon rule", not a second one grown for the headless path. Its CC2 rule is honoured
+        # too — re-resolved HERE, at critique time, so a rule the author deleted or archived
+        # between drafting and judging is never enforced.
+        active_rules: list[dict[str, Any]] = []
+        if rules_project_id is not None:
+            try:
+                rules = await CanonRulesRepo(get_pool()).list_active(rules_project_id)
+                active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
+            except Exception:  # noqa: BLE001 — advisory, like every other read in this seam
+                logger.warning("critic: active canon rules unreadable — judging without the "
+                               "attribution channel", exc_info=True)
+        else:
+            logger.warning("critic: no unambiguous marked Work for book %s — no canon rules, "
+                           "so findings cannot be attributed", book_id)
 
         critique = await judge_prose(
             get_llm_client(), user_id=str(created_by),
             model_source=model_source, model_ref=str(model_ref),
-            passage=text, active_rules=[], present_facts=[], profile=profile,
+            passage=text, active_rules=active_rules,
+            present_facts=bible.as_present_facts(),
+            profile=profile,
+            verifier_source=_ver_src, verifier_ref=_ver_ref,
+            # QC-5 C46 — attribution channel OFF unless this book opted in.
+            emit_canon_violations=canon_violations_enabled(
+                work_settings, params),
         )
+        # The grounding rides the verdict. A `canon_consistency` scored against an `untimed`
+        # or `empty` bible is a weaker number than one scored `as_of`, and nothing downstream
+        # could tell them apart while the seam reported only the score.
+        critique = {**critique, "canon_grounding": bible.grounding,
+                    "canon_as_of": bible.as_of, "canon_cast_size": bible.cast_size,
+                    # WHO judged, by S6's classification. `same_as_drafter` and
+                    # `not_configured` both mean the prose graded itself.
+                    "critic_status": judge.status.value, "critic_ref": str(model_ref),
+                    # How many rules the judge was actually given. `violations: []` beside
+                    # `rules: 0` means "nothing to attribute to"; beside `rules: 6` it means
+                    # "the judge found nothing" — two states that read identically without it.
+                    "active_rule_count": len(active_rules)}
         severity, summary = verdict_from_critique(critique)
         # judge_prose degrades internally (error marker) — spend unknown there,
         # bill 0; a completed critique bills the estimate (no SDK cost field).

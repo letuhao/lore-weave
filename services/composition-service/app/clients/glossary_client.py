@@ -116,7 +116,11 @@ class GlossaryClient:
         """
         if not entity_ids:
             return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        # T38 B7 — through the KAL's `cast/by-ids` (INV-KAL). Same projection as `cast`, and
+        # `language` rides through unchanged: it augments each row's alias set, which is the
+        # reason this call exists (prose uses the names the author actually writes).
+        url = (f"{settings.knowledge_gateway_url.rstrip('/')}"
+               f"/v1/kal/books/{book_id}/cast/by-ids")
         payload: dict[str, Any] = {"entity_ids": [str(e) for e in entity_ids]}
         if language:
             payload["language"] = language

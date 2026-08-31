@@ -16,8 +16,8 @@ import (
 //
 //   - canonical_value      — the synthesized text (NULL until the first resummarize pass).
 //   - canonical_dirty       — set true by the writeback when a summarize attr's raw set
-//                             changed; the end-of-extraction-job resummarize pass consumes
-//                             it (fetch dirty → LLM rewrite → write canonical → clear).
+//     changed; the end-of-extraction-job resummarize pass consumes
+//     it (fetch dirty → LLM rewrite → write canonical → clear).
 //   - canonical_synced_at   — when the canonical value was last (re)synthesized.
 //
 // Additive + idempotent, routed through execGuarded. No data rewrite — existing rows get

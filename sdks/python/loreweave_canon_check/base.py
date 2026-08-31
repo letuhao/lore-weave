@@ -119,6 +119,88 @@ def _balanced_json_objects(text: str) -> list[str]:
     return objects
 
 
+def repair_truncated_json(text: str) -> str | None:
+    """Close a JSON object whose TAIL was cut off, or return None if nothing is salvageable.
+
+    ⚠️ WHY THIS EXISTS, MEASURED. A live judge call (composition job `019ff401`, 2026-08-12)
+    answered all twenty roles with reasons — `output_tokens: 684`, `finish_reason: "stop"` —
+    and the reply was missing exactly ONE character: the closing brace of the outer object.
+    `_balanced_json_objects` finds only BALANCED objects, so it yielded no candidates,
+    `parse_judge_verdicts` returned `{}`, and the caller logged *"produced NO verdicts ... the
+    role check did not run"*. Twenty good verdicts were discarded over one byte, and the
+    session that investigated it concluded the judge model was incapable. It was not.
+
+    The repair is deliberately CONSERVATIVE — it only ever CLOSES what is already open, and
+    never invents a value:
+      * if the text ends inside a string, cut back to before that string started;
+      * cut back to the last completed array element / object member;
+      * append the missing closers in reverse order of the open stack.
+    A half-written final verdict is DROPPED rather than guessed, so a repaired reply is a
+    strict prefix of what the model actually said.
+    """
+    if not text or "{" not in text:
+        return None
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    last_safe: int | None = None      # index AFTER the last completed element
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+                # A closed object/array sitting inside an array is a complete element.
+                if stack and stack[-1] == "]":
+                    last_safe = i + 1
+            else:
+                return None           # genuinely malformed, not merely truncated
+    if not stack:
+        return None                   # already balanced: nothing to repair
+    # ⚠️ ALWAYS cut back to the last COMPLETED element — never merely close the brackets
+    # where the text happens to stop.
+    #
+    # The first version of this function closed the open stack in place, which turned
+    # `{"verdicts":[{"entity_id":"e1","violated":true` into a confident verdict for e1: a
+    # half-written object completed by the parser rather than by the model. That is inventing
+    # a value, which this function's own docstring forbids, and the pre-existing
+    # `test_unterminated_json_degrades_to_empty` caught it immediately.
+    if last_safe is None:
+        return None                   # no complete element — nothing to salvage
+    body = text[:last_safe]
+    # Recompute the open stack for the TRUNCATED body — the stack from the full scan
+    # describes brackets that the dropped tail may have opened.
+    stack = []
+    in_string = False
+    escape = False
+    for ch in body:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack and stack[-1] == ch:
+            stack.pop()
+    return body + "".join(reversed(stack)) if stack else None
+
+
 def parse_judge_verdicts(content: str) -> dict[str, dict[str, Any]]:
     """`{entity_id: {violated, why}}` from the judge's JSON reply; tolerant of
     a markdown fence, surrounding prose, and (see `_balanced_json_objects`)
@@ -141,6 +223,18 @@ def parse_judge_verdicts(content: str) -> dict[str, dict[str, Any]]:
         if isinstance(parsed, dict) and "verdicts" in parsed:
             obj = parsed
             break
+    if obj is None:
+        # Nothing balanced parsed. Before giving up — which the caller reports as "the judge
+        # did not run" — try the truncated-tail repair. See `repair_truncated_json`: this is
+        # the path that recovered 20 verdicts from a reply missing one closing brace.
+        repaired = repair_truncated_json(text)
+        if repaired is not None:
+            try:
+                parsed = json.loads(repaired)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict) and "verdicts" in parsed:
+                obj = parsed
     if obj is None:
         return {}
     out: dict[str, dict[str, Any]] = {}

@@ -217,8 +217,11 @@ def main() -> int:
         return 1
 
     scanned = sum(1 for d in TIER for f in (REPO / d).rglob("*.rs") if "target" not in f.parts)
+    # T56(b) — the CEILING is printed on the PASS path, not only when it is breached. A
+    # threshold nobody sees on a green run drifts invisibly until it breaks, which is the
+    # `port-adoption-gate` floor bug generalised.
     print(f"file-ceiling-gate: OK — {scanned} file(s) across {len(TIER)} tier directories, "
-          f"{len(ALLOWLIST)} carrying recorded debt")
+          f"{len(ALLOWLIST)} carrying recorded debt (ceiling {CEILING} lines/file)")
     return 0
 
 

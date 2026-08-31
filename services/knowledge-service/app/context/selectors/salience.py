@@ -13,17 +13,26 @@ ranks higher and survives budget-trim longer:
 BOTH weights default 0.0 (byte-identical, zero extra I/O). Measure-before-flip:
 the P1 explicit-query eval showed REGRESSION at w_access=0.3 (spec §8b), so the
 flip gate for either weight is an ambiguous-query eval showing lift.
+
+This module holds SCORING ONLY. The graph read it depends on lives in
+`app.db.graph_repos.entities` — a selector that speaks Cypher cannot be put behind a
+storage port, which is what the rest of this phase is for (plan T11). `PromotionSignals`
+and `load_promotion_signals` are re-exported here because that is where callers and tests
+already reach for them.
 """
 
 from __future__ import annotations
 
+import logging
 import math
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
 from app.config import settings
+from app.db.graph_repos.entities import PromotionSignals, load_promotion_signals
 from app.db.repositories.entity_access import EntitySalience
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "PromotionSignals",
@@ -31,14 +40,6 @@ __all__ = [
     "blend_entity_salience",
     "load_promotion_signals",
 ]
-
-
-@dataclass(frozen=True)
-class PromotionSignals:
-    """Graph-native per-entity promotion inputs (P3a)."""
-    evidence_count: int
-    mention_count: int
-    updated_at: datetime | None
 
 
 def promotion_score(
@@ -61,52 +62,13 @@ def promotion_score(
     return 0.5 * ev + 0.3 * mn + 0.2 * rec
 
 
-async def load_promotion_signals(
-    session, project_id: UUID, entity_ids: list[str]
-) -> dict[str, PromotionSignals]:
-    """Batch-fetch P3a signals from Neo4j for glossary-anchored candidates.
-    Keyed by glossary_entity_id (the id the context block surfaces). Returns {}
-    on empty input; caller guards the weight flag so the default costs nothing."""
-    if not entity_ids:
-        return {}
-    res = await session.run(
-        """
-        MATCH (e:Entity {project_id: $pid})
-        WHERE e.glossary_entity_id IN $gids
-        RETURN e.glossary_entity_id AS gid,
-               coalesce(e.evidence_count, 0) AS ev,
-               coalesce(e.mention_count, 0) AS mn,
-               e.updated_at AS up
-        """,
-        pid=str(project_id), gids=entity_ids,
-    )
-    out: dict[str, PromotionSignals] = {}
-    async for r in res:
-        up = r["up"]
-        # neo4j temporal → aware datetime; tolerate string/None from legacy writes.
-        if up is not None and hasattr(up, "to_native"):
-            up = up.to_native()
-        if isinstance(up, str):
-            try:
-                up = datetime.fromisoformat(up)
-            except ValueError:
-                up = None
-        if isinstance(up, datetime) and up.tzinfo is None:
-            up = up.replace(tzinfo=timezone.utc)
-        out[r["gid"]] = PromotionSignals(
-            evidence_count=int(r["ev"]), mention_count=int(r["mn"]),
-            updated_at=up if isinstance(up, datetime) else None,
-        )
-    return out
-
-
 async def apply_salience(
     entity_access_repo,
     entities: list,
     user_id: UUID,
     project_id: UUID,
     *,
-    neo4j_session=None,
+    graph_session=None,
 ) -> list:
     """Builder entry point: guard on the weight flags FIRST so the defaults
     (both 0.0) do no I/O and return the input unchanged — byte-identical.
@@ -123,14 +85,23 @@ async def apply_salience(
         access = await entity_access_repo.load_salience(user_id, project_id)
 
     promotion: dict[str, PromotionSignals] = {}
-    if w_promote > 0 and neo4j_session is not None:
+    if w_promote > 0 and graph_session is not None:
         try:
             promotion = await load_promotion_signals(
-                neo4j_session, project_id,
-                [e.entity_id for e in entities if getattr(e, "entity_id", None)],
+                graph_session,
+                user_id=str(user_id),
+                project_id=str(project_id),
+                glossary_entity_ids=[
+                    e.entity_id for e in entities if getattr(e, "entity_id", None)
+                ],
             )
         except Exception:
-            promotion = {}  # degrade — promotion is advisory, never load-bearing
+            # Degrade — promotion is advisory, never load-bearing. Logged at DEBUG
+            # rather than swallowed silently: with both weights defaulting to 0.0 a
+            # permanently-failing read would otherwise be invisible until someone
+            # flipped the flag and wondered why nothing changed.
+            logger.debug("salience: promotion signal load failed, degrading", exc_info=True)
+            promotion = {}
 
     if not access and not promotion:
         return entities

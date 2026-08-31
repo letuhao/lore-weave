@@ -28,8 +28,28 @@ class _Gloss:
 
 
 class _Kal:
+    """T37 — the double carries the ROLE surface too, because the pipeline now writes and
+    closes plan-authored roles (SPEC §4.2b). It failed at the call when `close_stale_planned_roles`
+    landed (`'_Kal' object has no attribute 'open_facts_for'`), which is a narrow double doing
+    its job: the break belongs here rather than in production."""
+
+    def __init__(self):
+        self.appended: list[dict] = []
+        self.closed: list[dict] = []
+
     async def roster(self, book_id, **kw):
         return [{"entity_id": "e1", "name": "Lâm Uyển"}, {"entity_id": "e2", "name": "Hắc Sát"}]
+
+    async def append_role_fact(self, book_id, **kw):
+        self.appended.append(kw)
+        return {"fact_id": "f-" + str(len(self.appended))}
+
+    async def open_facts_for(self, book_id, entity_id, *, user_id=None):
+        return []
+
+    async def close_fact(self, book_id, *, fact_id, valid_to_ordinal, user_id=None):
+        self.closed.append({"fact_id": fact_id, "valid_to_ordinal": valid_to_ordinal})
+        return {"fact_id": fact_id}
 
 
 async def test_pipeline_chains_all_stages(monkeypatch):

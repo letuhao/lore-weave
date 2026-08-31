@@ -99,7 +99,6 @@ EXPECTED_VECTOR_INDEXES = {
     "entity_embeddings_1024",
     "entity_embeddings_1536",
     "entity_embeddings_3072",
-    "event_embeddings_1024",
 }
 
 
@@ -158,7 +157,6 @@ async def test_k11_3_vector_index_dimensions(neo4j_driver):
         "entity_embeddings_1024": 1024,
         "entity_embeddings_1536": 1536,
         "entity_embeddings_3072": 3072,
-        "event_embeddings_1024": 1024,
     }
     async with neo4j_driver.session() as session:
         result = await session.run(

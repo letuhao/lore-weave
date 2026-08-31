@@ -15,7 +15,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 import pytest
 
-from app.db.neo4j_repos.events import EVENTS_MAX_LIMIT, Event, list_events_filtered
+from app.db.graph_repos.events import EVENTS_MAX_LIMIT, Event, list_events_filtered
 
 
 _TEST_USER = uuid4()
@@ -104,7 +104,7 @@ def _make_client(book_client=None):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_happy(mock_list):
     mock_list.return_value = (
         [_event_stub("Kai duels Zhao", 10), _event_stub("Phoenix rises", 20)],
@@ -130,7 +130,7 @@ def test_timeline_happy(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_project_filter_cast_to_str(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -143,7 +143,7 @@ def test_timeline_project_filter_cast_to_str(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_after_before_order_forwarded(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -157,7 +157,7 @@ def test_timeline_after_before_order_forwarded(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_pagination_params(mock_list):
     mock_list.return_value = ([], 100)
     client = _make_client()
@@ -174,7 +174,7 @@ def test_timeline_pagination_params(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_pagination_out_of_range_rejected(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -199,7 +199,7 @@ def test_timeline_pagination_out_of_range_rejected(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_reversed_range_rejected(mock_list):
     """after_order >= before_order collapses to 422 with a readable
     detail instead of silently returning an empty page."""
@@ -223,7 +223,7 @@ def test_timeline_reversed_range_rejected(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_boundary_after_less_than_before_ok(mock_list):
     """after_order=0, before_order=1 is the smallest valid range and
     should NOT trip the reversed-range guard."""
@@ -237,7 +237,7 @@ def test_timeline_boundary_after_less_than_before_ok(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_bad_project_id_rejected(mock_list):
     """UUID param validation."""
     mock_list.return_value = ([], 0)
@@ -250,7 +250,7 @@ def test_timeline_bad_project_id_rejected(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_user_id_from_jwt(mock_list):
     """Handler must pass the JWT user_id down to the helper; a caller
     cannot spoof another user's timeline."""
@@ -280,7 +280,7 @@ def _make_result_stub(single_value=None, records=None):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_clamps_limit(mock_run_read):
     """Defence-in-depth: if the router's ``Query(le=EVENTS_MAX_LIMIT)``
     ever regresses, the repo still clamps so the worst case is one
@@ -308,7 +308,7 @@ async def test_list_events_filtered_clamps_limit(mock_run_read):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_passes_limit_below_cap(mock_run_read):
     """Counterpart to the clamp test — when ``limit`` is below the
     cap, the helper forwards it verbatim. Prevents a regression that
@@ -335,7 +335,7 @@ async def test_list_events_filtered_passes_limit_below_cap(mock_run_read):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_response_contains_enriched_chapter_title(mock_list):
     """C6 lock: valid-UUID chapter_id on an event → router calls
     enricher → enricher calls BookClient → response contains the
@@ -366,7 +366,7 @@ def test_timeline_response_contains_enriched_chapter_title(mock_list):
 
 
 def _entity_stub(name: str = "Kai", aliases: list[str] | None = None):
-    from app.db.neo4j_repos.entities import Entity
+    from app.db.graph_repos.entities import Entity
     from decimal import Decimal  # noqa: F401 (match original import style)
 
     return Entity(
@@ -395,7 +395,7 @@ def _entity_stub(name: str = "Kai", aliases: list[str] | None = None):
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
 @patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_entity_id_resolves_to_participant_candidates(
     mock_get_entity, mock_list,
 ):
@@ -422,7 +422,7 @@ def test_timeline_entity_id_resolves_to_participant_candidates(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
 @patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_entity_id_not_found_collapses_to_empty_list(
     mock_get_entity, mock_list,
 ):
@@ -442,7 +442,7 @@ def test_timeline_entity_id_not_found_collapses_to_empty_list(
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_chronological_range_threaded(mock_list):
     """C10 (D-K19e-α-03): after_chronological / before_chronological
     are passed through to the repo."""
@@ -479,7 +479,7 @@ def test_timeline_entity_id_rejected_when_empty_string():
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_sort_dir_forwarded(mock_list):
     """D-K19e-α-03: sort_dir defaults to 'asc' (back-compat) and an explicit
     'desc' is forwarded to the repo (alongside the chosen sort_by axis)."""
@@ -506,7 +506,7 @@ def test_order_fragment_directions_both_axes():
     """D-K19e-α-03: the ORDER BY fragment flips the primary key direction for both
     axes, keeps the title/id tiebreaker stable, and flips the null sentinel so
     undated/unordered events sink LAST in BOTH directions. Closed allowlist."""
-    from app.db.neo4j_repos.events import _order_fragment
+    from app.db.graph_repos.events import _order_fragment
 
     assert _order_fragment("narrative", "asc") == (
         "coalesce(e.event_order, 9223372036854775807) ASC, e.title ASC, e.id ASC"
@@ -530,7 +530,7 @@ def test_order_fragment_directions_both_axes():
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
 @patch("app.routers.public.timeline.get_entity", new_callable=AsyncMock)
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
     """C10: entity_id + chronological range + project_id all apply
     together — each gets forwarded to the repo."""
@@ -557,7 +557,7 @@ def test_timeline_all_three_filters_combined(mock_get_entity, mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_event_date_from_filter_forwarded(mock_list):
     """C18: event_date_from accepts truncated ISO and forwards to repo."""
     mock_list.return_value = ([], 0)
@@ -572,7 +572,7 @@ def test_timeline_event_date_from_filter_forwarded(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_event_date_to_filter_forwarded(mock_list):
     mock_list.return_value = ([], 0)
     client = _make_client()
@@ -586,7 +586,7 @@ def test_timeline_event_date_to_filter_forwarded(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_both_event_date_filters_compose(mock_list):
     """C18: event_date_from AND event_date_to together form a closed
     range; both forwarded to the repo."""
@@ -619,7 +619,7 @@ def test_timeline_event_date_equal_bounds_accepted():
     with patch(
         "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock,
     ) as mock_list, patch(
-        "app.routers.public.timeline.neo4j_session", new=lambda: _noop_session(),
+        "app.routers.public.timeline.graph_session", new=lambda: _noop_session(),
     ):
         mock_list.return_value = ([], 0)
         client = _make_client()
@@ -717,7 +717,7 @@ def test_event_importance_unset_for_ordinary_event():
 
 def test_event_importance_enum_only_major_pivotal():
     """No enum drift: importance is one of {major, pivotal, None}."""
-    from app.db.neo4j_repos.events import EVENT_IMPORTANCE
+    from app.db.graph_repos.events import EVENT_IMPORTANCE
 
     assert EVENT_IMPORTANCE == ("major", "pivotal")
     for ev in (
@@ -731,7 +731,7 @@ def test_event_importance_enum_only_major_pivotal():
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_response_carries_importance(mock_list):
     """The wire response surfaces the derived importance field so the
     FE rail can badge without recomputing."""
@@ -754,7 +754,7 @@ def test_timeline_response_carries_importance(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_sort_by_defaults_to_narrative(mock_list):
     """Back-compat: an unset sort_by forwards 'narrative' to the repo —
     the exact prior ordering, so existing callers are unaffected."""
@@ -768,7 +768,7 @@ def test_timeline_sort_by_defaults_to_narrative(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_sort_by_chronological_forwarded(mock_list):
     """sort_by=chronological is threaded to the repo verbatim."""
     mock_list.return_value = ([], 0)
@@ -781,7 +781,7 @@ def test_timeline_sort_by_chronological_forwarded(mock_list):
 @patch(
     "app.routers.public.timeline.list_events_filtered", new_callable=AsyncMock
 )
-@patch("app.routers.public.timeline.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.timeline.graph_session", new=lambda: _noop_session())
 def test_timeline_sort_by_invalid_rejected(mock_list):
     """An out-of-allowlist sort_by is a 422 (Literal validation) — the
     repo is never reached, so no bad key can interpolate into Cypher."""
@@ -793,7 +793,7 @@ def test_timeline_sort_by_invalid_rejected(mock_list):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_narrative_orders_by_event_order(mock_run_read):
     """sort_by='narrative' (default) ORDER BY uses event_order — the
     legacy axis. Asserts the page Cypher carries the event_order key."""
@@ -814,7 +814,7 @@ async def test_list_events_filtered_narrative_orders_by_event_order(mock_run_rea
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_chronological_orders_by_chrono(mock_run_read):
     """sort_by='chronological' swaps the primary ORDER BY key to
     chronological_order — true in-story chronology, not insertion."""
@@ -836,7 +836,7 @@ async def test_list_events_filtered_chronological_orders_by_chrono(mock_run_read
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.events.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.events.run_read", new_callable=AsyncMock)
 async def test_list_events_filtered_bad_sort_by_raises(mock_run_read):
     """Repo-layer defence: an unknown sort_by raises before any Cypher
     is assembled (no user text can reach the ORDER BY clause)."""

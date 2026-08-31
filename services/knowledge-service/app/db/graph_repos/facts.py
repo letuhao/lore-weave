@@ -1,0 +1,1091 @@
+"""K11.7 — facts repository.
+
+Functions over `:Fact` nodes. A Fact is a typed propositional
+statement extracted from text — distinct from `:Event` (a
+discrete narrative happening) and from `:RELATES_TO` (a directed
+edge between two entities). Examples per KSA §5.1:
+
+  - decision: "We decided to use fire magic"
+  - preference: "Kai always carries a sword"
+  - milestone: "Phoenix completes her training"
+  - negation: "Water Kingdom does not know Kai killed Zhao"
+
+Facts have a temporal model identical to relations: `valid_from`
+on creation, `valid_until` set by `invalidate_fact` when
+contradicting evidence arrives. Pass 1 (pattern) facts carry
+`pending_validation = true` and are excluded from the L2 RAG
+context loader by default; K17 LLM Pass 2 promotes them by
+re-merging with higher confidence.
+
+Idempotency: deterministic id from `(user_id, project_id, type,
+canonicalize_text(content))`. Re-extracting the same fact from
+any source is a no-op.
+
+Reference: KSA §3.4 (Fact nodes), §5.1 (Pass 1 quarantine),
+K11.3 schema indexes fact_id_unique, fact_user_evidence.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from datetime import date as date_cls
+from datetime import datetime
+from typing import Any, Literal, get_args
+
+from pydantic import BaseModel, Field
+
+from app.db.neo4j_helpers import CypherSession, run_read, run_write
+from app.db.graph_repos.canonical import canonicalize_entity_name, canonicalize_text
+from app.db.graph_repos.temporal import (
+    AS_OF_ORDINAL_PREDICATE,
+    MAINTAIN_FACT_CHAIN_CYPHER,
+    ORDINAL_OPEN_CEILING,
+)
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "Fact",
+    "FactType",
+    "FACT_TYPES",
+    "MEMORY_FACT_TYPES",
+    "STORY_FACT_TYPES",
+    "fact_id",
+    "merge_fact",
+    "get_fact",
+    "list_facts_by_type",
+    "list_facts_for_entity",
+    "facts_for_subject",
+    "invalidate_fact",
+    "delete_facts_with_zero_evidence",
+    "fact_coverage_for_entity",
+]
+
+# ── TWO FAMILIES OF FACT, ONE NODE LABEL ──────────────────────────────────────
+#
+# `:Fact` carries facts from two different producers, and until 2026-08-11 only one of them
+# could actually write. The enum below was the chat-memory vocabulary; `pass2_writer` — the
+# STORY extraction writer — validated the story extractor's output against it. The two
+# vocabularies intersect in exactly one word, so story extraction wrote `negation` and
+# nothing else, silently, for its whole life.
+#
+# The live graph said so precisely (94 `:Fact` nodes, corpus-wide, 2026-08-11):
+#
+#     negation    64      <- the ONLY overlapping type
+#     preference  17  |
+#     decision    11  |--  chat-memory writes, the other producer
+#     statement    2  |
+#
+# Every `description`, `attribute`, `temporal` and `causal` fact the story extractor ever
+# produced was dropped at the writer with a warning nobody read, and a run observed live
+# logged `persist-pass2 done entities=4 relations=5 events=0 facts=0`.
+#
+# So the families are NAMED rather than merged into one enum that pretends to be homogeneous.
+# `negation` is genuinely shared — both producers mean the same thing by it — and appears once.
+#
+# WS-5.7 (P5 Gate-1) — 'commitment' (a promised action + due date; the due date rides the
+# WS-2.6b s/p/o supersession trio). The write path validates THESE tuples, not kg_fact_types.
+# MOVED to `app.domain.fact_types` (T17 A6) — a producer VOCABULARY, not an engine fact.
+# Re-exported so every existing importer keeps working and there is still ONE definition.
+from app.domain.fact_types import (  # noqa: E402,F401
+    FACT_TYPES,
+    FactType,
+    MEMORY_FACT_TYPES,
+    MemoryFactType,
+    STORY_FACT_TYPES,
+    StoryFactType,
+)
+
+
+def fact_id(
+    user_id: str,
+    project_id: str | None,
+    type: str,
+    content: str,
+) -> str:
+    """Deterministic id for a `:Fact` node.
+
+    Same `(user_id, project_id, type, canonicalize_text(content))`
+    tuple → same id. Re-extraction is a no-op.
+
+    `type` is part of the key so two facts with identical content
+    but different types ("decision: use fire magic" vs
+    "preference: use fire magic") are distinct nodes.
+    """
+    if not user_id:
+        raise ValueError("user_id is required for fact_id")
+    if not type:
+        raise ValueError("type is required for fact_id")
+    if type not in FACT_TYPES:
+        raise ValueError(f"type must be one of {FACT_TYPES}, got {type!r}")
+    if not content:
+        raise ValueError("content is required for fact_id")
+    canonical = canonicalize_text(content)
+    if not canonical:
+        raise ValueError(
+            f"content {content!r} canonicalizes to empty — cannot derive id"
+        )
+    key = f"v1:{user_id}:{project_id or 'global'}:{type}:{canonical}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+# MOVED to `app.domain.graph_models` (T17 A7) — the port returns it, and a port that
+# imports its own implementation is not a boundary. Re-exported: ONE definition.
+from app.domain.graph_models import Fact  # noqa: E402,F401
+
+def _node_to_fact(node: Any) -> Fact:
+    if hasattr(node, "items"):
+        data = dict(node.items())
+    else:
+        data = dict(node)
+    for key, val in list(data.items()):
+        if val is not None and hasattr(val, "to_native"):
+            data[key] = val.to_native()
+    return Fact.model_validate(data)
+
+
+# ── merge_fact ────────────────────────────────────────────────────────
+
+
+_MERGE_FACT_CYPHER = """
+// §10.1/§10.2 — engine-neutral. Six semantics, per T71's table, and three fields that must
+// NOT be assigned at all:
+//   never-assign  valid_until, valid_to_ordinal, archived_at — ON CREATE ONLY in the original.
+//                 An absent property IS null, so omitting them is identical on create, while
+//                 ANY assignment would fire on match: `valid_until` would resurrect a
+//                 superseded fact (F5), `valid_to_ordinal` is owned by `maintain_chain`, and
+//                 `archived_at` would un-archive. T71 shipped exactly this bug in
+//                 `_CREATE_RELATION_CYPHER` and the suite caught it; it is pre-empted here.
+//   create-only   coalesce(field, value)
+//   accumulate    a CASE whose FIRST arm handles the absent list
+//   stored-wins   coalesce(f.field, $param)      from_order / valid_from_ordinal — F3
+//                 BACKFILL: a fact first seen positionless gains a position later, and one
+//                 that has a position never moves.
+//   max-wins      confidence, and pending_validation follows the SAME comparison
+//   precision     event_date_iso
+//
+// ⚠️ `user_id` in the MERGE KEY; the trailing `WITH f WHERE f.user_id` is gone. FOURTH query
+// with that shape (provenance T68, entity_status T69, passages T72, this). `fact_id` hashes
+// `user_id` (line 130).
+MERGE (f:Fact {id: $id, user_id: $user_id})
+SET f.project_id        = coalesce(f.project_id, $project_id),
+    f.type              = coalesce(f.type, $type),
+    f.content           = coalesce(f.content, $content),
+    f.canonical_content = coalesce(f.canonical_content, $canonical_content),
+    f.source_chapter    = coalesce(f.source_chapter, $source_chapter),
+    f.valid_from        = coalesce(f.valid_from, $valid_from, {NOW}),
+    f.evidence_count    = coalesce(f.evidence_count, 0),
+    f.created_at        = coalesce(f.created_at, {NOW}),
+    f.from_order        = coalesce(f.from_order, $from_order),
+    f.valid_from_ordinal = coalesce(f.valid_from_ordinal, $valid_from_ordinal),
+    f.valid_to_ordinal_eff = coalesce(f.valid_to_ordinal_eff, $open_ceiling),
+    f.predicate         = coalesce(f.predicate, $predicate),
+    f.object            = coalesce(f.object, $object),
+    f.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN f.event_date_iso
+      WHEN f.event_date_iso IS NULL THEN $event_date_iso
+      WHEN size($event_date_iso) > size(f.event_date_iso) THEN $event_date_iso
+      ELSE f.event_date_iso
+    END,
+    f.source_types = CASE
+      WHEN f.source_types IS NULL THEN [$source_type]
+      WHEN $source_type IN f.source_types THEN f.source_types
+      ELSE f.source_types + $source_type
+    END,
+    f.provenances = CASE
+      WHEN f.provenances IS NULL THEN [$provenance]
+      WHEN $provenance IN f.provenances THEN f.provenances
+      ELSE f.provenances + $provenance
+    END,
+    f.confidence = CASE
+      WHEN f.confidence IS NULL THEN $confidence
+      WHEN $confidence > f.confidence THEN $confidence
+      ELSE f.confidence
+    END,
+    f.pending_validation = CASE
+      WHEN f.confidence IS NULL THEN $pending_validation
+      WHEN $confidence > f.confidence THEN $pending_validation
+      ELSE f.pending_validation
+    END,
+    f.updated_at = {NOW}
+RETURN f
+"""
+
+
+async def merge_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    type: str,
+    content: str,
+    confidence: float = 0.0,
+    pending_validation: bool = False,
+    valid_from: datetime | None = None,
+    source_type: str = "book_content",
+    source_chapter: str | None = None,
+    provenance: str = "human_authored",
+    subject_id: str | None = None,
+    from_order: int | None = None,
+    valid_from_ordinal: int | None = None,
+    event_date_iso: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,
+    maintain_chain: bool = False,
+) -> Fact:
+    """Idempotent upsert. Same (user, project, type, normalized
+    content) returns the same node. K17 Pass 2 promotion
+    semantics same as relations: higher confidence wins AND
+    flips `pending_validation` to the new value.
+
+    T2.1 — `subject_id` (when given + the entity exists for this user) MERGEs a
+    `(:Fact)-[:ABOUT]->(:Entity)` edge so the codex can list a character's facts;
+    the fact `id` stays content-keyed (idempotency unchanged), so two same-wording
+    facts about different subjects share ONE node with multiple ABOUT edges.
+    `from_order` is the reading-axis order (for spoiler-windowing).
+
+    F3 — `valid_from_ordinal` is the STORY-time lower bound (chapter ordinal) the
+    fact was established at, unified with `from_order`: when not given it defaults
+    to `from_order`, so a positioned fact opens a story interval automatically.
+    `maintain_chain=True` (the extraction path) re-derives the `valid_to_ordinal`
+    chain for this fact's `(subject, type)` AFTER the merge via the ordinal-aware
+    `temporal.maintain_chain` — the prior containing fact closes at this ordinal,
+    this fact closes at the next strictly-greater one (open only if none later),
+    correct under out-of-order/backfill arrival. Default `False` preserves the
+    legacy byte-identical single-MERGE behaviour for callers (chat tools, L2)
+    that don't drive the story-time chain.
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `event_date_iso` is the OPTIONAL detected
+    in-story (narrative) date, a truncated ISO string ("YYYY" / "YYYY-MM" /
+    "YYYY-MM-DD"). It is an ADDITIVE valid-time refinement ALONGSIDE
+    `valid_from_ordinal` (the primary chapter-ordinal axis), never a replacement:
+    chapter-ordinal stays the spoiler-safe primary, the in-story date is a
+    secondary descriptive sort/filter key. `None` (the dominant case — most facts
+    carry no calendar date) is fully null-safe and never affects the ordinal
+    chain. Empty string normalizes to `None`. On re-mention the MORE precise date
+    wins (mirrors :Event's C18 precision-preferring merge).
+    """
+    if type not in FACT_TYPES:
+        raise ValueError(f"type must be one of {FACT_TYPES}, got {type!r}")
+    if not content:
+        raise ValueError("content must be a non-empty string")
+    if not source_type:
+        raise ValueError("source_type must be a non-empty string")
+    fid = fact_id(
+        user_id=user_id,
+        project_id=project_id,
+        type=type,
+        content=content,
+    )
+    canonical_content = canonicalize_text(content)
+    # K11.7-R1/R4: empty string → None for optional text fields.
+    normalized_source_chapter = source_chapter or None
+    # dec-3 — empty string → None so the Cypher's "NULL = no new value" precision
+    # merge treats a blank date as absent (never clobbers a stored one on MATCH).
+    normalized_event_date_iso = event_date_iso or None
+    # F3 — unify the story-time lower bound with the reading axis: an explicit
+    # valid_from_ordinal wins, else fall back to from_order (the same ordinal).
+    effective_valid_from_ordinal = (
+        valid_from_ordinal if valid_from_ordinal is not None else from_order
+    )
+    result = await run_write(
+        session,
+        _MERGE_FACT_CYPHER,
+        user_id=user_id,
+        id=fid,
+        project_id=project_id,
+        type=type,
+        content=content,
+        canonical_content=canonical_content,
+        confidence=confidence,
+        pending_validation=pending_validation,
+        valid_from=valid_from,
+        source_type=source_type,
+        source_chapter=normalized_source_chapter,
+        from_order=from_order,
+        valid_from_ordinal=effective_valid_from_ordinal,
+        open_ceiling=ORDINAL_OPEN_CEILING,
+        event_date_iso=normalized_event_date_iso,
+        provenance=provenance,
+        # WS-2.6b — empty string → None so a blank claim never clobbers a stored one on MATCH.
+        predicate=(predicate or None),
+        object=(object or None),
+    )
+    record = await result.single()
+    if record is None:
+        raise RuntimeError(f"merge_fact returned no row for id={fid!r}")
+    # T2.1 — link the fact to its subject entity (idempotent). MATCH (not MERGE) the
+    # Entity so an unresolved/cross-user subject silently no-ops instead of creating a
+    # phantom node; the caller (pass2_writer) already validates subject ∈ merged ids.
+    if subject_id:
+        await run_write(
+            session,
+            _LINK_FACT_SUBJECT_CYPHER,
+            user_id=user_id, fact_id=fid, subject_id=subject_id,
+        )
+        # F3 — drive the ordinal-aware interval-split close ONLY when the
+        # extraction path asks for it AND we have both a subject to scope the
+        # chain and a story-time position. maintain_chain re-derives valid_to
+        # over the (subject, type) chain from valid_from_ordinal order, so a
+        # back-filled out-of-order fact never inverts a later interval (A2).
+        if maintain_chain and effective_valid_from_ordinal is not None:
+            await run_write(
+                session,
+                # §10.2 — the timestamp token is engine-chosen. This repo runs on Neo4j;
+                # the AGE arm renders the same template with `timestamp()`.
+                MAINTAIN_FACT_CHAIN_CYPHER,
+                user_id=user_id,
+                entity_id=subject_id,
+                attr=type,
+                open_ceiling=ORDINAL_OPEN_CEILING,
+            )
+    return _node_to_fact(record["f"])
+
+
+_LINK_FACT_SUBJECT_CYPHER = """
+MATCH (f:Fact {id: $fact_id}), (e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id AND e.user_id = $user_id
+MERGE (f)-[:ABOUT]->(e)
+"""
+
+
+# ── get_fact ──────────────────────────────────────────────────────────
+
+
+_GET_FACT_CYPHER = """
+MATCH (f:Fact {id: $id})
+WHERE f.user_id = $user_id
+RETURN f
+"""
+
+
+async def get_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    fact_id: str,
+) -> Fact | None:
+    if not fact_id:
+        raise ValueError("fact_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _GET_FACT_CYPHER,
+        user_id=user_id,
+        id=fact_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_fact(record["f"])
+
+
+# ── list_facts_by_type ────────────────────────────────────────────────
+
+
+# K11.7 acceptance: "Fact type filter efficient". The K11.3
+# schema doesn't ship a per-type index because the type cardinality
+# is tiny (4 values) — a full label scan with WHERE is fast
+# enough for any realistic per-user fact volume. If profiling
+# shows a hot path here, K11.3-R2 can add `(user_id, type)`.
+_LIST_FACTS_BY_TYPE_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
+  AND ($type IS NULL OR f.type = $type)
+  AND ($source_type IS NULL OR $source_type IN f.source_types)
+  AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
+  AND f.confidence >= $min_confidence
+  AND f.valid_until IS NULL
+  AND ($include_archived OR f.archived_at IS NULL)
+RETURN f
+ORDER BY f.confidence DESC, f.created_at DESC
+LIMIT $limit
+"""
+
+
+async def list_facts_by_type(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None = None,
+    type: str | None = None,
+    source_type: str | None = None,
+    min_confidence: float = 0.8,
+    exclude_pending: bool = True,
+    include_archived: bool = False,
+    limit: int = 100,
+) -> list[Fact]:
+    """List active facts, optionally filtered by `type`.
+
+    Default filters match the L2 loader: confidence >= 0.8,
+    valid_until IS NULL, pending_validation = false. The memory
+    UI's "Quarantine" tab can pass `exclude_pending=False` and
+    `min_confidence=0.0` to see Pass 1 candidates.
+
+    `type=None` returns facts of all types; otherwise pass one
+    of `FACT_TYPES`. `source_type` (WS-4C) filters to facts whose
+    accumulated `source_types` list contains it (e.g. "llm_tool_call"
+    for memory_remember facts) — None means any source.
+    """
+    if type is not None and type not in FACT_TYPES:
+        raise ValueError(f"type must be one of {FACT_TYPES} or None, got {type!r}")
+    if min_confidence < 0.0 or min_confidence > 1.0:
+        raise ValueError(f"min_confidence must be in [0,1], got {min_confidence}")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+
+    result = await run_read(
+        session,
+        _LIST_FACTS_BY_TYPE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        type=type,
+        source_type=source_type,
+        min_confidence=min_confidence,
+        exclude_pending=exclude_pending,
+        include_archived=include_archived,
+        limit=limit,
+    )
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── WS-2.4 (spec 07 §Q2) — diary recall: days-since-epoch ordinal + a date-filtered read ───────────
+#
+# The headline promise "what did <person> say about <topic> last month" had NO query that could answer
+# it: every diary fact was invisible because valid_from_ordinal was NULL (dropped by the position
+# window) and the only date FILTER in the codebase was on :Event, never :Fact. This restores it:
+#   1. days_since_epoch(entry_date) — a diary is perfectly ordinal (one primary entry per day, strictly
+#      ordered), so this is a NOT-NULL valid_from_ordinal that re-arms every position-aware path.
+#   2. recall_facts — a date-filtered :Fact read mirroring the :Event event_date_iso range predicate,
+#      optionally narrowed to a subject via the :ABOUT edge (the "what did X say" half).
+
+_EPOCH_DAY = datetime(1970, 1, 1)
+
+
+def days_since_epoch(d: date_cls) -> int:
+    """The diary's story-time ordinal: whole days from the Unix epoch. Strictly increasing per calendar
+    day, so it orders diary entries exactly and gives merge_fact a NOT-NULL valid_from_ordinal."""
+    return (datetime(d.year, d.month, d.day) - _EPOCH_DAY).days
+
+
+# A date-filtered recall read. Unlike list_facts_by_type (project-wide, top-N-by-confidence, date-blind)
+# this is the net-new read spec 07 §Q2 demanded: filter by event_date_iso range (the :Event idiom) and,
+# when a subject is given, require an (:Fact)-[:ABOUT]->(:Entity{canonical_name}) edge. project_id is
+# REQUIRED (never the all-projects fallback) so a non-assistant caller can't pull diary facts (D16).
+_RECALL_FACTS_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+  AND f.valid_until IS NULL
+  AND f.archived_at IS NULL
+  AND f.confidence >= $min_confidence
+  AND ($event_date_from IS NULL OR f.event_date_iso >= $event_date_from)
+  AND ($event_date_to   IS NULL OR f.event_date_iso <= $event_date_to)
+  AND (
+    $subject_canonical IS NULL OR EXISTS {
+      MATCH (f)-[:ABOUT]->(e:Entity)
+      WHERE e.user_id = $user_id AND e.canonical_name = $subject_canonical
+    }
+  )
+// WS-2.6b — carry the subject's canonical name (from the :ABOUT edge, the SSOT) so the read can group
+// same-(subject, predicate) facts into a supersession. OPTIONAL so a coarse (subjectless) fact still
+// returns. A fact with multiple :ABOUT edges is rare (diary facts have one); `head(collect(...))` keeps
+// one deterministic value without fanning the row out.
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
+ORDER BY coalesce(f.event_date_iso, '') DESC, coalesce(f.valid_from_ordinal, 0) DESC, f.created_at DESC
+LIMIT $limit
+"""
+
+
+async def recall_facts(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date_from: str | None = None,
+    event_date_to: str | None = None,
+    subject_name: str | None = None,
+    min_confidence: float = 0.0,
+    limit: int = 50,
+) -> list[Fact]:
+    """WS-2.4 — the diary's date-filtered recall read. Returns active facts in [event_date_from,
+    event_date_to] (truncated-ISO string compare, the :Event idiom), newest-first, optionally narrowed
+    to those ABOUT `subject_name`. project_id is required — recall never spans all of a user's projects
+    (D16: a novel-writing session must not surface work facts).
+
+    The subject is matched by CANONICAL name: `subject_name` is run through the SAME
+    `canonicalize_entity_name` that stored `e.canonical_name` at promote time (strips honorifics +
+    punctuation, NFKC-casefolds, CJK-folds), so "Dr. Smith" / "田中様" / "Q3-Budget" recall the entity
+    they were stored under. A raw toLower compare (the pre-fix behavior) silently missed every titled,
+    punctuated, or non-Latin name (audit MED)."""
+    if not project_id:
+        raise ValueError("recall_facts requires an explicit project_id (D16 — no all-projects recall)")
+    subject_canonical = canonicalize_entity_name(subject_name) if subject_name else None
+    result = await run_read(
+        session,
+        _RECALL_FACTS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date_from=event_date_from,
+        event_date_to=event_date_to,
+        subject_canonical=(subject_canonical or None),
+        min_confidence=min_confidence,
+        limit=limit,
+    )
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        # WS-2.6b — attach the subject from the :ABOUT edge (transient; not a node prop). Used by
+        # `group_supersessions` to detect a claim that changed over time.
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
+
+
+# ── group_supersessions (WS-2.6b — spec 07 §Q5 "it changed") ──────────
+
+
+def group_supersessions(facts: list[Fact]) -> list[dict[str, Any]]:
+    """Group recalled facts into SUPERSESSIONS: a set of facts that make the SAME claim about the same
+    subject — same (subject_canonical, predicate) — but whose `object` changed across dates. Spec 07 §Q5:
+    recall must surface *"it changed"* ("Mon: Friday → Wed: Tuesday — which is right?"), not two
+    independent truths.
+
+    A group qualifies only when it has ≥2 facts with ≥2 DISTINCT objects (case/space-normalized) — a mere
+    re-affirmation of the same object on two days is NOT a supersession. Requires a subject AND a
+    predicate AND an object on each fact (the WS-2.2 structured trio); coarse facts (any of the three
+    missing) never form a supersession — they can't be reliably claimed to contradict. Each chain is
+    ordered OLDEST→NEWEST by (event_date_iso, valid_from_ordinal) so the arrow reads forward in time, and
+    `latest` names the current value. Pure over the passed facts (no DB) so it is trivially testable and
+    order-independent of the read's LIMIT."""
+    def _norm(s: str | None) -> str:
+        return " ".join((s or "").split()).casefold()
+
+    groups: dict[tuple[str, str], list[Fact]] = {}
+    for f in facts:
+        subj, pred, obj = f.subject_canonical, f.predicate, f.object
+        if not subj or not pred or not obj:
+            continue
+        groups.setdefault((_norm(subj), _norm(pred)), []).append(f)
+
+    supersessions: list[dict[str, Any]] = []
+    for (subj_key, _pred_key), members in groups.items():
+        if len(members) < 2:
+            continue
+        distinct_objects = {_norm(m.object) for m in members}
+        if len(distinct_objects) < 2:
+            continue  # same object re-affirmed — not a change
+        ordered = sorted(
+            members,
+            key=lambda m: ((m.event_date_iso or ""), (m.valid_from_ordinal or 0)),
+        )
+        supersessions.append({
+            # Present the original (un-normalized) subject/predicate of the newest member for display.
+            "subject": ordered[-1].subject_canonical,
+            "predicate": ordered[-1].predicate,
+            "latest": ordered[-1].object,
+            "changed": True,
+            "chain": [
+                {"object": m.object, "event_date": m.event_date_iso, "content": m.content}
+                for m in ordered
+            ],
+        })
+    return supersessions
+
+
+# ── list_facts_for_entity (T2.1) ──────────────────────────────────────
+
+
+# Facts ABOUT one entity, spoiler-windowed by `from_order`. Same L2-loader
+# defaults as list_facts_by_type (confidence/pending/valid/archived). The
+# window is INCLUSIVE: `f.from_order <= before_order`; a NULL from_order (legacy
+# / chat-tool facts) never passes a finite window — they stay hidden until a
+# positioned re-extraction stamps an order.
+# dec-3 — the in-story-date variant ORDER BY. The chapter-ordinal `from_order`
+# stays the PRIMARY (spoiler-safe) key; `event_date_iso` is the SECONDARY tiebreak,
+# so facts established in the same chapter window are presented in in-story
+# chronological order when they carry a date. Undated facts (NULL event_date_iso)
+# sort BEFORE dated ones within a from_order group via the `coalesce(…, '')`
+# null-sink (empty string < any "YYYY…"), keeping the order deterministic. The
+# coalesce is required because Neo4j sorts NULLs last under ASC, which would
+# scatter undated facts to the end of each group; the sentinel groups them first
+# instead. Keyed by a closed boolean → the fragment is never user text.
+_LIST_FACTS_FOR_ENTITY_ORDER_ORDINAL = (
+    "f.from_order ASC, f.confidence DESC, f.created_at DESC"
+)
+_LIST_FACTS_FOR_ENTITY_ORDER_EVENT_DATE = (
+    "f.from_order ASC, coalesce(f.event_date_iso, '') ASC, "
+    "f.confidence DESC, f.created_at DESC"
+)
+
+# WHERE/RETURN body shared by both order variants. The ORDER BY fragment is
+# appended from the CLOSED pair above (never user text) — concatenated, NOT
+# str.format()'d, because the Cypher contains literal `{id: $entity_id}` braces
+# that format() would misparse (KeyError: 'id'). Mirrors events.py `_page_cypher`.
+_LIST_FACTS_FOR_ENTITY_BODY = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
+  AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
+  AND f.confidence >= $min_confidence
+  AND f.valid_until IS NULL
+  AND ($include_archived OR f.archived_at IS NULL)
+  AND ($before_order IS NULL OR f.from_order <= $before_order)
+// §10.1 — `WITH DISTINCT f` rather than `RETURN DISTINCT f … ORDER BY`. AGE compiles the
+// RETURN into `SELECT DISTINCT` and then refuses the sort — *"for SELECT DISTINCT, ORDER BY
+// expressions must appear in select list"*. Deduplicating in a WITH puts the DISTINCT before
+// the sort, which is what it always meant. Both forms are valid on Neo4j, so the difference
+// only ever shows up by running the query on the other engine (T84).
+WITH DISTINCT f
+RETURN f
+ORDER BY """
+
+
+def _list_facts_for_entity_cypher(order_by_event_date: bool) -> str:
+    """Assemble the list query with the chosen ORDER BY fragment (from the closed
+    pair). Concatenation, not format() — the body has literal `{...}` braces."""
+    order_by = (
+        _LIST_FACTS_FOR_ENTITY_ORDER_EVENT_DATE
+        if order_by_event_date
+        else _LIST_FACTS_FOR_ENTITY_ORDER_ORDINAL
+    )
+    return _LIST_FACTS_FOR_ENTITY_BODY + order_by + "\nLIMIT $limit\n"
+
+
+async def list_facts_for_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    before_order: int | None = None,
+    project_id: str | None = None,
+    min_confidence: float = 0.8,
+    exclude_pending: bool = True,
+    include_archived: bool = False,
+    order_by_event_date: bool = False,
+    limit: int = 100,
+) -> list[Fact]:
+    """T2.1 — the known-facts list for one entity (`(:Fact)-[:ABOUT]->(:Entity)`),
+    spoiler-windowed by `from_order <= before_order`. `before_order=None` = no
+    window (all linked facts). Filters default to the L2 loader so quarantine /
+    low-confidence candidates don't surface as established "known facts".
+
+    dec-3 (D-KG-INSTORY-EVENTDATE) — `order_by_event_date=True` adds the optional
+    in-story `event_date_iso` as a SECONDARY sort key (chapter-ordinal `from_order`
+    stays the spoiler-safe PRIMARY), so facts established in the same chapter window
+    are ordered by in-story chronology when they carry a date. Default `False`
+    preserves the legacy `(from_order, confidence, created_at)` ordering exactly.
+    Undated facts sort first within their from_order group (deterministic), so the
+    refinement is purely additive and null-safe."""
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    if min_confidence < 0.0 or min_confidence > 1.0:
+        raise ValueError(f"min_confidence must be in [0,1], got {min_confidence}")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _list_facts_for_entity_cypher(order_by_event_date),
+        user_id=user_id,
+        entity_id=entity_id,
+        before_order=before_order,
+        project_id=project_id,
+        min_confidence=min_confidence,
+        exclude_pending=exclude_pending,
+        include_archived=include_archived,
+        limit=limit,
+    )
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── facts_for_subject (T17 A8 / SPEC §1.1) ───────────────────────────
+
+# The fact read the port needs to check `merge_fact` (SPEC §1.1), and NOT a rename of
+# `list_facts_for_entity` above — measured before building: that one windows on
+# `from_order <= before_order` (the READING axis, "established by chapter N") and never
+# touches the half-open story interval. This one applies `AS_OF_ORDINAL_PREDICATE`, the
+# LOCKED shared fragment (§12.3.1), so it answers "what held AT N" — a different question
+# whose whole point is that `maintain_chain` closed the interval.
+#
+# Deliberately UNFILTERED by confidence / pending / archived, unlike the L2-loader reads:
+# this is the port's observation surface for a chain, and a rule that cannot see a
+# low-confidence or quarantined member cannot tell "the chain skipped it" from "the filter
+# hid it". Callers wanting the loader's view already have `list_facts_for_entity`.
+_FACTS_FOR_SUBJECT_HEAD = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($type IS NULL OR f.type = $type)
+  AND f.valid_until IS NULL
+// See `_LIST_FACTS_FOR_ENTITY_BODY` — `WITH DISTINCT` before the sort, not `RETURN DISTINCT`
+// after it. AGE refuses the second form.
+WITH DISTINCT f
+RETURN f
+ORDER BY coalesce(f.valid_from_ordinal, $null_sink) ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+# The timed read. `f.valid_from_ordinal IS NOT NULL` is measured REDUNDANT for behaviour and
+# kept anyway. Biting it out left the rule GREEN on both engines, because `NULL <= $n` is
+# already null/false and the row drops out regardless — so the clause buys no exclusion the
+# shared predicate does not already give. What it buys is that a reader meets the rule where
+# the query is, instead of having to know Cypher's three-valued logic to see that positionless
+# facts are excluded at all. The bite that DOES red is readmitting them (`IS NULL OR …`),
+# which is what `test_facts_for_EXCLUDES_a_positionless_fact_from_a_TIMED_read` pins.
+_FACTS_FOR_SUBJECT_AS_OF = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($type IS NULL OR f.type = $type)
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+  AND """ + AS_OF_ORDINAL_PREDICATE.format(a="f") + """
+RETURN DISTINCT f
+ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+
+async def facts_for_subject(
+    session: CypherSession,
+    *,
+    user_id: str,
+    subject_id: str,
+    type: str | None = None,
+    as_of: int | None = None,
+    limit: int = 100,
+) -> list[Fact]:
+    """Facts ABOUT one subject, head or as-of. See the port's `facts_for` docstring for
+    why this read exists at all: it is what makes the merge checkable."""
+    if not subject_id:
+        raise ValueError("subject_id must be a non-empty string")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    cypher = _FACTS_FOR_SUBJECT_HEAD if as_of is None else _FACTS_FOR_SUBJECT_AS_OF
+    params: dict[str, Any] = {
+        "user_id": user_id,
+        "subject_id": subject_id,
+        "type": type,
+        "limit": limit,
+    }
+    if as_of is None:
+        # Positionless facts sort LAST in a head read — they have no place on the axis, so
+        # putting them at the front would misread as "earliest".
+        params["null_sink"] = ORDINAL_OPEN_CEILING
+    else:
+        params["as_of_ordinal"] = as_of
+    result = await run_read(session, cypher, **params)
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── invalidate_fact ───────────────────────────────────────────────────
+
+
+_INVALIDATE_FACT_CYPHER = """
+MATCH (f:Fact {id: $id})
+WHERE f.user_id = $user_id
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
+RETURN f
+"""
+
+
+async def invalidate_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    fact_id: str,
+    valid_until: datetime | None = None,
+) -> Fact | None:
+    """Soft-invalidate a fact by setting `valid_until`.
+
+    Same idempotency semantics as `invalidate_relation`. Default
+    queries exclude `valid_until IS NOT NULL` so invalidated
+    facts vanish from the L2 loader without losing audit history.
+    """
+    if not fact_id:
+        raise ValueError("fact_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _INVALIDATE_FACT_CYPHER,
+        user_id=user_id,
+        id=fact_id,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_fact(record["f"])
+
+
+# ── revalidate_fact (S-05b F9 — undo a mark-wrong) ────────────────────
+
+
+_REVALIDATE_FACT_CYPHER = """
+MATCH (f:Fact {id: $id})
+WHERE f.user_id = $user_id
+SET f.valid_until = NULL,
+    f.updated_at = {NOW}
+RETURN f
+"""
+
+
+async def revalidate_fact(
+    session: CypherSession,
+    *,
+    user_id: str,
+    fact_id: str,
+) -> Fact | None:
+    """S-05b — the inverse of `invalidate_fact`: clear `valid_until` so a mark-wrong
+    can be UNDONE (the fact re-appears in the L2 loader). Owner-scoped; idempotent
+    (revalidating an active fact is a no-op). Returns None on cross-user/missing so
+    the router maps to 404 (no existence oracle). No event: a self-undo of one's own
+    invalidate is not an extraction correction (mirrors the S-05 emit-gating stance)."""
+    if not fact_id:
+        raise ValueError("fact_id must be a non-empty string")
+    result = await run_write(
+        session, _REVALIDATE_FACT_CYPHER, user_id=user_id, id=fact_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_fact(record["f"])
+
+
+# ── invalidate_facts_for_day (WS-2.6a leg 3 — D17 amendment reconcile) ─
+
+
+_INVALIDATE_FACTS_FOR_DAY_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.event_date_iso = $event_date
+  AND f.valid_until IS NULL
+  AND coalesce(f.pending_validation, false) = false
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_facts_for_day(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    event_date: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.6a leg 3 (D17) — soft-invalidate ALL of one diary day's CONFIRMED facts by setting
+    `valid_until`, scoped to (user, assistant project, event_date). This is the reconcile leg of a
+    memory correction: after the user amends a day's diary entry (leg 1) and the worker re-extracts the
+    corrected facts into the inbox (leg 2), the day's OLD confirmed facts are superseded and must vanish
+    from recall — otherwise the wrong fact ("Minh froze the budget") survives alongside the corrected
+    one, and a KG rebuild resurrects it (the exact `memory_forget`-stops-at-leg-3 lie D17 names).
+
+    Bi-temporal soft-invalidation (never a hard delete): `valid_until` is set so recall (which filters
+    `valid_until IS NULL`) skips these, while the audit history + the :ABOUT edges survive. Only ACTIVE
+    (`valid_until IS NULL`) confirmed (`pending_validation=false`) facts are touched, so it is idempotent
+    — a re-run invalidates nothing more. `project_id` is REQUIRED (never all-projects) so a correction in
+    the diary can never reach another project's facts (D16). Returns the number invalidated.
+
+    NOTE this is deliberately DAY-scoped, not fact-scoped: the re-distill model (D-R30) treats the
+    corrected ENTRY as the new source of truth for the whole day, so the whole day's derived facts are
+    re-proposed from it. Unchanged facts re-appear in the inbox (same corrected entry ⇒ same facts) and
+    the user re-confirms; the changed/removed ones simply don't come back — no resurrection.
+    """
+    if not user_id or not project_id or not event_date:
+        raise ValueError("invalidate_facts_for_day requires user_id, project_id and event_date")
+    result = await run_write(
+        session,
+        _INVALIDATE_FACTS_FOR_DAY_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        event_date=event_date,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["invalidated"])
+
+
+# ── invalidate_all_facts_for_project (WS-2.10a — close an employment epoch) ──
+
+
+_INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND f.valid_until IS NULL
+SET f.valid_until = coalesce($valid_until, {NOW}),
+    f.updated_at = {NOW}
+RETURN count(f) AS invalidated
+"""
+
+
+async def invalidate_all_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    valid_until: datetime | None = None,
+) -> int:
+    """WS-2.10a (T18 employment epoch) — close an epoch by soft-invalidating EVERY active fact of the
+    epoch's assistant project (bulk `valid_until`). On a job change the ex-employer's confidential facts
+    must stop being 'valid now' so they don't blend into the new job's recall. Epoch scoping is primarily
+    by project (each epoch is its own assistant project + diary book, and recall is project-scoped), and
+    this marks the bi-temporal close on top. Tenant-scoped on (user, project); idempotent (only active
+    facts). Returns the count invalidated."""
+    if not user_id or not project_id:
+        raise ValueError("invalidate_all_facts_for_project requires user_id and project_id")
+    result = await run_write(
+        session,
+        _INVALIDATE_ALL_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        valid_until=valid_until,
+    )
+    record = await result.single()
+    return int(record["invalidated"]) if record else 0
+
+
+# ── export_facts_for_project (WS-2.10d — export before the epoch purge) ──
+
+
+_EXPORT_FACTS_FOR_PROJECT_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND f.project_id = $project_id
+  AND coalesce(f.pending_validation, false) = false
+OPTIONAL MATCH (f)-[:ABOUT]->(subj:Entity) WHERE subj.user_id = $user_id
+WITH f, head(collect(subj.canonical_name)) AS subject_canonical
+RETURN f, subject_canonical
+ORDER BY coalesce(f.event_date_iso, '') ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+
+async def export_facts_for_project(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    limit: int = 10000,
+) -> list[Fact]:
+    """WS-2.10d (T18 export-then-purge) — dump EVERY confirmed fact of an epoch's project for the user's
+    export, INCLUDING invalidated (`valid_until`-set) ones — a closed epoch's facts are all invalidated
+    (WS-2.10a), so the recall read (which filters valid_until IS NULL) would export nothing. This is the
+    'export' half of the boundary offer; the caller then purges via the scoped-erasure primitive @epoch.
+    Tenant-scoped on (user, project). Oldest-first so the export reads chronologically."""
+    if not project_id:
+        raise ValueError("export_facts_for_project requires an explicit project_id")
+    result = await run_read(
+        session,
+        _EXPORT_FACTS_FOR_PROJECT_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        limit=limit,
+    )
+    facts: list[Fact] = []
+    async for record in result:
+        fact = _node_to_fact(record["f"])
+        fact.subject_canonical = record.get("subject_canonical")
+        facts.append(fact)
+    return facts
+
+
+# ── delete_facts_with_zero_evidence ───────────────────────────────────
+
+
+_DELETE_FACTS_ZERO_EVIDENCE_CYPHER = """
+MATCH (f:Fact)
+WHERE f.user_id = $user_id
+  AND ($project_id IS NULL OR f.project_id = $project_id)
+  AND f.evidence_count = 0
+DETACH DELETE f
+RETURN count(*) AS deleted
+"""
+
+
+async def delete_facts_with_zero_evidence(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None = None,
+) -> int:
+    """Cascade cleanup. Same race-window warning as
+    `delete_entities_with_zero_evidence` and
+    `delete_events_with_zero_evidence` — K11.8 must orchestrate
+    so this never runs concurrently with extraction.
+    """
+    result = await run_write(
+        session,
+        _DELETE_FACTS_ZERO_EVIDENCE_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return 0
+    return int(record["deleted"])
+
+
+# ── fact_coverage_for_entity (F3 — canonical-snapshot staleness key) ───
+
+
+# The max `updated_at` over the entity's STORY-time facts valid at/under an
+# ordinal — the §12.1 staleness key for the per-entity canonical snapshot cache.
+# A late / back-filled fact under `as_of_ordinal` bumps this max, so a snapshot
+# whose stored `fact_coverage_at` is older is stale -> rebuild-on-read (B3 self-
+# heal). Scopes to the same (subject, type) chains the canonical folds: facts
+# ABOUT the entity, valid (TRANSACTION-time open) and positioned at/under the
+# ordinal. NULL when the entity has no such facts (nothing to fold yet).
+_FACT_COVERAGE_FOR_ENTITY_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+  AND f.valid_from_ordinal <= $as_of_ordinal
+RETURN max(f.updated_at) AS coverage
+"""
+
+
+async def fact_coverage_for_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    as_of_ordinal: int,
+) -> datetime | None:
+    """F3 — the canonical-snapshot staleness key for one entity at an ordinal.
+
+    Returns ``max(updated_at)`` over the entity's story-time facts valid at/under
+    ``as_of_ordinal``. The snapshot cache compares its stored ``fact_coverage_at``
+    against this: a newer value means a late/back-filled fact arrived after the
+    snapshot was built -> the snapshot is stale -> rebuild-on-read (§12.1, B3).
+    ``None`` when the entity has no positioned facts under the ordinal.
+    """
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _FACT_COVERAGE_FOR_ENTITY_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        as_of_ordinal=as_of_ordinal,
+    )
+    record = await result.single()
+    if record is None or record["coverage"] is None:
+        return None
+    coverage = record["coverage"]
+    # neo4j temporal -> native datetime (mirrors _node_to_fact's to_native).
+    if hasattr(coverage, "to_native"):
+        return coverage.to_native()
+    return coverage

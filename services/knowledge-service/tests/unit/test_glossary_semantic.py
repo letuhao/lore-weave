@@ -1,6 +1,9 @@
 """mui #4 K-1 — unit tests for select_glossary_semantic (no Neo4j/embed/HTTP).
 
-Mocks the embed client, patches find_entities_by_vector, mocks the glossary
+Mocks the embed client, patches find_entities_by_vector INSIDE the adapter (T17 —
+the selector reaches entity vectors through `VectorStore` now, so patching the real
+repo call one layer down drives the actual VectorSearchHit -> VectorHit mapping instead
+of bypassing it), mocks the glossary
 client's by-ids fetch. Asserts ranking, anchor-only filtering, and the
 best-effort fallback-to-[] on each failure mode.
 """
@@ -15,7 +18,7 @@ import pytest
 import app.context.query_embedding as qe_mod
 from app.clients.glossary_client import GlossaryEntityForContext
 from app.context.selectors import glossary as gsel
-from app.db.neo4j_repos.entities import Entity, VectorSearchHit
+from app.db.graph_repos.entities import Entity, VectorSearchHit
 
 USER = uuid4()
 PROJECT = uuid4()
@@ -31,7 +34,7 @@ def _clear_query_embedding_cache():
     qe_mod._query_embedding_cache.clear()
 
 
-def _hit(gid: str | None, name: str, score: float) -> VectorSearchHit:
+def _hit(gid: str | None, name: str, score: float, anchor: float = 1.0) -> VectorSearchHit:
     ent = Entity(
         id=f"canon-{name}",
         user_id=str(USER),
@@ -40,8 +43,14 @@ def _hit(gid: str | None, name: str, score: float) -> VectorSearchHit:
         canonical_name=name,
         kind="character",
         glossary_entity_id=gid,
+        # T17 — a REAL anchor, because the ranking product is now computed by the caller from
+        # `raw_score` and `attributes["anchor_score"]` rather than read off a `weighted_score`
+        # the fixture invented. With `anchor_score` left at its 0.0 default every weighted
+        # score was 0.0 and the ordering assertion collapsed to insertion order — i.e. the old
+        # fixture's `weighted_score=score` was asserting on a number no backend produces.
+        anchor_score=anchor,
     )
-    return VectorSearchHit(entity=ent, raw_score=score, weighted_score=score)
+    return VectorSearchHit(entity=ent, raw_score=score, weighted_score=score * anchor)
 
 
 def _embed_ok(vector=(0.1, 0.2, 0.3)):
@@ -61,7 +70,7 @@ def _row(eid: str, name: str) -> GlossaryEntityForContext:
 
 
 async def _run(monkeypatch, *, hits, rows, embed=None, model="emb-uuid", dim=1024, query="封神之人"):
-    monkeypatch.setattr(gsel, "find_entities_by_vector", AsyncMock(return_value=hits))
+    monkeypatch.setattr("app.adapters.neo4j_vector_store.find_entities_by_vector", AsyncMock(return_value=hits))
     return await gsel.select_glossary_semantic(
         session=MagicMock(),
         embedding_client=embed or _embed_ok(),
@@ -126,7 +135,7 @@ async def test_respects_max_tokens(monkeypatch):
         GlossaryEntityForContext(entity_id=f"g{i}", cached_name="甲", kind_code="character", short_description=big)
         for i in (1, 2, 3)
     ]
-    monkeypatch.setattr(gsel, "find_entities_by_vector", AsyncMock(return_value=hits))
+    monkeypatch.setattr("app.adapters.neo4j_vector_store.find_entities_by_vector", AsyncMock(return_value=hits))
     out = await gsel.select_glossary_semantic(
         session=MagicMock(), embedding_client=_embed_ok(), glossary_client=_glossary_with(rows),
         user_id=USER, project_id=PROJECT, book_id=BOOK,
@@ -139,7 +148,7 @@ async def test_respects_max_tokens(monkeypatch):
 @pytest.mark.asyncio
 async def test_no_anchored_hits_returns_empty_without_fetch(monkeypatch):
     gc = _glossary_with([])
-    monkeypatch.setattr(gsel, "find_entities_by_vector", AsyncMock(return_value=[_hit(None, "x", 0.9)]))
+    monkeypatch.setattr("app.adapters.neo4j_vector_store.find_entities_by_vector", AsyncMock(return_value=[_hit(None, "x", 0.9)]))
     out = await gsel.select_glossary_semantic(
         session=MagicMock(), embedding_client=_embed_ok(), glossary_client=gc,
         user_id=USER, project_id=PROJECT, book_id=BOOK,
@@ -147,3 +156,55 @@ async def test_no_anchored_hits_returns_empty_without_fetch(monkeypatch):
     )
     assert out == []
     gc.fetch_entities_by_ids.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_ANCHOR_reorders_the_ranking_not_just_scales_it(monkeypatch):
+    """🔴 **Dropping the anchor multiplication redded NOTHING before this rule.** Every other
+    fixture here used `anchor=1.0`, so `score * anchor == score` and the two-layer product was
+    indistinguishable from raw cosine — the whole point of two-layer retrieval, untested.
+
+    So the two orderings are made to DISAGREE:
+
+        A  raw .9  anchor .2  ->  weighted .18
+        B  raw .5  anchor 1.0 ->  weighted .50
+
+    Raw cosine ranks A first; the weighted product ranks B first. A selector that silently
+    stopped applying the anchor would return a plausible list in the wrong order, which is
+    exactly the failure `PgVectorStore` omits the key to prevent (D-T25B-PG-ANCHOR-SCORE).
+    """
+    hits = [_hit("gA", "姜子牙", 0.9, anchor=0.2), _hit("gB", "哪吒", 0.5, anchor=1.0)]
+    rows = [_row("gA", "姜子牙"), _row("gB", "哪吒")]
+    out = await _run(monkeypatch, hits=hits, rows=rows)
+    assert [e.entity_id for e in out] == ["gB", "gA"], (
+        "ranked by RAW cosine, not by raw × anchor — two-layer retrieval collapsed to one "
+        f"layer. got {[e.entity_id for e in out]}, weighted gives ['gB', 'gA']")
+    assert out[0].rank_score == pytest.approx(0.5)
+    assert out[1].rank_score == pytest.approx(0.18)
+
+
+@pytest.mark.asyncio
+async def test_a_backend_that_OMITS_anchor_score_raises_rather_than_ranking_by_cosine(monkeypatch):
+    """The other half, and the reason the lookup is a bracket rather than `.get`.
+
+    `PgVectorStore` leaves `anchor_score` out of an entity hit entirely — the score is
+    bucket-relative and any copy on the vector row drifts. A consumer that defaulted the
+    missing key would return cosine order and look perfectly healthy. This pins that the
+    selector RAISES instead, which is the loud failure the omission was designed to produce.
+    """
+    from app.ports.vector_store import VectorHit
+
+    async def _no_anchor(*a, **kw):
+        return [VectorHit(record_id="e1", score=0.9, scope="entity",
+                          attributes={"glossary_entity_id": "gA"})]
+
+    monkeypatch.setattr(gsel, "get_vector_store", AsyncMock(
+        return_value=SimpleNamespace(search=_no_anchor)))
+    with pytest.raises(KeyError, match="anchor_score"):
+        await gsel.select_glossary_semantic(
+            session=MagicMock(), embedding_client=_embed_ok(),
+            glossary_client=_glossary_with([_row("gA", "姜子牙")]),
+            user_id=USER, project_id=PROJECT, book_id=BOOK,
+            embedding_model="emb-uuid", embedding_dimension=1024,
+            query="封神之人", max_entities=20,
+        )

@@ -379,7 +379,7 @@ def test_graph_read_applies_view_and_temporal(monkeypatch, repo, auth_user):
         _FakeRecord({k: dict(v) for k, v in _rec("PURSUES", "a", "seek_dao", vf=10, vt=None).items()}),
         _FakeRecord({k: dict(v) for k, v in _rec("ALLY_OF", "a", "b").items()}),
     ]
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession(records))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession(records))
 
     async def _fake_deprecated(repo_, pid):
         return ["OLD_EDGE"]
@@ -411,7 +411,7 @@ def test_graph_read_unknown_view_404(monkeypatch, repo, auth_user):
     app.dependency_overrides[get_grant_client] = lambda: object()
     app.dependency_overrides[project_meta_dep] = lambda: (auth_user, None)
     _stub_label_deps(app)
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([]))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession([]))
     client = TestClient(app)
     r = client.get(f"/v1/kg/projects/{project_id}/graph?view=nope")
     assert r.status_code == 404
@@ -454,7 +454,7 @@ def test_graph_read_localizes_with_language(monkeypatch, repo, auth_user):
         "subj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
         "obj": {"id": "b", "kind": "location", "name": "天剑峰", "glossary_entity_id": "g2"},
     }
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
 
     async def _no_deprecated(repo_, pid):
         return []
@@ -504,7 +504,7 @@ def test_graph_read_folds_region_subtag(monkeypatch, repo, auth_user):
         "subj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
         "obj": {"id": "a", "kind": "character", "name": "火魔", "glossary_entity_id": "g1"},
     }
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession([_FakeRecord(rec)]))
 
     async def _no_deprecated(repo_, pid):
         return []
@@ -553,7 +553,7 @@ def test_edge_timeline_localizes_with_language(monkeypatch, auth_user):
             "obj": {"id": "seek_dao", "name": "Seek Dao", "glossary_entity_id": None},
         }),
     ]
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession(records))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession(records))
 
     client = TestClient(app)
     r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline?language=vi")
@@ -592,7 +592,7 @@ def test_edge_timeline(monkeypatch, auth_user):
             "obj": {"id": "seek_dao", "name": "Seek Dao"},
         }),
     ]
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession(records))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession(records))
 
     client = TestClient(app)
     r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline")
@@ -614,7 +614,7 @@ import pytest as _pytest  # noqa: E402  (kept local to this section)
 from fastapi import HTTPException  # noqa: E402
 
 from app.clients.grant_client import GrantLevel as _GL  # noqa: E402
-from app.db.neo4j_repos.entities import Entity as _Entity  # noqa: E402
+from app.db.graph_repos.entities import Entity as _Entity  # noqa: E402
 
 
 _PROJ_UUID = "22222222-2222-2222-2222-222222222222"
@@ -654,13 +654,13 @@ class _ProjectsRepoFixed:
 def _patch_entity(monkeypatch, ent):
     """Patch the any-owner Neo4j lookup the gate imports lazily, plus the
     session ctx-manager, so the gate runs driver-free."""
-    import app.db.neo4j_repos.entities as ent_mod
+    import app.db.graph_repos.entities as ent_mod
 
     async def _fake_lookup(session, canonical_id):
         return ent
 
     monkeypatch.setattr(ent_mod, "get_entity_by_id_any_owner", _fake_lookup)
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _FakeSession([]))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _FakeSession([]))
 
 
 @_pytest.mark.asyncio
@@ -828,7 +828,7 @@ def test_timeline_grantee_binds_owner_partition(monkeypatch, auth_user):
             "obj": {"id": "revenge", "name": "Revenge"},
         }),
     ]
-    monkeypatch.setattr(gv, "neo4j_session", lambda **kw: _CapturingSession(records))
+    monkeypatch.setattr(gv, "graph_session", lambda **kw: _CapturingSession(records))
 
     client = TestClient(app)
     r = client.get("/v1/kg/entities/kai/edges/PURSUES/timeline")

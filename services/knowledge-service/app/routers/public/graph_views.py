@@ -44,8 +44,11 @@ from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.glossary_ontology_client import GlossaryOntologyClient
 from app.clients.grant_client import GrantClient
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_helpers import run_read
+from app.db.neo4j import graph_session
+from app.db.graph_repos.graph_views import (
+    read_entity_edge_timeline,
+    read_project_graph_edges,
+)
 from app.db.ontology_models import GraphView
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.graph_schemas import GraphSchemasRepo
@@ -193,30 +196,6 @@ def _coerce_ordinal(value: Any) -> int | None:
     return None
 
 
-# Graph-read Cypher: every active :RELATES_TO edge in the (owner, project)
-# partition, with its temporal props + both endpoint nodes. Multi-tenant:
-# binds $user_id (K11.4) AND $project_id on every node. valid_until IS NULL
-# keeps superseded (user-corrected) edges out; the chapter-ordinal temporal
-# filter (valid_from/valid_to) is applied in PYTHON via edge_visible_at so the
-# predicate is pure + unit-tested. predicate IS the edge_type code.
-_GRAPH_READ_CYPHER = """
-MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
-WHERE subj.user_id = $user_id
-  AND obj.user_id = $user_id
-  AND subj.project_id = $project_id
-  AND obj.project_id = $project_id
-  AND r.user_id = $user_id
-  AND r.valid_until IS NULL
-  AND subj.archived_at IS NULL
-  AND obj.archived_at IS NULL
-RETURN properties(r) AS rel,
-       properties(subj) AS subj,
-       properties(obj) AS obj
-ORDER BY r.predicate ASC, subj.id ASC, obj.id ASC
-LIMIT $limit
-"""
-
-
 def _node_dict(props: dict[str, Any]) -> GraphNode:
     return GraphNode(
         id=str(props.get("id", "")),
@@ -286,21 +265,6 @@ def build_graph_slice(
     )
 
 
-# Timeline Cypher: every instance (active OR superseded) of one edge_type from
-# one entity, ordered by the temporal opening ordinal. We do NOT filter
-# valid_until here — the timeline is the FULL arc, including closed instances
-# (that is the point: revenge→seek_dao→transcendence). Predicate is bound as a
-# parameter (never interpolated). Multi-tenant via $user_id (K11.4).
-_TIMELINE_CYPHER = """
-MATCH (subj:Entity {id: $entity_id})-[r:RELATES_TO]->(obj:Entity)
-WHERE subj.user_id = $user_id
-  AND obj.user_id = $user_id
-  AND r.user_id = $user_id
-  AND r.predicate = $edge_type
-RETURN properties(r) AS rel, properties(obj) AS obj
-ORDER BY coalesce(r.valid_from, 2147483647) ASC, obj.id ASC
-LIMIT $limit
-"""
 
 
 def build_timeline(
@@ -439,9 +403,9 @@ async def _resolve_entity_project_grant(
     timeline for an entity in book A, but CANNOT reach an entity whose project
     book they hold no grant on (404).
     """
-    from app.db.neo4j_repos.entities import get_entity_by_id_any_owner
+    from app.db.graph_repos.entities import get_entity_by_id_any_owner
 
-    async with neo4j_session() as session:
+    async with graph_session() as session:
         ent = await get_entity_by_id_any_owner(session, entity_id)
     if ent is None or not ent.project_id or not ent.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entity not found")
@@ -639,15 +603,10 @@ async def read_graph(
         if selected_view is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="view not found")
 
-    async with neo4j_session() as session:
-        result = await run_read(
-            session,
-            _GRAPH_READ_CYPHER,
-            user_id=str(owner),
-            project_id=project_str,
-            limit=limit,
+    async with graph_session() as session:
+        records = await read_project_graph_edges(
+            session, user_id=str(owner), project_id=project_str, limit=limit,
         )
-        records = await _records(result)
 
     deprecated = await _deprecated_edge_codes(schemas_repo, project_str)
     graph = build_graph_slice(
@@ -731,16 +690,11 @@ async def read_edge_timeline(
     # owner-scoped, so a grantee correctly reads the owner's arc (mirrors the
     # graph-read route). Binding the caller here would re-introduce the 404 the
     # lane fixes (caller != owner ⇒ no rows).
-    async with neo4j_session() as session:
-        result = await run_read(
-            session,
-            _TIMELINE_CYPHER,
-            user_id=str(owner),
-            entity_id=entity_id,
-            edge_type=edge_type,
-            limit=limit,
+    async with graph_session() as session:
+        records = await read_entity_edge_timeline(
+            session, user_id=str(owner), entity_id=entity_id,
+            edge_type=edge_type, limit=limit,
         )
-        records = await _records(result)
     timeline = build_timeline(entity_id, edge_type, records)
 
     # KG-ML M5 (C7) — localize the predicate + target names for the reader. The

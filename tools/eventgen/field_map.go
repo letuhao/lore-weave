@@ -150,6 +150,115 @@ func fieldsForEvent(eventType string, version uint32) []Field {
 				{"decanonized_at", "time.Time", "chrono::DateTime<chrono::Utc>", "string", "datetime"},
 			}
 		}
+	// ── glossary.* (T30 registry adoption, OD-1 2026-08-12) ──────────────
+	//
+	// ⚠️ Every row below was read off the PRODUCER's payload struct
+	// (`services/glossary-service/internal/api/outbox*.go`), not invented here.
+	// Ids are `string`, not `uuid.UUID`, because that is what the producer puts
+	// on the wire — these payloads are assembled from text columns, and
+	// `actor_id` is deliberately EMPTY for a system/auto merge, which a UUID
+	// type cannot express and would render as the nil UUID instead.
+	//
+	// `emitted_at` is `string` (RFC3339) rather than `time.Time` for the same
+	// reason: the producer formats it itself. Typing it as a datetime here would
+	// make the generated Python/TS disagree with the bytes actually sent.
+	case "glossary.entity_updated":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"name", "string", "String", "string", "str"},
+				{"kind", "string", "String", "string", "str"},
+				{"aliases", "[]string", "Vec<String>", "string[]", "list[str]"},
+				{"short_description", "string", "String", "string", "str"},
+				{"op", "string", "String", "string", "str"},
+				{"source_type", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+				{"target_language", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				// before/after are the diffable snapshot learning-service splits
+				// into structural + content-hash parts. Nested object, rendered as
+				// an opaque map rather than a generated nested type: eventgen V1
+				// has no nested-struct support (D-EVENTGEN-AST-PARSE), and emitting
+				// a flattened lie would be worse than an honest opaque field.
+				{"before", "*GlossaryEntitySnapshotV1", "serde_json::Value", "Record<string, unknown>", "dict"},
+				{"after", "*GlossaryEntitySnapshotV1", "serde_json::Value", "Record<string, unknown>", "dict"},
+			}
+		}
+	case "glossary.entity_merged":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"winner_glossary_id", "string", "String", "string", "str"},
+				{"loser_glossary_id", "string", "String", "string", "str"},
+				{"op", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
+	case "glossary.name_confirmed":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"source_name", "string", "String", "string", "str"},
+				{"kind", "string", "String", "string", "str"},
+				{"language_code", "string", "String", "string", "str"},
+				{"value", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
+	// The three lifecycle events share ONE wire shape and differ only by `op`.
+	// Listed separately rather than folded together because the registry maps an
+	// event_type to a field list, and three names sharing a shape is not one name.
+	case "glossary.entity_deleted":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"op", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
+	case "glossary.entity_restored":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"op", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
+	case "glossary.entity_purged":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"op", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
+	case "glossary.entity_status_changed":
+		if version == 1 {
+			return []Field{
+				{"book_id", "string", "String", "string", "str"},
+				{"glossary_entity_id", "string", "String", "string", "str"},
+				{"status", "string", "String", "string", "str"},
+				{"prior_status", "string", "String", "string", "str"},
+				{"actor_type", "string", "String", "string", "str"},
+				{"actor_id", "string", "String", "string", "str"},
+				{"emitted_at", "string", "String", "string", "str"},
+			}
+		}
 	}
 	return nil
 }

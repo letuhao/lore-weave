@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.db.neo4j_repos.entities import Entity
+from app.db.graph_repos.entities import Entity
 from app.extraction.anchor_loader import (
     Anchor,
     AnchorPreloadUnavailable,

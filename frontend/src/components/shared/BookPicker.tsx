@@ -30,6 +30,8 @@ export function BookPicker({ value, onChange, disabled, placeholder, limit = 200
   const { accessToken } = useAuth();
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
@@ -43,10 +45,19 @@ export function BookPicker({ value, onChange, disabled, placeholder, limit = 200
       return;
     }
     let cancelled = false;
+    // The TITLE FILTER IS THE SERVER'S. It used to be a client-side
+    // `includes()` over whatever this one call returned — and this call asks
+    // for `limit: 200` while the endpoint clamps to 100, so the picker filtered
+    // 100 rows in the belief it held every book. At 83 books that is invisible;
+    // at 101 the picker starts omitting books with no symptom at all. That is
+    // the same defect the library page shipped, one page further in.
     booksApi
-      .listBooks(accessToken, { limit })
+      .listBooks(accessToken, { limit, ...(debounced.trim() ? { q: debounced.trim() } : {}) })
       .then((res) => {
-        if (!cancelled) setBooks(res.items);
+        if (!cancelled) {
+          setBooks(res.items);
+          setTotal(res.total ?? res.items.length);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -57,7 +68,7 @@ export function BookPicker({ value, onChange, disabled, placeholder, limit = 200
     return () => {
       cancelled = true;
     };
-  }, [accessToken, limit]);
+  }, [accessToken, limit, debounced]);
 
   // Debounce the title filter.
   useEffect(() => {
@@ -77,17 +88,27 @@ export function BookPicker({ value, onChange, disabled, placeholder, limit = 200
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
 
-  const selected = useMemo(
-    () => (value ? books?.find((b) => b.book_id === value) ?? null : null),
-    [books, value],
-  );
+  // The selected book is REMEMBERED, not re-derived from the current page.
+  // Deriving it worked only while the component held every book; now that the
+  // list is a search result, the chosen book is usually absent from it, and
+  // re-deriving would blank the picker's own label the moment you typed.
+  useEffect(() => {
+    if (!value) {
+      setSelectedBook(null);
+      return;
+    }
+    const hit = books?.find((b) => b.book_id === value);
+    if (hit) setSelectedBook(hit);
+  }, [books, value]);
+  const selected = selectedBook;
 
-  const matches = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
-    const list = books ?? [];
-    if (!q) return list.slice(0, 50);
-    return list.filter((b) => b.title.toLowerCase().includes(q)).slice(0, 50);
-  }, [books, debounced]);
+  // The server has already applied the title filter; this only caps the render.
+  const matches = useMemo(() => (books ?? []).slice(0, 50), [books]);
+
+  // How many books the query matched but this page does not hold. Shown rather
+  // than swallowed: a picker that quietly lists 100 of 140 is indistinguishable
+  // from one whose user simply has 100 books.
+  const notShown = Math.max(0, total - (books?.length ?? 0));
 
   function select(b: Book) {
     onChange(b.book_id);
@@ -168,6 +189,14 @@ export function BookPicker({ value, onChange, disabled, placeholder, limit = 200
                 </button>
               </li>
             ))
+          )}
+          {notShown > 0 && (
+            <li
+              className="border-t px-3 py-1.5 text-[10px] text-muted-foreground"
+              data-testid="book-picker-truncated"
+            >
+              {notShown} more match{notShown === 1 ? '' : 'es'} not shown — keep typing to narrow.
+            </li>
           )}
         </ul>
       )}

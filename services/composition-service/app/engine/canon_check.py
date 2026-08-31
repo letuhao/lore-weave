@@ -36,6 +36,7 @@ from loreweave_canon_check import (
     apply_verdicts,
     build_judge_request,
     extract_judge_text,
+    find_span,
     gone_entities_referenced,
     parse_judge_verdicts,
 )
@@ -49,7 +50,10 @@ __all__ = [
     "scene_at_order",
     "CanonViolation",
     "gone_cast_in_draft",
+    "roles_at_position",
+    "roles_in_draft",
     "judge_canon",
+    "judge_role_attribution",
     "judge_plan_conflicts",
     "check_canon",
     "ReflectResult",
@@ -79,6 +83,15 @@ def scene_at_order(scene_sort_order: int | None) -> int | None:
 class CanonViolation(CanonCandidateBase):
     kind: str = "gone_entity_present"
     glossary_entity_id: str | None = None
+    # T36 — WHICH relationship a `role_contradiction` is about. `entity_id` is
+    # the role's subject, and a subject usually holds SEVERAL roles at a
+    # position (on the dogfood book one character held four), so the entity
+    # alone does not identify the finding. Measured: the judge flagged a
+    # misattributed betrayal and the finding was indistinguishable from one
+    # about the same character's `antagonist_of` or `sibling_of` role.
+    # None on every other kind.
+    predicate: str | None = None
+    object_name: str | None = None
 
     @property
     def locator(self) -> Locator:
@@ -111,6 +124,298 @@ def gone_cast_in_draft(
         )
         for r in rows
     ]
+
+
+# ── T36 · roles at the reading position (D-CANON-CHECK-BLIND-TO-ROLE) ───
+#
+# The guard above asks ONE question: "is a `gone` entity being treated as
+# present?" The register's acceptance case asks a different one — *"is the trap
+# attributed to the cast-designated antagonist?"* — and until now no code path
+# posed it. The snapshot has carried a `relations` list all along; nothing in
+# this service read it.
+#
+# Two things had to be true before that could be fixed, and the first was not:
+#
+#   1. The relations must be POSITION-WINDOWED. They were not — `fact_for_check`
+#      served every relation as currently-true regardless of reading position,
+#      so 175 of the dev graph's 619 positioned edges were already-ended roles
+#      presented as live. Fixed in knowledge-service (T36 axis half); the
+#      snapshot's relations are now the roles in force AT `at_order`, each
+#      carrying the interval that answered.
+#   2. Something must READ them. That is this block.
+#
+# The symbolic layer here is a RELEVANCE filter, deliberately over-inclusive in
+# the same way `gone_cast_in_draft` is: it decides which roles this passage
+# could possibly contradict, and the judge decides whether it does. A role is
+# relevant when either endpoint is named in the draft — misattribution reads
+# both ways ("the wrong character does X to the role's object" and "the role's
+# bearer does something the role forbids"), so filtering on the subject alone
+# would miss half the case the acceptance test is about.
+
+
+def roles_at_position(snapshot: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The roles in force at the snapshot's reading position, normalised.
+
+    A thin, defensive projection of `snapshot["relations"]` — the payload
+    crosses a service boundary, so a missing key or a non-dict row is expected
+    input, not an error. Rows without both endpoint names are dropped: a role
+    the guard cannot NAME cannot be put to a judge or matched against prose.
+    """
+    out: list[dict[str, Any]] = []
+    for rel in (snapshot or {}).get("relations") or []:
+        if not isinstance(rel, dict):
+            continue
+        subj, obj = rel.get("subject_name"), rel.get("object_name")
+        pred = rel.get("predicate")
+        if not (isinstance(subj, str) and subj and isinstance(obj, str) and obj):
+            continue
+        if not (isinstance(pred, str) and pred):
+            continue
+        out.append({
+            "subject_id": rel.get("subject_id"), "subject_name": subj,
+            "predicate": pred,
+            "object_id": rel.get("object_id"), "object_name": obj,
+            # T36 — the interval that answered, carried through from the
+            # snapshot so a `why` can say "in force since ch.N" rather than
+            # asserting a timeless fact the reader has no way to place.
+            "valid_from_ordinal": rel.get("valid_from_ordinal"),
+            "valid_to_ordinal": rel.get("valid_to_ordinal"),
+        })
+    return out
+
+
+def roles_in_draft(
+    draft: str, snapshot: dict[str, Any] | None, *, limit: int = 20,
+) -> list[dict[str, Any]]:
+    """The roles in force at P that this passage could contradict: those with
+    at least one endpoint named in `draft`.
+
+    Over-inclusive on purpose (see the block comment above), but RANKED, in
+    three tiers — and the ranking exists because the live data corrected a first
+    attempt that had it wrong.
+
+    On the dogfood book at ch.5 the filter selected **20 of 24** roles: a
+    protagonist-centric cast names the protagonist in nearly every role AND in
+    nearly every passage, so "either endpoint named" is close to a no-op there
+    and the CAP becomes the thing that actually decides what the judge sees.
+    A cap over an arbitrary order sends an arbitrary 20.
+
+    The obvious ranking — both endpoints named first — is **backwards for the
+    case this check exists to catch.** In a misattribution the passage has
+    REPLACED the role's holder, so the true holder is exactly the name that is
+    absent: canon says `Lâm Trạch betrayed Lâm Uyên`, the draft says Lâm Diệp <!-- doc-language-gate: ok -- stored entity names from the cited corpus; the example is only legible with the real names -->
+    did, and only the OBJECT appears. Ranking on both-named buried it.
+
+    So:
+      tier 0 — both endpoints named   → the passage discusses both parties;
+                                        a stated relationship may be contradicted
+      tier 1 — OBJECT named, subject absent → the role's holder is missing from a
+                                        passage about its object: the
+                                        misattribution shape
+      tier 2 — subject named only     → weakest; the role's object is off-scene
+
+    `limit` caps how many reach the judge; the cap is LOGGED when it bites,
+    because a silently truncated role set reads to every downstream layer
+    exactly like a book with few roles.
+    """
+    if not draft or not snapshot:
+        return []
+    hits: list[dict[str, Any]] = []
+    for role in roles_at_position(snapshot):
+        subj_hit = find_span(draft, role["subject_name"])
+        obj_hit = find_span(draft, role["object_name"])
+        if subj_hit is None and obj_hit is None:
+            continue
+        if subj_hit is not None and obj_hit is not None:
+            tier = 0
+        elif obj_hit is not None:
+            tier = 1
+        else:
+            tier = 2
+        hit = subj_hit or obj_hit
+        hits.append({**role, "matched": hit[0], "span": hit[1], "tier": tier})
+    # Stable sort — equal-tier roles keep the snapshot's own order, so the
+    # selection is reproducible for a given snapshot rather than dependent on
+    # dict iteration luck.
+    hits.sort(key=lambda h: h["tier"])
+    if len(hits) > limit:
+        by_tier = [sum(1 for h in hits if h["tier"] == t) for t in (0, 1, 2)]
+        logger.info(
+            "canon role check: %d of the roles in force at this position are "
+            "named in the draft (tiers both/object-only/subject-only = "
+            "%d/%d/%d); sending %d to the judge, strongest first",
+            len(hits), *by_tier, limit,
+        )
+        return hits[:limit]
+    return hits
+
+
+def _build_role_judge_messages(
+    draft: str, roles: list[dict[str, Any]], source_language: str,
+) -> tuple[str, str]:
+    """(system, user) for the role-attribution judge.
+
+    A THIRD distinct question, and it gets its own prompt for the same reason
+    `judge_plan_conflicts` does: the other two ask about a character's presence,
+    this one asks about a RELATIONSHIP's holder. Kept free of English-only
+    illustrative phrasing (the multilingual-judge lesson) — the description of
+    what counts is abstract so it does not bias a Vietnamese or CJK judge.
+    """
+    lang = "" if source_language in ("", "auto") else (
+        f" Write each `why` in the language with code '{source_language}'."
+    )
+    system = (
+        "You verify story continuity. Each listed statement is an established "
+        "relationship that is TRUE at this point in the story. For each, decide "
+        "whether the passage CONTRADICTS it. Answer about THAT statement only.\n"
+        "It IS a contradiction when the passage assigns that relationship, or "
+        "the act it describes, to a DIFFERENT character than the one named in "
+        "the statement. Judge this by what the passage says happened, not by "
+        "which names it happens to contain: the named subject being ABSENT from "
+        "the passage while someone else performs their role is the clearest "
+        "form of this, not a reason to excuse it.\n"
+        "It is NOT a contradiction when:\n"
+        "- the passage SHOWS, states or confirms the relationship. Agreement is "
+        "the opposite of a contradiction. If your reason would say the passage "
+        "does what the statement says, answer false.\n"
+        "- the passage is silent about the relationship and assigns it to nobody;\n"
+        "- a character doubts, conceals, or is mistaken about it in their own words;\n"
+        "- the two people are in conflict. Betrayal, hostility, deceit or violence "
+        "between them does not END a family tie, a marriage, an alliance or an "
+        "acquaintance — a traitor is still the cousin, spouse or ally they betrayed;\n"
+        "- a character is somewhere other than a place the statement records. "
+        "Moving is not a contradiction.\n"
+        "Prefer false when unsure: a false alarm on correct prose costs the author "
+        "more than a missed one.\n"
+        "Return ONLY a JSON object "
+        '{"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}, using the '
+        "entity_id given for each statement, which identifies the STATEMENT "
+        "and not any character." + lang
+    )
+    # The `entity_id` handed to the judge is a per-STATEMENT token (`role_0`,
+    # `role_1`, …), not the subject's real entity id.
+    #
+    # MEASURED, on the acceptance book with a real model: given the subject's
+    # entity id, the judge correctly spotted that the passage gave a betrayal to
+    # the wrong character — and returned the id of the character it was
+    # ACCUSING rather than the id of the statement being contradicted. That id
+    # also appeared in the list (as the subject of an unrelated `sibling_of`
+    # role), so the verdict silently attached to the wrong relationship. The
+    # finding read correct and pointed somewhere false, which is worse than
+    # missing it. A token that names no character removes the ambiguity.
+    listed = "\n".join(
+        f'- entity_id=role_{i} "{r["subject_name"]}" '
+        f'{r["predicate"]} "{r["object_name"]}"'
+        for i, r in enumerate(roles)
+    )
+    user = f"ESTABLISHED RELATIONSHIPS AT THIS POINT:\n{listed}\n\nPASSAGE:\n{draft}"
+    return system, user
+
+
+async def judge_role_attribution(
+    judge, *, user_id: str, model_source: str, model_ref: str,
+    draft: str, roles: list[dict[str, Any]], source_language: str = "auto",
+    max_tokens: int | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    on_degraded: Callable[[str], None] | None = None,
+) -> list[CanonViolation]:
+    """Ask whether the passage contradicts any role in force at P.
+
+    ⚠️ `on_degraded` exists because EVERY failure path here returns `[]`, which is the same
+    value a clean check returns. Without it the caller cannot tell *"the judge checked and
+    found nothing"* from *"the judge never ran"* — and the canon envelope reported the second
+    as the first. See the `no_verdicts` branch below for the live run that showed it.
+
+    Returns only the roles the judge AFFIRMED, as `role_contradiction`
+    candidates. That is the opposite convention from `judge_canon`, and
+    deliberately so: there the symbolic layer already found something suspicious
+    (a gone character named in the prose) and the judge narrows it, so an
+    unjudged candidate is still worth surfacing as advisory. Here the symbolic
+    layer only established RELEVANCE — "this role is mentioned" is not evidence
+    of anything — so an unconfirmed role is not a finding and must not be
+    reported as one.
+
+    CC4: every LLM/parse failure returns `[]` (nothing affirmed) rather than
+    raising. A judge that is down must not block a generate, and must not invent
+    a violation either.
+    """
+    if not roles:
+        return []
+    from loreweave_llm.errors import LLMError
+
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_canon", target=len(roles), language=source_language)
+    system, user = _build_role_judge_messages(draft, roles, source_language)
+    req = build_judge_request(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        usage_purpose="canon_check", extractor="judge_role_attribution",
+        max_tokens=max_tokens,
+    )
+    try:
+        job = await judge.submit_and_wait(
+            user_id=user_id, operation="chat", model_source=model_source,
+            model_ref=model_ref, trace_id=trace_id, cancel_check=cancel_check, **req,
+        )
+    except LLMError as exc:
+        logger.warning("judge_role_attribution degraded (LLM error): %s — no role findings", exc)
+        if on_degraded:
+            on_degraded("llm_error")
+        return []
+    if getattr(job, "status", None) != "completed":
+        logger.info("judge_role_attribution status=%s → no role findings",
+                    getattr(job, "status", None))
+        if on_degraded:
+            on_degraded(f"job_{getattr(job, 'status', None)}")
+        return []
+    verdicts = parse_judge_verdicts(extract_judge_text(job.result))
+    if not verdicts:
+        # A COMPLETED job whose text yielded nothing — the same
+        # completed-and-useless case `judge_plan_conflicts` documents, logged
+        # with `finish_reason` so an operator sees "length" rather than silence.
+        logger.warning(
+            "judge_role_attribution produced NO verdicts for %d role(s) "
+            "(finish_reason=%s) — the role check did not run",
+            len(roles), (job.result or {}).get("finish_reason"),
+        )
+        # ⚠️ AND TELL THE CALLER, not just the log.
+        #
+        # Measured live 2026-08-12 (job `019ff401` on the acceptance book): 24 roles in force
+        # at the position, 20 sent to the judge, `tokens_used=0`, an empty completion — and a
+        # canon envelope carrying `status: checked`, `violations: []`, `resolved: true`. An
+        # author reads that as canon-clean. The WARNING above is in the log, and **the log is
+        # not the verdict.**
+        #
+        # This is the shape the same file already guards elsewhere with `skipped_no_cast` /
+        # `skipped_no_position`: *"explicit skip reasons so dirty data doesn't SILENTLY strip
+        # canon protection while reporting a green."* The role axis was the one without one.
+        if on_degraded:
+            on_degraded("no_verdicts")
+        return []
+    # `parse_judge_verdicts` returns `{entity_id: {violated, why}}`, not a list.
+    # Keyed by the per-statement token so a verdict lands on the ROLE it was
+    # asked about — see `_build_role_judge_messages` for what happened when it
+    # was keyed by the subject's entity id.
+    out: list[CanonViolation] = []
+    for i, r in enumerate(roles):
+        v = verdicts.get(f"role_{i}")
+        if v is None or v.get("violated") is not True:
+            continue
+        out.append(CanonViolation(
+            kind="role_contradiction",
+            source="llm_judge",
+            entity_id=str(r["subject_id"]),
+            name=r["subject_name"],
+            # NOT "gone" — this candidate says nothing about liveness, and
+            # inheriting the base default would make it read as if it did.
+            status="role",
+            span=r.get("span", ""),
+            matched=r.get("matched", ""),
+            confirmed=True,
+            why=str(v.get("why") or ""),
+            predicate=r["predicate"],
+            object_name=r["object_name"],
+        ))
+    return out
 
 
 # ── LLM-judge: confirm acting-vs-mentioned (A2-S3b, spec §9 D2) ─────────
@@ -295,18 +600,39 @@ async def check_canon(
     judge=None, user_id: str = "", model_source: str = "", model_ref: str = "",
     source_language: str = "auto", trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    role_check: bool = False,
+    on_role_degraded: Callable[[str], None] | None = None,
 ) -> list[CanonViolation]:
     """Full canon check on a draft: SCORE symbolic pre-filter → (if any
     candidates AND a distinct judge is configured) LLM-judge confirmation.
     Returns ALL candidates with `confirmed` set (True/False by the judge, or
-    None when no judge ran). The caller treats `confirmed is True` as HARD."""
+    None when no judge ran). The caller treats `confirmed is True` as HARD.
+
+    T36 — when `role_check` is on, ALSO asks whether the passage contradicts a
+    role in force at this position, and appends any affirmed contradictions.
+    That is a SECOND judge call on scenes that have roles but no gone-cast
+    candidate, i.e. new spend on the common path, so it is off by default and
+    the caller opts in (`spend-causing-setting-fails-closed`). The role check
+    never suppresses a gone-cast finding; it only adds.
+    """
     candidates = gone_cast_in_draft(draft, snapshot)
-    if not candidates or judge is None or not model_ref:
+    judged = judge is not None and bool(model_ref)
+    if candidates and judged:
+        candidates = await judge_canon(
+            judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            draft=draft, candidates=candidates, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+    if not role_check or not judged:
         return candidates
-    return await judge_canon(
+    roles = roles_in_draft(draft, snapshot)
+    if not roles:
+        return candidates
+    return candidates + await judge_role_attribution(
         judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
-        draft=draft, candidates=candidates, source_language=source_language,
+        draft=draft, roles=roles, source_language=source_language,
         trace_id=trace_id, cancel_check=cancel_check,
+        on_degraded=on_role_degraded,
     )
 
 
@@ -323,6 +649,20 @@ class ReflectResult(BaseModel):
     # status it means "nothing was verified", which the FE + publish-gate surface
     # so dirty data doesn't silently strip canon protection.
     status: str = "checked"
+    # The ROLE axis, which had no status of its own until 2026-08-12.
+    #
+    #   None          — the role check was not requested, or there were no roles to ask
+    #                   about. Nothing was owed, so nothing is reported.
+    #   "checked"     — the judge answered.
+    #   "no_verdicts" — the judge was CALLED and returned nothing usable.
+    #   "llm_error" / "job_<status>" — it could not be called at all.
+    #
+    # Anything other than None/"checked" means COULD NOT VERIFY. It is a separate field
+    # rather than a `checks` entry deliberately: `checks` feeds `coverage`, and the note in
+    # `canon_reflect` explains why the judge axis is kept out of that calculation — it would
+    # paint permanent amber on every book with no configured critic. This reports a judge
+    # that FAILED, which is a different claim from one that was never configured.
+    role_check_status: str | None = None
     # ── S1 · the honest primitive ────────────────────────────────────────────────────────
     # PER-CHECK status (`loreweave_guard.CheckStatus`), because this guard is a COMPOSITE and
     # a scalar makes it lie in one direction or the other: `status` above describes the
@@ -372,6 +712,15 @@ class ReflectResult(BaseModel):
     #: capitalised_latin | caseless_script | empty — a check that cannot see must say so
     #: rather than report a clean result (the `realised_words` discipline).
     name_check_method: str = ""
+    #: glossary | prompt_proxy | none — WHAT the draft names were compared against.
+    #:
+    #: `name_grounding.py` calls this "the field that matters most", and it was COMPUTED and
+    #: then DROPPED before the envelope, so no caller could read it. With `prompt_proxy` the
+    #: comparison is against the drafter own packed prompt — a self-consistency observation
+    #: that reads exactly like a verification against canon. Found 2026-08-13 interpreting
+    #: QC-5 drafting run, where `name_grounding` was the ONLY check with coverage and there
+    #: was no way to tell which of the two it had done.
+    name_truth_source: str = ""
     text: str                                    # final draft (possibly revised)
     # Remaining violations the author should see: confirmed-HARD (confirmed=True)
     # AND ADVISORY (confirmed=None — symbolic-only, the judge was down/not-distinct
@@ -471,6 +820,10 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         "guard_status": reflect.guard_status,
         # S2 — the per-entity cast resolution + the count no layer could speak to.
         # `unresolved_cast_reference` in the eval was BLIND on this field.
+        # The role axis rides the envelope for exactly the reason `unlinked_gone_refs` does
+        # below: a consumer that cannot see what the guard failed to do will render its
+        # silence as an all-clear.
+        "role_check": reflect.role_check_status,
         "cast_liveness": reflect.cast_liveness,
         "unresolved_refs": reflect.unresolved_refs,
         # The plan-liveness check's own gap list. Rides the envelope for the same reason
@@ -480,6 +833,8 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         "unanchored_names": reflect.unanchored_names,
         "name_near_misses": reflect.name_near_misses,
         "name_check_method": reflect.name_check_method,
+        # A proxy that does not announce itself reads exactly like a verification.
+        "name_truth_source": reflect.name_truth_source,
         # LEGACY scalar, kept verbatim: it is persisted and matched by SQL.
         "status": reflect.status,
     }
@@ -518,12 +873,14 @@ def unguarded_envelope(reason: str) -> dict[str, Any]:
         "checks": {},
         "guard_status": CheckStatus.NOT_RUN.value,
         "guard_reason": reason,
+        "role_check": None,
         "cast_liveness": {},
         "unresolved_refs": [],
         "unlinked_gone_refs": [],
         "unanchored_names": [],
         "name_near_misses": [],
         "name_check_method": None,
+        "name_truth_source": None,
         "status": None,
     }
 

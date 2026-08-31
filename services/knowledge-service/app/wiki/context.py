@@ -27,8 +27,8 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.reranker_client import RerankerClient
 from app.db.models import Project
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.relations import find_relations_for_entity
+from app.db.neo4j import graph_session
+from app.adapters.graph_store_provider import get_graph_store
 from app.extraction.injection_defense import neutralize_injection
 from app.search.retriever import Granularity, SearchMode, run_hybrid_search
 from app.wiki.ir import Source
@@ -116,9 +116,19 @@ async def gather_kg_facts(
     ``stable_hash(sorted(...))`` over this output must match the stored
     ``build_inputs.kg_neighborhood_hash`` byte-for-byte, or the sweep false-flags."""
     try:
-        async with neo4j_session() as session:
-            rels = await find_relations_for_entity(
-                session,
+        async with graph_session() as session:
+            # T17 — the FIRST call site to reach the graph through the port rather than the
+            # Neo4j repo directly. `Neo4jGraphStore.relations_for` is a passthrough to the
+            # same `find_relations_for_entity` with the same defaults (`direction="both"`,
+            # `min_confidence=0.8`, and `exclude_pending`/`include_archived_peer` left at the
+            # repo's own defaults, which this site never overrode) — so the returned set is
+            # unchanged.
+            #
+            # That identity is load-bearing HERE specifically: this function's output is
+            # hashed into `build_inputs.kg_neighborhood_hash` and compared byte-for-byte by
+            # the D-WIKI-P2-KG-SWEEP endpoint. A migration that altered which relations come
+            # back would not raise — it would false-flag every wiki page as stale.
+            rels = await get_graph_store(session).relations_for(
                 user_id=str(user_id),
                 entity_id=entity_id,
                 project_id=str(project.project_id),

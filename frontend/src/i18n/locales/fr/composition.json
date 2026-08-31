@@ -402,7 +402,12 @@
     "criticModel": "Modèle critique (juge indépendant)",
     "criticModelHint": "Un modèle DIFFÉRENT évalue chaque brouillon par rapport à votre canon et peut bloquer un chapitre qui le contredit. Sans cela, rien ne vérifie la prose de manière indépendante — un modèle ne peut pas évaluer son propre travail.",
     "criticSameAsDrafter": "Il s'agit du même modèle qui rédige la prose, il évaluerait donc son propre travail — le serveur refusera l'opération et sautera la critique. Choisissez un modèle différent.",
-    "noCritic": "Pas de critique — les brouillons ne sont pas évalués de manière indépendante"
+    "noCritic": "Pas de critique — les brouillons ne sont pas évalués de manière indépendante",
+    "criticEnabled": "Évaluer chaque brouillon par rapport au canon",
+    "criticEnabledHint": "Activé par défaut. Le critique peut interrompre une exécution en cas de verdict sévère. Un petit modèle de critique peut signaler des contradictions inexistantes ; désactivez cette option si les notes sont incohérentes — les brouillons ne sont affectés dans aucun des deux cas.",
+    "criticVerifier": "Vérificateur de modèle (vérifie le critique)",
+    "criticVerifierHint": "Avant qu'une violation du canon ne vous soit signalée, elle est vérifiée par rapport à la règle citée et supprimée si la prose ne la contredit pas réellement. Laissez vide pour effectuer une nouvelle vérification avec le critique lui-même ; un modèle plus puissant permet d'éliminer davantage de fausses alertes.",
+    "noCriticVerifier": "Utiliser le modèle critique pour revérifier ses propres conclusions"
   },
   "loadingStats": "Chargement des statistiques...",
   "statsUnavailable": "Statistiques de qualité indisponibles.",

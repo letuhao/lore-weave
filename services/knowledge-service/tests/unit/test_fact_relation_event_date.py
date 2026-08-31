@@ -24,12 +24,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from app.db.cypher_dialect import render
+
 import pytest
 
-from app.db.neo4j_repos import facts as fm
-from app.db.neo4j_repos import relations as rm
-from app.db.neo4j_repos.facts import Fact, merge_fact
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos import facts as fm
+from app.db.graph_repos import relations as rm
+from app.db.graph_repos.facts import Fact, merge_fact
+from app.db.graph_repos.relations import (
     _edge_props_to_relation,
     create_relation,
 )
@@ -104,11 +106,18 @@ def test_fact_readback_carries_event_date_iso():
 
 
 def test_merge_fact_cypher_sets_event_date_iso_on_create():
-    assert "f.event_date_iso = $event_date_iso" in fm._MERGE_FACT_CYPHER
+    # RESTATED (T73): the ON CREATE arm is merged away, so "set on create" is the first
+    # arm of the precision CASE — `WHEN f.event_date_iso IS NULL THEN $event_date_iso`.
+    assert "WHEN f.event_date_iso IS NULL THEN $event_date_iso" in re.sub(
+        r"\s+", " ", fm._MERGE_FACT_CYPHER)
 
 
 def test_create_relation_cypher_sets_event_date_iso_on_create():
-    assert "r.event_date_iso = $event_date_iso" in rm._CREATE_RELATION_CYPHER
+    # RESTATED (T71): the ON CREATE arm is merged away, so "set on create" is now the
+    # first arm of the precision CASE — `WHEN r.event_date_iso IS NULL THEN $event_date_iso`
+    # — which is what actually assigns it on a fresh edge.
+    assert "WHEN r.event_date_iso IS NULL THEN $event_date_iso" in re.sub(
+        r"\s+", " ", rm._CREATE_RELATION_CYPHER)
 
 
 def test_merge_fact_cypher_on_match_is_precision_preserving():
@@ -149,7 +158,7 @@ def test_event_date_is_additive_not_the_ordinal_axis():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_passes_event_date_iso(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -164,7 +173,7 @@ async def test_merge_fact_passes_event_date_iso(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_empty_event_date_normalizes_to_none(mock_run):
     mock_run.return_value = _result({"f": {
         "id": "f1", "user_id": str(_USER), "type": "milestone",
@@ -178,7 +187,7 @@ async def test_merge_fact_empty_event_date_normalizes_to_none(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_write", new_callable=AsyncMock)
 async def test_merge_fact_absent_date_is_null_safe_with_ordinal_chain(mock_run):
     """No event_date (the dominant case) must NOT disturb the ordinal axis: the
     valid_from_ordinal still flows and maintain_chain still fires."""
@@ -195,6 +204,7 @@ async def test_merge_fact_absent_date_is_null_safe_with_ordinal_chain(mock_run):
     assert first["event_date_iso"] is None        # absent date
     assert first["valid_from_ordinal"] == 500     # ordinal axis intact
     cyphers = [c.args[1] for c in mock_run.await_args_list]
+    # §10.2 — compare the RENDERED query; the template carries `{NOW}`.
     assert fm.MAINTAIN_FACT_CHAIN_CYPHER in cyphers  # chain still maintained
 
 
@@ -215,7 +225,7 @@ def _rel_record():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_passes_event_date_iso(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -226,7 +236,7 @@ async def test_create_relation_passes_event_date_iso(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_empty_event_date_normalizes_to_none(mock_run):
     mock_run.return_value = _result(_rel_record())
     await create_relation(
@@ -237,7 +247,7 @@ async def test_create_relation_empty_event_date_normalizes_to_none(mock_run):
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.relations.run_write", new_callable=AsyncMock)
+@patch("app.db.graph_repos.relations.run_write", new_callable=AsyncMock)
 async def test_create_relation_legacy_path_unaffected_by_date(mock_run):
     """No date + no ordinal + no maintain_chain ⇒ still exactly one write; the
     new param defaults to None and never adds a query."""
@@ -273,7 +283,7 @@ def test_list_facts_order_event_date_is_secondary_not_primary():
 
 
 @pytest.mark.asyncio
-@patch("app.db.neo4j_repos.facts.run_read", new_callable=AsyncMock)
+@patch("app.db.graph_repos.facts.run_read", new_callable=AsyncMock)
 async def test_list_facts_for_entity_selects_order_fragment(mock_read):
     """order_by_event_date=True interpolates the event-date ORDER BY; the default
     interpolates the ordinal one. The fragment is from a CLOSED pair (never user
@@ -333,11 +343,21 @@ def test_recall_cypher_filters_by_date_range_and_project_and_about_subject():
 
 
 def test_fact_types_tuple_stays_in_lockstep_with_the_literal():
-    # WS-2.1/2.4 regression: FACT_TYPES (merge_fact's runtime guard) MUST equal the FactType Literal, or
-    # a type valid at queue time (e.g. 'statement') 500s at promote time. Derive, never hand-maintain.
+    # WS-2.1/2.4 regression: FACT_TYPES (merge_fact's runtime guard) MUST equal the declared
+    # Literals, or a type valid at queue time (e.g. 'statement') 500s at promote time.
+    # Derive, never hand-maintain.
+    #
+    # 2026-08-11: `FactType` became a UNION of two families, so `get_args` on it returns the two
+    # Literal TYPES rather than their members — assert per family and against the concatenation.
     from typing import get_args
-    assert set(fm.FACT_TYPES) == set(get_args(fm.FactType))
-    assert "statement" in fm.FACT_TYPES
+    assert set(fm.MEMORY_FACT_TYPES) == set(get_args(fm.MemoryFactType))
+    assert set(fm.STORY_FACT_TYPES) == set(get_args(fm.StoryFactType))
+    assert set(fm.FACT_TYPES) == set(fm.MEMORY_FACT_TYPES) | set(fm.STORY_FACT_TYPES)
+    assert "statement" in fm.FACT_TYPES        # memory half
+    assert "attribute" in fm.FACT_TYPES        # story half — dropped entirely before the split
+    # `negation` is shared and must appear ONCE, not twice.
+    assert len(fm.FACT_TYPES) == len(set(fm.FACT_TYPES))
+    assert "negation" not in fm.STORY_FACT_TYPES
 
 
 def test_recall_cypher_matches_subject_by_canonical_name_not_raw_lower():

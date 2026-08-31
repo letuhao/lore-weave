@@ -129,3 +129,55 @@ def test_native_honorifics_present():
     # Guard against a regression that drops the native-script forms (ML-2).
     for h in ("様", "さん", "大人", "公子", "님", "선생님", "ông ", "bà "):
         assert h in HONORIFICS, f"native honorific {h!r} missing from HONORIFICS"
+
+
+# --- tenant scoping: the property the shared graph depends on ------------------
+#
+# `neighborhood` walks edges by entity id alone — `WHERE (subj.id = $x OR obj.id = $x)`,
+# no project predicate — inside `g_shared`, which holds every project in one AGE graph
+# (measured on iso 2026-08-30: 5683 entities, 10+ projects). The only thing keeping that
+# traversal inside a tenant is that this id hashes the project.
+#
+# Before these tests, the whole SDK suite asserted that ONCE, incidentally, inside
+# `test_entity_extractor.py`, and only as global-vs-a-project. Collapsing distinct projects
+# to a constant while keeping the segment present left all 1026 tests green and made
+# `entity_canonical_id('u', 'A', 'Kai', ...) == entity_canonical_id('u', 'B', 'Kai', ...)`.
+# `scripts/graph-tenancy-coupling-gate.py` guards the coupling; these guard the property.
+
+def test_two_projects_never_share_an_entity_id():
+    """THE cross-tenant property: same user, same name, different project ⇒ different id."""
+    a = entity_canonical_id(_UID, "proj-a", "Kai", "character")
+    b = entity_canonical_id(_UID, "proj-b", "Kai", "character")
+    assert a != b, (
+        "two projects minted the same entity id — in the shared AGE graph the neighborhood "
+        "traversal matches on id with no project predicate, so this is a cross-tenant read"
+    )
+
+
+def test_two_users_never_share_an_entity_id():
+    """The same, one tier up: the graph is scoped by user_id as well as project_id."""
+    assert (entity_canonical_id("user-a", _PID, "Kai", "character")
+            != entity_canonical_id("user-b", _PID, "Kai", "character"))
+
+
+def test_unscoped_project_is_its_own_namespace_not_a_wildcard():
+    """`project_id=None` folds to `global` — a namespace of its own, never a match-all."""
+    scoped = entity_canonical_id(_UID, "proj-a", "Kai", "character")
+    unscoped = entity_canonical_id(_UID, None, "Kai", "character")
+    assert scoped != unscoped
+    # And two unscoped entities under one user DO agree — that is what `global` means, and
+    # asserting it stops the fix for the above from being "make every id unique".
+    assert unscoped == entity_canonical_id(_UID, None, "Kai", "character")
+
+
+def test_project_scoping_survives_canonicalization():
+    """Names that canonicalize together must still separate by project.
+
+    `紂王大人` and `紂王` share an id within a project by design (the honorific is stripped).
+    The scoping has to be applied to the canonical form, not the raw name — otherwise the
+    honorific path could re-open the collision this file exists to close.
+    """
+    a = entity_canonical_id(_UID, "proj-a", "紂王大人", "character")
+    b = entity_canonical_id(_UID, "proj-b", "紂王", "character")
+    assert entity_canonical_id(_UID, "proj-a", "紂王", "character") == a  # same project, folded
+    assert a != b  # different project, still separate

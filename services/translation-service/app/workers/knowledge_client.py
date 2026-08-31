@@ -105,28 +105,56 @@ async def fetch_wiki_neighborhood(
     user_id: str,
     glossary_entity_id: str,
     rel_cap: int = _DEFAULT_REL_CAP,
+    *,
+    book_id: str,
+    as_of: int | None = None,
 ) -> WikiNeighborhood:
-    """Fetch an entity's 1-hop relation neighbourhood from knowledge-service.
+    """Fetch an entity's 1-hop relation neighbourhood THROUGH THE KAL.
 
-    Calls: POST {knowledge}/internal/knowledge/wiki-neighborhood
+    Calls: POST {knowledge_gateway}/v1/kal/books/{book_id}/wiki-neighborhood
 
     Returns a populated ``WikiNeighborhood`` on success, or an empty one when the
     feature is off (no URL configured) or on any failure. Never raises.
+
+    T55/i — was ``POST {knowledge}/internal/knowledge/wiki-neighborhood``. Spec §8.6 decided
+    this is an INV-KAL read (an entity plus its capped relations — the shape
+    ``kg/neighborhood`` already federates).
+
+    ⚠️ ``book_id`` is KEYWORD-ONLY and REQUIRED, which is deliberate. This function used to
+    take none, and §8.6 recorded it as fitting neither scope axis on that basis — measured at
+    the wrong boundary, because ``build_context_brief(book_id, ...)`` two frames up has it and
+    merely dropped it. Making it required means a caller that has no book fails at the call
+    site rather than silently issuing an unscoped read.
     """
-    if not settings.knowledge_service_internal_url:
-        # Null port — feature off / local dev. No HTTP call.
+    base = settings.knowledge_gateway_url
+    if not base:
+        # Fails toward NO CONTEXT and names the knob. A fallback to the direct internal route
+        # would re-open the INV-KAL hole invisibly and read as robustness.
+        log.warning(
+            "KNOWLEDGE_GATEWAY_URL unset — no wiki neighbourhood for entity=%s",
+            glossary_entity_id,
+        )
         return WikiNeighborhood.empty(glossary_entity_id)
 
     try:
-        async with build_internal_client(settings.knowledge_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+        async with build_internal_client(base, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
             resp = await client.post(
-                f"{settings.knowledge_service_internal_url}"
-                f"/internal/knowledge/wiki-neighborhood",
+                f"{base.rstrip('/')}"
+                f"/v1/kal/books/{book_id}/wiki-neighborhood",
+                # `user_id` is NOT sent: the KAL supplies it from the request identity it
+                # pinned, so a caller cannot name an owner it did not authenticate as.
                 json={
-                    "user_id": user_id,
                     "glossary_entity_id": glossary_entity_id,
                     "rel_cap": rel_cap,
+                    # T48ad — the story window. `build_context_brief` already takes
+                    # `as_of` ("the story state at chapter N, not the latest head
+                    # (spoiler-free, §6B)") and threaded it into the canonical snapshot
+                    # ONLY, so the same brief carried a chapter-scoped snapshot beside
+                    # an unbounded neighbourhood. Omitted => the head, so a caller with
+                    # no position is byte-identical to before.
+                    **({"as_of": as_of} if as_of is not None else {}),
                 },
+                headers={"X-User-Id": user_id},
             )
             if resp.status_code != 200:
                 log.warning(
@@ -185,9 +213,9 @@ async def fetch_timeline(
     chapter_order: int,
     limit: int = _DEFAULT_TIMELINE_LIMIT,
 ) -> TimelineBrief:
-    """Fetch recent narrative events before ``chapter_order`` from knowledge-service.
+    """Fetch recent narrative events before ``chapter_order`` THROUGH THE KAL.
 
-    Calls: POST {knowledge}/internal/knowledge/timeline
+    Calls: POST {knowledge_gateway}/v1/kal/books/{book_id}/timeline
 
     ``chapter_order`` is the book-service global chapter ``sort_order`` (the
     reading position knowledge's ``event_order`` is keyed on) — NOT the job-local
@@ -195,17 +223,34 @@ async def fetch_timeline(
     ``book_id`` server-side, so translation passes only ``book_id`` + the reading
     position. Returns a populated ``TimelineBrief`` on success, or an empty one
     when the feature is off (no URL) or on any failure. Never raises.
+
+    T55/e — was ``POST {knowledge}/internal/knowledge/timeline``, the owning service's
+    internal route. Spec §8.6 decided this is an INV-KAL read: it returns a projection of
+    event state, and ``entities/:entityId/timeline`` was already federated, so reading it
+    direct meant the KAL federated ONE entity's timeline and not the book's.
+
+    ⚠️ ``book_id`` now travels in the PATH, and the KAL takes it from there rather than from
+    the body — the path is what its guard scoped, so a body-supplied id would let a caller
+    read one book while authorised for another.
     """
-    if not settings.knowledge_service_internal_url:
+    base = settings.knowledge_gateway_url
+    if not base:
+        # Fails toward NO CONTEXT, the same direction as every other failure here, and says
+        # which knob is missing. Silently falling back to the direct internal route would
+        # re-open the INV-KAL hole this move closes, and would do it invisibly.
+        log.warning(
+            "KNOWLEDGE_GATEWAY_URL unset — no timeline context for book=%s. The timeline "
+            "read is federated through the KAL (§8.6); set the gateway URL to enable it.",
+            book_id,
+        )
         return TimelineBrief.empty()
 
     try:
-        async with build_internal_client(settings.knowledge_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+        async with build_internal_client(base, internal_token=settings.internal_service_token, timeout_s=_KNOWLEDGE_FETCH_TIMEOUT) as client:
             resp = await client.post(
-                f"{settings.knowledge_service_internal_url}"
-                f"/internal/knowledge/timeline",
+                f"{base.rstrip('/')}"
+                f"/v1/kal/books/{book_id}/timeline",
                 json={
-                    "book_id": book_id,
                     "chapter_order": chapter_order,
                     "limit": limit,
                 },

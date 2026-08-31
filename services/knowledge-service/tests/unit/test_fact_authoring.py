@@ -17,7 +17,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_repos.facts import Fact
+from app.db.graph_repos.facts import Fact
 
 _TEST_USER = uuid4()
 _ENTITY_ID = "ent-aria-1"
@@ -60,7 +60,7 @@ def _client() -> TestClient:
 
 # ── author: POST /entities/{id}/facts ────────────────────────────────────────
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.merge_fact", new_callable=AsyncMock)
 @patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 def test_author_fact_happy(mock_get_entity, mock_merge):
@@ -83,7 +83,7 @@ def test_author_fact_happy(mock_get_entity, mock_merge):
     assert kwargs["subject_id"] == _ENTITY_ID
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.merge_fact", new_callable=AsyncMock)
 @patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 def test_author_fact_bad_type_422_not_500(mock_get_entity, mock_merge):
@@ -98,7 +98,7 @@ def test_author_fact_bad_type_422_not_500(mock_get_entity, mock_merge):
     mock_merge.assert_not_awaited()
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.merge_fact", new_callable=AsyncMock)
 @patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 def test_author_fact_cross_user_entity_404_no_write(mock_get_entity, mock_merge):
@@ -113,7 +113,7 @@ def test_author_fact_cross_user_entity_404_no_write(mock_get_entity, mock_merge)
     mock_merge.assert_not_awaited()
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.merge_fact", new_callable=AsyncMock)
 @patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 def test_author_fact_all_six_types_accepted(mock_get_entity, mock_merge):
@@ -131,7 +131,7 @@ def test_author_fact_all_six_types_accepted(mock_get_entity, mock_merge):
 
 # ── curation read: GET /entities/{id}/facts?curation=true ────────────────────
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.list_facts_for_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
 def test_curation_read_skips_spoiler_window(mock_resolve, mock_list):
@@ -149,7 +149,7 @@ def test_curation_read_skips_spoiler_window(mock_resolve, mock_list):
     assert kwargs["before_order"] is None  # whole-book, no window
 
 
-@patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.entities.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.entities.list_facts_for_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.resolve_before_order", new_callable=AsyncMock)
 def test_reader_read_still_fail_closed(mock_resolve, mock_list):
@@ -166,7 +166,7 @@ def test_reader_read_still_fail_closed(mock_resolve, mock_list):
 
 # ── invalidate: POST /facts/{id}/invalidate ──────────────────────────────────
 
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
 @patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
 def test_invalidate_fact_happy(mock_get, mock_invalidate):
@@ -178,7 +178,7 @@ def test_invalidate_fact_happy(mock_get, mock_invalidate):
     mock_invalidate.assert_awaited_once()
 
 
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
 @patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
 def test_invalidate_fact_404_cross_user(mock_get, mock_invalidate):
@@ -191,7 +191,7 @@ def test_invalidate_fact_404_cross_user(mock_get, mock_invalidate):
 
 
 @patch("app.routers.public.facts.emit_correction", new_callable=AsyncMock)
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
 @patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
 def test_invalidate_extraction_fact_emits_correction(mock_get, mock_invalidate, mock_emit):
@@ -205,7 +205,7 @@ def test_invalidate_extraction_fact_emits_correction(mock_get, mock_invalidate, 
     mock_emit.assert_awaited_once()
 
 
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.revalidate_fact", new_callable=AsyncMock)
 def test_revalidate_fact_happy(mock_revalidate):
     """S-05b — undo a mark-wrong: revalidate clears valid_until (fact re-appears)."""
@@ -216,7 +216,7 @@ def test_revalidate_fact_happy(mock_revalidate):
     mock_revalidate.assert_awaited_once()
 
 
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.revalidate_fact", new_callable=AsyncMock)
 def test_revalidate_fact_404_cross_user(mock_revalidate):
     mock_revalidate.return_value = None
@@ -225,7 +225,7 @@ def test_revalidate_fact_404_cross_user(mock_revalidate):
 
 
 @patch("app.routers.public.facts.emit_correction", new_callable=AsyncMock)
-@patch("app.routers.public.facts.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.facts.graph_session", new=lambda: _noop_session())
 @patch("app.routers.public.facts.invalidate_fact", new_callable=AsyncMock)
 @patch("app.routers.public.facts.get_fact", new_callable=AsyncMock)
 def test_invalidate_human_authored_fact_skips_correction(mock_get, mock_invalidate, mock_emit):

@@ -30,11 +30,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.events import (
-    EVENT_ORDER_CHAPTER_STRIDE,
-    list_events_filtered,
-)
+from app.db.neo4j import graph_session
+# T17 A4 — the browse goes through the PORT (`events_page`, grown in A3 by this
+# router's demand). `EVENT_ORDER_CHAPTER_STRIDE` stays a domain constant, not an
+# operation: it is the reading-axis stride every producer stamps on, and moving it
+# behind the port would make an engine responsible for a fact about the BOOK.
+from app.adapters.graph_store_provider import get_graph_store
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 from app.db.pool import get_knowledge_pool
 from app.middleware.internal_auth import require_internal_token
 
@@ -103,13 +105,15 @@ async def get_timeline(req: TimelineRequest) -> TimelineResponse:
     if req.chapter_order > _TIMELINE_CHAPTER_WINDOW:
         after_order = (req.chapter_order - _TIMELINE_CHAPTER_WINDOW) * EVENT_ORDER_CHAPTER_STRIDE
 
-    async with neo4j_session() as session:
-        events, total = await list_events_filtered(
-            session,
+    async with graph_session() as session:
+        # `after`/`before` are ORDINALS here because the axis is `narrative` (the default) —
+        # the port types them as a union precisely so the axis stays a value a caller can
+        # pass through, rather than three methods a caller has to choose between.
+        events, total = await get_graph_store(session).events_page(
             user_id=str(row["user_id"]),
             project_id=str(row["project_id"]),
-            after_order=after_order,
-            before_order=before_order,
+            after=after_order,
+            before=before_order,
             limit=req.limit,
             offset=0,
         )

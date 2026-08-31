@@ -7,7 +7,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import (
+from app.db.graph_repos.entities import (
     ENTITIES_MAX_LIMIT,
     archive_entity,
     list_user_entities,

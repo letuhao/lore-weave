@@ -44,9 +44,33 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: MEASURED, not estimated — the first value here was a guess of 43 and the gate rejected it
 #: on its own first run, which is the behaviour you want from a ratchet.
 #: 2026-08-09: 45 → 44, `scripts/test_db_safety_gate.py`. db-safety-gate had shipped two
+#: 2026-08-12: 44 → 43, `glossary-events-ssot-gate.py` gained a --selftest. Its SSOT
+#: moved from the producer's string literals to `contracts/events/_registry.yaml`
+#: (T30/OD-1), which is a stronger question — so the proof was written with the
+#: change rather than owed after it.
 #: blind spots (an allowlist that omitted `tests/`, and a config check that required `TEST`
 #: in the variable name) and both were found by hand; the proofs are now permanent.
-NO_PROOF_BASELINE = 44
+# Lowered 43 -> 42 on 2026-08-22 (T56c). The gate had been printing `Progress — lower
+# NO_PROOF_BASELINE to 42` for two commits without anyone moving it: a ratchet asking to be
+# tightened and not being is the same drift it exists to catch, one level up.
+#: 42 -> 41 (2026-08-24, T48): `graph-port-gate` and `plan-final-verification` each gained a
+#: `--selftest`, and `graph-store-migrated-gate` (T54g) landed with one. The reading is the
+#: ratchet doing exactly what the comment above describes — it went red asking to be lowered,
+#: in the same run that earned the lowering.
+# T48at — 41 -> 56 because the SCOPE grew, not because any gate got worse. Widening from
+# "named in a workflow" (75) to "run by the runner" (118) brought 43 more gates into the check;
+# 15 of them carry no red-ability proof and **0 of them are toothless**. The ratchet's rule is
+# unchanged and is the reason this line carries a paragraph: it may not grow because gates rot,
+# only because the census honestly covers more of them, and that has to be argued in the diff.
+NO_PROOF_BASELINE = 55   # T48ay: pagination-cap-lint gained --selftest (7 cases, 4 negative)
+
+#: A FLOOR on the census itself. T48at's own bite exposed why: narrowing the scope back to
+#: workflow NAMES made the unproven count drop 56 -> 41 and the gate printed
+#: "Progress — lower NO_PROOF_BASELINE to 41", inviting someone to lock the narrower census in.
+#: **A ratchet on the numerator cannot tell "fewer unproven gates" from "a smaller denominator."**
+#: So the denominator gets a floor too, and a shrinking census reds as the regression it is.
+#: Same control as `--min-legs` (T48t), `--min-data` (T48aa) and `--min-routes` (T48am).
+CI_SCOPE_FLOOR = 120
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -112,6 +136,37 @@ _IS_GATE = re.compile(r"(?:-|_)(?:lint|gate|validator|check|scan|enforcer|drift|
                       r"(?:-\w+)?\.(?:py|sh)$")
 
 
+#: How the runner shows up in a workflow, and what to call it in the report.
+RUNNER_CMD = "gate-wiring-gate.py --run-all"
+RUNNER_LABEL = "via --run-all"
+
+
+def _runner_in_ci() -> bool:
+    """Does a workflow actually invoke the runner? Claimed coverage must be real coverage."""
+    for wf in sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml")):
+        if RUNNER_CMD in wf.read_text(encoding="utf-8", errors="ignore"):
+            return True
+    return False
+
+
+def _runner_covers() -> list[str]:
+    """What the runner iterates — asked OF the runner, not re-implemented here.
+
+    Re-deriving the predicate would let the two drift, which is the whole failure this row is
+    about. If it cannot be imported, the answer is an empty list and the scope simply does not
+    widen: a coverage claim must never rest on a guess.
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_gwg", str(ROOT / "scripts" / "gate-wiring-gate.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return list(mod.discovered())
+    except Exception:  # noqa: BLE001 — an unreadable runner narrows scope, never widens it
+        return []
+
+
 def ci_invoked_scripts() -> dict[str, list[str]]:
     """{script relpath: [workflow names]} for every enforcement gate a workflow runs."""
     out: dict[str, list[str]] = {}
@@ -128,6 +183,28 @@ def ci_invoked_scripts() -> dict[str, list[str]]:
             out.setdefault(rel, [])
             if wf.name not in out[rel]:
                 out[rel].append(wf.name)
+
+    # T48at — THE RUNNER. Naming gates in a workflow is exactly the mechanism
+    # `gate-wiring-gate` replaced: "the runner iterates discovered() ... so a gate written
+    # tomorrow runs in CI the day it lands, with nobody remembering to add a line. Enumerating
+    # names in a workflow would have been default-uncovered all over again."
+    #
+    # This function was still counting the names. Measured 2026-08-30: 75 named, 118 run by the
+    # runner -- so 43 gates CI genuinely executes were outside the teeth check, and every gate
+    # added since the runner landed was outside it BY CONSTRUCTION. Widening surfaced 0
+    # toothless gates, which is why it is safe; the point is that it could have surfaced one and
+    # nobody would have known.
+    if _runner_in_ci():
+        for rel in _runner_covers():
+            r = rel[len("scripts/"):] if rel.startswith("scripts/") else rel
+            name = Path(r).name
+            if name.startswith("test_") or "/tests/" in r:
+                continue
+            if not _IS_GATE.search(name):
+                continue
+            out.setdefault(r, [])
+            if RUNNER_LABEL not in out[r]:
+                out[r].append(RUNNER_LABEL)
     return out
 
 
@@ -250,6 +327,11 @@ def main() -> int:
         print("   record it in NOT_A_GATE with the reason.")
         rc = 1
 
+    if len(invoked) < CI_SCOPE_FLOOR:
+        print(f"gate-teeth-gate: FAIL — the CI census SHRANK to {len(invoked)} gate(s), floor "
+              f"{CI_SCOPE_FLOOR}. Fewer gates checked is not fewer problems; a smaller "
+              f"denominator makes every ratio below it look better.")
+        return 1
     if len(unproven) != NO_PROOF_BASELINE:
         verb = "grew to" if len(unproven) > NO_PROOF_BASELINE else "dropped to"
         print(f"\n{'FAIL' if len(unproven) > NO_PROOF_BASELINE else 'NOTE'} — gates without a "
@@ -268,7 +350,12 @@ def main() -> int:
         proven = len(invoked) - len(unproven)
         print(f"gate-teeth-gate: PASS — {len(invoked)} CI-invoked gate(s), every one able to "
               f"return non-zero.")
-        print(f"  {proven} carry a red-ability proof; {len(unproven)} held at baseline.")
+        # The FLOOR is printed even when it equals the count. It used to reach the output
+        # only because `len(invoked)` happened to BE 118 — so the moment the census grew by
+        # one, the ratchet became invisible and `gate-number-visibility-gate` caught it.
+        # A number visible by coincidence is not visible.
+        print(f"  {proven} carry a red-ability proof; {len(unproven)} held at baseline; "
+              f"census floor CI_SCOPE_FLOOR = {CI_SCOPE_FLOOR}.")
     return rc
 
 

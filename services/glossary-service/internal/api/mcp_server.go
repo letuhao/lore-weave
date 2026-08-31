@@ -300,7 +300,12 @@ func (s *Server) mcpIdentityMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "invalid internal token")
 			return
 		}
-		ctx := context.WithValue(r.Context(), ctxKeyUserID, r.Header.Get("X-User-Id"))
+		// T50: tag the transport at the boundary, not in the handler. Every entity command
+		// shares its `*Core` across MCP, REST and the KAL, so the event a delete writes says
+		// WHAT happened and nothing about which path asked — and this repo has twice recorded
+		// the MCP and REST surfaces silently drifting apart.
+		ctx := withTransport(r.Context(), transportMCP)
+		ctx = context.WithValue(ctx, ctxKeyUserID, r.Header.Get("X-User-Id"))
 		// OD-8 carrier: lift X-Mcp-Key-Id into the kit's ctx so OwnerOnlyFromCtx
 		// fires for public-key traffic (glossary runs its own middleware, not the
 		// kit's IdentityMiddleware, so we inject via the kit helper).

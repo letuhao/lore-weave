@@ -8,8 +8,8 @@ the W2 live-smoke.
 """
 import pytest
 
-from app.db.neo4j_repos import relations
-from app.db.neo4j_repos.relations import (
+from app.db.graph_repos import relations
+from app.db.graph_repos.relations import (
     Subgraph,
     SubgraphEdge,
     SubgraphNode,

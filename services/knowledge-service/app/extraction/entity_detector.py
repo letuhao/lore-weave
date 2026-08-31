@@ -36,7 +36,7 @@ name-candidate baseline.
 
 **What this module deliberately does NOT do:**
   - Canonicalize names — caller does that at write time via
-    `entity_canonical_id` (K15.1 / app/db/neo4j_repos/canonical.py)
+    `entity_canonical_id` (K15.1 / app/db/graph_repos/canonical.py)
   - Decide entity `kind` authoritatively — `kind_hint` is a weak
     guess ("character" default). K17 LLM extractor refines.
   - Filter hypothetical / counterfactual sentences — that's the
