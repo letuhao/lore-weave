@@ -6237,15 +6237,17 @@
    "what_is_NOT_established": "Why 50 project_id-only calls FAILED. That is the majority of that arm and it is not explained by anything on this row; it may be several causes. Counting it as evidence for any remedy would be reading a number I have not opened."
   },
   "D-A-DERIVATIVE-GATE-PROMISES-A-CHECK-IT-NEVER-MAKES": {
-   "state": "open",
+   "state": "fixed",
    "found": "2026-08-31, while building DQ-T87 (a)",
    "defect_class": "platform",
    "queue_group": 4,
    "service": "composition-service",
    "invariant": "A helper named for a check must perform it, or callers inherit a gate that is not there.",
-   "status": "OPEN. Filed on the evidence, not fixed.",
+   "status": "FIXED 2026-09-01. The helper is named for what it does, and the three ops that inherited a phantom gate now perform the check themselves.",
    "what": "`_require_derivative(works, tc, project_id)` in the MCP server is documented as 'Gate EDIT + resolve the derivative Work (source_work_id set) ... or a sentinel dict via raise for the not-accessible / NOT-A-DERIVATIVE cases'. Its body resolves the book, fetches the Work, and raises only when the Work is missing. It NEVER READS `source_work_id`.\n\nSo every caller that trusts the name is trusting a check that does not run. The write ops survive because each re-checks `work.source_work_id is None` itself immediately afterwards — which is evidence the authors knew the helper did not do it. A READ op has no such second line: op=list on composition_entity_override_edit returned `{'overrides': [], ok: true}` for a canonical Work on 5 of 5 live runs before its own check was added.",
-   "why_it_is_its_own_row": "Not a split: it is a shared helper with other callers, and the fix is either to make it check or to rename it. Folding it into the entity-override row would hide a trap that is set for everyone who calls it next."
+   "why_it_is_its_own_row": "Not a split: it is a shared helper with other callers, and the fix is either to make it check or to rename it. Folding it into the entity-override row would hide a trap that is set for everyone who calls it next.",
+   "FIXED_2026_09_01": "THE INVARIANT: every tool whose subject exists ONLY on a derivative Work verifies `source_work_id` itself; no caller relies on a helper's NAME for it.\n\nWHAT WAS BROKEN. `_require_derivative` was documented as \"Gate EDIT + resolve the derivative Work (source_work_id set) ... or a sentinel dict via raise for the not-accessible / NOT-A-DERIVATIVE cases\". Its body gated the book and fetched the Work and never read `source_work_id` — not in any version. Three of its six callers re-checked on the very next line, which is evidence the authors knew; THREE DID NOT.\n\nTWO CHOICES, AND THE TESTS PICKED ONE. Making the helper raise would have been the tidier fix and it breaks a contract: several tests assert `res[\"success\"] is False` on a RETURNED dict, so a raising helper changes what every caller answers with. The row's own second option — rename it, and give the check to the callers that need it — closes the same gap and preserves every return shape and message.\n\nSO: `_require_derivative` -> `_gate_edit_and_resolve_work` at all 6 sites, with the old name and the reason kept in its docstring; and composition_entity_override_update, _delete and _restore each gained the check, answering with the same actionable refusal the add path ships — the one c-override8 measured as the message that moves the model, because naming composition_list_derivatives also ARMS it.\n\nPROVEN LIVE against the deployed service, on a throwaway book, calling each op with the book's CANONICAL project_id (the ambient one a chat turn supplies):\n\n    refused 4/4 · named NOT_A_DERIVATIVE 4/4 · named the lookup tool 4/4\n\n🔴 AND THE PROBE'S FIRST ANSWER WAS ITS OWN BUG: it reported 'named the lookup tool: 0/4' because it stored `str(exc)[:150]` and then searched the TRUNCATED string for a name that appears at character 300. It was measuring its own truncation. Fixed to keep the full message and slice only for display.\n\nFALSIFIER: services/composition-service/tests/unit/test_a_gate_named_for_a_check_performs_it.py (5 guards). It binds the NAME to the BEHAVIOUR rather than banning a word: a helper may be called `_require_derivative` again the day it actually reads source_work_id. Proven red twice — one op returned to its original uncheck  ed state, and the helper renamed back to claim a check its body never makes. composition-service suite green (3,949 passed, 403 skipped).",
+   "what_it_does_NOT_cover": "The helper still does not check, by design — it is now named for that. A caller that legitimately operates on the canonical Work keeps working, which is why the check was not centralised into it.\n\nNOT PROVEN THROUGH A CHAT TURN: the evidence is a direct MCP probe on a throwaway book. The chat path reaches these ops with the ambient canonical project_id, which is exactly what the probe sends, but no recorded turn is cited."
   },
   "D-THE-WORKFLOW-SURFACE-ENUM-DISAGREES-WITH-ITS-OWN-VALIDATOR": {
    "state": "fixed",
@@ -7550,7 +7552,7 @@
   "tools_proven": 199,
   "tools_blocked": 0,
   "defects_proven": 0,
-  "defects_open": 15,
+  "defects_open": 14,
   "deferred_questions": 66,
   "last_batch": "batch-40 (2026-08-14)",
   "evidence_split": {
@@ -7566,7 +7568,7 @@
   "tools_concluded_including_deprecated": 204,
   "_numerator_note": "CORRECTED 2026-08-21. tools_concluded counts only rows with counts_toward_release != false, matching the RUNBOOK's denominator rule. It previously counted every terminal row, so it read 114 while the true figure against the 198 shippable tools was 109 — the five deprecated-but-proven rows (book_get, book_get_chapter, book_list_chapters, glossary_list_chapter_links, glossary_web_search) were in the numerator and not the denominator.",
   "defects_total": 218,
-  "defects_fixed": 176,
+  "defects_fixed": 177,
   "defects_withdrawn": 23,
   "defects_superseded": 1,
   "defects_cannot_reproduce": 3

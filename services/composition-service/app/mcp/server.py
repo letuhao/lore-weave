@@ -1995,9 +1995,24 @@ class _DivergenceSpecUpdateArgs(ForbidExtra):
     canon_rule: list[str] | None = None
 
 
-async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
-    """Gate EDIT + resolve the derivative Work (source_work_id set). Returns the Work,
-    or a sentinel dict via raise for the not-accessible / not-a-derivative cases."""
+async def _gate_edit_and_resolve_work(works: WorksRepo, tc, project_id: UUID):
+    """Gate EDIT on the book and resolve ITS Work. Returns the Work.
+
+    \U0001f534 IT WAS CALLED `_require_derivative` AND IT NEVER CHECKED. The old docstring said
+    it resolved "the derivative Work (source_work_id set)" and raised "for the
+    not-accessible / NOT-A-DERIVATIVE cases". The body has only ever gated the book and fetched
+    the Work; `source_work_id` is not read here and never was.
+
+    Three of its six callers re-checked it on the very next line, which is evidence the authors
+    knew. THREE DID NOT — composition_entity_override_update, _delete and _restore — and they
+    inherited a gate that was not there. They failed only later and vaguely, as "not found or
+    not accessible", because a canonical Work simply owns no override rows.
+
+    The name is now what it does. Every caller that needs the derivative check performs it
+    explicitly and answers with the actionable NOT_A_DERIVATIVE refusal, which is a fact about
+    the KIND of Work the caller owns and therefore leaks nothing the uniform not-accessible
+    error exists to hide.
+    """
     project_id = (await _book_or_deny(works, tc, project_id, GrantLevel.EDIT)).project_id
     work = await works.get(project_id)
     if work is None:
@@ -2023,7 +2038,7 @@ async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
 async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceSpecUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         return {"success": False, "error": "NOT_A_DERIVATIVE — the spec exists only on a dị bản (a DERIVATIVE Work — create one with composition_create_derivative; composition_derivative_edit only UPDATES an existing one)"}
     fs = args.model_fields_set
@@ -2080,7 +2095,7 @@ class _EntityOverrideAddArgs(ForbidExtra):
 async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverrideAddArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         # 🔴 THIS USED TO SAY ONLY "create one with composition_create_derivative", AND THE BOOK
         # USUALLY ALREADY HAS ONE. Measured c-override8, K=5 on a fixture whose seed creates a
@@ -2185,7 +2200,20 @@ class _EntityOverrideUpdateArgs(ForbidExtra):
 async def composition_entity_override_update(ctx: MCPContext, args: _EntityOverrideUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
+    if work.source_work_id is None:
+        # DQ-free: the vocabulary is not in doubt. An override exists only on a dị bản, and
+        # this caller owns the Work it named — so naming the KIND leaks nothing, and the
+        # uniform not-accessible error this used to fall through to said nothing actionable.
+        # Same message the add path ships, which c-override8 measured as the one that moves the
+        # model: naming composition_list_derivatives also ARMS it.
+        return {"success": False, "error": (
+            "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
+            "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
+            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
+            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
+            "Retry with the project_id of the entry whose is_canonical is false."
+        )}
     derivatives = DerivativesRepo(get_pool())
     prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
     if prior is None:
@@ -2225,7 +2253,20 @@ class _EntityOverrideDeleteArgs(ForbidExtra):
 async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
+    if work.source_work_id is None:
+        # DQ-free: the vocabulary is not in doubt. An override exists only on a dị bản, and
+        # this caller owns the Work it named — so naming the KIND leaks nothing, and the
+        # uniform not-accessible error this used to fall through to said nothing actionable.
+        # Same message the add path ships, which c-override8 measured as the one that moves the
+        # model: naming composition_list_derivatives also ARMS it.
+        return {"success": False, "error": (
+            "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
+            "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
+            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
+            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
+            "Retry with the project_id of the entry whose is_canonical is false."
+        )}
     derivatives = DerivativesRepo(get_pool())
     prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
     if prior is None:
@@ -2258,7 +2299,20 @@ async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverr
 async def composition_entity_override_restore(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
+    if work.source_work_id is None:
+        # DQ-free: the vocabulary is not in doubt. An override exists only on a dị bản, and
+        # this caller owns the Work it named — so naming the KIND leaks nothing, and the
+        # uniform not-accessible error this used to fall through to said nothing actionable.
+        # Same message the add path ships, which c-override8 measured as the one that moves the
+        # model: naming composition_list_derivatives also ARMS it.
+        return {"success": False, "error": (
+            "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
+            "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
+            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
+            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
+            "Retry with the project_id of the entry whose is_canonical is false."
+        )}
     derivatives = DerivativesRepo(get_pool())
     if not await derivatives.restore_override(work.id, work.book_id, _uuid(args.override_id, "override_id")):
         return {"success": False, "error": (
@@ -8963,11 +9017,11 @@ async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrid
         raise ValueError("op=list requires project_id")
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
+    work = await _gate_edit_and_resolve_work(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         # 🔴 AN EMPTY LIST IS THE WORST ANSWER THIS OP CAN GIVE, and the first live run
         # gave it 5 times out of 5. The model is handed the book's AMBIENT (canonical)
-        # project_id, and an override exists only on a DERIVATIVE Work. `_require_derivative`
+        # project_id, and an override exists only on a DERIVATIVE Work. `_gate_edit_and_resolve_work`
         # does not actually check that despite its name, and op=list had no downstream write to
         # fail on, so a canonical project answered {"overrides": [], ok: true} — and every run
         # told the author "the system reported that no archived overrides exist for this work"
