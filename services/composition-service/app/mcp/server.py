@@ -104,6 +104,7 @@ from app.db.repositories.structure_templates import (
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.motif_repo import EndpointsOwnedNotShared, MotifRepo, owns_motif
 from app.engine.exit_state import merge_authored_exit_state
+from app.engine.model_roles import role_ref
 from app.engine.library_translate import (
     LANGUAGE_NAMES, MAX_ITEMS_PER_JOB, TRANSLATABLE_KINDS,
 )
@@ -3048,7 +3049,11 @@ class _GenerateArgs(ForbidExtra):
     chapter_id: str | None = None
     # Literals mirror the engine's GenerateBody so a bad value is a clean refusal at
     # propose (not a pydantic 500 when the confirm effect rebuilds the engine body).
-    model_source: Literal["user_model", "platform_model"]
+    # DQ-T35 (owner 2026-08-31): OPTIONAL, like 16 of the 19 model_ref properties in the
+    # catalogue. Omitted, the pair is resolved from the WORK's configured role. `model_source`
+    # travels WITH `model_ref` and had to become optional too: a ref with no source is a
+    # half-written setting, which `role_ref` refuses to normalise for exactly this reason.
+    model_source: Literal["user_model", "platform_model"] | None = None
     # 🔴 D-UNDECLARED-REF-BECOMES-A-PLACEHOLDER. This was a bare `str` with no description, so
     # the model had nothing telling it what a model_ref IS. Measured 2026-08-14, K=5: it sent
     # `model_ref="default"` on 5 of 5 runs, a Tier-A card was minted for every one, and the
@@ -3060,14 +3065,15 @@ class _GenerateArgs(ForbidExtra):
     # stating it lets a placeholder be DROPPED before a card is minted, and naming the supplier
     # tells the model where to get the real value instead of inventing one.
     model_ref: Annotated[
-        str,
+        str | None,
         Field(description=(
-            "The model's id (UUID). NOT a name, an alias, or 'default' — list the caller's "
+            "OPTIONAL — omit to use the model configured for this Work. When given: the model's "
+            "id (UUID). NOT a name, an alias, or 'default' — list the caller's "
             "models with settings_list_models and pass the `model_ref` from there. Which list "
             "depends on model_source: user_model = the author's own models, platform_model = "
             "the platform's."
         )),
-    ]
+    ] = None
     # The free-form prose op; defaults per target (draft_scene / draft_chapter).
     operation: str | None = None
     guide: str = ""
@@ -3113,6 +3119,41 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     # Generation is a write/spend → EDIT (mirrors the engine's E0-4c pack tier).
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
+
+    # \U0001f534 DQ-T35 (owner 2026-08-31): model_ref/model_source are OPTIONAL now, resolved
+    # here from the Work the caller already named. The reason is not tidiness \u2014 16 of the 19
+    # model_ref properties in the catalogue are optional and SAY SO in their own descriptions,
+    # and a model that has learned from sixteen tools that omitting it is correct will omit it
+    # on the seventeenth. Measured 2026-08-14, K=5: it sent `model_ref="default"` on 5 of 5.
+    #
+    # THE MECHANISM ALREADY EXISTED AND WAS EMPTY, which is the first thing to check: the Work
+    # carries `settings["model_roles"]` ({role: {model_ref, model_source}}) with legacy scalars
+    # behind it, and `role_ref` reads exactly that pair. Nothing new is invented here.
+    #
+    # \U0001f534 WHAT THIS DELIBERATELY DOES NOT DO, because DQ-T35 says it is a product call
+    # and the ruling did not settle it: fall back to the ACCOUNT tier. `user_default_models` is
+    # populated, but its capabilities are chat|distill|planner|rerank \u2014 there is no composer
+    # or prose capability \u2014 so defaulting there would mean spending the author's money
+    # through their CHAT model on a prose-generation call. Choosing which capability a spending
+    # tool falls back to is not a bug fix. When nothing resolves, this REFUSES and says how to
+    # set it, rather than guessing with the author's money or failing opaquely.
+    if not args.model_ref or not args.model_source:
+        _work = await works.get(pid)
+        _src, _ref = (None, None)
+        for _role in ("composer", "prose", "chat"):
+            _src, _ref = role_ref(getattr(_work, "settings", None), _role)
+            if _ref and _src:
+                break
+        if not (_ref and _src):
+            return {"success": False, "error": (
+                "model_ref was omitted and this Work has no model configured to fall back to. "
+                "Every generation SPENDS, so the runtime will not pick a model on your behalf. "
+                "Either pass model_ref (a UUID from settings_list_models) with its model_source, "
+                "or set a default for this Work first. NOTE: a model_ref without a model_source "
+                "is a half-written setting and is refused the same way."
+            )}
+        args = args.model_copy(update={"model_ref": args.model_ref or str(_ref),
+                                       "model_source": args.model_source or str(_src)})
 
     target_kind = "scene" if has_scene else "chapter"
     target_id = args.outline_node_id if has_scene else args.chapter_id

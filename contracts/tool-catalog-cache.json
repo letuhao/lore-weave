@@ -8604,17 +8604,33 @@
               "title": "Max Output Tokens"
             },
             "model_ref": {
-              "description": "The model's id (UUID). NOT a name, an alias, or 'default' — list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
-              "title": "Model Ref",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "OPTIONAL — omit to use the model configured for this Work. When given: the model's id (UUID). NOT a name, an alias, or 'default' — list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
+              "title": "Model Ref"
             },
             "model_source": {
-              "enum": [
-                "user_model",
-                "platform_model"
+              "anyOf": [
+                {
+                  "enum": [
+                    "user_model",
+                    "platform_model"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Model Source",
-              "type": "string"
+              "default": null,
+              "title": "Model Source"
             },
             "operation": {
               "anyOf": [
@@ -8658,9 +8674,7 @@
             }
           },
           "required": [
-            "project_id",
-            "model_source",
-            "model_ref"
+            "project_id"
           ],
           "title": "_GenerateArgs",
           "type": "object"
@@ -8698,17 +8712,33 @@
           "title": "Max Output Tokens"
         },
         "model_ref": {
-          "description": "The model's id (UUID). NOT a name, an alias, or 'default' — list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
-          "title": "Model Ref",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OPTIONAL — omit to use the model configured for this Work. When given: the model's id (UUID). NOT a name, an alias, or 'default' — list the caller's models with settings_list_models and pass the `model_ref` from there. Which list depends on model_source: user_model = the author's own models, platform_model = the platform's.",
+          "title": "Model Ref"
         },
         "model_source": {
-          "enum": [
-            "user_model",
-            "platform_model"
+          "anyOf": [
+            {
+              "enum": [
+                "user_model",
+                "platform_model"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Model Source",
-          "type": "string"
+          "default": null,
+          "title": "Model Source"
         },
         "operation": {
           "anyOf": [
@@ -8752,9 +8782,7 @@
         }
       },
       "required": [
-        "project_id",
-        "model_source",
-        "model_ref"
+        "project_id"
       ],
       "type": "object"
     },
