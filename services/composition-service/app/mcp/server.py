@@ -7328,8 +7328,40 @@ def _arc_conflict(exc: StructureConflictError) -> dict[str, Any]:
         # "arc structure" DROPPED, not re-homed: composition_arc_suggest already declared
         # it, and this tool has six other phrasings. My first de-dup swapped one tie for
         # another by not checking the REPLACEMENT was free.
+        # DQ-T58 (owner 2026-08-31): SURFACE composition_arc_list WHENEVER AN ARC REQUEST IS
+        # ANSWERABLE. The six phrasings above are all LIST-shaped, so an author who names an arc
+        # without asking for a list reached nothing: measured against the deployed matcher over
+        # the live 316-tool catalogue, "What arcs does this book have?" and "Show me the opening
+        # arc" both returned the EMPTY SET, and the row's own prompt ("Attach Emberfall Seam to
+        # the opening arc as this book's motif") returned only composition_motif_search. The
+        # tool that OWNS the noun could not be reached by a sentence about it.
+        #
+        # 🔴 AND IT HAD TO BE A DECLARATION, NOT AN EMITTER, which is what the corrected
+        # question could not settle. R1's supplier-arming seeds from `_answerable` ONLY, so a
+        # tool riding the DOMAIN HOT SET never arms its suppliers; and
+        # composition_motif_bind_edit.node_id is a CHAPTER node, so declaring this tool as its
+        # emitter would be a false entry of exactly the kind the contract registry forbids.
+        #
+        # PRICED BEFORE ADDING, over 2,033 distinct real prompts from the chat store
+        # (scripts/toolloop/arc_synonym_probe.py):
+        #     candidate        reaches   newly matched   displaced
+        #     "arcs"             1 of 5        7            0
+        #     "arc"/"the arc"    4 of 5      101            0
+        #     both               5 of 5      108            0
+        # DISPLACED IS THE FIGURE THAT MATTERED and the first version of the probe did not
+        # measure it: ANSWERABLE_MAX truncates at 8, so a synonym can EVICT a tool the turn
+        # needed rather than merely joining it. It evicts nothing here, on any candidate.
+        #
+        # The breadth objection that sank the same move on composition_motif_bind_edit does not
+        # transfer: there it would have put a TIER-A WRITE on every turn saying the word. This
+        # is Tier R, read-only, ambient_book, with NO required argument — the cheapest tool in
+        # the catalogue to be wrong about. Neither phrase is claimed by any other tool.
+        #
+        # "the arc" and "arc" are the SAME declaration — `_answer_norm` strips articles — and
+        # the pair is kept as written so the next reader sees the normaliser rather than
+        # discovering it.
         synonyms=["list arcs", "arc tree", "sagas", "book architecture",
-                  "spec tree", "arc grouping"],
+                  "spec tree", "arc grouping", "arcs", "the arc"],
         ambient_book=True,
         tool_name="composition_arc_list",
     ),

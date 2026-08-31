@@ -2817,7 +2817,9 @@
         "sagas",
         "book architecture",
         "spec tree",
-        "arc grouping"
+        "arc grouping",
+        "arcs",
+        "the arc"
       ],
       "tier": "R"
     }
@@ -8786,6 +8788,12 @@
     },
     "meta": {
       "async": true,
+      "exclusive_args": [
+        [
+          "outline_node_id",
+          "chapter_id"
+        ]
+      ],
       "scope": "book",
       "synonyms": [
         "generate prose",
@@ -9295,6 +9303,12 @@
       "type": "object"
     },
     "meta": {
+      "exclusive_args": [
+        [
+          "book_id",
+          "project_id"
+        ]
+      ],
       "scope": "book",
       "synonyms": [
         "list dị bản",
