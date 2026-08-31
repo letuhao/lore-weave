@@ -761,7 +761,22 @@ _OUTLINE_REF_FIELDS = (
     ),
     meta=require_meta(
         "R", "book",
-        synonyms=["outline", "scene graph", "story structure", "chapters", "beats", "list outline"],
+        # DQ-T44 (a), owner 2026-08-31 — the last two are the RECYCLE BIN. Wiring
+        # `include_archived` through to the scene-links query gave the platform a way to show
+        # what `composition_scene_link_edit`'s restore op can act on; it was still unreachable,
+        # because no declared vocabulary here answers "show me the deleted scene links". Measured
+        # live before adding them: this tool was on the wire 0 of 5 runs on exactly that request.
+        #
+        # 🔴 TWO SYNONYMS, AND THE CONTROL SAYS THEY COST NOTHING. Run through the shipped matcher
+        # over the whole 316-tool catalogue, the recycle-bin prompt goes [] -> a SINGLETON, and
+        # every control is byte-identical before and after — "Show me the outline", "What
+        # chapters are in my book?", "Delete the scene link between them", "Restore the scene
+        # link". No tie is manufactured, which is the cost DQ-T70 measured for the wider case.
+        #
+        # `restore …` phrasings are deliberately NOT declared here: `composition_scene_link_edit`
+        # owns that op and already declares them. This tool answers WHERE IS IT, not RESTORE IT.
+        synonyms=["outline", "scene graph", "story structure", "chapters", "beats", "list outline",
+                  "deleted scene links", "archived scene links"],
         tool_name="composition_list_outline",
     ),
 )
@@ -778,7 +793,11 @@ async def composition_list_outline(
         "later arcs' scenes; `truncated` reports how many). Raise it, or read ONE node via "
         "composition_get_outline_node.",
     ] = 25,  # K37 drain: OUT-2 bounded default (list_tree fetches all → apply_response_contract caps + signals truncated, never a silent drop)
-    include_archived: Annotated[bool, "Include soft-archived nodes."] = False,
+    include_archived: Annotated[
+        bool,
+        "Include soft-archived nodes AND their scene-links — this is how you find what "
+        "composition_scene_link_edit's `restore` op can restore.",
+    ] = False,
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
@@ -787,7 +806,11 @@ async def composition_list_outline(
     outline = OutlineRepo(get_pool())
     scene_links = SceneLinksRepo(get_pool())
     nodes = await outline.list_tree(pid, include_archived=include_archived)
-    links = await scene_links.list_by_project(pid)
+    # DQ-T44 (a), owner 2026-08-31 — the flag reached the NODES and stopped here, so
+    # composition_scene_link_edit's `restore` op had nothing anywhere that could show an
+    # archived edge. One existing argument, one more query; the endpoints it would otherwise
+    # orphan are in `nodes` above, because the same flag put them there.
+    links = await scene_links.list_by_project(pid, include_archived=include_archived)
     node_dicts = [n.model_dump(mode="json") for n in nodes]
     projected, meta = apply_response_contract(
         node_dicts, ref_fields=_OUTLINE_REF_FIELDS, detail=detail, limit=limit,

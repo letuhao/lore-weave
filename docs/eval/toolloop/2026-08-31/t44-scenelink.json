@@ -1,0 +1,1437 @@
+{
+  "batch": "t44-scenelink",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_list_outline",
+      "scenario": "t44-what-deleted-scene-links-can-i-bring-back",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the turn cannot surface the deleted edge — it answers that there is nothing deleted, asks the author for a link id (the workaround the defect forces), or calls composition_list_outline WITHOUT include_archived and reports an empty set. Any of those is the defect, live.\n\nCONFIRMED IF: the turn calls composition_list_outline with include_archived=true and the archived edge comes back in `scene_links`, so the author can name it.\n\n🔴 THE READ IS TIER R AND THE TURN MUST NOT WRITE. This scenario proves DISCOVERY only. Whether the model then goes on to call `restore` is a SEPARATE question this loop already tracks — the sibling family measured restore called on 0 of 5 runs, with the model correctly asking which candidate to restore when several exist. A run that discovers the edge and stops is a PASS here.",
+      "answer_expect": null,
+      "falsifier_sha": "cee49a1451e76350",
+      "ship_audit": {
+        "gate": "N/A — Tier R read.",
+        "empty_case": "OWED — a work with nothing archived must say so plainly rather than returning an empty list with no explanation.",
+        "idempotency": "N/A — read.",
+        "tenancy": "OWED — another owner's project must be refused with the uniform not-accessible answer."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0572e-16a9-7c7f-9486-0f8be5345553",
+          "project_id": "01a0572e-1846-744b-971f-e4c3de8f4166",
+          "seed_ids": {
+            "01a0572e-16a9-7c7f-9486-0f8be5345553": "fixture book_id",
+            "01a0572e-1846-744b-971f-e4c3de8f4166": "fixture project_id (composition_work)",
+            "01a0572e-1758-7c2b-a2f7-36ab6af4dee3": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0572e-18f2-7edc-889d-88302c9aa61d": "seed[0] composition_outline_node_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_outline_node_edit.created_by",
+            "01a0572e-196e-7995-a7b4-8b7a223c920f": "seed[1] composition_outline_node_edit.id",
+            "01a0572e-1a39-71dd-8323-0b54067544db": "seed[2] composition_outline_node_edit.id",
+            "01a0572e-1ad7-70c2-88ae-f2d57becc3e2": "seed[3] composition_scene_link_edit.id"
+          },
+          "session_id": "01a0572e-6321-70a0-873d-b62713112167",
+          "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "scenario_prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_diagnostics",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572e-16a9-7c7f-9486-0f8be5345553\", \"items\": [], \"counts\": {}, \"total\": 0, \"refs_capped\": false}}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572e-16a9-7c7f-9486-0f8be5345553\", \"work\": {\"project_id\": \"01a0572e-1846-744b-971f-e4c3de8f4166\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 0, \"arcs\": [], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\": 1}, \"index\": {\"stale_chapter_count\": 0, \"arcs_dir"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_diagnostics"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.804824+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:37:14.296945+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:14.454765+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.796245+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.560463+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.804824+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:37:14.296945+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:14.454765+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:37:13.796245+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your work, but I don't see any deleted scene links or error blocks listed in the diagnostics. \n\nIf you recently deleted a scene or a link, it might not have been flagged as an \"error block\" yet. To help me find it, could you tell me:\n1. **Which chapter** was the scene in?\n2. **What was the scene about** (or what was the name of the character/location involved)?\n\nOnce I have a starting point, I can search the manuscript and the composition history to try and locate the lost content for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0572e-d53f-7213-9e61-6a730b020de1",
+          "project_id": "01a0572e-d6b8-74c2-9b00-321e5fc11e28",
+          "seed_ids": {
+            "01a0572e-d53f-7213-9e61-6a730b020de1": "fixture book_id",
+            "01a0572e-d6b8-74c2-9b00-321e5fc11e28": "fixture project_id (composition_work)",
+            "01a0572e-d5d1-7c87-995e-99c7fbcd817d": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0572e-d742-7812-9852-e36b376f4585": "seed[0] composition_outline_node_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_outline_node_edit.created_by",
+            "01a0572e-d7e5-777d-8df5-bfc6a16e9cfc": "seed[1] composition_outline_node_edit.id",
+            "01a0572e-d88f-744f-9bb3-80cabd17b648": "seed[2] composition_outline_node_edit.id",
+            "01a0572e-d933-7413-a385-1fc936b0d138": "seed[3] composition_scene_link_edit.id"
+          },
+          "session_id": "01a0572f-2863-759c-8c31-1bb7ebaccd65",
+          "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "scenario_prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_diagnostics",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572e-d53f-7213-9e61-6a730b020de1\", \"items\": [], \"counts\": {}, \"total\": 0, \"refs_capped\": false}}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572e-d53f-7213-9e61-6a730b020de1\", \"work\": {\"project_id\": \"01a0572e-d6b8-74c2-9b00-321e5fc11e28\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 0, \"arcs\": [], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\": 1}, \"index\": {\"stale_chapter_count\": 0, \"arcs_dir"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_diagnostics"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.559159+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:38:03.023078+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:03.186809+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.551615+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.321634+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.559159+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:38:03.023078+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:03.186809+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:02.551615+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the composition diagnostics and the project structure for this work, but I don't see any record of deleted scene links or error blocks currently active.\n\nIt's possible the link was removed in a way that didn't leave a \"dirty\" flag or an error block. To help me find it, could you tell me:\n1. **Which chapter** was the scene in?\n2. **What was the scene about** (or what was the name of the character/location involved)?\n\nIf you can provide a bit more detail, I can try searching the manuscript or the connection map to see if I can locate the orphaned content for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0572f-96bc-7b81-8aeb-225d8e984b87",
+          "project_id": "01a0572f-980a-7928-b6f2-41ecd364ef3d",
+          "seed_ids": {
+            "01a0572f-96bc-7b81-8aeb-225d8e984b87": "fixture book_id",
+            "01a0572f-980a-7928-b6f2-41ecd364ef3d": "fixture project_id (composition_work)",
+            "01a0572f-975a-7d4e-b6ff-f327c281ba0e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a0572f-9881-73ac-9047-5e095420ffc5": "seed[0] composition_outline_node_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_outline_node_edit.created_by",
+            "01a0572f-9925-72aa-962e-5f024e988754": "seed[1] composition_outline_node_edit.id",
+            "01a0572f-9a0b-7467-b19f-d6bef2edf961": "seed[2] composition_outline_node_edit.id",
+            "01a0572f-9ab4-7877-ba84-038c57d993df": "seed[3] composition_scene_link_edit.id"
+          },
+          "session_id": "01a0572f-e78d-73cd-b108-855171894aba",
+          "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "scenario_prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_diagnostics",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572f-96bc-7b81-8aeb-225d8e984b87\", \"items\": [], \"counts\": {}, \"total\": 0, \"refs_capped\": false}}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a0572f-96bc-7b81-8aeb-225d8e984b87\", \"work\": {\"project_id\": \"01a0572f-980a-7928-b6f2-41ecd364ef3d\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 0, \"arcs\": [], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\": 1}, \"index\": {\"stale_chapter_count\": 0, \"arcs_dir"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_diagnostics"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.04811+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:38:52.555097+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.724432+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.04198+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:51.866676+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.04811+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:38:52.555097+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.724432+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:38:52.04198+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:22.155366+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:22.155366+00"
+              }
+            }
+          },
+          "answer": "I've checked the book's diagnostics and the current structure, but I don't see any record of deleted scene links or \"orphaned\" blocks in the current composition.\n\nIt's possible the link was removed as part of a larger revision or that the change hasn't been committed to the composition layer yet. To help me find it, could you tell me:\n\n1. **Which chapter** was the scene in?\n2. **What was the scene about** (or what was the name of the character/location involved)?\n\nIf you have a specific chapter in mind, I can look deeper into its revision history or check for any \"open\" error blocks that might contain the text you're looking for."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05730-4d4e-756a-9718-d8e5e8400c10",
+          "project_id": "01a05730-4e93-7549-88f7-18d67f9cc523",
+          "seed_ids": {
+            "01a05730-4d4e-756a-9718-d8e5e8400c10": "fixture book_id",
+            "01a05730-4e93-7549-88f7-18d67f9cc523": "fixture project_id (composition_work)",
+            "01a05730-4de2-7800-a8d2-f3b2ac69db91": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05730-4f05-7ab6-87bd-293a60a29387": "seed[0] composition_outline_node_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_outline_node_edit.created_by",
+            "01a05730-4fa0-7e84-a79f-15105032671b": "seed[1] composition_outline_node_edit.id",
+            "01a05730-505d-75d9-8c82-9faa4bcd7b59": "seed[2] composition_outline_node_edit.id",
+            "01a05730-512c-78de-8630-e31b33804853": "seed[3] composition_scene_link_edit.id"
+          },
+          "session_id": "01a05730-9f8f-76c8-ae28-9039afedc8be",
+          "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "scenario_prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_diagnostics",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a05730-4d4e-756a-9718-d8e5e8400c10\", \"items\": [], \"counts\": {}, \"total\": 0, \"refs_capped\": false}}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a05730-4d4e-756a-9718-d8e5e8400c10\", \"work\": {\"project_id\": \"01a05730-4e93-7549-88f7-18d67f9cc523\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 0, \"arcs\": [], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\": 1}, \"index\": {\"stale_chapter_count\": 0, \"arcs_dir"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_diagnostics"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.776095+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:39:39.229163+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:39.436407+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.770683+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.594333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.776095+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:39:39.229163+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:39.436407+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:39:38.770683+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your work, but I don't see any deleted scene links or error blocks listed in the diagnostics. \n\nIt's possible the scene was removed in a way that didn't leave a \"flagged\" error, or perhaps it was part of a previous version of a chapter. To help me find it, could you tell me:\n\n1. **Which chapter** was the scene in?\n2. **What was the scene about** (or any specific characters/locations involved)?\n\nOnce I have a starting point, I can look through the chapter revisions or the composition history to try and recover it for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05731-0a64-771a-9b8e-5def27918525",
+          "project_id": "01a05731-0bad-75c6-af07-2ba2e70274b1",
+          "seed_ids": {
+            "01a05731-0a64-771a-9b8e-5def27918525": "fixture book_id",
+            "01a05731-0bad-75c6-af07-2ba2e70274b1": "fixture project_id (composition_work)",
+            "01a05731-0b01-7d37-9c75-9989bbaf6a47": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "01a05731-0c31-7f4b-840e-b7a6b7810347": "seed[0] composition_outline_node_edit.id",
+            "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c": "seed[0] composition_outline_node_edit.created_by",
+            "01a05731-0cd3-746b-8250-91f22bb41393": "seed[1] composition_outline_node_edit.id",
+            "01a05731-0d6d-7f2c-a567-e152b5eed939": "seed[2] composition_outline_node_edit.id",
+            "01a05731-0e0a-7d64-ad82-901ada303d74": "seed[3] composition_scene_link_edit.id"
+          },
+          "session_id": "01a05731-5aab-78df-a9f1-7bf1df975548",
+          "prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "scenario_prompt": "I deleted a scene link by mistake. Show me the deleted scene links on this work so I can pick which one to bring back.",
+          "prior_turns": [],
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_package_tree"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "jobs_cancel",
+            "jobs_get",
+            "jobs_list",
+            "jobs_pause",
+            "jobs_summary",
+            "kg_add_nodes",
+            "kg_list_templates",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_view_read",
+            "load_skill",
+            "memory_remember",
+            "plan_compile",
+            "plan_propose_spec",
+            "propose_edit",
+            "run_subagent",
+            "tool_list",
+            "tool_load",
+            "translation_coverage",
+            "translation_job_control",
+            "translation_job_status",
+            "translation_list_versions",
+            "translation_patch_block",
+            "translation_retranslate_dirty",
+            "translation_save_edited_version",
+            "translation_segment_status",
+            "translation_set_active_version",
+            "translation_start_extraction",
+            "translation_start_job",
+            "translation_update_settings",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_diagnostics",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a05731-0a64-771a-9b8e-5def27918525\", \"items\": [], \"counts\": {}, \"total\": 0, \"refs_capped\": false}}"
+            },
+            {
+              "tool": "composition_package_tree",
+              "result_head": "{\"ok\": true, \"result\": {\"book_id\": \"01a05731-0a64-771a-9b8e-5def27918525\", \"work\": {\"project_id\": \"01a05731-0bad-75c6-af07-2ba2e70274b1\", \"status\": \"active\"}, \"spec\": {\"arc_count\": 0, \"arcs\": [], \"arcs_capped\": false}, \"manuscript\": {\"chapter_count\": 1}, \"index\": {\"stale_chapter_count\": 0, \"arcs_dir"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_diagnostics"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "call": "composition_package_tree"
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            },
+            {
+              "pass_size": 58,
+              "of_the_called": [
+                "composition_diagnostics",
+                "composition_package_tree"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.186699+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:40:27.629897+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.78673+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.180831+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.009623+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.186699+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 3,
+                "latest": "2026-08-31 09:40:27.629897+00"
+              },
+              "loreweave_composition.scene_link": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.78673+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:27.180831+00"
+              },
+              "loreweave_knowledge.extraction_pending": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:57.658824+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-31 07:30:37.302868+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_knowledge.extraction_pending": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 09:40:57.658824+00"
+              }
+            }
+          },
+          "answer": "I've checked the book's diagnostics and the current structure, but I don't see any record of deleted scene links or \"orphaned\" blocks in the system.\n\nIt's possible the scene was removed in a way that didn't leave a trace in the composition index, or perhaps it was part of a draft revision that hasn't been committed.\n\nTo help me find it, could you tell me:\n1. **Which chapter** was the scene in?\n2. **What was the scene about** (or any specific dialogue/action you remember)?\n3. **When did you delete it?** (e.g., was it part of a recent rewrite or a specific edit?)\n\nIf you remember the text, I can also try to search the manuscript history for you."
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 2,
+      "suspended_count": 0
+    }
+  ]
+}

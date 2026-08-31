@@ -2,11 +2,21 @@
 
 *Generated 2026-08-31 by `scripts/toolloop/dq_digest.py`. Derived from the ledger at emit time — do not hand-edit; re-run it.*
 
-**17 defects are open and 0 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
+**17 defects are open and 1 of these questions are what hold them.** The loop's own check reports every open defect as decision-blocked, so nothing else moves until some of these are ruled on.
 
 A ruling goes on the question's row as an `answer_<date>` field. The loop reads it there and builds it **as worded** — if it cannot be built, the question comes back with the measurement showing why, rather than a substituted mechanism.
 
 ## All open questions, by how many defects they release
+
+### DQ-T87 — releases 1 defect
+
+**Asked:** composition_entity_override is the LAST live restore family with no discovery path. DQ-T44's ruling took (a), the scene_link wiring, and said the entity_override sub-decision "is NOT taken here and stays unbuilt". This row cannot close while it is unbuilt. Build it now, or accept the gap and close the row on the families that have one?
+
+**My recommendation:** (a). It is the cheapest remaining instance of a pattern this row has already shipped three times, the repository support exists, and it is the last LIVE family — after it the row is genuinely finished rather than partially so. (b) is defensible only if entity_override restore is not a path authors take, and nothing measured says that either way. I am not building it under DQ-T44's ruling because that ruling explicitly excluded it, and the standing rule is to build what was decided rather than what I would have decided.
+
+**Why it is yours, not mine:** It adds an OPERATION to a shipped tool's public surface, which is a catalogue change; and the alternative is accepting a permanent gap in a restore family, which is a product call.
+
+**Blocks:** `D-RESTORE-WITH-NO-WAY-TO-SEE-WHAT-IS-RESTORABLE`
 
 ### DQ-T1 — releases 0 defects
 
