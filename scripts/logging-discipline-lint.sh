@@ -85,7 +85,21 @@ REPO_ROOT="$(cd "$(dirname "$0")/../" && pwd)"
 # The honest fix is still the worker/script exemption with a shrink arm named
 # above; this raises the ceiling for the same reason the ceiling exists, and adds
 # four more files to the list that exemption will have to cover.
-SOFT_BASELINE=90
+#
+# 90 -> 89 on 2026-08-31, and this one FELL, which is the direction the row above says is
+# not the goal for the CLI class but is exactly the goal for service code.
+# `glossary-service/internal/api/trace_id.go` logged a RECOVERED PANIC with `log.Printf`
+# while every other site in that package uses `slog` — so the one record you search for
+# after an incident arrived unparsed, with `trace_id` buried in the message text instead of
+# a field you can filter on, and a multi-line stack breaking the one-line-per-record shape.
+#
+# Measured before touching anything, because "90 violations" is not 90 pieces of debt:
+# 79 of the 90 are CLI tools, worker mains, scripts and benchmarks whose stdout IS their
+# output contract — the class this ceiling exists for. Of the rest, the auth-service prints
+# are guarded by `cfg.DevLogEmailTokens` and sit beside `slog.Error`; routing a verification
+# token into structured logs would be worse, not better. This was the one that was simply
+# wrong.
+SOFT_BASELINE=89
 
 # Hardcoded single-file exemptions. Each must name a real file — see the shrink
 # arm in `run_lint`.
