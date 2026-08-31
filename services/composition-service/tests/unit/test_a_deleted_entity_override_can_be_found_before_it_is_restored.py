@@ -32,6 +32,15 @@ from app.db.repositories.derivatives import DerivativesRepo
 from app.mcp import server as mcp
 
 
+def _fn_ast(name: str):
+    """The named function's AST, so a guard can read the MESSAGE a wrapped literal builds."""
+    tree = ast.parse(pathlib.Path(inspect.getfile(mcp)).read_text(encoding="utf-8"))
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+            return n
+    raise AssertionError(f"{name} not found — has it been renamed?")
+
+
 def _literal_values(annotation) -> set[str]:
     """Every string in a (possibly Annotated-wrapped) Literal."""
     out: set[str] = set()
@@ -206,24 +215,40 @@ class TestAnEmptyListIsNotAnAnswer:
     def test_the_refusal_NAMES_the_tool_that_finds_the_right_project_id(self):
         """A refusal the caller cannot act on is a dead end. Naming the lookup also ARMS it —
         chat-service's `_tools_named_in_refusal` runs on dispatch results."""
-        src = inspect.getsource(mcp.composition_entity_override_edit)
-        after = src[src.find('op == "list"'):]
+
+        after = " ".join(n.value for n in ast.walk(_fn_ast("composition_entity_override_edit"))
+                        if isinstance(n, ast.Constant) and isinstance(n.value, str))
         assert "composition_list_derivatives" in after, (
             "the refusal does not say how to obtain a derivative project_id")
 
-    def test_the_refusal_warns_about_the_EXACTLY_ONE_rule_it_sends_the_model_into(self):
-        """🔴 MEASURED: the first refusal worked and the NEXT tool refused. It armed
-        composition_list_derivatives, the model called it 5/5 — and passed BOTH book_id and
-        project_id, which that tool rejects with "give EXACTLY ONE". Across the whole chat
-        store: project_id alone has succeeded 34 times, BOTH has succeeded ZERO times in 46
-        attempts. A redirect that sends the model into a refusal it could have been warned
-        about is a chain of dead ends, not a discovery path."""
-        src = inspect.getsource(mcp.composition_entity_override_edit)
-        after = src[src.find('op == "list"'):]
-        joined = "".join(after.split())
-        assert "doNOTalsopassbook_id" in joined, (
-            "the refusal names composition_list_derivatives without warning that passing "
-            "book_id alongside project_id is refused — the exact failure it produced live")
+    def test_the_refusal_names_a_shape_the_runtime_can_actually_deliver(self):
+        """🔴 THIS GUARD ASSERTED THE WRONG REMEDY WHEN I WROTE IT THIS MORNING, and the
+        measurement that afternoon corrected it. It demanded the refusal warn "do NOT also pass
+        book_id", on the belief that passing project_id was right and book_id was the intruder.
+
+        It is the other way round. `composition_list_derivatives` takes EXACTLY ONE of the two —
+        probed on the deployed service: book_id alone ACCEPTED, project_id alone ACCEPTED, BOTH
+        REFUSED — and chat-service's `_inject_context_ids` fills `book_id` into any tool that
+        declares it whenever the turn has a book, which a book-scoped tool always does. So a
+        model told to pass project_id sends BOTH and is refused, and no wording about book_id
+        can stop the runtime adding it. The store agrees: BOTH is 0 done in 46 attempts.
+
+        The instruction that CAN be followed is to pass nothing and let the ambient book
+        through, so that is what the refusal now says and what this asserts."""
+        # 🔴 AND IT READ THE SOURCE TEXT, WHICH IS WHY IT WENT RED ON A CORRECT REFUSAL.
+        # The message is a wrapped implicit concatenation, so the raw source carries `Do NOT pass
+        # " "project_id` — the closing and opening quotes land INSIDE the phrase. Joining the
+        # string CONSTANTS is what the model actually receives, and it is immune to rewrapping.
+        fn = _fn_ast("composition_entity_override_edit")
+        joined = " ".join(n.value for n in ast.walk(fn)
+                          if isinstance(n, ast.Constant) and isinstance(n.value, str))
+        joined = " ".join(joined.split())
+        assert "NO ARGUMENTS" in joined, (
+            "the refusal names composition_list_derivatives without saying how to call it in a "
+            "way the runtime can deliver")
+        assert "Do NOT pass project_id" in joined, (
+            "it does not name the thing that breaks the call — passing project_id alongside the "
+            "book_id the runtime adds")
 
     def test_it_says_NOTHING_WAS_LISTED_is_not_nothing_to_list(self):
         """The distinction the whole cycle turns on, stated to the model in words.
@@ -232,8 +257,9 @@ class TestAnEmptyListIsNotAnAnswer:
         adjacent string literals in the source, so the full phrase is not contiguous and an
         assertion on it fails while the shipped message is perfectly correct. A source-level
         guard has to match text the formatter cannot break."""
-        src = inspect.getsource(mcp.composition_entity_override_edit)
-        after = src[src.find('op == "list"'):]
+
+        after = " ".join(n.value for n in ast.walk(_fn_ast("composition_entity_override_edit"))
+                        if isinstance(n, ast.Constant) and isinstance(n.value, str))
         joined = "".join(after.split())
         assert "notthesameasthereben" in joined or "notthesameastherebeingnothingto" in joined, (
             "the refusal does not distinguish 'nothing was listed' from 'nothing to list', "

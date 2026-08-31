@@ -2441,6 +2441,25 @@ def _resolve_authors_source(
         )
 
 
+def _group_already_satisfied(args_obj: dict, groups: list, key: str) -> bool:
+    """Does the call already carry an argument that `key` is mutually exclusive with?
+
+    Module-level, not a closure inside `_inject_context_ids`, deliberately: a nested def whose
+    parameter shadows a name the enclosing loop binds later reads to the CP0 instrument as
+    F-50 (a local read on a path that returns before it is assigned). The instrument is right
+    to distrust the pattern, so the pattern goes rather than the check.
+
+    A blank value is an absent argument wearing a key, and does not satisfy a group.
+    """
+    for g in groups:
+        if key not in g:
+            continue
+        for other in g:
+            if other != key and str(args_obj.get(other) or "").strip():
+                return True
+    return False
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -2504,6 +2523,22 @@ def _inject_context_ids(
     _mode_args = _meta.get("no_context_fill")
     _no_fill = {a for a in _mode_args if isinstance(a, str)} if isinstance(
         _mode_args, (list, tuple)) else set()
+    # 🔴 THE RUNTIME CAN BUILD THE ONE SHAPE A TOOL REFUSES, and no wording stops it.
+    # composition_list_derivatives takes EXACTLY ONE of book_id/project_id; a studio book turn
+    # carries both, so this function supplied both and the tool refused "give EXACTLY ONE".
+    # Measured 2026-09-01, K=5: 24 of 24 calls carried both, every one refused; store-wide that
+    # shape is 0 done in 46 attempts. The previous cycle rewrote the refusal to say "call it with
+    # NO ARGUMENTS" and the live run was UNCHANGED — an obedient model gets the same shape,
+    # because with no arguments this loop fills both. The fix has to be here, where the shape is
+    # made.
+    #
+    # A group is completed at most once: whichever member is already present wins, and for an
+    # empty call that is the first this loop reaches (book_id — "the usual way in", and the only
+    # id every turn carries).
+    _groups = _meta.get("exclusive_args")
+    _groups = [g for g in _groups if isinstance(g, (list, tuple))] if isinstance(
+        _groups, (list, tuple)) else []
+
     for key, val in (("book_id", book_id), ("chapter_id", chapter_id), ("project_id", project_id)):
         if key in _no_fill:
             # The tool declares this argument mode-selecting: absent means something. Never
@@ -2595,6 +2630,16 @@ def _inject_context_ids(
         val_s = str(val)
         supplied = args_obj.get(key)
         if not supplied:
+            # Only a FILL can complete an exclusive group. A substitution below replaces a value
+            # the model already put there, so it cannot add a member — and correcting a
+            # mistranscribed id is right whether or not the tool is exclusive.
+            if _group_already_satisfied(args_obj, _groups, key):
+                logger.info(
+                    "not filling %s on %s: it is exclusive with an argument the call already "
+                    "carries, and supplying both is the one shape that tool refuses",
+                    key, fn.get("name"),
+                )
+                continue
             args_obj[key] = val_s
             continue
         if isinstance(supplied, str) and not _is_uuid(supplied):

@@ -77,6 +77,17 @@ def validate_tool_meta(meta: dict[str, Any] | None, *, tool_name: str = "") -> N
             f"_meta.no_context_fill{label} must be a list of argument names"
         )
 
+    xa = meta.get("exclusive_args")
+    if xa is not None and not (
+        isinstance(xa, (list, tuple))
+        and all(isinstance(g, (list, tuple)) and len(g) >= 2
+                and all(isinstance(a, str) for a in g) for g in xa)
+    ):
+        raise MetaValidationError(
+            f"_meta.exclusive_args{label} must be a list of groups, each two or more "
+            "argument names"
+        )
+
     synonyms = meta.get("synonyms")
     if synonyms is not None and not (
         isinstance(synonyms, (list, tuple))
@@ -96,6 +107,7 @@ def require_meta(
     ambient_book: bool = False,
     ambient_project: bool = False,
     no_context_fill: list[str] | None = None,
+    exclusive_args: list[list[str]] | None = None,
     visibility: str | None = None,
     superseded_by: str | None = None,
     tool_name: str = "",
@@ -133,7 +145,25 @@ def require_meta(
     ALSO HAVE SUPPLIED AND MEANT. Renamed from ``mode_selecting_args`` on 2026-08-24, which
     named only the first reason.
 
-    ``visibility="legacy"`` DEPRECATES the tool (CAT-4, mirrors the Go kit's
+    ``exclusive_args=[["book_id", "project_id"]]`` names argument groups of which the tool
+    accepts EXACTLY ONE. A backfiller must not COMPLETE such a group: if any member is
+    already present, the others stay absent.
+
+    🔴 MEASURED 2026-09-01, and it refuted a wording fix. ``composition_list_derivatives``
+    takes exactly one of ``book_id``/``project_id``, and a book turn in the studio carries
+    BOTH — so ``_inject_context_ids`` filled both and the tool refused "give EXACTLY ONE".
+    Live K=5: 24 of 24 calls carried both and every one was refused; store-wide, that shape
+    is 0 done in 46 attempts. The turn before this was spent rewriting the refusal to say
+    "call it with NO ARGUMENTS", which changed nothing, BECAUSE AN OBEDIENT MODEL GETS THE
+    SAME SHAPE: with no arguments the runtime supplies both. No wording can fix a shape the
+    runtime constructs after the model has spoken.
+
+    The rule this states is the converse of ``no_context_fill``'s: that one says an argument
+    may be MEANINGFUL BY ITS ABSENCE, this one says a COMBINATION may be invalid. They are
+    separate because a tool can want one and not the other — ``composition_generate`` is
+    exclusive over ``outline_node_id``/``chapter_id`` while wanting its ids filled normally.
+
+        ``visibility="legacy"`` DEPRECATES the tool (CAT-4, mirrors the Go kit's
     ``WithVisibility``): it stays registered + callable, but is EXCLUDED from the
     agent's discoverable set on both federation surfaces (``tool_discovery.py`` +
     ``find-tools.ts``). Pair it with ``superseded_by=<tool>`` — the tool that REPLACES
@@ -159,6 +189,9 @@ def require_meta(
     # be one the caller could also have supplied and MEANT.
     if no_context_fill:
         meta["no_context_fill"] = list(no_context_fill)
+    # Groups of which the tool accepts EXACTLY ONE. A backfiller must not complete one.
+    if exclusive_args:
+        meta["exclusive_args"] = [list(g) for g in exclusive_args]
     if ambient_book:
         meta["ambient_book"] = True
     if ambient_project:

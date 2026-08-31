@@ -97,6 +97,39 @@ class TestTheHelperNoLongerClaimsWhatItDoesNotDo:
                 "source_work_id — which is exactly the defect this guard exists for")
 
 
+class TestTheRefusalNamesAShapeTheRuntimeCanDeliver:
+    """🔴 EVERY NOT_A_DERIVATIVE REFUSAL TOLD THE MODEL TO DO THE ONE THING THAT CANNOT WORK.
+
+    `composition_list_derivatives` takes EXACTLY ONE of book_id or project_id — probed against
+    the deployed service: book_id alone ACCEPTED, project_id alone ACCEPTED, BOTH REFUSED. And
+    chat-service's `_inject_context_ids` fills `book_id` into any tool declaring it whenever the
+    turn has a book, which a book-scoped tool always does.
+
+    So "pass it THIS SAME project_id" produced BOTH, and was refused. The store agrees across
+    every recorded call of that tool: project_id only 34 done / 50 failed (the 50 from turns
+    with no book context), BOTH 0 done / 46 failed — every single one.
+    """
+
+    def test_no_refusal_still_tells_the_model_to_pass_project_id(self):
+        src = pathlib.Path(inspect.getfile(mcp)).read_text(encoding="utf-8")
+        joined = " ".join(src.split())
+        for bad in ("Call composition_list_derivatives and pass it THIS SAME project_id",
+                    "composition_list_derivatives with project_id= THIS SAME VALUE",
+                    "composition_list_derivatives with project_id=THIS SAME VALUE"):
+            assert bad not in joined, (
+                f"a refusal still instructs {bad!r} — combined with the book_id the runtime "
+                "adds, that is the one argument shape the tool refuses")
+
+    def test_every_refusal_that_names_the_lookup_says_NO_ARGUMENTS(self):
+        for name in DERIVATIVE_ONLY:
+            src = " ".join(ast.unparse(_fn(name)).split())
+            if "composition_list_derivatives" not in src:
+                continue
+            assert "NO ARGUMENTS" in src, (
+                f"{name} names the lookup tool without saying how to call it in a way the "
+                "runtime can deliver")
+
+
 if __name__ == "__main__":
     import pytest
 

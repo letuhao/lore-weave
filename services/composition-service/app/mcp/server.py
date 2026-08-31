@@ -1739,6 +1739,15 @@ class _DerivativeArchiveArgs(ForbidExtra):
     meta=require_meta(
         "R", "book",
         synonyms=["list dị bản", "list what-if branches", "list derivatives", "list divergences", "show branches"],
+        # 🔴 THE RUNTIME USED TO BUILD THE ONE SHAPE THIS TOOL REFUSES. A studio book turn
+        # carries book_id AND project_id, and chat-service's `_inject_context_ids` filled both —
+        # measured 2026-09-01, K=5: 24 of 24 calls carried both and every one was refused; the
+        # shape is 0 done in 46 attempts store-wide. Rewriting the refusal that sends the model
+        # here to say "call it with NO ARGUMENTS" changed NOTHING, because with no arguments the
+        # runtime fills both. Declaring the group is what stops it: the backfiller now completes
+        # a group at most once, and for an empty call that is book_id — the way in this tool's
+        # own description already calls "the usual way and the one you will already have".
+        exclusive_args=[["book_id", "project_id"]],
         tool_name="composition_list_derivatives",
     ),
 )
@@ -2107,9 +2116,11 @@ async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverride
         return {"success": False, "error": (
             "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
             "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
-            "project_id). Call composition_list_derivatives and pass it THIS SAME project_id — it "
-            "lists every Work of the book — then retry with the project_id of the entry whose "
-            "is_canonical is false. Only if that list has no derivative should you create one with "
+            "project_id). Call composition_list_derivatives with NO ARGUMENTS — it takes EXACTLY "
+            "ONE of book_id or project_id, and the runtime already supplies this book. Do NOT "
+            "pass project_id to it: combined with the book the runtime adds, that is the one "
+            "shape it refuses. Then retry with the project_id of the entry whose is_canonical "
+            "is false. Only if that list has NO derivative should you create one with "
             "composition_create_derivative."
         )}
     # 🔴 AN OVERRIDE WITH NO FIELDS OVERRIDES NOTHING, and it was being created. Measured
@@ -2210,9 +2221,11 @@ async def composition_entity_override_update(ctx: MCPContext, args: _EntityOverr
         return {"success": False, "error": (
             "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
             "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
-            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
-            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
-            "Retry with the project_id of the entry whose is_canonical is false."
+            "project_id). Call composition_list_derivatives with NO ARGUMENTS — it takes EXACTLY "
+            "ONE of book_id or project_id, and the runtime already supplies this book. Do NOT "
+            "pass project_id to it: combined with the book the runtime adds, that is the one "
+            "shape it refuses. Then retry with the project_id of the entry whose is_canonical "
+            "is false."
         )}
     derivatives = DerivativesRepo(get_pool())
     prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
@@ -2263,9 +2276,11 @@ async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverr
         return {"success": False, "error": (
             "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
             "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
-            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
-            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
-            "Retry with the project_id of the entry whose is_canonical is false."
+            "project_id). Call composition_list_derivatives with NO ARGUMENTS — it takes EXACTLY "
+            "ONE of book_id or project_id, and the runtime already supplies this book. Do NOT "
+            "pass project_id to it: combined with the book the runtime adds, that is the one "
+            "shape it refuses. Then retry with the project_id of the entry whose is_canonical "
+            "is false."
         )}
     derivatives = DerivativesRepo(get_pool())
     prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
@@ -2309,9 +2324,11 @@ async def composition_entity_override_restore(ctx: MCPContext, args: _EntityOver
         return {"success": False, "error": (
             "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
             "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
-            "project_id). Call composition_list_derivatives with project_id=THIS SAME VALUE and "
-            "NOTHING ELSE — do NOT also pass book_id; that tool takes EXACTLY ONE of the two. "
-            "Retry with the project_id of the entry whose is_canonical is false."
+            "project_id). Call composition_list_derivatives with NO ARGUMENTS — it takes EXACTLY "
+            "ONE of book_id or project_id, and the runtime already supplies this book. Do NOT "
+            "pass project_id to it: combined with the book the runtime adds, that is the one "
+            "shape it refuses. Then retry with the project_id of the entry whose is_canonical "
+            "is false."
         )}
     derivatives = DerivativesRepo(get_pool())
     if not await derivatives.restore_override(work.id, work.book_id, _uuid(args.override_id, "override_id")):
@@ -3159,6 +3176,12 @@ class _GenerateArgs(ForbidExtra):
         synonyms=["generate prose", "write scene", "write chapter", "draft scene",
                   "draft chapter", "cowrite", "co-write", "ai write", "generate draft"],
         async_job=True,
+        # The same class, second instance, found by censusing the tools that refuse "EXACTLY
+        # ONE": chapter_id is a context id the runtime fills, so on a turn with a chapter open a
+        # model asking for a SCENE (outline_node_id) had the chapter added underneath it and got
+        # "pass EXACTLY ONE". Declared here even though this half was not separately measured
+        # live — the mechanism is identical and the declaration is what makes it inert.
+        exclusive_args=[["outline_node_id", "chapter_id"]],
         tool_name="composition_generate",
     ),
 )
@@ -8965,9 +8988,11 @@ class _EntityOverrideEditArgs(ForbidExtra):
                       # 🔴 no_context_fill=["project_id"] WAS TRIED HERE AND TAKEN BACK OUT. The
                       # ambient project IS the wrong Work for this tool — measured c-override7,
                       # NOT_A_DERIVATIVE 5/5 — but suppressing the backfill is too blunt a remedy:
-                      # composition_list_derivatives requires a project_id and takes nothing else
-                      # ("Pass ANY Work's project_id from the book"), so the canonical id is a
-                      # perfectly good input to the very lookup this tool wants. Removing it left
+                      # composition_list_derivatives then required a project_id and took nothing
+                      # else, so the canonical id was a perfectly good input to the very lookup
+                      # this tool wants. (It takes book_id now, and the refusals below tell the
+                      # model to pass NEITHER — both at once is the one shape it rejects, and the
+                      # runtime supplies book_id unasked.) Removing the backfill left
                       # the model with no project id at all, and c-override8 measured what it did
                       # then — put the target_entity_id into project_id AND book_id on three
                       # different tools, all refused "not found or not accessible".
@@ -9035,11 +9060,11 @@ async def composition_entity_override_edit(ctx: MCPContext, args: _EntityOverrid
             "NOT_A_DERIVATIVE — this project_id is the book's CANONICAL Work, and an override "
             "exists only on a dị bản (a DERIVATIVE Work, which is a separate Work with its own "
             "project_id). NOTHING WAS LISTED, and that is not the same as there being nothing to "
-            "list. Call composition_list_derivatives with project_id="
-            "THIS SAME VALUE and NOTHING ELSE — do NOT also pass book_id; that tool takes "
-            "EXACTLY ONE of the two and refuses when both are present. It lists every Work of "
-            "the book; retry op=list with the project_id of the entry whose is_canonical is "
-            "false."
+            "list. Call composition_list_derivatives with NO ARGUMENTS — it takes EXACTLY ONE "
+            "of book_id or project_id, and the runtime already supplies this book. Do NOT pass "
+            "project_id to it: combined with the book the runtime adds, that is the one shape "
+            "it refuses. Then retry op=list with the project_id of the entry whose "
+            "is_canonical is false."
         )}
     derivatives = DerivativesRepo(get_pool())
     rows = await derivatives.list_overrides_for_work(
