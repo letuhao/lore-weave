@@ -101,12 +101,107 @@ class TestTheChokepointConsultsItLast:
         src = inspect.getsource(ss._advertise_discovery_tools)
         assert "R1 look-back" in src
 
-    def test_the_caller_passes_it(self):
-        """GUARD THE CALL SITE. A helper returning the right text is worth nothing if the turn
-        never hands it over."""
-        src = ss.pathlib.Path(ss.__file__).read_text(encoding="utf-8") \
-            if hasattr(ss, "pathlib") else open(ss.__file__, encoding="utf-8").read()
-        assert "prior_request_text=prior_request_for_lookback(" in src
+    def test_EVERY_call_site_passes_it_not_just_one(self):
+        """🔴 THE SUBSTRING CHECK THIS REPLACES PASSED WHILE THE FIX WAS DEAD.
+
+        The old guard asked whether `prior_request_text=prior_request_for_lookback(` appeared
+        ANYWHERE in the module. It did — at the caller. But `_advertise_discovery_tools` has
+        THREE call sites, and the one that feeds the wire is the rebuild inside
+        `_stream_with_tools`, which runs on every pass and recomputes answerability from the
+        CURRENT turn's text. Measured live (c-planapply2, K=5, serial): the look-back logged its
+        match on 5/5 runs and the tool reached 0/5 confirmation-turn wires.
+
+        A whole-file substring cannot see "one site has it, the load-bearing one does not" —
+        the same shape as two other misses on this branch (4 of 5 sites, then 4 of 8). It was
+        also brittle in the other direction: hoisting the call into a variable broke it while
+        the behaviour was unchanged. So this walks the AST and holds EVERY site to the rule.
+        """
+        import ast
+        tree = ast.parse(open(ss.__file__, encoding="utf-8").read())
+        sites = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "_advertise_discovery_tools"]
+        assert sites, "the builder is never called — this guard is pointing at nothing"
+
+        bad = []
+        for c in sites:
+            kw = {k.arg: k.value for k in c.keywords}
+            if "prior_request_text" in kw:
+                continue
+            # 🔴 NO EXEMPTIONS, AND THE ONE THAT USED TO BE HERE WAS DISPROVEN BY ITS OWN
+            # LOGS. The resume site was exempted on the reasoning that a suspended run already
+            # carries the ORIGINAL request in `susp.user_message_content`. It carries the text
+            # the run was suspended ON — and when the suspended turn IS the confirmation, that
+            # is the bare affirmative. Measured: after the FE posted tool-results, every
+            # resumed pass logged "0 promised, 0 on the wire". An exemption is an assumption
+            # written down as a rule, so this guard no longer grants any.
+            bad.append(c.lineno)
+        assert not bad, (
+            f"_advertise_discovery_tools called without prior_request_text at line(s) {bad} — "
+            "that site rebuilds the surface from THIS turn's text only, so a confirmation turn "
+            "loses the tool there no matter what the other call sites pass")
+
+    def test_the_pass_loop_forwards_it_rather_than_defaulting(self):
+        """The rebuild lives in `_stream_with_tools`. If it takes the parameter but no caller
+        supplies one, the default "" makes the whole thread inert while every other guard in
+        this file still passes."""
+        import ast
+        tree = ast.parse(open(ss.__file__, encoding="utf-8").read())
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and n.name == "_stream_with_tools")
+        assert any(a.arg == "prior_request_text"
+                   for a in list(fn.args.args) + list(fn.args.kwonlyargs)), (
+            "_stream_with_tools does not accept the look-back, so its per-pass rebuild can only "
+            "use this turn's text")
+        calls = [n for n in ast.walk(tree)
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "_stream_with_tools"]
+        assert [c for c in calls if any(k.arg == "prior_request_text" for k in c.keywords)], (
+            "no caller of _stream_with_tools passes prior_request_text — the parameter exists "
+            "and every pass silently rebuilds on the default")
+
+    def test_the_threaded_name_is_bound_on_EVERY_arm(self):
+        """🔴 FOURTEEN GREEN TESTS AND 5/5 LIVE RUNS DIED ON A NameError.
+
+        The look-back was assigned inside the `if discovery…` arm and read unconditionally at
+        the pass-loop call, so every turn taking the other arm raised
+        `name '_lookback_request_text' is not defined` and the whole turn was lost. The AST
+        guards above check the SHAPE of the call sites; none of them can see whether the name
+        they check for is actually bound, and no unit test drives this function end to end.
+
+        So: whatever name is passed as `prior_request_text=` must be assigned at the top level
+        of the enclosing function body, where it dominates every later use — not nested inside
+        a branch that a real turn may skip."""
+        import ast
+        tree = ast.parse(open(ss.__file__, encoding="utf-8").read())
+        checked = 0
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            params = {a.arg for a in list(fn.args.args) + list(fn.args.kwonlyargs)}
+            # Names this function hands on as the look-back, that it does not simply receive.
+            passed = {
+                k.value.id
+                for c in ast.walk(fn) if isinstance(c, ast.Call)
+                for k in c.keywords
+                if k.arg == "prior_request_text" and isinstance(k.value, ast.Name)
+            } - params
+            for name in sorted(passed):
+                checked += 1
+                top = any(
+                    (isinstance(s, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == name for t in s.targets))
+                    or (isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)
+                        and s.target.id == name)
+                    for s in fn.body)
+                assert top, (
+                    f"{fn.name} passes {name!r} as prior_request_text but never binds it at its "
+                    "top level — it is assigned inside a branch, so an arm that skips that "
+                    "branch raises NameError and loses the whole turn")
+        assert checked, (
+            "no function passes a NAMED variable as prior_request_text — this guard is inert, "
+            "and the binding bug it exists for would sail through again")
 
 
 class TestTheGateIsNarrowingNotPrecision:

@@ -238,3 +238,63 @@ class TestBothSitesActuallyAppendIt:
                 "of it — the detectors strip by `text.replace(marker, ' ')`, so this loop will "
                 "read the platform's own words as the model's claim"
             )
+
+
+class TestACardIsNotAWrite:
+    """🔴 THE SENTENCE CORROBORATED A CLAIM THAT WAS FALSE, WHICH IS THE DEFECT THIS WHOLE
+    MECHANISM EXISTS TO REMOVE — shipped by me, caught live the same day.
+
+    Measured 2026-08-31 (c-planapply2, K=5, serial, real provider): `plan_bootstrap_apply`
+    returned a `confirm_token` and the record stamped it
+
+        call_outcome = "done",  activity = {"summary": "Did plan_bootstrap_apply",
+                                            "undo": {"available": false}}
+
+    so the brief closed the reply with "Already applied in this turn: plan_bootstrap_apply."
+    The store had NO chapters on any of the five runs, and the model's own "The chapters have
+    been successfully created!" was then backed by the server's own line.
+
+    `done` means THE CALL RETURNED. It never meant the world changed — call-outcome and
+    turn-outcome are different vocabularies, and a token minted for a human to click is by
+    construction a write that has not landed.
+    """
+
+    def test_a_confirm_token_result_committed_nothing(self):
+        tc = {"tool": "plan_bootstrap_apply", "call_outcome": "done",
+              "activity": {"summary": "Did plan_bootstrap_apply"},
+              "result": {"book_id": "b", "proposal_id": "p", "confirm_token": "eyJ…",
+                         "new_chapters_count": 4}}
+        assert ss._committed_nothing(tc)
+
+    def test_the_ENVELOPED_shape_is_caught_too(self):
+        """The wire shape is {"ok": true, "result": {...}}; the stored chunk flattens it. Both
+        reach this predicate, so both must be judged the same."""
+        tc = {"tool": "plan_bootstrap_apply", "call_outcome": "done",
+              "activity": {"summary": "Did it"},
+              "result": {"ok": True, "result": {"confirm_token": "eyJ…"}}}
+        assert ss._committed_nothing(tc)
+
+    def test_the_brief_does_NOT_name_a_carded_write(self):
+        """The end-to-end shape, at the function the author's sentence comes from."""
+        history = [{"tool": "plan_bootstrap_apply", "call_outcome": "done",
+                    "activity": {"summary": "Did plan_bootstrap_apply"},
+                    "result": {"confirm_token": "eyJ…", "new_chapters_count": 4}}]
+        assert ss._completed_in_this_turn(history) == "", (
+            "the turn named a carded write as applied — the author is told their book changed "
+            "while the card is still waiting for a click")
+
+    def test_a_REAL_write_is_still_named(self):
+        """The correction must not silence the mechanism it is correcting: a genuine landed
+        write still has to be reported, or the original defect returns by the back door."""
+        history = [{"tool": "kg_add_nodes", "call_outcome": "done",
+                    "activity": {"summary": "Added 3 nodes"},
+                    "result": {"added": 3}}]
+        assert "kg_add_nodes" in ss._completed_in_this_turn(history)
+
+    def test_a_propose_that_really_wrote_is_still_named(self):
+        """A proposal row IS a write — plan_bootstrap_propose persisted a row in the same batch
+        (plan_bootstrap_proposal 0 -> 1 rows). Only a confirm_token means 'not yet'."""
+        history = [{"tool": "plan_bootstrap_propose", "call_outcome": "done",
+                    "activity": {"summary": "Proposed"},
+                    "result": {"status": "pending", "proposal_id": "01a0…"}}]
+        assert "plan_bootstrap_propose" in ss._completed_in_this_turn(history)

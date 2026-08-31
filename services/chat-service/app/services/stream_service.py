@@ -1783,12 +1783,16 @@ def prior_request_for_lookback(
     called = {c.get("tool") for c in (prior_assistant_tool_calls or [])
               if isinstance(c, dict)}
     # 🔴 `advertised_tools` IS A LIST OF PER-PASS OBJECTS, NOT A LIST OF NAMES:
-    # [{"pass": 1, "count": 58, "names": [...]}, ...]. Assuming names cost a broken platform —
-    # `set()` over a list of dicts raised `TypeError: unhashable type: 'dict'` on EVERY turn, and
-    # the batch that was meant to prove this fix came back 5 of 5 no_output_timeout. The same
-    # wrong assumption was in the SQL that measured the gate, where `jsonb_array_elements_text`
-    # yielded whole objects as text and so never matched a tool name — which is why the "gated"
-    # precision equalled the ungated one: the gate was firing on everything.
+    # [{"pass": 1, "count": 58, "names": [...]}, ...]. Assuming names cost a broken platform
+    # — `set()` over a list of dicts raised `TypeError: unhashable type: 'dict'` on EVERY
+    # turn, and the batch meant to prove this fix came back 5 of 5 no_output_timeout.
+    #
+    # A CLAIM THAT STOOD HERE AND WAS WRONG, kept as a correction rather than deleted: this
+    # said the SQL measuring the gate shared the same bug, so the recorded precision was
+    # void. Re-derived against the real shape, the gate figures reproduce EXACTLY (113 fires
+    # at 13/91; card-only 10 at 0/10), where an objects-as-text bug would have fired the gate
+    # on all 157. The measurement was sound; only this helper had the bug. Generalising from
+    # "my code had this defect" to "my measurement must have too" is its own error.
     surfaced: set = set()
     for _p in (prior_assistant_advertised or []):
         if isinstance(_p, dict):
@@ -4349,6 +4353,14 @@ async def _stream_with_tools(
     # same flat cap). None (e.g. the sub-agent nested call) ⇒ the flat default.
     context_length: int | None = None,
     permission_mode: str = "write",
+    # 🔴 D-R1-IS-KEYED-ON-THIS-TURN — THE REBUILD IS THE LOAD-BEARING CALL, NOT THE SEED.
+    # `tool_defs` from the caller is only the FIRST-pass advertisement (its own comment says so);
+    # this function recomputes the surface on EVERY pass from `request_text`. So a look-back
+    # applied only at the caller is discarded before pass 1 reaches the wire. Measured
+    # 2026-08-31 on c-planapply2 (K=5, serial): the look-back logged its match on 5/5 runs and
+    # `plan_bootstrap_apply` was on 0/5 confirmation-turn wires, because this call recomputed
+    # answerability from "Yes, please create them." and got nothing. Threaded, not defaulted.
+    prior_request_text: str = "",
     decision_check=None,
     hooks: list[dict] | None = None,
     subagent_tool: dict | None = None,
@@ -4836,6 +4848,7 @@ async def _stream_with_tools(
                         suppress_names=_suppress,
                         book_bound=bool((context_ids or {}).get("book_id")),
                         request_text=request_text,
+                        prior_request_text=prior_request_text,
                     )
                 else:
                     advertised = (
@@ -9517,6 +9530,11 @@ async def stream_response(
     # look-back. One row, only what the gate reads: whether a call was left awaiting a human
     # and which tools were put on the wire. Kept out of `messages` on purpose — that list is
     # the model's context and must not grow for a surfacing decision.
+    # 🔴 BOUND HERE, NOT IN THE DISCOVERY BRANCH. Assigned where it is COMPUTED, it is
+    # unbound on every turn that takes the other arm, and the pass-loop call below reads it
+    # unconditionally: 5/5 runs died with NameError. A default of "" is the inert case, which
+    # is what a turn with no prior assistant state should get anyway.
+    _lookback_request_text: str = ""
     _prev_tool_calls: list = []
     _prev_advertised: list = []
     try:
@@ -10434,14 +10452,17 @@ async def stream_response(
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
                 # {seed ∪ discovered}), but a non-empty value flips use_tools True.
+                # DQ-T68 (a) — "" unless the previous assistant turn left something pending,
+                # in which case R1 may fall back to the earlier request. Computed ONCE here and
+                # threaded into _stream_with_tools, which rebuilds the surface every pass: the
+                # seed below is discarded before the wire, so the seed alone fixes nothing.
+                _lookback_request_text = prior_request_for_lookback(
+                    messages, _prev_tool_calls, _prev_advertised)
                 tool_defs = _advertise_discovery_tools(
                     _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
                     book_bound=bool(_ctx_book_id),
                     request_text=user_message_content,
-                    # DQ-T68 (a) — "" unless the previous assistant turn left something
-                    # pending, in which case R1 may fall back to the earlier request.
-                    prior_request_text=prior_request_for_lookback(
-                        messages, _prev_tool_calls, _prev_advertised),
+                    prior_request_text=_lookback_request_text,
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
@@ -10479,6 +10500,7 @@ async def stream_response(
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=user_message_content,
+        prior_request_text=_lookback_request_text,
         user_id=user_id,
         model_source=model_source,
         model_ref=model_ref,
@@ -11098,7 +11120,25 @@ def _committed_nothing(tc: dict) -> bool:
     on the RESULT rather than the call.
     """
     result = tc.get("result")
-    return isinstance(result, dict) and result.get("created") is False
+    if not isinstance(result, dict):
+        return False
+    # 🔴 A CONFIRM CARD IS NOT A WRITE, AND THIS SENTENCE TOLD THE AUTHOR IT WAS.
+    # Measured live 2026-08-31 (c-planapply2, K=5): a plan_bootstrap_apply that returned a
+    # `confirm_token` is recorded call_outcome=done WITH an activity block whose summary
+    # reads "Did plan_bootstrap_apply" and whose undo is unavailable — so this function said
+    # "Already applied in this turn: plan_bootstrap_apply." while the store showed NO
+    # chapters, on any of the 5 runs. The model then said the chapters were created, and the
+    # server line corroborated it.
+    #
+    # THE DOCSTRING ABOVE IS TRUE AND WAS NOT ENOUGH: no *deferred* call carries an activity
+    # block, but a carded one is not stamped deferred — it is stamped DONE, because the CALL
+    # did succeed. Call-outcome and turn-outcome are different vocabularies; `done` means the
+    # call returned, never that the world changed. A token minted for a human to click is by
+    # construction a write that HAS NOT LANDED, whatever the activity strip claims.
+    _inner = result.get("result")
+    if "confirm_token" in result or (isinstance(_inner, dict) and "confirm_token" in _inner):
+        return True
+    return result.get("created") is False
 
 
 def _completed_in_this_turn(tool_calls_history: list[dict]) -> str:
@@ -11205,6 +11245,13 @@ async def _emit_chat_turn(
     messages: list[dict],
     gen_params: dict,
     tool_defs: list[dict],
+    # DQ-T68 (a) — the earlier request to fall back on when THIS turn answers nothing.
+    # Threaded from stream_response because the per-pass rebuild lives below this frame,
+    # in another function entirely: a name bound in stream_response is simply not in scope
+    # here, which is how 5/5 live runs died with NameError. "" is the inert case, and is
+    # what the RESUME caller correctly leaves it at (a resume already carries the original
+    # request, so it has nothing to look back to).
+    prior_request_text: str = "",
     use_tools: bool,
     knowledge_client,
     admin_token: str | None = None,
@@ -11658,6 +11705,7 @@ async def _emit_chat_turn(
                     )
 
             chunk_stream = _stream_with_tools(
+                prior_request_text=prior_request_text,
                 plan_turn=_plan_turn,
                 plan_events_out=_plan_events,
                 model_source=model_source,
@@ -12842,6 +12890,39 @@ async def resume_stream_response(
     # Append the frontend tool's result (the human's apply decision) so the
     # agent can acknowledge it in the 2nd pass.
     working = list(susp.working)
+
+    # 🔴 A RESUME IS NOT AUTOMATICALLY CARRYING THE ORIGINAL REQUEST, AND ASSUMING SO
+    # LEFT THIS PATH BROKEN. The resume site passes `susp.user_message_content` on the
+    # reasoning that a suspended run remembers what it was suspended on — true, but when the
+    # SUSPENDED TURN IS ITSELF THE CONFIRMATION, that text is the bare affirmative. Measured
+    # 2026-08-31: after the FE posted tool-results the turn continues through HERE, and every
+    # pass logged "0 promised, 0 on the wire" where the original request would have promised
+    # 5. A look-back applied only at the first entry point covers pass 1 and loses the tool
+    # for the rest of the turn.
+    _lookback_request_text: str = ""
+    try:
+        _rprev = await pool.fetchrow(
+            """
+            SELECT tool_calls, advertised_tools FROM chat_messages
+            WHERE session_id = $1 AND role = 'assistant' AND is_error = false AND branch_id = 0
+            ORDER BY sequence_num DESC LIMIT 1
+            """,
+            session_id,
+        )
+        if _rprev is not None:
+            _rvals = []
+            for _col in ("tool_calls", "advertised_tools"):
+                _v = _rprev[_col]
+                if isinstance(_v, str):
+                    try:
+                        _v = json.loads(_v)
+                    except (TypeError, ValueError):
+                        _v = []
+                _rvals.append(_v if isinstance(_v, list) else [])
+            _lookback_request_text = prior_request_for_lookback(
+                working, _rvals[0], _rvals[1])
+    except Exception:  # noqa: BLE001 — a surfacing hint must never break a resume
+        logger.debug("R1 look-back (resume): prior-turn state unavailable", exc_info=True)
     # RAID C2 (DR-C2 §4) — a `tool_approval` suspend resumes with
     # approved_once | approved_always | denied; its tool result is the REAL
     # server execution (or the denial), computed below once knowledge_client +
@@ -13336,6 +13417,7 @@ async def resume_stream_response(
                 # carries it. Dropping it here would make the post-approval pass the one
                 # surface in the system that cannot answer the question it was suspended on.
                 request_text=susp.user_message_content,
+                prior_request_text=_lookback_request_text,
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the
@@ -13380,6 +13462,7 @@ async def resume_stream_response(
     async for line in _emit_chat_turn(
         session_id=session_id,
         user_message_content=susp.user_message_content,
+        prior_request_text=_lookback_request_text,
         user_id=user_id,
         model_source=susp.model_source,
         model_ref=susp.model_ref,
