@@ -27,6 +27,19 @@ from app.db.repositories.plan_runs import PlanRunsRepo
 logger = logging.getLogger(__name__)
 
 
+# The package fields a run emits ONCE PER ARC — derived from the store, not from the schema.
+#
+# 🔴 `beats` IS NOT ONE OF THEM, and folding it would have TRIPLED it. On the sixteen
+# genuinely multi-arc runs, latest-per-arc, the blob counts are decisive:
+#
+#     a 3-arc run    chapters: 3 distinct    events: 3 distinct    beats: 1 distinct
+#
+# chapters and events differ per arc; beats is the same object on every arc (or absent), i.e.
+# whole-plan. Everything else is scalar and is carried from the last arc, which is exactly
+# what both callers received before the fix.
+_PER_ARC_LISTS = ("chapters", "events")
+
+
 def compiled_package_across_arcs(
     artifacts: list[Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -52,6 +65,22 @@ def compiled_package_across_arcs(
     An artifact whose package declares no `arc_id` (a pre-per-arc run, or a whole-run compile)
     keys on its own id, so it is neither dropped nor deduped against a real arc.
     """
+    contents = _latest_content_per_arc(artifacts)
+    chapters: list[dict[str, Any]] = []
+    seeds: list[dict[str, Any]] = []
+    for content in contents:
+        chapters.extend((content.get("planning_package") or {}).get("chapters", []) or [])
+        seeds.extend(content.get("glossary_seeds", []) or [])
+    return chapters, seeds
+
+
+def _latest_content_per_arc(artifacts: list[Any]) -> list[dict[str, Any]]:
+    """The two rules above, in ONE place, oldest-first ⇒ arc order.
+
+    Extracted so `folded_package_across_arcs` genuinely SHARES this logic rather than
+    restating it. A second implementation of a rule is a second thing to get wrong, and this
+    rule already has a measured defect behind it.
+    """
     by_arc: dict[str, dict[str, Any]] = {}
     order: list[str] = []
     for art in artifacts:
@@ -63,14 +92,66 @@ def compiled_package_across_arcs(
         if arc_key not in by_arc:
             order.append(arc_key)
         by_arc[arc_key] = content  # oldest-first ⇒ the last write per arc is the newest
+    return [by_arc[k] for k in order]
 
-    chapters: list[dict[str, Any]] = []
-    seeds: list[dict[str, Any]] = []
-    for arc_key in order:
-        content = by_arc[arc_key]
-        chapters.extend((content.get("planning_package") or {}).get("chapters", []) or [])
-        seeds.extend(content.get("glossary_seeds", []) or [])
-    return chapters, seeds
+
+def folded_package_across_arcs(artifacts: list[Any]) -> dict[str, Any] | None:
+    """A run's `package` artifacts folded into ONE planning_package dict, or None.
+
+    🔴 THE DEFECT, MEASURED IN THE LIVE STORE 2026-08-31. `plan_forge_service.refine()`
+    read `latest_artifact(book_id, run_id, "package")` — the LAST arc — and passed it as the
+    refinement payload. Across the 34 runs that hold more than one package artifact:
+
+                            exists across arcs   refine() was handed   share seen
+        chapters                       218                    84          38.5%
+        events                         218                    84          38.5%
+
+    The refiner was asked to revise a plan while shown two fifths of it — and not a random
+    two fifths: one arc, so whole stretches of the story were absent rather than thinned.
+    `refine()` takes no arc parameter, so nothing about its interface says it works on a part.
+
+    OWNER RULING DQ-T85 (a), 2026-08-31: fold latest-per-arc, chapters concatenated in arc
+    order, and fix BOTH readers in the same change — "leaving one of two identical reads
+    unfixed is how OBS-T1 sat unfiled inside another row's prose for weeks".
+
+    🔴 WHAT IS DELIBERATELY *NOT* FOLDED, AND THE CONTROL THAT DECIDED IT. Only the
+    per-arc LISTS are concatenated. Every scalar (`premise`, `structure`, `arc_title`, the
+    planner state) is carried from the LAST ARC IN AUTHORED ORDER.
+
+    THAT IS NOT ALWAYS THE ARTIFACT `latest_artifact` RETURNED, and an earlier draft of this
+    comment wrongly said it was. `latest_artifact` returns the most recently WRITTEN
+    artifact, so a re-compile of an early arc makes it that arc; this fold keeps authored
+    order. Measured live over the 16 multi-arc runs: the carried `premise` differs from the
+    old read on 2 of them. It cannot change an answer — `premise_max` is the only rule that
+    reads a scalar, and across all 45 arcs of those runs the longest premise is 575 chars
+    against a 4,000 threshold, a 7x margin with 0 arcs anywhere near it. Stated as a measured
+    bound rather than as the stronger claim it replaces.
+
+    Concatenating `premise` was the tempting symmetry and it would have been a behaviour
+    change nobody ruled on: `validate()`'s only package-derived rule is
+    `premise_max` (len <= 4000), and summed across arcs the longest run reaches 6,292 chars,
+    so ONE OF THE 34 RUNS WOULD NEWLY FAIL a rule it passes today. Turning a passing plan
+    into a failing one is not a bug fix. Measured, not assumed: today 0 of 34 runs have any
+    arc over 4000 and the longest single premise in the corpus is 1,573 chars.
+    """
+    contents = _latest_content_per_arc(artifacts)
+    if not contents:
+        return None
+    folded: dict[str, Any] = dict(contents[-1].get("planning_package") or {})
+    if not folded:
+        return None
+    for key in _PER_ARC_LISTS:
+        merged: list[Any] = []
+        for content in contents:
+            merged.extend((content.get("planning_package") or {}).get(key) or [])
+        if merged or key in folded:
+            folded[key] = merged
+    # Observability: a reader that folded 3 arcs should be able to say so, and a later
+    # measurement should not have to re-derive which arcs it saw.
+    folded["folded_arc_ids"] = [
+        (c.get("planning_package") or {}).get("arc_id") for c in contents
+    ]
+    return folded
 
 
 def _glossary_item_key(kind_code: str | None, name: str | None) -> str:

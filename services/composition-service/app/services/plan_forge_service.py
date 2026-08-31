@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.pool import get_pool
+from app.services.bootstrap_service import folded_package_across_arcs
 from app.services.plan_link_service import LinkError, PlanLinkService
 from app.services.plan_pass_service import PACKAGE_KIND, derive_view
 from app.db.models import CompositionWork, GenerationJob, PlanRun
@@ -882,8 +883,20 @@ class PlanForgeService:
         if spec_art is None:
             raise ValueError("no spec to validate")
         spec = spec_art.content
-        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
-        package = pkg_art.content.get("planning_package") if pkg_art else None
+        # 🔴 EVERY package, not the latest — a run emits ONE PER ARC.
+        # DQ-T85 (a), owner 2026-08-31. Measured in the live store: 16 runs hold more than
+        # one ARC (34 hold more than one artifact, but 18 of those are re-compiles of a
+        # single arc, which the fold collapses). On those 16, the latest read carried 21 of
+        # 64 chapters — 32.8% — so refine() was asked to revise a plan while shown one arc
+        # of it, with whole stretches absent rather than thinned.
+        #
+        # THIS SITE'S OWN EXPOSURE IS NIL and it is fixed anyway, on the ruling's terms:
+        # run_rules touches the package for ONE rule (premise_max, a length check) and
+        # never reads chapters, and 0 of the runs have any arc premise over 4000. It is
+        # fixed because leaving one of two identical reads unfixed is how the sibling
+        # observation sat unfiled inside another row's prose for weeks.
+        pkg_arts = await self._runs.list_artifacts(book_id, run_id, "package")
+        package = folded_package_across_arcs(pkg_arts)
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
@@ -986,8 +999,18 @@ class PlanForgeService:
             rev["focus_paths"] = focus_paths
         analyze_art = await self._runs.latest_artifact(book_id, run_id, "analyze")
         analyze = analyze_art.content if analyze_art else None
-        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
-        package = pkg_art.content.get("planning_package") if pkg_art else None
+        # 🔴 EVERY package, not the latest — a run emits ONE PER ARC.
+        # DQ-T85 (a), owner 2026-08-31. Measured in the live store: 16 runs hold more than
+        # one ARC (34 hold more than one artifact, but 18 of those are re-compiles of a
+        # single arc, which the fold collapses). On those 16, the latest read carried 21 of
+        # 64 chapters — 32.8% — so refine() was asked to revise a plan while shown one arc
+        # of it, with whole stretches absent rather than thinned.
+        #
+        # refine() takes no arc parameter and its focus_paths select within the SPEC,
+        # which is a single un-split artifact — so nothing about its interface says it
+        # is working on a part. It was simply handed one.
+        pkg_arts = await self._runs.list_artifacts(book_id, run_id, "package")
+        package = folded_package_across_arcs(pkg_arts)
 
         if not rev:
             return "sync", {

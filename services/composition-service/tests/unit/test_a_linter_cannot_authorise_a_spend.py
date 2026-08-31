@@ -90,6 +90,13 @@ class FakePlanRunsRepo:
             return None
         return None
 
+    async def list_artifacts(self, book_id, run_id, kind):
+        """The real repo's whole-run read (DQ-T85 (a)): a run emits ONE package per
+        ARC, so validate() folds latest-per-arc instead of taking the last artifact.
+        This double has no package artifacts, which is the shape these tests exercise
+        — `run_rules` then sees package=None, exactly as before the change."""
+        return []
+
     async def save_artifact(self, created_by, run_id, kind, content):
         self.saved.append((kind, content))
         return _Artifact(content)

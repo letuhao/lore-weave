@@ -1,0 +1,1302 @@
+[
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": {
+      "phase": "SkillInjected",
+      "pinned_count": 0,
+      "hot_seed_count": 49,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "translation",
+        "book"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [],
+        "frontend": [],
+        "activated": []
+      },
+      "servers": {},
+      "schema_tokens": {
+        "frontend": 0,
+        "mcp": 0
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "translation",
+          "book"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      }
+    ],
+    "run_id": "05d205f4-3026-4d0e-a7a2-ec3e25ea501d",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 3,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': \"name '_lookback_request_text' is not defined\", 'code': 'STREAM_ERROR'}",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      }
+    ],
+    "pending_approval": null,
+    "error_population": "other",
+    "prior_turns": [
+      {
+        "prompt": "Create the chapters — make the plan real for this book.",
+        "called": [],
+        "surface_passes": [
+          [],
+          []
+        ],
+        "text": ""
+      }
+    ],
+    "wire_passes": [],
+    "pass_ledger": {
+      "store": 0,
+      "wire_log": null,
+      "gap": null
+    },
+    "prompt": "Yes, please create them.",
+    "session_id": "01a05803-039b-73bd-b2fa-b824169732c5",
+    "scenario": "plan-bootstrap-apply-compiled-answered",
+    "rep": 0,
+    "book_id": "01a05802-a925-7ee7-9e3d-f28ed16a3470",
+    "project_id": "01a05802-aac1-75a4-ad64-f7fdd6194b46",
+    "seed_ids": {
+      "01a05802-a925-7ee7-9e3d-f28ed16a3470": "fixture book_id",
+      "01a05802-aac1-75a4-ad64-f7fdd6194b46": "fixture project_id (composition_work)",
+      "01a05802-a9ef-7a49-929f-80b7ae232e21": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a05802-ab57-7818-8586-5a9a3ff218b1": "seed[0] plan_propose_spec.run_id",
+      "01a05802-ab5c-77f6-ae2c-96084cc8d196": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a05802-ab63-7309-9b6b-06d4991ad37a": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a05802-ab91-72a0-a549-469aa5517246": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a05802-ab87-7185-8aad-349614f2a69a": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a05802-ab60-707f-8253-131c55d2f09b": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a05802-aac8-707c-aea8-8e7371da9853": "seed[1] plan_compile.work_id"
+    },
+    "turn_started_at": "2026-08-31T13:29:46.558418+00:00",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.935784+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:29:25.132532+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:25.350233+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:29:25.132532+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.928094+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.719469+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.935784+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:29:25.132532+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:25.350233+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:29:25.132532+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:29:24.928094+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": {
+      "phase": "SkillInjected",
+      "pinned_count": 0,
+      "hot_seed_count": 49,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "translation",
+        "book"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [],
+        "frontend": [],
+        "activated": []
+      },
+      "servers": {},
+      "schema_tokens": {
+        "frontend": 0,
+        "mcp": 0
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "translation",
+          "book"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      }
+    ],
+    "run_id": "13af89a1-b4ff-4c21-83a1-f3e6ce79fd34",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 3,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': \"name '_lookback_request_text' is not defined\", 'code': 'STREAM_ERROR'}",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      }
+    ],
+    "pending_approval": null,
+    "error_population": "other",
+    "prior_turns": [
+      {
+        "prompt": "Create the chapters — make the plan real for this book.",
+        "called": [],
+        "surface_passes": [
+          [],
+          []
+        ],
+        "text": ""
+      }
+    ],
+    "wire_passes": [],
+    "pass_ledger": {
+      "store": 0,
+      "wire_log": null,
+      "gap": null
+    },
+    "prompt": "Yes, please create them.",
+    "session_id": "01a05803-c6ad-7d2b-8dc8-fb80ec2baa00",
+    "scenario": "plan-bootstrap-apply-compiled-answered",
+    "rep": 1,
+    "book_id": "01a05803-7088-7aa6-be3b-3dbb83751945",
+    "project_id": "01a05803-7213-7648-ba5e-97169fb94c00",
+    "seed_ids": {
+      "01a05803-7088-7aa6-be3b-3dbb83751945": "fixture book_id",
+      "01a05803-7213-7648-ba5e-97169fb94c00": "fixture project_id (composition_work)",
+      "01a05803-7158-7544-8f05-0b1c64d5555c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a05803-7292-7edc-a4bf-c025a8564d84": "seed[0] plan_propose_spec.run_id",
+      "01a05803-7298-703c-9d9b-bce2107509bc": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a05803-729f-7db7-a15d-1af087fe072a": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a05803-72df-7f35-a755-b2ae7cc29762": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a05803-72d2-7165-a7b3-a2bb83ed73c5": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a05803-729c-71d5-ab5f-c046cabcc09e": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a05803-721a-7513-b218-be7e664f33bd": "seed[1] plan_compile.work_id"
+    },
+    "turn_started_at": "2026-08-31T13:30:37.775448+00:00",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.962041+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:30:16.152958+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:16.328057+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:30:16.152958+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.954641+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.768061+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.962041+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:30:16.152958+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:16.328057+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:30:16.152958+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:30:15.954641+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": {
+      "phase": "SkillInjected",
+      "pinned_count": 0,
+      "hot_seed_count": 49,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "translation",
+        "book"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [],
+        "frontend": [],
+        "activated": []
+      },
+      "servers": {},
+      "schema_tokens": {
+        "frontend": 0,
+        "mcp": 0
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "translation",
+          "book"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      }
+    ],
+    "run_id": "664e1279-2e5a-4864-912f-f926ae2388ad",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 3,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': \"name '_lookback_request_text' is not defined\", 'code': 'STREAM_ERROR'}",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      }
+    ],
+    "pending_approval": null,
+    "error_population": "other",
+    "prior_turns": [
+      {
+        "prompt": "Create the chapters — make the plan real for this book.",
+        "called": [],
+        "surface_passes": [
+          [],
+          []
+        ],
+        "text": ""
+      }
+    ],
+    "wire_passes": [],
+    "pass_ledger": {
+      "store": 0,
+      "wire_log": null,
+      "gap": null
+    },
+    "prompt": "Yes, please create them.",
+    "session_id": "01a05804-7de1-75c3-907c-0711a3679f30",
+    "scenario": "plan-bootstrap-apply-compiled-answered",
+    "rep": 2,
+    "book_id": "01a05804-26c8-7091-8223-84719c4f3b0d",
+    "project_id": "01a05804-2824-7bcf-9f30-7a774c7ba65a",
+    "seed_ids": {
+      "01a05804-26c8-7091-8223-84719c4f3b0d": "fixture book_id",
+      "01a05804-2824-7bcf-9f30-7a774c7ba65a": "fixture project_id (composition_work)",
+      "01a05804-2767-7e81-a1a0-3bc0b8360f1b": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a05804-289e-75e7-8a9c-e233ffda7f85": "seed[0] plan_propose_spec.run_id",
+      "01a05804-28a1-7708-8ea2-b0f1f7610ddf": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a05804-28a7-7a5c-8a2f-8e3e5b4ffdb3": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a05804-28ca-781e-936c-61df61ccf95b": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a05804-28c2-75c5-92e4-a5081034c25e": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a05804-28a4-7825-b6be-e7cb2737c2df": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a05804-282a-746c-921f-7aaab5011812": "seed[1] plan_compile.work_id"
+    },
+    "turn_started_at": "2026-08-31T13:31:23.438434+00:00",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.570209+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:31:02.726248+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.872275+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:31:02.726248+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.563813+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.375717+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.570209+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:31:02.726248+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.872275+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:31:02.726248+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:02.563813+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": {
+      "phase": "SkillInjected",
+      "pinned_count": 0,
+      "hot_seed_count": 49,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "translation",
+        "book"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [],
+        "frontend": [],
+        "activated": []
+      },
+      "servers": {},
+      "schema_tokens": {
+        "frontend": 0,
+        "mcp": 0
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "translation",
+          "book"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      }
+    ],
+    "run_id": "1f954e0a-96c1-4dba-8815-951a46f097ca",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 3,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': \"name '_lookback_request_text' is not defined\", 'code': 'STREAM_ERROR'}",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      }
+    ],
+    "pending_approval": null,
+    "error_population": "other",
+    "prior_turns": [
+      {
+        "prompt": "Create the chapters — make the plan real for this book.",
+        "called": [],
+        "surface_passes": [
+          [],
+          []
+        ],
+        "text": ""
+      }
+    ],
+    "wire_passes": [],
+    "pass_ledger": {
+      "store": 0,
+      "wire_log": null,
+      "gap": null
+    },
+    "prompt": "Yes, please create them.",
+    "session_id": "01a05805-283a-7f41-aa5b-02e37984b995",
+    "scenario": "plan-bootstrap-apply-compiled-answered",
+    "rep": 3,
+    "book_id": "01a05804-d272-7938-a804-4a334419f013",
+    "project_id": "01a05804-d3b3-7482-b3fd-c0fe87a5e48a",
+    "seed_ids": {
+      "01a05804-d272-7938-a804-4a334419f013": "fixture book_id",
+      "01a05804-d3b3-7482-b3fd-c0fe87a5e48a": "fixture project_id (composition_work)",
+      "01a05804-d304-748e-a833-b3247871736c": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a05804-d425-7f7b-93b6-4329e21d3614": "seed[0] plan_propose_spec.run_id",
+      "01a05804-d429-752f-9316-63194bda4f77": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a05804-d42f-73f1-9a15-a94bf14854d3": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a05804-d44f-7a41-b748-261c6306b4a8": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a05804-d447-7d7e-b762-aa13bd9dc96c": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a05804-d42c-76b0-b201-7793f4367d38": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a05804-d3b9-75a1-a3ad-7f1641f2fa60": "seed[1] plan_compile.work_id"
+    },
+    "turn_started_at": "2026-08-31T13:32:07.800923+00:00",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.489313+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:31:46.635785+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.776258+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:31:46.635785+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.482457+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.308018+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.489313+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:31:46.635785+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.776258+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:31:46.635785+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:31:46.482457+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  },
+  {
+    "text": "",
+    "tool_calls": [],
+    "surface": {
+      "phase": "SkillInjected",
+      "pinned_count": 0,
+      "hot_seed_count": 49,
+      "activated_count": 0,
+      "injected_skills": [
+        "co_write",
+        "translation",
+        "book"
+      ],
+      "running_tool": null,
+      "last_find_tools_query": null,
+      "find_tools_call_count": 0,
+      "advertised": {
+        "core": [],
+        "frontend": [],
+        "activated": []
+      },
+      "servers": {},
+      "schema_tokens": {
+        "frontend": 0,
+        "mcp": 0
+      }
+    },
+    "surfaces": [
+      {
+        "phase": "Curated",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      },
+      {
+        "phase": "SkillInjected",
+        "pinned_count": 0,
+        "hot_seed_count": 49,
+        "activated_count": 0,
+        "injected_skills": [
+          "co_write",
+          "translation",
+          "book"
+        ],
+        "running_tool": null,
+        "last_find_tools_query": null,
+        "find_tools_call_count": 0,
+        "advertised": {
+          "core": [],
+          "frontend": [],
+          "activated": []
+        },
+        "servers": {},
+        "schema_tokens": {
+          "frontend": 0,
+          "mcp": 0
+        }
+      }
+    ],
+    "run_id": "2d449467-e4cc-478f-83e2-77c8f9764159",
+    "events": {
+      "RUN_STARTED": 1,
+      "CUSTOM": 3,
+      "RUN_ERROR": 1
+    },
+    "error": "{'type': 'RUN_ERROR', 'message': \"name '_lookback_request_text' is not defined\", 'code': 'STREAM_ERROR'}",
+    "_args": {},
+    "approvals": [],
+    "pending": null,
+    "status": null,
+    "results": [],
+    "timeline": [
+      {
+        "surface": []
+      },
+      {
+        "surface": []
+      }
+    ],
+    "pending_approval": null,
+    "error_population": "other",
+    "prior_turns": [
+      {
+        "prompt": "Create the chapters — make the plan real for this book.",
+        "called": [],
+        "surface_passes": [
+          [],
+          []
+        ],
+        "text": ""
+      }
+    ],
+    "wire_passes": [],
+    "pass_ledger": {
+      "store": 0,
+      "wire_log": null,
+      "gap": null
+    },
+    "prompt": "Yes, please create them.",
+    "session_id": "01a05805-ccfd-700b-9a6d-c76960cd10fd",
+    "scenario": "plan-bootstrap-apply-compiled-answered",
+    "rep": 4,
+    "book_id": "01a05805-832e-7e02-9a86-3c9a3687f1cf",
+    "project_id": "01a05805-8482-7207-87e8-5fafa6a85d2e",
+    "seed_ids": {
+      "01a05805-832e-7e02-9a86-3c9a3687f1cf": "fixture book_id",
+      "01a05805-8482-7207-87e8-5fafa6a85d2e": "fixture project_id (composition_work)",
+      "01a05805-83c2-7f68-9049-b2f8a93e32df": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+      "01a05805-8507-7fb3-82ab-5e5f5d907966": "seed[0] plan_propose_spec.run_id",
+      "01a05805-850b-7cd4-a649-48057526f86c": "seed[0] plan_propose_spec.run.artifacts[0].artifact_id",
+      "01a05805-8512-7ee9-8844-6e39419dde7f": "seed[0] plan_propose_spec.run.artifacts[1].artifact_id",
+      "01a05805-8539-7f0b-bde6-eaf5b55e3140": "seed[0] plan_propose_spec.run.artifacts[2].artifact_id",
+      "01a05805-8530-7746-9890-29c0e5a7792f": "seed[0] plan_propose_spec.run.artifacts[3].artifact_id",
+      "01a05805-850f-7c1e-8bcb-ff3291f0b5fe": "seed[0] plan_propose_spec.run.artifacts[4].artifact_id",
+      "0190ce00-0000-7000-8000-000000000005": "seed[1] plan_compile.package.structure.template_id",
+      "01a05805-8488-7750-853c-08645aeccb72": "seed[1] plan_compile.work_id"
+    },
+    "turn_started_at": "2026-08-31T13:32:50.770190+00:00",
+    "store": {
+      "before": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.752381+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:32:31.924933+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:32.085091+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:32:31.924933+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.745535+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      },
+      "after": {
+        "loreweave_book.chapters": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_blocks": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_drafts": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_book.chapter_raw_objects": {
+          "rows": 1,
+          "latest": "-"
+        },
+        "loreweave_book.chapter_revisions": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.554823+00"
+        },
+        "loreweave_composition.composition_work": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.752381+00"
+        },
+        "loreweave_composition.outline_node": {
+          "rows": 4,
+          "latest": "2026-08-31 13:32:31.924933+00"
+        },
+        "loreweave_composition.plan_run": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:32.085091+00"
+        },
+        "loreweave_composition.structure_node": {
+          "rows": 2,
+          "latest": "2026-08-31 13:32:31.924933+00"
+        },
+        "loreweave_knowledge.knowledge_projects": {
+          "rows": 1,
+          "latest": "2026-08-31 13:32:31.745535+00"
+        },
+        "loreweave_jobs.job_projection.owner": {
+          "rows": 1037,
+          "latest": "2026-08-31 11:47:45.256255+00"
+        },
+        "neo4j.Fact.total": {
+          "rows": 468,
+          "latest": "2026-08-26T19:45:10.952Z"
+        },
+        "neo4j.Fact.invalidated": {
+          "rows": 31,
+          "latest": "-"
+        },
+        "neo4j.Fact.project": {
+          "rows": 0,
+          "latest": "NULL"
+        },
+        "neo4j.Fact.project.invalidated": {
+          "rows": 0,
+          "latest": "-"
+        }
+      }
+    },
+    "store_diff": {}
+  }
+]

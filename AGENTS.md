@@ -642,6 +642,32 @@ Read only the docs for the module you're actively working on.
 
 ---
 
+## Deprecated tools are DEAD — spend no effort on them (adopted 2026-08-31)
+
+A tool marked `visibility: legacy` is **kept as a record, not as a reserve.** Since
+2026-08-25 the superseded gate drops **every** legacy tool from the wire — *with or without*
+a declared replacement — so no legacy tool reaches a model on any turn. Measured against the
+live 316-tool catalogue: 117 legacy tools, 116 withheld on every turn.
+
+**Therefore:**
+
+- A legacy tool is **out of scope for every fix**. Do not repair its schema, its description,
+  its metadata or its refusals. Nothing a model sees changes.
+- A legacy tool is **out of scope for every count**. Re-derive any catalogue census, coverage
+  score or denominator over **live** tools only — a rate whose denominator includes dead
+  tools is measuring a population no user can reach.
+- If a legacy tool looks like it needs work, the real question is whether its **live
+  successor** has the gap. Fix it there.
+
+The one exception is *deleting* dead weight, which is cheap and shrinks the catalogue. Adding
+metadata to it is not.
+
+> Worked example: a proposal to make `superseded_by` mandatory across 117 legacy tools and
+> backfill the 31 gaps was **withdrawn** on this rule. The label gates nothing — the gate
+> already drops labelled and unlabelled alike — so the whole task would have changed nothing
+> any user or model could observe.
+
+
 ## Project Constants
 ```
 project_id:      loreweave
