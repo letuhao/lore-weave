@@ -1,4 +1,29 @@
-"""D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH.
+"""
+🔴 THIS FILE IS RED AS OF 2026-09-01, AND THE RED IS THE FINDING. The bar is not wrong and
+has NOT been moved. `test_the_concentration_is_SCENARIO_shaped_not_TOOL_shaped` asserts a floor of
+90 runs sitting in error-free search-calling scenarios; the corpus now gives 71, and the guard's
+own message names what that means: "Clean scenarios have started erroring, which is the tool-level
+reading coming back."
+
+WHAT HAPPENED. `composition-motif-bind-edit` appears in this row's 2026-08-30 stratification as
+"30 runs, 0 err, 0%" — one of the seven clean scenarios whose 101 runs ARE this floor. On
+2026-09-01 the same scenario id ran 13 times and errored 13 times, moving its 30 runs out of the
+clean body. That is a WITHIN-SCENARIO reversal, which the scenario axis cannot absorb, and it also
+refutes the row's separate "the concentration is ONE DAY" framing — the error count, frozen at 36
+through three re-derivations, is now 49 across two days.
+
+WHY IT IS LEFT RED RATHER THAN REPAIRED. This guard was written precisely to fire when the
+scenario-shaped reading stopped holding. Lowering the floor to 71 would delete the signal on the
+day it first arrived, and the row's own history records the sibling mistake in the other direction:
+a bar a CLEAN run could break was replaced on 2026-08-30 because it measured the population mix.
+This one was broken by ERRORS, which is the guard working.
+
+It is red until the owner rules on DQ-T91 (filed 2026-09-01 on
+D-UPSTREAM-ERROR-WITH-NO-MESSAGE), because the candidate mechanism — a vector search's embedding
+call evicting the chat model, measured to turn an identical second pass from 0.8s into 15.5s —
+would explain both the reversal and the row's whole history, and what to DO about it is not this
+loop's call.
+D-THE-STALL-CONCENTRATES-ON-COMPOSITION-MOTIF-SEARCH.
 
     THE INVARIANT. Assert the DISCRIMINATION, not the rate. A percentage measured on 41 runs is
     a lead; what a guard can hold is that the buckets still separate.
