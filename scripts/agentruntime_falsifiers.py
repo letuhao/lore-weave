@@ -1295,9 +1295,13 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_AN_ORDINARY_FAILURE_IS_STILL_FAILED": [
         # Swallow real failures into the refusal bucket — removing the SIGNAL to remove the cost,
         # which is precisely what §3 forbids.
+        # 🔴 ANCHOR MOVED 2026-08-31, INTENT UNCHANGED. The inference left this inline
+        # site for `effective_call_outcome`, so readers that run BEFORE the stamp (the
+        # turn brief, at a suspend) apply the same rule. One home, one rule; the
+        # falsifier still injects the same lie, at the address it now lives at.
         (f"{CS}/app/services/instrument.py",
-         '        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
-         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else CALL_REFUSED"),
+         '    return CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
+         "    return CALL_DONE if chunk.get(\"ok\") is True else CALL_REFUSED"),
     ],
     "test_THE_REPEAT_COUNT_RIDES_THE_RECORD": [
         (f"{CS}/app/services/stream_service.py", '                        "repeat_count": _attempts,',
@@ -1697,9 +1701,13 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_DEFERRED_IS_STAMPED_AT_THE_SITE_NOT_INFERRED_FROM_AN_EMPTY_ERROR": [
         # Rebuild the conflation as a heuristic: guess `deferred` from a missing message.
+        # 🔴 ANCHOR MOVED 2026-08-31, INTENT UNCHANGED. The inference left this inline
+        # site for `effective_call_outcome`, so readers that run BEFORE the stamp (the
+        # turn brief, at a suspend) apply the same rule. One home, one rule; the
+        # falsifier still injects the same lie, at the address it now lives at.
         (f"{CS}/app/services/instrument.py",
-         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else CALL_FAILED",
-         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else ("
+         "    return CALL_DONE if chunk.get(\"ok\") is True else CALL_FAILED",
+         "    return CALL_DONE if chunk.get(\"ok\") is True else ("
          "CALL_DEFERRED if not chunk.get(\"error\") else CALL_FAILED)"),
     ],
     "test_THE_SUSPEND_SITE_ACTUALLY_STAMPS_IT": [
@@ -1906,9 +1914,13 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_A_FAILED_CALL_IS_FAILED": [
         # Record a real failure as a success — the untyped `ok` problem, restated.
+        # 🔴 ANCHOR MOVED 2026-08-31, INTENT UNCHANGED. The inference left this inline
+        # site for `effective_call_outcome`, so readers that run BEFORE the stamp (the
+        # turn brief, at a suspend) apply the same rule. One home, one rule; the
+        # falsifier still injects the same lie, at the address it now lives at.
         (f"{CS}/app/services/instrument.py",
-         '        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
-         "        _outcome = CALL_DONE"),
+         '    return CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
+         "    return CALL_DONE"),
     ],
     "test_THE_OUTCOME_IS_A_MEMBER_OF_THE_DECLARED_VOCABULARY": [
         # A value outside C-14's enum, which `Observation` would refuse and a column would keep.

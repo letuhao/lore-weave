@@ -1572,7 +1572,7 @@ _SERVER_APPENDED_LINES = (
     # actually read. Neither phrase below matches today's patterns — checked, not assumed — so
     # these entries buy nothing THIS minute; they buy that a later widening of either pattern
     # cannot quietly start counting the platform's own sentences as the model's claims.
-    "Already completed in this turn:",                        # the brief's success half
+    "Already applied in this turn:",                          # the brief's success half
     "in this turn did not run:",                              # the brief's refusal half
 )
 

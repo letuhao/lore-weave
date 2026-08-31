@@ -10923,7 +10923,9 @@ def _turn_brief(tool_calls_history: list[dict]) -> str:
         return ""
     not_done: list[str] = []
     for tc in tool_calls_history:
-        if not isinstance(tc, dict) or tc.get("call_outcome") not in _BRIEF_NOT_DONE:
+        if not isinstance(tc, dict):
+            continue
+        if instrument.effective_call_outcome(tc) not in _BRIEF_NOT_DONE:
             continue
         name = str(tc.get("tool") or "").strip() or "a tool"
         err = tc.get("error")
@@ -10939,6 +10941,33 @@ def _turn_brief(tool_calls_history: list[dict]) -> str:
     return f"\n\n{lead}: {body}"
 
 
+def _committed_nothing(tc: dict) -> bool:
+    """A create-or-get that FOUND the resource already there. `created: False` on a Tier-A result.
+
+    🔴 THE SECOND OVERSTATEMENT THIS FUNCTION SHIPPED, caught live the same hour as the first.
+    With the write-marker fix in, a real carded turn read
+
+        "Nothing has been saved yet; confirm the card above to apply it.
+         Already applied in this turn: kg_project_create."
+
+    and `loreweave_knowledge.knowledge_projects` was rows:1 before the turn and rows:1 after,
+    with the SAME `latest` timestamp. Nothing was created. The recorded call carries
+    `result.created = false` AND an `activity` block, so the activity marker means "a Tier-A
+    write tool ran", not "the world changed".
+
+    THE PLATFORM ALREADY KNEW. The idempotent-no-op-write breaker keys on exactly this field and
+    its comment says the same sentence in the same words — "A Tier-A tool result that reports
+    `created: False` COMMITTED NOTHING … do NOT clear the read ledger, because the world did not
+    change." The mechanism existed and this function was not asking it.
+
+    ABSENT means a real write: most write results carry no `created` field at all, and only an
+    EXPLICIT False is a no-op — the same discipline the breaker uses, and the reason it is keyed
+    on the RESULT rather than the call.
+    """
+    result = tc.get("result")
+    return isinstance(result, dict) and result.get("created") is False
+
+
 def _completed_in_this_turn(tool_calls_history: list[dict]) -> str:
     """DQ-T73's cheap half, on the path that needs it: a turn that WROTE and then asked approval
     for something else says "Nothing has been saved yet", which is true of the CARD and false of
@@ -10947,14 +10976,36 @@ def _completed_in_this_turn(tool_calls_history: list[dict]) -> str:
     Kept separate from `_turn_brief` because the two fire on opposite conditions — this one on
     success, that one on refusal — and folding them into one function would mean a turn with
     neither shape still paying for both tests.
+
+    🔴 A SUCCESSFUL CALL IS NOT A WRITE, AND THE FIRST VERSION OF THIS SHIPPED SAYING IT WAS.
+    Caught live within the hour: all five carded turns of batch brief-live read
+
+        "Already completed in this turn: composition_arc_template_list."
+
+    — a LIST. Naming a read beside a confirm card tells the author something happened to their
+    book when nothing did, which is a smaller version of the defect this whole mechanism exists
+    to remove. `call_outcome == "done"` means THE CALL SUCCEEDED; it says nothing about whether
+    anything changed.
+
+    THE MARKER FOR A LANDED WRITE ALREADY EXISTS IN THE RECORD and was simply not being read: a
+    Tier-A auto-write attaches an `activity` block to its tool_call chunk (H16, the visible
+    "agent did X · Undo" strip). Measured over 20 days of the live store — 591 of 7,818 `done`
+    calls carry one, across 38 tools, and ZERO failed / refused / deferred calls do. The top of
+    that list is kg_add_nodes (111) and glossary_propose_entities (45), which are the two tools
+    in this row's own founding instance.
+
+    So the predicate is `activity`, not `done`. A Tier-W/S write is `deferred` behind its own
+    card and has not landed; a read has no activity block and is not mentioned.
     """
-    done = [str(tc.get("tool") or "").strip() for tc in (tool_calls_history or [])
-            if isinstance(tc, dict) and tc.get("call_outcome") == "done" and tc.get("tool")]
-    if not done:
+    landed = [str(tc.get("tool") or "").strip() for tc in (tool_calls_history or [])
+              if isinstance(tc, dict) and instrument.effective_call_outcome(tc) == "done"
+              and tc.get("activity") is not None and tc.get("tool")
+              and not _committed_nothing(tc)]
+    if not landed:
         return ""
-    shown = done[:_BRIEF_MAX_NAMED]
-    tail = len(done) - len(shown)
-    return (" Already completed in this turn: " + ", ".join(shown)
+    shown = landed[:_BRIEF_MAX_NAMED]
+    tail = len(landed) - len(shown)
+    return (" Already applied in this turn: " + ", ".join(shown)
             + (f", and {tail} more" if tail > 0 else "") + ".")
 
 

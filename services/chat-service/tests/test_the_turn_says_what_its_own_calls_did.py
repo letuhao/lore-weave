@@ -25,17 +25,52 @@ asked for. The gate is a non-`done` call, which is precisely the 8.5%'s trigger 
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import pathlib
 
 from app.services import stream_service as ss
 
 
-def _call(tool, outcome, error=None):
+def _call(tool, outcome, error=None, wrote=False, created=None):
     r = {"tool": tool, "call_outcome": outcome}
     if error is not None:
         r["error"] = error
+    if created is not None:
+        r["result"] = {"created": created}
+    if wrote:
+        # The H16 activity block a Tier-A auto-write attaches - the record's own marker that
+        # something CHANGED, as opposed to a call that merely succeeded.
+        r["activity"] = {"kind": "write", "undo": True}
     return r
+
+
+def _registered_markers() -> tuple:
+    """`fe_runner._SERVER_APPENDED_LINES`, read from the file rather than imported — the harness
+    module pulls in the whole runner stack, and this test needs one tuple of strings.
+
+    🔴 IT RETURNS THE MARKERS AND THE TEST APPLIES THEM IN THE DIRECTION THE HARNESS DOES:
+    `marker in sentence`, because the detector's own line is `text.replace(_line, " ")`. My first
+    version generated every 3+ word run of the emitted sentence and asked whether any appeared in
+    fe_runner.py — which let the generic fragment "in this turn:" match the OTHER marker, so the
+    guard stayed green while the shipped wording drifted from "completed" to "noted". A guard
+    that matches on a fragment common to both sentences is not identifying either.
+    """
+    src = (pathlib.Path(__file__).resolve().parents[3]
+           / "scripts" / "toolloop" / "fe_runner.py").read_text(encoding="utf-8")
+    i = src.index("_SERVER_APPENDED_LINES = (")
+    block = src[i + len("_SERVER_APPENDED_LINES = "):]
+    depth, end = 0, 0
+    for n, ch in enumerate(block):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                end = n + 1
+                break
+    lines = [ln.split("#")[0] for ln in block[:end].splitlines()]
+    return ast.literal_eval("\n".join(lines))
 
 
 class TestTheBriefSaysOnlyWhatHappened:
@@ -79,14 +114,83 @@ class TestTheCardNamesWhatAlreadyLanded:
     def test_a_write_that_landed_is_named_beside_the_card(self):
         """DQ-T73's cheap half. "Nothing has been saved yet" is true of the CARD and false of a
         write this turn already made -- which is the 4.8% direction."""
-        text = ss._completed_in_this_turn([_call("glossary_propose_entities", "done"),
+        text = ss._completed_in_this_turn([_call("glossary_propose_entities", "done", wrote=True),
                                            _call("composition_arc_apply", "deferred")])
         assert "glossary_propose_entities" in text
         assert "composition_arc_apply" not in text, "a PENDING call was reported as completed"
 
+    def test_a_successful_READ_is_not_reported_as_something_that_happened(self):
+        """🔴 THE FIRST VERSION SHIPPED SAYING IT WAS, and five live carded turns read
+        "Already completed in this turn: composition_arc_template_list" -- a LIST. Telling an
+        author a read changed their book is a smaller copy of the defect this exists to remove.
+
+        `done` means THE CALL SUCCEEDED. The record's marker for a landed write is the H16
+        `activity` block: 591 of 7,818 done calls carry one over 20 days, and zero failed,
+        refused or deferred calls do."""
+        assert ss._completed_in_this_turn([_call("composition_arc_template_list", "done")]) == ""
+        assert ss._completed_in_this_turn([_call("glossary_search", "done"),
+                                           _call("composition_get_work", "done")]) == ""
+
+    def test_a_create_or_get_that_found_it_already_there_is_not_an_application(self):
+        """🔴 THE SECOND OVERSTATEMENT, caught live. A real carded turn read "Already applied in
+        this turn: kg_project_create" while knowledge_projects was rows:1 before AND after with
+        the same timestamp -- the call returned `created: false` and still carried an activity
+        block, because that block means "a Tier-A write tool ran", not "the world changed".
+
+        The platform already knew: the idempotent-no-op-write breaker keys on this exact field
+        and its comment says COMMITTED NOTHING in those words."""
+        assert ss._completed_in_this_turn(
+            [_call("kg_project_create", "done", wrote=True, created=False)]) == ""
+        # ABSENT is a real write -- most write results carry no `created` field at all, and only
+        # an explicit False is the no-op. Same discipline as the breaker.
+        assert "kg_add_nodes" in ss._completed_in_this_turn(
+            [_call("kg_add_nodes", "done", wrote=True)])
+        assert "glossary_propose_entities" in ss._completed_in_this_turn(
+            [_call("glossary_propose_entities", "done", wrote=True, created=True)])
+
     def test_nothing_is_claimed_when_nothing_completed(self):
         assert ss._completed_in_this_turn([_call("x", "deferred")]) == ""
         assert ss._completed_in_this_turn([]) == ""
+
+
+class TestItReadsAnUNSTAMPEDCall:
+    """🔴 THE DEFECT THAT SURVIVED TWO CORRECT-LOOKING FIXES, found by logging inside the running
+    container. A carded turn's history AT THE MOMENT OF SUSPENSION read
+
+        [('glossary_book_ontology_read', 'done', activity=False),
+         ('glossary_list_system_standards', None,  activity=False),
+         ('glossary_propose_entities',     None,  activity=True )]
+
+    -- the write that had just landed carried NO `call_outcome`. It gets one later, when
+    stamp_tool_call infers it, so the PERSISTED record shows `done` and every check against the
+    store agreed the field was there. Driving the container's own helper on that stored record
+    returned the right sentence while the live turn produced nothing: the record is not the
+    runtime.
+
+    Measured live before this: 5 of 5 turns wrote glossary_entities, carded, and named nothing.
+    """
+
+    def test_a_landed_write_is_named_even_before_it_is_stamped(self):
+        unstamped = {"tool": "glossary_propose_entities", "ok": True,
+                     "activity": {"kind": "write"}}
+        assert "glossary_propose_entities" in ss._completed_in_this_turn([unstamped])
+
+    def test_an_unstamped_failure_still_reaches_the_brief(self):
+        assert "plan_validate" in ss._turn_brief(
+            [{"tool": "plan_validate", "ok": False, "error": "not found"}])
+
+    def test_the_rule_has_one_home(self):
+        """Both readers ask `instrument`, and `stamp_tool_call` asks the same function -- so a
+        change to what 'succeeded' means cannot land in one of the three."""
+        import inspect as _i
+        from app.services import instrument as _ins
+        src = pathlib.Path(ss.__file__).read_text(encoding="utf-8")
+        assert src.count("instrument.effective_call_outcome(tc)") == 2
+        # The inference lives in `ensure_tool_call_instrumented`, which stamp_tool_call
+        # funnels into -- named explicitly rather than guessed, because asserting it against
+        # the wrong function is how a guard passes while proving nothing.
+        assert "effective_call_outcome(chunk)" in _i.getsource(
+            _ins.ensure_tool_call_instrumented)
 
 
 class TestBothSitesActuallyAppendIt:
@@ -114,8 +218,23 @@ class TestBothSitesActuallyAppendIt:
     def test_the_harness_knows_these_are_the_servers_words(self):
         """The line that shipped 2026-08-28 was read as the MODEL's claim by this loop's own
         detector and produced a 13-run phantom regression at p = 0.0000. A new server-authored
-        sentence registers in the same commit that ships it."""
-        fe = pathlib.Path(__file__).resolve().parents[3] / "scripts" / "toolloop" / "fe_runner.py"
-        text = fe.read_text(encoding="utf-8")
-        assert "Already completed in this turn:" in text
-        assert "in this turn did not run:" in text
+        sentence registers in the same commit that ships it.
+
+        🔴 CROSS-DERIVED FROM WHAT THE SERVER ACTUALLY EMITS, not typed a second time. This test
+        first asserted the literal "Already completed in this turn:" in both places and stayed
+        GREEN while the shipped wording changed to "applied" — a guard comparing my copy of a
+        string against my other copy of the same string proves only that I typed it twice. It now
+        generates the sentences and looks for THEM.
+        """
+        markers = _registered_markers()
+        assert len(markers) >= 4, markers
+        emitted = [
+            ss._completed_in_this_turn([_call("kg_add_nodes", "done", wrote=True)]),
+            ss._turn_brief([_call("kg_add_nodes", "failed", "nope")]),
+        ]
+        for sentence in emitted:
+            assert any(m in sentence for m in markers), (
+                f"the server emits {sentence.strip()!r} and NO registered marker is a substring "
+                "of it — the detectors strip by `text.replace(marker, ' ')`, so this loop will "
+                "read the platform's own words as the model's claim"
+            )

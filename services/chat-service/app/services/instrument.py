@@ -251,6 +251,36 @@ def resolve_deferred(chunk: dict, outcome: str | None, *, had_result: bool = Fal
     return chunk
 
 
+def effective_call_outcome(chunk: dict) -> str:
+    """The typed call outcome of a chunk THAT MAY NOT HAVE BEEN STAMPED YET.
+
+    🔴 WHY THIS EXISTS, measured 2026-08-31 with a temporary log inside the running container.
+    A carded turn's history at the moment of suspension read:
+
+        [('glossary_book_ontology_read', 'done', activity=False),
+         ('glossary_list_system_standards', None,  activity=False),
+         ('glossary_propose_entities',     None,  activity=True )]
+
+    The write that landed had NO `call_outcome`. It gets one later — `stamp_tool_call` infers it
+    and sets `call_outcome_inferred` — so the PERSISTED record shows `done` and anything reading
+    the store concludes the field was always there. Two readers in stream_service asked for
+    `call_outcome` at a point in the turn where it is not yet written, and silently saw nothing:
+    the turn brief could not name a write that had just succeeded.
+
+    THE RULE IS THE SAME ONE `stamp_tool_call` APPLIES, and it now lives here so there is one of
+    it. A second implementation of "did this call succeed?" is how the same question comes to
+    have two answers in one process.
+
+    `deferred` and `refused` are never inferred — both are stamped where the structural fact is
+    known (`stamp_deferred`, `stamp_refused`), and guessing them from `ok` is exactly the
+    conflation CP-5.5 exists to end.
+    """
+    outcome = chunk.get("call_outcome")
+    if outcome in CALL_OUTCOMES:
+        return outcome
+    return CALL_DONE if chunk.get("ok") is True else CALL_FAILED
+
+
 def stamp_tool_call(
     chunk: dict,
     *,
@@ -403,7 +433,10 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     # this row exists to end, restated as a heuristic.
     _outcome = chunk.get("call_outcome")
     if _outcome not in CALL_OUTCOMES:
-        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED
+        # ONE HOME for the rule — `effective_call_outcome` applies the same inference for readers
+        # that run BEFORE this stamp (the turn brief, at the suspend). Inlining it twice is how
+        # the same question came to have two answers in one process.
+        _outcome = effective_call_outcome(chunk)
         chunk["call_outcome"] = _outcome
         chunk["call_outcome_inferred"] = True
     if _outcome == CALL_FAILED:

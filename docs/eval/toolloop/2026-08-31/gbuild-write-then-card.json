@@ -1,0 +1,2323 @@
+{
+  "batch": "gbuild-write-then-card",
+  "generated_by": "fe_runner",
+  "approval_mode": "allow-under-test",
+  "tools": [
+    {
+      "tool": "composition_build_cast_and_graph",
+      "scenario": "composition-build-cast-and-graph-approved",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the approved turn still leaves glossary_entities unchanged — that is the REGRESSION reading, and it would mean the pipeline tool takes a turn its parts used to complete and then delivers nothing even when permitted to write.\n\nCONFIRMED-AS-TIGHTENING IF: the approved turn creates the cast (2 entities, matching what glossary_propose_entities produced on the same prompt on 2026-08-23). That would mean today's empty store is correct ordering — no write before approval — rather than a loss.\n\n🔴 A THIRD OUTCOME IS POSSIBLE AND MUST NOT BE READ AS EITHER: the pipeline may card AGAIN for a later op (its own correction records op=start returning a worklist and stopping). A turn that advances one step and stops is neither a clean finish nor a dead end, and it should be recorded as what it is.",
+      "answer_expect": null,
+      "falsifier_sha": "d6c5e4678170afa3",
+      "ship_audit": {
+        "gate": "EXERCISED — this arm approves deliberately, under the throwaway-fixture rule.",
+        "empty_case": "OWED.",
+        "idempotency": "OWED.",
+        "tenancy": "OWED."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0565d-06c2-72d9-b7af-ccc3f963c7c4",
+          "project_id": "01a0565d-0818-7a79-8142-d2c35126d628",
+          "seed_ids": {
+            "01a0565d-06c2-72d9-b7af-ccc3f963c7c4": "fixture book_id",
+            "01a0565d-0818-7a79-8142-d2c35126d628": "fixture project_id (composition_work)",
+            "01a0565d-0759-7280-9af7-09287b962058": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "2e4d3442-f887-4ff2-ab18-39a920dea08c": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.genres[0].genre_id",
+            "a57c091d-0455-4191-afbf-7103d06c4b19": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.kinds[0].book_kind_id",
+            "281b4499-195e-41d2-b792-66efed9b0341": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.kinds[1].book_kind_id",
+            "300f3b37-01c2-46c2-91d1-cb4102f77593": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[0].attr_id",
+            "52f78f84-1925-476a-b5a2-e0c00ecc709a": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[1].attr_id",
+            "67f4b328-1777-47e9-a951-7d0e8b647783": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[2].attr_id",
+            "9a92b7c1-de24-448f-a4c5-e49ca5cce42f": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[3].attr_id",
+            "7e026661-4ac7-4c9e-a404-9099a55d886b": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[4].attr_id",
+            "6917e4ff-1769-416c-8813-53c1a0dfc10b": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[5].attr_id",
+            "7efe5e47-df3f-4887-8280-97f8b5942147": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[6].attr_id",
+            "8e064dee-00d0-4817-94e2-8fbc5148e2e3": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[7].attr_id",
+            "6faccf33-c226-42fc-94c5-f3a65994c3c3": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[8].attr_id",
+            "34017f1e-8577-472a-8a09-5a604a0ec139": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[9].attr_id",
+            "fbb2369a-225e-40d7-9ebf-12d280c91386": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[10].attr_id",
+            "cb736e91-069a-4cc7-bf65-6055b65b3f69": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[11].attr_id",
+            "860ab16b-5268-4fec-83c3-33da0bf9fb51": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[12].attr_id",
+            "76a8f891-0955-469f-b626-6943758af0f7": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[13].attr_id",
+            "9cd9931a-e7e4-4ce0-a9df-159e8ff1013d": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[14].attr_id",
+            "da1dcde9-3c5d-4ef0-9884-1e00c956ed8f": "seed[0] /v1/glossary/books/01a0565d-06c2-72d9-b7af-ccc3f963c7c4/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0565d-5370-7c1c-98b8-6d4f4875ef5c",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_build_cast_and_graph",
+            "kg_graph_query",
+            "settings_list_models",
+            "tool_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_build_cast_and_graph",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_build_cast_and_graph: model_ref is required for op=start\"}"
+            },
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"settings\", \"count\": 12, \"tools\": [{\"name\": \"settings_get_defaults\", \"description\": \"Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).\", \"tier\": \"R\", \"arguments\": \"NOT SHOWN \\u2014 call tool_load('settings_get_"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"settings_list_models\", \"description\": \"List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags \\u2014 the fie"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"is_active\": true, \"is_favorite\": false, \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"tags\": [], \"user"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": true, \"result\": {\"run_id\": \"01a0565d-9201-7c93-b70e-dde73672c07e\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"The protagonist climbing the black stair.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {\"why\": \"A key figure waiting at the waterline.\", \"kind\": \"character\", \"na"
+            },
+            {
+              "tool": "kg_graph_query",
+              "result_head": "{\"ok\": true, \"result\": {\"as_of_chapter\": null, \"view\": null, \"nodes\": [], \"edges\": [], \"warnings\": [], \"meta\": {\"detail\": \"summary\", \"nodes_total\": 0, \"nodes_returned\": 0, \"edges_total\": 0, \"edges_returned\": 0, \"truncated\": false}}}"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "kg_graph_query"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "kg_graph_query",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.638389+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.631841+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.440957+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.638389+00"
+              },
+              "loreweave_composition.glossary_build_runs": {
+                "rows": 1,
+                "latest": "2026-08-31 05:49:30.012904+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:48:52.781412+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:48:52.631841+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_composition.glossary_build_runs": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 05:49:30.012904+00"
+              }
+            }
+          },
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it.\n\nNothing has been saved yet; confirm the card above to apply it.\n\nOne action in this turn did not run: composition_build_cast_and_graph — Error executing tool composition_build_cast_and_graph: model_ref is required for op=startI've analyzed your story snippet and prepared a plan to build your world's foundation. Here is the list of characters, locations, and items I've identified to extract and map:\n\n**Characters**\n* **Aldric Vane** (Deep profile) — The protagonist climbing the black stair.\n* **Mira Solene** (Standard profile) — A key figure waiting at the waterline.\n\n**Locations**\n* **Hollow Keep** (Standard profile) — A significant structure containing the black stair.\n* **Obsidian Trench** (Deep profile) — A central geographical feature with unique tidal properties.\n\n**Items**\n* **The Black Stair** (Standard profile) — A specific architectural feature of Hollow Keep.\n\nWould you like me to proceed with building these into your world and mapping how they connect?\n\nI have not made any changes to your book's data. My previous response was a proposal for a worklist of characters and locations to extract, but no data has been written to your story bible or connection map yet.\n\nTo proceed, please let me know if you approve this list, and I will begin building your world and mapping the connections.\n\nI have checked the current project's connection map, and it is currently empty. There are no characters, locations, or relationships recorded in the graph at this time."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0565e-0f9c-7289-8092-312d4752cf31",
+          "project_id": "01a0565e-10e5-79dc-8a96-038bc7cace60",
+          "seed_ids": {
+            "01a0565e-0f9c-7289-8092-312d4752cf31": "fixture book_id",
+            "01a0565e-10e5-79dc-8a96-038bc7cace60": "fixture project_id (composition_work)",
+            "01a0565e-1031-718d-9d40-2eb4691ac8e0": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "17ab541d-a8e2-4401-a0f3-ed0921185bef": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.genres[0].genre_id",
+            "4d16f191-3db9-487c-aa14-b277cc497b82": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.kinds[0].book_kind_id",
+            "ab42e163-3c9c-4372-b28c-38c80ce51ee8": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.kinds[1].book_kind_id",
+            "aea756ad-8702-41fe-85de-7f78c3bd09f1": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[0].attr_id",
+            "4d74357e-f803-40b1-9dcc-2fc4c675b969": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[1].attr_id",
+            "2a85a652-291e-442f-9861-650100023858": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[2].attr_id",
+            "d0180023-09dc-47e6-a804-bfea7a4f7ddf": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[3].attr_id",
+            "7990e102-2d63-42b8-9b83-1e6a248a8165": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[4].attr_id",
+            "0422bce4-d151-42b7-93a4-cea723e77334": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[5].attr_id",
+            "3158fdad-2c27-4116-827a-b7fc7f13eaed": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[6].attr_id",
+            "02d7e00d-e9f1-4f9f-a892-efa08722f11a": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[7].attr_id",
+            "67819267-8f2e-449b-a0f0-1722c54c40c9": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[8].attr_id",
+            "d5f6a465-8b31-4a80-8cd9-8e0a0742208c": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[9].attr_id",
+            "19717798-bd65-47c1-892d-bb0084bf6a4f": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[10].attr_id",
+            "55817106-8a3a-45ac-8f6b-039bd5ed3fb8": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[11].attr_id",
+            "18918040-8f8d-47f0-ba89-fabce082cda6": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[12].attr_id",
+            "98821686-d59c-4136-9ae1-b6f5a21ed6cd": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[13].attr_id",
+            "1782297a-2c7f-496e-b421-c19b5e042139": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[14].attr_id",
+            "788c03a1-3e88-4a8e-b717-8b79d780e96b": "seed[0] /v1/glossary/books/01a0565e-0f9c-7289-8092-312d4752cf31/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0565e-5f39-7a10-bd67-6f683e5de97e",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_build_cast_and_graph",
+            "settings_list_models",
+            "tool_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_build_cast_and_graph",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_build_cast_and_graph: model_ref is required for op=start\"}"
+            },
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"settings\", \"count\": 12, \"tools\": [{\"name\": \"settings_get_defaults\", \"description\": \"Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).\", \"tier\": \"R\", \"arguments\": \"NOT SHOWN \\u2014 call tool_load('settings_get_"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"settings_list_models\", \"description\": \"List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags \\u2014 the fie"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"is_active\": true, \"is_favorite\": false, \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"tags\": [], \"user"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": true, \"result\": {\"run_id\": \"01a0565e-9ba6-7763-b2bd-f351af80b9f1\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"The protagonist climbing the black stair.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {\"why\": \"A character waiting at the waterline.\", \"kind\": \"character\", \"nam"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.426913+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.420245+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.240927+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.426913+00"
+              },
+              "loreweave_composition.glossary_build_runs": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:38.005082+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:50:00.467292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:00.420245+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_composition.glossary_build_runs": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 05:50:38.005082+00"
+              }
+            }
+          },
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it.\n\nNothing has been saved yet; confirm the card above to apply it.\n\nOne action in this turn did not run: composition_build_cast_and_graph — Error executing tool composition_build_cast_and_graph: model_ref is required for op=startI've analyzed your story snippet and prepared a plan to build your world's foundation. Here is the list of characters, locations, and items I've identified to extract and map:\n\n**Characters**\n*   **Aldric Vane** (Deep profile) — The protagonist climbing the black stair.\n*   **Mira Solene** (Standard profile) — A character waiting at the waterline.\n\n**Locations**\n*   **Hollow Keep** (Standard profile) — A location featuring a black stair.\n*   **Obsidian Trench** (Standard profile) — A geographical feature accessible only at low tide.\n\n**Items**\n*   **The Black Stair** (Standard profile) — A specific architectural feature of Hollow Keep.\n\nWould you like me to proceed with building these into your world and mapping how they connect?\n\nI have not made any changes to your book's data. I have only identified the characters and locations from your text and prepared a plan to extract them. Your saved data remains untouched.\n\nWould you like me to proceed with building these into your world and mapping how they connect?\n\nI have not re-read your book's data on this turn, so my previous response was based only on the text you provided in your last message. To ensure I am giving you accurate information from your actual story files, I need to perform a fresh read.\n\nWould you like me to query the connection map to see what is currently stored in your book?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0565f-270c-79b4-b6d7-85013778bf66",
+          "project_id": "01a0565f-2ee7-7055-8733-50fab56a548f",
+          "seed_ids": {
+            "01a0565f-270c-79b4-b6d7-85013778bf66": "fixture book_id",
+            "01a0565f-2ee7-7055-8733-50fab56a548f": "fixture project_id (composition_work)",
+            "01a0565f-2aae-7c7b-a087-bc3a274960d9": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "77f6ff93-98eb-40b5-9d74-9f2e8eb2cc8a": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.genres[0].genre_id",
+            "7acc3c98-2637-499d-a6a2-2b346e9478bd": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.kinds[0].book_kind_id",
+            "faef91ce-8828-4737-965e-377788d8ae08": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.kinds[1].book_kind_id",
+            "4aed5d2f-fefe-47fb-ba23-ad84b1c7ecc6": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[0].attr_id",
+            "1b91eb7e-0125-4a3f-a273-3e36e7444125": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[1].attr_id",
+            "517aeef0-a546-4d46-9383-b8b8b0203a9a": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[2].attr_id",
+            "e2713d87-5a26-4266-8be9-e03129b75d44": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[3].attr_id",
+            "a1cbace5-a3a7-42a3-b2fd-d7946a698ee0": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[4].attr_id",
+            "a16c641d-0746-4648-9b25-b3f134c83de3": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[5].attr_id",
+            "8ce37729-e656-4aba-b87f-7ed535e74309": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[6].attr_id",
+            "9daf3aa8-0b00-43a3-badb-8dd03e7d36aa": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[7].attr_id",
+            "7585fc86-d000-4bb9-ab91-9562403d020f": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[8].attr_id",
+            "5ad90fe1-dca9-42ba-bed5-c2f1accf8371": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[9].attr_id",
+            "da62e10a-c6fe-490d-bf51-ec180b0fa1c3": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[10].attr_id",
+            "b981052e-7eac-42d1-b71d-95d966878ee1": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[11].attr_id",
+            "ad0d582d-882c-44a6-9c33-f5522e7fb738": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[12].attr_id",
+            "02fef187-536e-49b0-8a82-7cc4b27e4642": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[13].attr_id",
+            "10d7b837-cace-482b-808e-6f0dde6369a5": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[14].attr_id",
+            "827b4eeb-7b29-4475-8130-0ecfcb1fc423": "seed[0] /v1/glossary/books/01a0565f-270c-79b4-b6d7-85013778bf66/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a0565f-75d2-7946-909d-b52c033ebc24",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_build_cast_and_graph",
+            "settings_list_models",
+            "tool_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_build_cast_and_graph",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_build_cast_and_graph: model_ref is required for op=start\"}"
+            },
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"settings\", \"count\": 12, \"tools\": [{\"name\": \"settings_get_defaults\", \"description\": \"Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).\", \"tier\": \"R\", \"arguments\": \"NOT SHOWN \\u2014 call tool_load('settings_get_"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"settings_list_models\", \"description\": \"List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags \\u2014 the fie"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"is_active\": true, \"is_favorite\": false, \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"tags\": [], \"user"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": true, \"result\": {\"run_id\": \"01a0565f-bcef-7c9e-b8d0-54e9fc790f94\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"The protagonist climbing the black stair.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {\"why\": \"A character waiting at the waterline.\", \"kind\": \"character\", \"nam"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.645651+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.638385+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:12.55863+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.645651+00"
+              },
+              "loreweave_composition.glossary_build_runs": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:52.059562+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:51:13.692975+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:13.638385+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_composition.glossary_build_runs": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 05:51:52.059562+00"
+              }
+            }
+          },
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it.\n\nNothing has been saved yet; confirm the card above to apply it.\n\nOne action in this turn did not run: composition_build_cast_and_graph — Error executing tool composition_build_cast_and_graph: model_ref is required for op=startI've analyzed your story and prepared a plan to build the connection map and extract your cast. Here is the list of elements I've identified:\n\n**Characters**\n* **Aldric Vane** (Deep profile)\n* **Mira Solene** (Standard profile)\n\n**Locations**\n* **Hollow Keep**\n* **Obsidian Trench**\n* **The Waterline**\n\n**Items**\n* **Black Stair**\n\nWould you like me to proceed with building these into your world?\n\nI have not made any changes to your book's data. I have only identified the characters and locations from your text and prepared a plan for them. Your saved data remains untouched.\n\nWould you like me to proceed with building these into your world?\n\nI have not re-read the book's current state on this turn, so my understanding of its contents may be stale. Would you like me to query the connection map to see what is currently stored?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 3,
+          "book_id": "01a05660-440a-7d29-b558-1355394fc72f",
+          "project_id": "01a05660-457b-74ce-aaaf-bf85866c4087",
+          "seed_ids": {
+            "01a05660-440a-7d29-b558-1355394fc72f": "fixture book_id",
+            "01a05660-457b-74ce-aaaf-bf85866c4087": "fixture project_id (composition_work)",
+            "01a05660-44a4-7a70-b69c-0f9bf2d22b8a": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "263a231f-664c-441b-986d-f3c6a37412ea": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.genres[0].genre_id",
+            "97613b64-c4c3-49b7-926a-64c78a25f8a7": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.kinds[0].book_kind_id",
+            "468bab48-ad01-408d-aa0a-e511bde5dbf7": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.kinds[1].book_kind_id",
+            "554b912e-fe6f-4f5f-ab5e-5b8b5989c6d3": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[0].attr_id",
+            "50983c64-c918-427a-86dc-a4dd58620305": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[1].attr_id",
+            "4d90f7b4-a82f-498b-96f4-7c5f87c2cf52": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[2].attr_id",
+            "a6717446-5678-472e-a68d-6e01d5fb4363": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[3].attr_id",
+            "3f27bc1b-ec35-4e69-a000-633ae8923895": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[4].attr_id",
+            "022431cf-f7c2-42bf-8f80-6258b29c55b0": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[5].attr_id",
+            "eb5ffa1e-f933-4f5e-b88f-7a587a388ca2": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[6].attr_id",
+            "45679df0-84d3-43dc-b3ec-68efafaea2a1": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[7].attr_id",
+            "409a90b1-922e-447c-9a51-7fea80e8c105": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[8].attr_id",
+            "38cc48e8-9a45-4193-895e-cc393a9d074c": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[9].attr_id",
+            "e990435c-7b2f-40e8-8b9e-59862ea31e11": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[10].attr_id",
+            "7b52a155-8673-484b-8dfe-802ab8bc5a51": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[11].attr_id",
+            "1bf4105e-6414-434d-92fc-43562b6aaa11": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[12].attr_id",
+            "5d39489f-36e9-4e1a-8571-01cf2a166856": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[13].attr_id",
+            "b07c93e8-be8d-4e51-9d2c-b2bb2dce17b9": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[14].attr_id",
+            "5d63301e-d604-40bf-b5bb-0cbc92169a04": "seed[0] /v1/glossary/books/01a05660-440a-7d29-b558-1355394fc72f/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a05660-8cb4-784d-95c5-1b9fe5f36d1d",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_build_cast_and_graph",
+            "settings_list_models",
+            "tool_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_build_cast_and_graph",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_build_cast_and_graph: model_ref is required for op=start\"}"
+            },
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"settings\", \"count\": 12, \"tools\": [{\"name\": \"settings_get_defaults\", \"description\": \"Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).\", \"tier\": \"R\", \"arguments\": \"NOT SHOWN \\u2014 call tool_load('settings_get_"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"settings_list_models\", \"description\": \"List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags \\u2014 the fie"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"is_active\": true, \"is_favorite\": false, \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"tags\": [], \"user"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": true, \"result\": {\"run_id\": \"01a05660-d4ca-7c82-a111-fd15567ef891\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"The protagonist climbing the black stair.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {\"why\": \"A character waiting at the waterline.\", \"kind\": \"character\", \"nam"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.963283+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.95417+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.740468+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.963283+00"
+              },
+              "loreweave_composition.glossary_build_runs": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:03.706839+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:52:25.032023+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:52:24.95417+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_composition.glossary_build_runs": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:03.706839+00"
+              }
+            }
+          },
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it.\n\nNothing has been saved yet; confirm the card above to apply it.\n\nOne action in this turn did not run: composition_build_cast_and_graph — Error executing tool composition_build_cast_and_graph: model_ref is required for op=startI've analyzed your story and prepared a plan to build your world's foundation. Here is the list of characters, locations, and details I've identified to extract and map:\n\n**Characters**\n* **Aldric Vane** (Deep profile) — The protagonist climbing the black stair.\n* **Mira Solene** (Standard profile) — A character waiting at the waterline.\n\n**Locations**\n* **Hollow Keep** (Standard profile) — A location featuring a black stair.\n* **Obsidian Trench** (Deep profile) — A significant geographical feature with tidal properties.\n\nWould you like me to proceed with building this cast and mapping the connections?\n\nI have not made any changes to your book's data. My previous response was a proposal for a worklist of characters and locations to extract, but no data has been saved to your story bible or connection map yet.\n\nTo move forward, please let me know if you approve this list, and I will begin building the cast and mapping the connections.\n\nI have not re-read the book's current state on this turn, so my understanding of its contents may be stale. To provide you with an accurate, up-to-date summary of your book's characters, locations, or current structure, I will need to perform a fresh read."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 4,
+          "book_id": "01a05661-5118-78cb-b965-529320ac5efb",
+          "project_id": "01a05661-5256-7f93-8b75-59a9e032b164",
+          "seed_ids": {
+            "01a05661-5118-78cb-b965-529320ac5efb": "fixture book_id",
+            "01a05661-5256-7f93-8b75-59a9e032b164": "fixture project_id (composition_work)",
+            "01a05661-51ae-790c-b5e1-54951a4c7c8e": "fixture chapter_id (the EDITOR CONTEXT the turn carries)",
+            "0d9862cb-5dfb-450d-a322-25d654d357a0": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.genres[0].genre_id",
+            "3744ab1c-cad3-455b-82b5-06a51b130b34": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.kinds[0].book_kind_id",
+            "0315ddc5-5581-4852-8f4e-a1350224d618": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.kinds[1].book_kind_id",
+            "fce2a262-aa1e-431d-b047-91d9f552086b": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[0].attr_id",
+            "6492c4b5-41b3-44ac-a8c8-0e092a6c3a4c": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[1].attr_id",
+            "2e26269e-dc71-430e-9223-229768f5fab0": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[2].attr_id",
+            "403a15f6-328d-4718-87f7-db4c57c9b36c": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[3].attr_id",
+            "41e81ed1-84dc-41ed-b716-77d08e5be4b1": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[4].attr_id",
+            "13f10fbe-7a5d-4449-a735-7465c663abdb": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[5].attr_id",
+            "9454bc52-2081-4b8d-906c-4e2678036de4": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[6].attr_id",
+            "043f6042-3e39-4bd7-9ecc-be1a0e87044b": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[7].attr_id",
+            "f328d2f7-99c6-48ee-b4fd-7a756734a961": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[8].attr_id",
+            "04eaeaf6-f34d-4b89-a2ce-2fd58a8a5cfc": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[9].attr_id",
+            "ab171ebd-a040-4718-bf20-e7c6c532989a": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[10].attr_id",
+            "60258260-b36b-44e7-8c01-adf229d833b8": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[11].attr_id",
+            "8cecac38-d9a2-451f-93dc-d7c5314146e1": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[12].attr_id",
+            "10177fa1-e364-4d1b-a82a-7a85528f5a73": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[13].attr_id",
+            "581f3b52-b96f-4b11-81be-bceb1987619c": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[14].attr_id",
+            "23e69998-b800-4799-96ea-1620351570b9": "seed[0] /v1/glossary/books/01a05661-5118-78cb-b965-529320ac5efb/adopt.attributes[15].attr_id"
+          },
+          "session_id": "01a05661-9e8f-73e6-8676-bf454341c685",
+          "prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "scenario_prompt": "Build the knowledge graph for this book — extract the cast from my story. The story: Aldric Vane climbs the black stair of Hollow Keep as the storm breaks; Mira Solene waits at the waterline where the Obsidian Trench is walkable only at low tide.",
+          "prior_turns": [],
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_build_cast_and_graph",
+            "settings_list_models",
+            "tool_list",
+            "tool_load"
+          ],
+          "surfaced_tools": [
+            "book_chapter_save_draft",
+            "book_list",
+            "book_read",
+            "book_steering_list",
+            "book_update_details",
+            "chat_search_sessions",
+            "composition_arc_template_get",
+            "composition_build_cast_and_graph",
+            "composition_diagnostics",
+            "composition_error_block_edit",
+            "composition_find_references",
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_canon_rules",
+            "composition_list_outline",
+            "composition_motif_get",
+            "composition_package_tree",
+            "confirm_action",
+            "conversation_search",
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_book_sync_available",
+            "glossary_confirm_action",
+            "glossary_entity_set_attributes",
+            "glossary_extract_entities_from_doc",
+            "glossary_list_system_standards",
+            "glossary_propose_entities",
+            "glossary_propose_entity_edit",
+            "kg_add_nodes",
+            "kg_build",
+            "kg_entity_edge_timeline",
+            "kg_graph_query",
+            "kg_list_templates",
+            "kg_ontology_propose",
+            "kg_project_create",
+            "kg_project_list",
+            "kg_propose_edge",
+            "kg_propose_fact",
+            "kg_schema_read",
+            "kg_sync_available",
+            "kg_triage_list",
+            "kg_triage_resolve",
+            "kg_view_read",
+            "load_skill",
+            "memory_recall_entity",
+            "memory_remember",
+            "memory_search",
+            "memory_timeline",
+            "plan_apply_revision",
+            "plan_compile",
+            "plan_handoff_autofix",
+            "plan_interpret_feedback",
+            "plan_pass_status",
+            "plan_propose_spec",
+            "plan_review_checkpoint",
+            "plan_run_pass",
+            "plan_self_check",
+            "plan_validate",
+            "propose_edit",
+            "run_subagent",
+            "settings_list_models",
+            "tool_list",
+            "tool_load",
+            "web_search",
+            "workflow_list",
+            "workflow_load"
+          ],
+          "calls": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": false, \"error\": \"Error executing tool composition_build_cast_and_graph: model_ref is required for op=start\"}"
+            },
+            {
+              "tool": "tool_list",
+              "result_head": "{\"ok\": true, \"result\": {\"category\": \"settings\", \"count\": 12, \"tools\": [{\"name\": \"settings_get_defaults\", \"description\": \"Get the user's per-capability default models (e.g. which model is the default for rerank or embedding).\", \"tier\": \"R\", \"arguments\": \"NOT SHOWN \\u2014 call tool_load('settings_get_"
+            },
+            {
+              "tool": "tool_load",
+              "result_head": "{\"ok\": true, \"result\": {\"tools\": [{\"name\": \"settings_list_models\", \"description\": \"List the models this account has REGISTERED (its BYOK 'user models'). Returns model alias, user_model_id, provider kind, provider model name, context length, capabilities, tags and active/favorite flags \\u2014 the fie"
+            },
+            {
+              "tool": "settings_list_models",
+              "result_head": "{\"ok\": true, \"result\": {\"models\": [{\"alias\": \"Gemma-4 26B-A4B QAT (200K)\", \"capability_flags\": {\"chat\": true, \"tool_calling\": true}, \"context_length\": 200000, \"is_active\": true, \"is_favorite\": false, \"provider_kind\": \"lm_studio\", \"provider_model_name\": \"google/gemma-4-26b-a4b-qat\", \"tags\": [], \"user"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "result_head": "{\"ok\": true, \"result\": {\"run_id\": \"01a05661-df34-7b06-8b9e-7507ab5d6781\", \"status\": \"plan_ready\", \"worklist\": [{\"why\": \"The primary protagonist climbing the stairs.\", \"kind\": \"character\", \"name\": \"Aldric Vane\", \"depth\": \"deep\"}, {\"why\": \"A key character waiting at the waterline.\", \"kind\": \"character"
+            }
+          ],
+          "timeline": [
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_list"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "tool_load"
+            },
+            {
+              "pass_size": 63,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "settings_list_models"
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 64,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "pass_size": 0,
+              "of_the_called": []
+            },
+            {
+              "call": "composition_build_cast_and_graph"
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            },
+            {
+              "pass_size": 59,
+              "of_the_called": [
+                "composition_build_cast_and_graph",
+                "settings_list_models",
+                "tool_list",
+                "tool_load"
+              ]
+            }
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            },
+            {
+              "tool": "composition_build_cast_and_graph",
+              "outcome": "approved_once",
+              "kind": "tool_approval"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.789284+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.782112+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_blocks": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_drafts": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_book.chapter_raw_objects": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_book.chapter_revisions": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.61442+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.789284+00"
+              },
+              "loreweave_composition.glossary_build_runs": {
+                "rows": 1,
+                "latest": "2026-08-31 05:54:11.904273+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-31 05:53:33.831939+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-31 05:53:33.782112+00"
+              },
+              "loreweave_jobs.job_projection.owner": {
+                "rows": 1036,
+                "latest": "2026-08-22 10:44:38.331458+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 468,
+                "latest": "2026-08-26T19:45:10.952Z"
+              },
+              "neo4j.Fact.invalidated": {
+                "rows": 31,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "NULL"
+              },
+              "neo4j.Fact.project.invalidated": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_composition.glossary_build_runs": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-31 05:54:11.904273+00"
+              }
+            }
+          },
+          "answer": "\n\nNothing has been saved yet; confirm the card above to apply it.\n\nNothing has been saved yet; confirm the card above to apply it.\n\nOne action in this turn did not run: composition_build_cast_and_graph — Error executing tool composition_build_cast_and_graph: model_ref is required for op=startI've analyzed your story and prepared a plan to build your world's foundation. Here is the list of characters, locations, and items I've identified to extract and map:\n\n**Characters**\n*   **Aldric Vane** (Deep profile) — The primary protagonist climbing the stairs.\n*   **Mira Solene** (Standard profile) — A key character waiting at the waterline.\n\n**Locations**\n*   **Hollow Keep** (Standard profile) — A significant structure featuring a black stair.\n*   **Obsidian Trench** (Standard profile) — A tidal location that is walkable only at low tide.\n\n**Items**\n*   **Black Stair** (Standard profile) — A specific architectural feature of Hollow Keep.\n\nWould you like me to proceed with building this cast and mapping the connections?\n\nI have not made any changes to your book's data. I have only identified the characters and locations from your text and prepared a plan to extract them. Your saved data remains untouched.\n\nWould you like me to proceed with building this cast and mapping the connections?\n\nI have not re-read the book's current state on this turn, so my previous response was based only on the text you provided in your last message. To ensure I am giving you accurate information about what is currently stored in your book's connection map, I need to perform a fresh read.\n\nWould you like me to query the graph now to see exactly what is currently recorded?"
+        }
+      ],
+      "surfaced_count": 5,
+      "called_count": 5,
+      "wrote_count": 5,
+      "suspended_count": 0
+    }
+  ]
+}
